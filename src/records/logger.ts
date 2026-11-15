@@ -1,0 +1,86 @@
+import { type Redactor, createRedactor } from './redact.js'
+
+// Structured JSON lines on standard output (docs/trd/records.md#logs).
+// Every line has: time, level, module, event, and a turn id or job id when one applies.
+
+export type LogLevel = 'error' | 'warn' | 'info' | 'debug'
+
+const RANK: Record<LogLevel, number> = { error: 0, warn: 1, info: 2, debug: 3 }
+
+export interface LogContext {
+  module: string
+  turnId?: string
+  jobId?: string
+}
+
+export type LogFields = Record<string, unknown>
+
+export interface Logger {
+  error(event: string, fields?: LogFields): void
+  warn(event: string, fields?: LogFields): void
+  info(event: string, fields?: LogFields): void
+  debug(event: string, fields?: LogFields): void
+  child(context: Partial<LogContext>): Logger
+}
+
+export interface LoggerOptions {
+  level: LogLevel
+  module: string
+  redactor?: Redactor
+  /** Receives one JSON line without a trailing newline. Defaults to standard output. */
+  sink?: (line: string) => void
+  now?: () => Date
+}
+
+function serialise(value: unknown, redactor: Redactor, seen: WeakSet<object>): unknown {
+  if (typeof value === 'string') return redactor.scrub(value)
+  if (typeof value === 'bigint') return value.toString()
+  if (typeof value === 'function' || typeof value === 'symbol') return undefined
+  if (value === null || typeof value !== 'object') return value
+  if (seen.has(value)) return '[circular]'
+  seen.add(value)
+  if (value instanceof Error) {
+    const out: Record<string, unknown> = {
+      name: value.name,
+      message: redactor.scrub(value.message),
+      stack: value.stack === undefined ? undefined : redactor.scrub(value.stack)
+    }
+    if ('code' in value) out['code'] = serialise(value.code, redactor, seen)
+    if (value.cause !== undefined) out['cause'] = serialise(value.cause, redactor, seen)
+    return out
+  }
+  if (value instanceof Date) return value.toISOString()
+  if (Array.isArray(value)) return value.map((item) => serialise(item, redactor, seen))
+  return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, serialise(inner, redactor, seen)]))
+}
+
+export function createLogger(options: LoggerOptions): Logger {
+  const redactor = options.redactor ?? createRedactor()
+  const sink = options.sink ?? ((line: string) => void process.stdout.write(line + '\n'))
+  const now = options.now ?? (() => new Date())
+
+  const build = (context: LogContext): Logger => {
+    const write = (level: LogLevel, event: string, fields: LogFields = {}) => {
+      if (RANK[level] > RANK[options.level]) return
+      const line = {
+        ...(serialise(fields, redactor, new WeakSet()) as LogFields),
+        time: now().toISOString(),
+        level,
+        module: context.module,
+        event,
+        ...(context.turnId === undefined ? {} : { turn_id: context.turnId }),
+        ...(context.jobId === undefined ? {} : { job_id: context.jobId })
+      }
+      sink(JSON.stringify(line))
+    }
+    return {
+      error: (event, fields) => write('error', event, fields),
+      warn: (event, fields) => write('warn', event, fields),
+      info: (event, fields) => write('info', event, fields),
+      debug: (event, fields) => write('debug', event, fields),
+      child: (extra) => build({ ...context, ...extra })
+    }
+  }
+
+  return build({ module: options.module })
+}
