@@ -163,7 +163,13 @@ the renderer changes.
 2. Screenshots are compared with the preview of the same messages.
 3. Differences are fixed in the preview, and the set is stored as the reference.
 
-The sticker path is proven on the real bridge by **Spike S-1** before the preview is trusted for stickers.
+The sticker path was proven on the real bridge on 16 Nov 2026: a sticker sent to the bridge's sticker route arrived
+as a native sticker.
+
+The spikes ran a gateway against a fake bridge this way: the gateway adopts a bridge that is already running when its
+`GET /health` reports `connected` with the hash of the `bridge.js` on disk and the same read-receipt setting. Run it
+with a scratch `HERMES_HOME`, and start it through `gateway.run.start_gateway`, not `hermes gateway run`, which
+rewrites the user's service unit.
 
 ### Commands
 

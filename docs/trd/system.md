@@ -26,23 +26,68 @@ How the processes fit together, what the gateway and the core promise each other
 
 ## Gateway Contract
 
-The gateway calls `POST /v1/chat/completions` on the core.
+The gateway calls `POST /v1/chat/completions` on the core. The shapes below were measured on the pinned, patched
+gateway with a fake bridge and a fake core (spikes S-1 to S-3, 16 Nov 2026).
 
-| Direction | Field                        | Meaning                                                                        |
-| --------- | ---------------------------- | ------------------------------------------------------------------------------ |
-| Request   | Session id header            | Identifies the chat instance. The core maps it to a chat row.                  |
-| Request   | `messages`                   | The gateway's transcript. The core reads only the newest user content from it. |
-| Request   | Sender and quote metadata    | Who wrote the message in a group, and what it replies to.                      |
-| Response  | `choices[0].message.content` | The cleaned reply text, ready for WhatsApp.                                    |
-| Response  | Attachments                  | Stickers, photos and files, named for the gateway to send.                     |
-| Response  | HTTP status                  | Always 200 with a deliverable reply. Failures become an in-character line.     |
+| Direction | Field                        | Meaning                                                                                     |
+| --------- | ---------------------------- | ------------------------------------------------------------------------------------------- |
+| Request   | Headers                      | OpenAI client headers only. No chat, sender or message id travels in a header.              |
+| Request   | Scope marker                 | `[HERMES-SCOPE v1 platform= kind= chat= sender= mid=]` before the newest user text          |
+| Request   | `messages`                   | The gateway's transcript. The core reads only the newest user content from it.              |
+| Request   | `stream`                     | `true`, with `stream_options.include_usage`. The core answers as a server-sent event stream |
+| Request   | `tools`, system message      | The gateway's own prompt and tool schemas. The core ignores both                            |
+| Response  | `choices[0].message.content` | The cleaned reply text, with bubble breaks and attachment lines. See below                  |
+| Response  | HTTP status                  | Always 200 with a deliverable reply. Failures become an in-character line.                  |
 
+- **Identity comes from the scope marker.** The gateway's scope stamp patch writes it when `WHATSAPP_SCOPE_STAMP=1`.
+  It is off on the live gateway today and is switched on at cutover. A request without a marker is refused as a
+  deployment fault. The marker's `mid` is the gateway message id that keys `inbound_message` in
+  [Persistence](storage.md).
+- **Earlier unanswered messages ride along.** After a failed turn the gateway keeps the user's text and prepends it
+  to the next user content, separated by blank lines, before the marker. The core treats text before the marker as
+  earlier messages from the same sender that got no reply.
+- **Gateway notes are removed.** On a chat's first message the gateway appends a `[System note: ...]` block to the
+  user text. The core strips every such block before the text enters a turn.
+- **Auxiliary requests.** The gateway also calls the same endpoint for its own chores, such as a session title. Such
+  a request has no `tools` and no scope marker. The core answers it with a short fixed text, makes no model call and
+  writes no turn record.
+- **Attachments are lines in the content.** Each attachment is one `MEDIA:<path>` line at the end of the content. The
+  path is the file's path on the host, under `gateway.hostDataDir`, because the gateway reads it there. The gateway
+  sends attachments after every text bubble. Stickers are in [Prompt Engine](prompt-engine.md#stickers).
 - The core keeps its own conversation window in SQLite. It does not trust the gateway's transcript for history,
   because the gateway compresses and rewrites it.
 - The core never returns an error status for a model or tool failure. An error status is reserved for a request the
   core cannot parse, which is a deployment fault.
 - Scheduled messages (reminders, proactive messages) arrive through the same endpoint from the gateway's cron. The
   core applies mute and quiet rules to them like any other turn. See [Reliability](reliability.md).
+
+### When the Core Is Slow or Down
+
+| Case                           | What the Gateway Does (Measured)                                                                                                          |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Connection refused             | Retries the identical request, 6 attempts in two rounds of 3, then sends the failure line. About 22 s                                     |
+| Connection dropped mid-request | Same: 6 identical requests with the same `mid`, then the failure line. About 35 s to 50 s                                                 |
+| No answer                      | Waits up to its read timeout of 1,800 s. The core's own turn deadline must end the turn long before                                       |
+| Every attempt failed           | Sends one line from the helper module `brain.failure` (see [Gateway Helper Modules](#gateway-helper-modules)), quoting the user's message |
+
+- A restarted core that is back within the retry window receives the same request again and answers it once, by the
+  rules in [Persistence](storage.md#interrupted-turns).
+- The core never sends a late reply on its own. The bridge's loopback `POST /send` route would allow it, but by then
+  the gateway has sent the failure line, and a late reply would arrive out of order.
+
+### Gateway Helper Modules
+
+Three gateway patches import a small Python module by name from `HERMES_HOME/scripts`. Today that folder is the old
+core's code. AIRA ships its own versions in `deploy/gateway/brain/` and installs them over the old ones at cutover,
+keeping the originals for rollback.
+
+| Module          | Used By Patch                           | AIRA's Version Does                                                                                                            |
+| --------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `brain.bubbles` | `aira-bubbles`, `aira-bubble-interrupt` | Splits the content at the core's bubble breaks only, returns the typing pause per bubble, and keeps the "wait" or "stop" check |
+| `brain.failure` | `aira-failure-line`                     | Returns the unavailable line the core last wrote to `<hostDataDir>/gateway/unavailable.txt`, or a fixed neutral line           |
+
+Both versions were run on the staging gateway code with a fake bridge: three bubbles went out in order with typing
+pauses, and a refused connection produced the fixed line.
 
 ## Tech Stack
 
@@ -110,16 +155,31 @@ deploy/                 Dockerfile, compose file, host units
    [Records](records.md).
 9. **After.** Memory extraction is queued. It never delays the reply.
 
+## Gateway Patches
+
+The pinned gateway carries 68 local patches (67 applied, one manual) and seven unregistered edits. Once the core
+owns replies, tools and failures, each one falls in one group below. Classified from the patch inventory and the
+spike runs, 16 Nov 2026.
+
+| Verdict              | Count | Patches                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| -------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Still needed         | 44    | Gateway: `session-guard-orphan`, `merge-quotes-newest`, `followup-quotes-followup`, `followup-quotes-followup-base`, `aira-queue-merge`, `whatsapp-group-allowed-chats`, `aira-failure-line`, `aira-failure-line-base`, `no-bg-review-chatter`. Adapter: `scope-stamp`, `whatsapp-forward-caption-window`, `aira-bubbles`, `aira-batch-quiet`, `aira-bubble-interrupt`, `whatsapp-log-reply-quote`. Bridge: `bridge-groups-not-dm-allowlist`, `quoted-media`, `bridge-groups-endpoint`, `bridge-resolve-lid`, `bridge-reaction-helpers`, `bridge-react-and-sticker`, `bridge-live-wa-version`, `bridge-companion-reg-refresh`, `bridge-atomic-creds`, `bridge-send-timer-at-dequeue`, `bridge-typing-presence`, `bridge-presence-route`, `bridge-media-retry-helpers`, `bridge-media-retry`. Cron: `cron-unresolved-origin-is-a-failure`, `cron-bare-platform-keeps-origin` and its test, `cron-failure-not-into-the-chat` and its two tests, `cron-failure-keeps-the-job`, `cron-repeat-limit-resets-completed`, `cron-delivery-visible` and its test. Voice: `tts-quiet-skip`, `tts-quiet-skip-gateway`, `tts-chat-id`, `tts-stderr-on-success`, `voice-after-text` |
+| Unregistered, keep   | 5     | Standalone-send whitespace, inbound sticker as photo, view-once unwrapping, the reply-prefix test, the edit jitter. Each must get a patch entry in the reapply script                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| New                  | 1     | `sticker-media-type`: a `.webp` under a `stickers/` folder goes to the bridge as `sticker`, not `image`. See [Prompt Engine](prompt-engine.md#stickers)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Replaced by the core | 21    | Agent loop: `aira-quiet-fallback`, `aira-quiet-fallback-declined` and its test, `aira-fallback-max-tokens`, `aira-primary-error` (the fallback list is empty and the core never fails a request). Gateway tools the core no longer calls: `send-photo-media-extract`, `send-photo-history-dedup`, `send-photo-attachable`, `send-photo-visible`, `make-report-attachable`, `ddgs-japanese-region`, `ddgs-test-fake-kwargs`, `web-search-depth`, `web-search-mode`, `whatsapp-no-session-search`, `cron-deliver-alias`, `cron-media-attach`, `cron-provider-error`, unregistered Tavily. Logging: `busy-ack-logging`, `no-leading-blank-lines` (the cleaning chain trims)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Owner tools only     | 2     | `cron-origin-in-summary`, `channel-directory-group-names`. Their fate follows the decision on the owner tools (PRD pending input 6)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Remove               | 3     | `whatsapp-passive-reactions` (manual, never applied), `whatsapp-autofetch` (answers unaddressed links; no requirement asks for it), unregistered `aira-trace` (writes the start of every outgoing message to `/tmp`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+
+- A "Replaced" patch is harmless while it stays. It is dropped the next time the gateway is re-pinned, not at
+  cutover, so cutover changes as little as possible.
+- `scope-stamp` counts as needed only because `WHATSAPP_SCOPE_STAMP=1` is set at cutover. See
+  [Gateway Contract](#gateway-contract).
+
 ## Assumptions And Spikes
 
-| ID  | Kind       | Statement                                                                                                                                                                                                                                                                             | Affects               |
-| --- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
-| A-1 | Assumption | Bun manages packages and runs scripts. Node 24 runs the service in the container.                                                                                                                                                                                                     | Tech stack            |
-| A-2 | Assumption | The gateway's session id header is enough to identify the chat and the sender in a group.                                                                                                                                                                                             | Gateway contract      |
-| A-3 | Assumption | The judge model is reachable from the host network with acceptable latency for the mood override.                                                                                                                                                                                     | Prompt engine, memory |
-| S-1 | Spike      | Send a native sticker through the pinned bridge, and find how the core names it in a response. Tracked in [#25](https://github.com/TolongLabs/AIRA/issues/25).                                                                                                                        | Delivery              |
-| S-2 | Spike      | Decide who splits bubbles: the existing gateway patch or the core returning several messages. Tracked in [#26](https://github.com/TolongLabs/AIRA/issues/26).                                                                                                                         | Delivery              |
-| S-3 | Spike      | Confirm what the gateway does with an empty fallback list when the core is down, and when the core's connection drops in the middle of a turn: does it send the message again, and may the core deliver a late reply. Tracked in [#27](https://github.com/TolongLabs/AIRA/issues/27). | D-4, cutover          |
-| S-4 | Spike      | Benchmark the two transports on the live machine with the same prompts. Tracked in [#28](https://github.com/TolongLabs/AIRA/issues/28).                                                                                                                                               | Launch default        |
-| S-5 | Spike      | Build the shadow tap: copy real requests to the new core without sending its replies. Tracked in [#29](https://github.com/TolongLabs/AIRA/issues/29).                                                                                                                                 | Cutover               |
-| S-6 | Spike      | List which of the 67 gateway patches the chatbot still needs once the core owns replies and failures. Tracked in [#30](https://github.com/TolongLabs/AIRA/issues/30).                                                                                                                 | Maintenance           |
+| ID  | Kind       | Statement                                                                                                                                             | Affects               |
+| --- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| A-1 | Assumption | Bun manages packages and runs scripts. Node 24 runs the service in the container.                                                                     | Tech stack            |
+| A-3 | Assumption | The judge model is reachable from the host network with acceptable latency for the mood override.                                                     | Prompt engine, memory |
+| S-4 | Spike      | Benchmark the two transports on the live machine with the same prompts. Tracked in [#28](https://github.com/TolongLabs/AIRA/issues/28).               | Launch default        |
+| S-5 | Spike      | Build the shadow tap: copy real requests to the new core without sending its replies. Tracked in [#29](https://github.com/TolongLabs/AIRA/issues/29). | Cutover               |

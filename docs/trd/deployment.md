@@ -30,6 +30,8 @@ one night.
 | Compose file      | `deploy/compose.yml`, copied at install                                                 |
 | Secrets           | `.env`, mode 600, never in git                                                          |
 | Data volume       | The database, files, snapshots, archive and cache. See [Persistence](storage.md#stores) |
+| Data volume path  | `gateway.hostDataDir`: where the gateway finds stickers and files the core names        |
+| Gateway helpers   | AIRA's `brain.bubbles` and `brain.failure`, from `deploy/gateway/brain/`                |
 | Off-host copy     | An encrypted repository on another machine                                              |
 | Core port         | `127.0.0.1:9881`, published to loopback only                                            |
 | Site and API port | Private network address only                                                            |
@@ -69,22 +71,23 @@ Before cutover, the new core runs beside the old one.
 
 One switch, one night, all chats. Start at 00:00 Malaysia time.
 
-| Step | Action                                                                                | Check Before Continuing                                 |
-| ---- | ------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| 1    | Confirm no turn is in flight. Pause the gateway's scheduled sends                     | Idle for 2 minutes                                      |
-| 2    | Stop the old core. Back up its memory stores, the gateway config and the binding file | Checksums recorded                                      |
-| 3    | Run the memory and settings migration: dry run, read the report, then the real run    | Report reviewed, no unassigned fact imported            |
-| 4    | Empty the gateway's fallback provider list. Point port 9881 at the new core           | Health endpoint ready                                   |
-| 5    | Send test messages from the operator's own DM and one test group                      | Replies, sticker, a command, a tool call, a memory note |
-| 6    | Resume scheduled sends                                                                | One reminder fires correctly                            |
-| 7    | Watch the turn records until the first real morning turns succeed                     | No failure record of an unknown kind                    |
+| Step | Action                                                                                                                                                        | Check Before Continuing                                   |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| 1    | Confirm no turn is in flight. Pause the gateway's scheduled sends                                                                                             | Idle for 2 minutes                                        |
+| 2    | Stop the old core. Back up its memory stores, the gateway config and the binding file                                                                         | Checksums recorded                                        |
+| 3    | Run the memory and settings migration: dry run, read the report, then the real run                                                                            | Report reviewed, no unassigned fact imported              |
+| 4    | Empty the gateway's fallback provider list. Set `WHATSAPP_SCOPE_STAMP=1`. Back up and replace the two gateway helper modules. Point port 9881 at the new core | Health endpoint ready. A test turn carries a scope marker |
+| 5    | Send test messages from the operator's own DM and one test group                                                                                              | Replies, sticker, a command, a tool call, a memory note   |
+| 6    | Resume scheduled sends                                                                                                                                        | One reminder fires correctly                              |
+| 7    | Watch the turn records until the first real morning turns succeed                                                                                             | No failure record of an unknown kind                      |
 
 ## Rollback
 
 Available at any step and for as long as the old stores are kept.
 
 1. Stop the new core.
-2. Restore the gateway config backup, which restores the fallback list.
+2. Restore the gateway config, `.env` and helper module backups. This restores the fallback list, turns the scope
+   stamp off and gives the old core its own bubble and failure modules back.
 3. Start the old core on port 9881.
 
 The migration only reads the old stores, so the old core starts with the memory it had at step 2. Messages handled
@@ -92,8 +95,9 @@ by the new core since cutover exist only in the new database; the rollback recor
 
 ## Configuration
 
-| Key                      | Default | Effect                                     |
-| ------------------------ | ------- | ------------------------------------------ |
-| `deploy.checkEveryMin`   | 15      | How often the host looks for a release     |
-| `deploy.waitForIdleMs`   | 120000  | Longest wait for a running turn            |
-| `deploy.healthTimeoutMs` | 60000   | Longest wait for the new image to be ready |
+| Key                      | Default | Effect                                                         |
+| ------------------------ | ------- | -------------------------------------------------------------- |
+| `deploy.checkEveryMin`   | 15      | How often the host looks for a release                         |
+| `deploy.waitForIdleMs`   | 120000  | Longest wait for a running turn                                |
+| `deploy.healthTimeoutMs` | 60000   | Longest wait for the new image to be ready                     |
+| `gateway.hostDataDir`    | empty   | The data volume's path on the host. Start-up fails while empty |

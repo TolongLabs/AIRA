@@ -12,6 +12,7 @@ judge:
 # Owned by docs/trd/prompt-engine.md
 format:
   bubbleMaxChars: 700 # Split point for bubbles
+  maxBubbles: 3 # Most bubbles in one reply
   leakCheck: 'on' # Step 6 of the cleaning chain
 
 # Owned by docs/trd/tools.md
@@ -89,6 +90,10 @@ deploy:
   checkEveryMin: 15 # How often the host looks for a release
   waitForIdleMs: 120000 # Longest wait for a running turn
   healthTimeoutMs: 60000 # Longest wait for the new image to be ready
+
+# Owned by docs/trd/deployment.md
+gateway:
+  hostDataDir: '' # The data volume's path on the host. Set at install; start-up fails while empty
 
 # Owned by docs/trd/storage.md
 storage:
