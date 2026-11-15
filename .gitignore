@@ -99,3 +99,6 @@ graphify-out/*
 
 # Rendered diagram pages (docs/diagrams keeps the sources and the SVGs)
 .archify/
+
+# Benchmark results (docs/trd/harness.md#benchmarks)
+bench-results/

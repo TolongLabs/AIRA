@@ -24,7 +24,10 @@
     "prepare": "husky",
     "diagrams": "node scripts/export-diagrams.mjs",
     "turn": "tsx scripts/turn.ts",
-    "report": "tsx scripts/report.ts"
+    "report": "tsx scripts/report.ts",
+    "bench": "tsx scripts/bench.ts",
+    "chat": "tsx scripts/chat.ts",
+    "pack:check": "tsx scripts/pack-check.ts"
   },
   "lint-staged": {
     "*.{ts,tsx}": "biome check --write",
