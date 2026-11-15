@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { parse } from 'yaml'
 import { ConfigError, loadConfig, parseConfig, requireDeployable } from '../../src/config/loader.js'
 
 const source = readFileSync('config.yml', 'utf8')
@@ -40,5 +41,16 @@ describe('config.yml', () => {
     const config = parseConfig(source)
     expect(() => requireDeployable(config)).toThrow(/gateway\.hostDataDir/)
     expect(() => requireDeployable({ ...config, gateway: { hostDataDir: '/srv/aira-data' } })).not.toThrow()
+  })
+})
+
+describe('deploy/compose.yml', () => {
+  it('gives the container a stop grace period longer than shutdown.graceMs', () => {
+    const compose = parse(readFileSync('deploy/compose.yml', 'utf8')) as {
+      services: { aira: { stop_grace_period: string } }
+    }
+    const match = /^(\d+)s$/.exec(compose.services.aira.stop_grace_period)
+    expect(match).not.toBeNull()
+    expect(Number(match?.[1]) * 1000).toBeGreaterThan(loadConfig('config.yml').shutdown.graceMs)
   })
 })
