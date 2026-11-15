@@ -324,7 +324,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       archiveAndPrune(storage, {
         archiveDir: paths.archive,
         config: config.records,
-        enabled: !started.diskGuard.state().paused.archive,
+        enabled: config.archive.enabled === 'on' && !started.diskGuard.state().paused.archive,
         now
       }).catch((error: unknown) => logger.error('storage.retention_failed', { error }))
     }, 86_400_000)
