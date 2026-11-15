@@ -86,7 +86,9 @@ token. The service answers with the program's output lines as they arrive, one J
 - The program takes one prompt, not a list of messages. The core writes the earlier messages of the window as a
   labelled transcript and the messages this turn answers after it (**Assumption A-7**).
 - The last output line of type `result` holds the reply text, the token counts and the estimated cost.
-- The service keeps no state, writes no file and reads no AIRA data. A second request while one runs is accepted:
+- The system prompt holds recalled memory. The service passes it in a private temporary file, removed when the
+  program ends, so it never shows in the host's process list.
+- The service keeps no state and reads no AIRA data. A second request while one runs is accepted:
   each request is its own program.
 
 ### Tool Server For The Program
