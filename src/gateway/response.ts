@@ -4,7 +4,7 @@ import type { ServerResponse } from 'node:http'
 // event stream when the request asked for one, else one JSON body. The status is always 200.
 
 /** A line holding only this character separates two bubbles. */
-export const BUBBLE_BREAK = '⁣'
+export const BUBBLE_BREAK = String.fromCodePoint(0x2063)
 
 export interface ReplyBody {
   /** Used as the completion id. */
