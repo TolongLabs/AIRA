@@ -87,7 +87,7 @@ assumes all three.
 | --------------- | ------------------------------------ | ----------------------------------------------------------- | ---------------------------------------------------------------------- |
 | Inbound message | `inbound_message`                    | `received`, `answered`, `dropped`                           | Unanswered rows are handled as [Interrupted Turns](#interrupted-turns) |
 | Turn            | `turn`                               | `running`, `delivered`, `declined`, `failed`, `interrupted` | Every `running` row becomes `interrupted`, with a failure record       |
-| Background job  | `memory_job` and any later job table | `queued`, `leased`, `done`, `failed`                        | A lease past its time returns to `queued`                              |
+| Background job  | `memory_job` and any later job table | `queued`, `leased`, `done`, `failed`                        | Every lease returns to `queued`: its owner died with the old process   |
 | Reminder        | `reminder`                           | `active`, `fired`, `cancelled`                              | Reconciled with the gateway's schedule: missing ones are recreated     |
 | Snapshot        | `backup_run`                         | `started`, `verified`, `failed`                             | A `started` row becomes `failed` and its file is removed               |
 
@@ -100,6 +100,8 @@ assumes all three.
   is still running, the request waits for it.
 - A job handler is idempotent: running it twice for one job id leaves the same rows as running it once.
 - A lease has an owner and an expiry. A worker extends it while it works. Nothing is "in progress" without a lease.
+- While the core runs, a lease past its time returns to `queued`. A lease given back at shutdown does not count as
+  an attempt. One cut short by a crash does, so a job that kills the process cannot retry for ever.
 
 ### Interrupted Turns
 
@@ -149,7 +151,10 @@ Free space is checked at start-up and every `storage.checkEveryMin` minutes.
   `backup.everyMin` minutes, and before every migration and every deploy.
 - **Verify.** A snapshot counts only after it opens, passes `integrity_check`, and its row counts are within
   reason of the live file. An unverified snapshot is deleted and recorded as `backup_failed`.
-- **Keep.** Verified snapshots are kept for `backup.keepDays` days on the data volume.
+- **One file.** A verified snapshot is one self-contained file with a rollback journal, not WAL. `snapshots/`
+  holds verified snapshots and nothing else: the recovery pass removes every other entry.
+- **Keep.** Verified snapshots are kept for `backup.keepDays` days on the data volume. The newest verified snapshot
+  is never removed.
 - **Ship.** Each verified snapshot, plus `files/` and `archive/`, goes to an encrypted, deduplicated repository on
   another machine. The repository is checked on a schedule.
 - **Targets.** At most 15 minutes of data is lost if the host's disk is lost. A restore takes at most 30 minutes

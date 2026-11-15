@@ -17,6 +17,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
+    "test:restart": "vitest run tests/restart",
+    "test:migration": "vitest run tests/migration",
     "prepare": "husky",
     "diagrams": "node scripts/export-diagrams.mjs"
   },
@@ -33,6 +35,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^17.6.0",
     "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
     "typescript": "6.0.3",
     "vitest": "5.1.0"
   },

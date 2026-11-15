@@ -37,6 +37,8 @@ that makes a new decision.
 | 2026-11-16 | A turn's reply is stored once, as its assistant row in `session_message`. A repeated request reads it from there.                                     | Verbatim text may live in two tables only. A copy on `inbound_message` or `turn` would be a third.                                                     |
 | 2026-11-16 | Files on the data volume are tracked in a `file` table, owned by Persistence.                                                                         | The contract promised a database row per file but named no table for it.                                                                               |
 | 2026-11-16 | A release starts on a schema that holds migrations it does not know.                                                                                  | An image rollback runs the previous release on the newer schema. Refusing to start would turn every rollback into a restore.                           |
+| 2026-11-16 | At start-up every job lease returns to the queue, expired or not.                                                                                     | One process writes the file, so every earlier lease owner is gone. Waiting for the expiry would only delay the work.                                   |
+| 2026-11-16 | A snapshot is one file with a rollback journal, and the recovery pass empties `snapshots/` of everything else.                                        | The Restart suite found that a kill during verification left a stray file beside a snapshot.                                                           |
 
 ## Site
 
