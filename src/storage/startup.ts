@@ -43,6 +43,8 @@ export interface StartOptions {
   config: Pick<Config, 'storage'>
   logger: Logger
   onDiskAlert?: (state: DiskState) => void
+  /** Called when a write fails with an I/O error (the disk guard's error level), after it is logged. */
+  onStorageError?: () => void
   reconcileReminders?: () => number
   /** Free space in megabytes. Replaced in tests. */
   freeMb?: (dir: string) => number
@@ -95,7 +97,11 @@ export async function startStorage(options: StartOptions): Promise<StartedStorag
 
     // 2. Open the database. Run quick_check and foreign_key_check.
     storage = openDatabase(paths.database, {
-      onStorageError: (error) => logger.error('storage.write_failed', { error })
+      onStorageError: (error) => {
+        // The record of a failed write is this log line: the database that failed cannot be asked to hold it.
+        logger.error('storage.write_failed', { kind: 'storage_error', error })
+        options.onStorageError?.()
+      }
     })
     storage.check()
 
