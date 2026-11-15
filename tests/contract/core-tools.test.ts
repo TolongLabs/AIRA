@@ -82,10 +82,13 @@ function makeFakePorts() {
       historyChats.push(chatId)
       return [{ at: '2026-11-16T00:00:00.000Z', senderId: 'member-1', text: `match for ${query}` }]
     },
+    async checkNote() {
+      return { ok: true as const }
+    },
     note(_db, input) {
       const id = `fact_${facts.size + 1}`
       facts.set(id, { chatId: input.chatId, text: input.text })
-      return id
+      return { itemId: id, effect: 'added' }
     },
     forget(_db, input) {
       forgetCalls.push(input)
@@ -94,6 +97,7 @@ function makeFakePorts() {
       facts.delete(input.itemId)
       return true
     },
+    forgetPending() {},
     lingo(_db, input) {
       return `lingo_${input.word}`
     }
@@ -160,7 +164,7 @@ describe('core tools', () => {
     expect(noteRes).toMatchObject({
       ok: true,
       data: { itemId: 'fact_1' },
-      receipt: { kind: 'memory.noted', target: 'fact_1' }
+      receipt: { kind: 'memory.noted', target: 'fact_1', state: { effect: 'added' } }
     })
 
     const recallRes = await registry.call('recall', { query: 'jasmine' }, ctx1, {
@@ -173,15 +177,29 @@ describe('core tools', () => {
       callId: 'c-forget-other',
       source: 'model'
     })
-    expect(otherChatForget).toMatchObject({ ok: false, kind: 'refused' })
+    expect(otherChatForget).toMatchObject({
+      ok: true,
+      data: { forgotten: false, candidates: [] },
+      receipt: { kind: 'memory.forget_barrier' }
+    })
 
-    const forgetRes = await registry.call('forget', { query: 'jasmine' }, ctx1, {
+    const forgetSearchRes = await registry.call('forget', { query: 'jasmine' }, ctx1, {
+      callId: 'c-forget-search',
+      source: 'model'
+    })
+    expect(forgetSearchRes).toMatchObject({
+      ok: true,
+      data: { forgotten: false, candidates: [{ itemId: 'fact_1', text: 'likes jasmine tea' }] },
+      receipt: { kind: 'memory.forget_barrier' }
+    })
+
+    const forgetRes = await registry.call('forget', { itemId: 'fact_1' }, ctx1, {
       callId: 'c-forget-ok',
       source: 'model'
     })
     expect(forgetRes).toMatchObject({
       ok: true,
-      data: { itemId: 'fact_1' },
+      data: { forgotten: true, candidates: [] },
       receipt: { kind: 'memory.forgotten', target: 'fact_1' }
     })
 

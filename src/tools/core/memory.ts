@@ -24,8 +24,6 @@ const lingoSchema = z.strictObject({
   meaning: z.string().trim().min(1).max(300)
 })
 
-class FactNotFoundError extends Error {}
-
 export function recallTool(ports: ToolPorts): ToolDefinition<z.infer<typeof querySchema>> {
   return {
     name: 'recall',
@@ -43,7 +41,7 @@ export function recallTool(ports: ToolPorts): ToolDefinition<z.infer<typeof quer
         return { ok: false, kind: 'unavailable', reason: 'memory is not set up' }
       }
       try {
-        const items = ports.memory.recall(context.chat.chatId, args.query, 8)
+        const items = ports.memory.recall(context.chat.chatId, args.query, 8, context.senderId)
         return { ok: true, data: { items } }
       } catch {
         return { ok: false, kind: 'error', reason: 'memory recall failed' }
@@ -64,21 +62,28 @@ export function noteTool(ports: ToolPorts): ToolDefinition<z.infer<typeof noteSc
       kind: 'skill',
       usage: '/remember <fact>'
     },
-    handler(args, context) {
+    async handler(args, context) {
       const memory = ports.memory
       if (!memory) {
         return { ok: false, kind: 'unavailable', reason: 'memory is not set up' }
       }
+      const checked = await memory.checkNote(
+        { chatId: context.chat.chatId, subjectId: context.senderId, text: args.text },
+        context.signal
+      )
+      if (!checked.ok) {
+        return { ok: false, kind: 'refused', reason: checked.reason }
+      }
       const { data } = context.commit((db) => {
-        const itemId = memory.note(db, {
+        const { itemId, effect } = memory.note(db, {
           chatId: context.chat.chatId,
           subjectId: context.senderId,
           text: args.text,
-          callId: context.callId
+          turnId: context.turnId
         })
         return {
           data: { itemId },
-          receipt: { kind: 'memory.noted', target: itemId }
+          receipt: { kind: 'memory.noted', target: itemId, state: { effect } }
         }
       })
       return { ok: true, data }
@@ -89,7 +94,8 @@ export function noteTool(ports: ToolPorts): ToolDefinition<z.infer<typeof noteSc
 export function forgetTool(ports: ToolPorts): ToolDefinition<z.infer<typeof forgetSchema>> {
   return {
     name: 'forget',
-    description: 'Forgets one named fact in this chat.',
+    description:
+      'Forgets one named fact in this chat. A search removes nothing; to remove a fact, call forget again with the itemId of exactly one candidate, or ask the person which one.',
     schema: forgetSchema,
     mode: 'both',
     mutates: true,
@@ -104,49 +110,33 @@ export function forgetTool(ports: ToolPorts): ToolDefinition<z.infer<typeof forg
         return { ok: false, kind: 'unavailable', reason: 'memory is not set up' }
       }
 
-      let targetId = args.itemId
-      if (targetId === undefined) {
-        let matches: { itemId: string; text: string }[]
-        try {
-          matches = memory.recall(context.chat.chatId, args.query ?? '', 8)
-        } catch {
-          return { ok: false, kind: 'error', reason: 'memory recall failed' }
-        }
-        if (matches.length === 0) {
-          return { ok: false, kind: 'refused', reason: 'nothing matches' }
-        }
-        if (matches.length > 1) {
-          const candidates = matches.map((m) => `${m.itemId}: ${m.text}`).join('; ')
-          return {
-            ok: false,
-            kind: 'invalid',
-            reason: `more than one fact matches: ${candidates}`
-          }
-        }
-        const only = matches[0]
-        if (!only) {
-          return { ok: false, kind: 'refused', reason: 'nothing matches' }
-        }
-        targetId = only.itemId
-      }
-
-      const idToForget = targetId
-      try {
+      if (args.itemId !== undefined) {
+        const targetId = args.itemId
         const { data } = context.commit((db) => {
-          const removed = memory.forget(db, { chatId: context.chat.chatId, itemId: idToForget })
-          if (!removed) throw new FactNotFoundError()
+          const forgotten = memory.forget(db, { chatId: context.chat.chatId, itemId: targetId })
           return {
-            data: { itemId: idToForget },
-            receipt: { kind: 'memory.forgotten', target: idToForget }
+            data: { forgotten, candidates: [] },
+            receipt: forgotten ? { kind: 'memory.forgotten', target: targetId } : { kind: 'memory.forget_barrier' }
           }
         })
         return { ok: true, data }
-      } catch (err) {
-        if (err instanceof FactNotFoundError) {
-          return { ok: false, kind: 'refused', reason: 'no such fact in this chat' }
-        }
-        throw err
       }
+
+      let candidates: { itemId: string; text: string }[]
+      try {
+        candidates = memory.recall(context.chat.chatId, args.query ?? '', 8, context.senderId)
+      } catch {
+        return { ok: false, kind: 'error', reason: 'memory recall failed' }
+      }
+
+      const { data } = context.commit((db) => {
+        memory.forgetPending(db, { chatId: context.chat.chatId })
+        return {
+          data: { forgotten: false, candidates },
+          receipt: { kind: 'memory.forget_barrier' }
+        }
+      })
+      return { ok: true, data }
     }
   }
 }
@@ -194,7 +184,7 @@ export function lingoNoteTool(ports: ToolPorts): ToolDefinition<z.infer<typeof l
           chatId: context.chat.chatId,
           word: args.word,
           meaning: args.meaning,
-          callId: context.callId
+          turnId: context.turnId
         })
         return {
           data: { itemId },

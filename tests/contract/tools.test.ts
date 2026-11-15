@@ -55,8 +55,10 @@ function fakeMemory(items: { itemId: string; text: string }[] = []): MemoryPort 
   return {
     recall: () => items,
     history: () => [],
-    note: () => 'mem_1',
+    checkNote: async () => ({ ok: true }),
+    note: () => ({ itemId: 'mem_1', effect: 'added' }),
     forget: () => true,
+    forgetPending: () => {},
     lingo: () => 'lingo_1'
   }
 }
@@ -201,23 +203,53 @@ describe('the seven atomic rules', () => {
     expect(storage.read((db) => db.prepare('SELECT count(*) FROM receipt').pluck().get())).toBe(0)
   })
 
-  it('One target for a removal: forget with two matches lists both and reminder_cancel updates one row', async () => {
+  it('One target for a removal: forget search forgets nothing and only an itemId forgets one row', async () => {
     const storage = tmpStorage()
     const registry = makeRegistry(storage)
-    const memory = fakeMemory([
+    const forgetSpy = vi.fn(() => true)
+    let matches = [
       { itemId: 'm_1', text: 'likes green tea' },
       { itemId: 'm_2', text: 'drinks tea daily' }
-    ])
+    ]
+    const memory: MemoryPort = {
+      ...fakeMemory(),
+      recall: () => matches,
+      forget: forgetSpy
+    }
     registerCoreTools(registry, { memory, filesDir: tmpDir() })
     const context = makeContext(storage)
 
-    const forgetRes = await registry.call('forget', { query: 'tea' }, context, { callId: 'c-forget', source: 'model' })
-    expect(forgetRes.ok).toBe(false)
-    if (!forgetRes.ok) {
-      expect(forgetRes.kind).toBe('invalid')
-      expect(forgetRes.reason).toContain('m_1: likes green tea')
-      expect(forgetRes.reason).toContain('m_2: drinks tea daily')
-    }
+    const twoMatches = await registry.call('forget', { query: 'tea' }, context, {
+      callId: 'c-forget-2',
+      source: 'model'
+    })
+    expect(twoMatches).toMatchObject({
+      ok: true,
+      data: { forgotten: false, candidates: matches },
+      receipt: { kind: 'memory.forget_barrier' }
+    })
+    expect(forgetSpy).not.toHaveBeenCalled()
+
+    matches = [{ itemId: 'm_1', text: 'likes green tea' }]
+    const oneMatch = await registry.call('forget', { query: 'green' }, context, {
+      callId: 'c-forget-1',
+      source: 'model'
+    })
+    expect(oneMatch).toMatchObject({
+      ok: true,
+      data: { forgotten: false, candidates: matches },
+      receipt: { kind: 'memory.forget_barrier' }
+    })
+    expect(forgetSpy).not.toHaveBeenCalled()
+
+    const byId = await registry.call('forget', { itemId: 'm_1' }, context, { callId: 'c-forget-id', source: 'model' })
+    expect(byId).toMatchObject({
+      ok: true,
+      data: { forgotten: true, candidates: [] },
+      receipt: { kind: 'memory.forgotten', target: 'm_1' }
+    })
+    expect(forgetSpy).toHaveBeenCalledTimes(1)
+    expect(forgetSpy).toHaveBeenCalledWith(expect.anything(), { chatId: context.chat.chatId, itemId: 'm_1' })
 
     const r1 = await registry.call('reminder_set', { text: 'first', dueAt: '2030-01-01T10:00:00Z' }, context, {
       callId: 'c-rem-1',
@@ -408,23 +440,28 @@ describe('faults of the old system', () => {
     ).toBe(1)
   })
 
-  it('Forget can retire three facts that share a word: none is forgotten', async () => {
+  it('Forget can retire three facts that share a word: returns three candidates and forgets none', async () => {
     const storage = tmpStorage()
     const registry = makeRegistry(storage)
     const forgetSpy = vi.fn(() => true)
+    const candidates = [
+      { itemId: 'm_1', text: 'coffee at morning' },
+      { itemId: 'm_2', text: 'coffee with milk' },
+      { itemId: 'm_3', text: 'coffee beans' }
+    ]
     const memory: MemoryPort = {
-      ...fakeMemory([
-        { itemId: 'm_1', text: 'coffee at morning' },
-        { itemId: 'm_2', text: 'coffee with milk' },
-        { itemId: 'm_3', text: 'coffee beans' }
-      ]),
+      ...fakeMemory(candidates),
       forget: forgetSpy
     }
     registerCoreTools(registry, { memory, filesDir: tmpDir() })
     const context = makeContext(storage)
 
     const res = await registry.call('forget', { query: 'coffee' }, context, { callId: 'c-3facts', source: 'model' })
-    expect(res.ok).toBe(false)
+    expect(res).toMatchObject({
+      ok: true,
+      data: { forgotten: false, candidates },
+      receipt: { kind: 'memory.forget_barrier' }
+    })
     expect(forgetSpy).not.toHaveBeenCalled()
   })
 
