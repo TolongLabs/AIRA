@@ -151,6 +151,23 @@ The existing memory is migrated, never wiped (PRD FR-31).
 5. **Review** the report. The real run needs an explicit confirmation flag.
 6. **Import** in one transaction. The old stores are left in place and untouched.
 
+`bun run migrate:memory --from <folder>` is the dry run. Adding `--confirm` is the real run.
+
+- **Two stages.** A reader per old store writes a legacy export: `.ndjson` files, one remembered thing per line,
+  with `kind` (`fact`, `note` or `lingo`), the WhatsApp ids `chat` and `subject`, `key`, `text` and `updatedAt`.
+  The import works on that export alone. The readers for the three old stores are written against the live
+  stores, which only the production host holds.
+- **Never guessed.** A line with no chat, or a chat the new database does not hold, is `unassigned` and is never
+  imported. A text over the value limit is rejected, not cut. A line with an unknown field is rejected.
+- **Merged.** The newest version of a slot stays active and the older ones are kept as `superseded`. The same text
+  twice is stored once. A fact the new core already learned is never replaced by an old one.
+- **Kept as a note.** A fact with no usable key is kept word for word as a note of its person.
+- **Guarded.** The real run refuses to start without a dry-run report of exactly the same input files. It runs with
+  the core stopped, as the only process on the database. A second real run changes nothing.
+- **Private.** The backup, the reject file, the review file and the reports go to a private folder on the data
+  volume. The reports hold file names, line numbers and reason codes only. None of these files enters the
+  repository.
+
 Song, vocabulary and library notes belong to the lessons feature. They are migrated with that work, once its data
 model is specified. See [Tools](tools.md#lessons-and-library).
 

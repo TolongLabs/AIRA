@@ -297,15 +297,10 @@ export function addNote(
   return { itemId: id, effect: 'added' }
 }
 
-/** What one of this chat's words means. A new meaning replaces the old one. */
-export function setLingo(
-  db: Db,
-  chatId: string,
-  input: { word: string; meaning: string; turnId?: string },
-  now: Clock = wallClock
-): string {
-  const word = input.word.normalize('NFKC').toLowerCase().trim()
-  if (!/[\p{L}\p{N}]/u.test(word)) throw new Error('lingo word must contain letters or digits')
+/** The slot of one of a chat's own words, or undefined when the word holds no letter or digit. */
+export function lingoKey(rawWord: string): string | undefined {
+  const word = rawWord.normalize('NFKC').toLowerCase().trim()
+  if (!/[\p{L}\p{N}]/u.test(word)) return undefined
   const latin = word
     .replace(/[^a-z0-9]+/g, '_')
     .slice(0, 40)
@@ -315,13 +310,24 @@ export function setLingo(
     latin !== '' && !/[^\p{ASCII}]/u.test(word)
       ? latin
       : `w_${createHash('sha256').update(word).digest('hex').slice(0, 16)}`
+  return `lingo.${part}`
+}
+
+/** What one of this chat's words means. A new meaning replaces the old one. */
+export function setLingo(
+  db: Db,
+  chatId: string,
+  input: { word: string; meaning: string; turnId?: string },
+  now: Clock = wallClock
+): string {
+  const key = lingoKey(input.word)
+  if (key === undefined) throw new Error('lingo word must contain letters or digits')
 
   const value = input.meaning.trim()
   if (value.length === 0 || value.length > MAX_VALUE_CHARS) {
     throw new Error('lingo meaning must be between 1 and 500 characters')
   }
 
-  const key = `lingo.${part}`
   const existing = activeFact(db, chatId, undefined, key)
   if (existing && normaliseText(existing.value) === normaliseText(value)) {
     return existing.id
@@ -346,6 +352,11 @@ export function setLingo(
   ).run(id, chatId, key, value, input.turnId ?? null, at, at)
   syncFts(db, chatId, { id, kind: 'fact', key, value, status: 'active' })
   return id
+}
+
+/** Names the job a row of this chat came from. The migration marks what it imports. */
+export function setSource(db: Db, chatId: string, itemId: string, sourceJob: string): void {
+  db.prepare('UPDATE memory_item SET source_job = ? WHERE id = ? AND chat_id = ?').run(sourceJob, itemId, chatId)
 }
 
 /** The forget barrier of docs/trd/memory.md. Returns how many queued jobs it ended. */

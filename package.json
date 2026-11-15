@@ -27,7 +27,8 @@
     "report": "tsx scripts/report.ts",
     "bench": "tsx scripts/bench.ts",
     "chat": "tsx scripts/chat.ts",
-    "pack:check": "tsx scripts/pack-check.ts"
+    "pack:check": "tsx scripts/pack-check.ts",
+    "migrate:memory": "tsx scripts/migrate-memory.ts"
   },
   "lint-staged": {
     "*.{ts,tsx}": "biome check --write",
