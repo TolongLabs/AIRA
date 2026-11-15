@@ -12,7 +12,7 @@ import { createSystemOneClient, createSystemOneMemoryJudge, createSystemOneMoodJ
 import { createMemoryPort } from './memory/port.js'
 import { presentLabels, recallForTurn } from './memory/recall.js'
 import type { MemoryJudge } from './memory/types.js'
-import { createMemoryWorker } from './memory/worker.js'
+import { type MemoryWorker, createMemoryWorker } from './memory/worker.js'
 import { createApiRunner } from './models/api-runner.js'
 import { createBreaker } from './models/breaker.js'
 import { createOpenAiClient } from './models/openai-client.js'
@@ -77,6 +77,8 @@ export interface App {
   paths: DataPaths
   turns: TurnService
   registry: ToolRegistry
+  /** The memory worker, when passive memory is on. Its timer runs it; a test or an operator may run one tick. */
+  memory?: MemoryWorker
   server: Server
   alerter: Alerter
   packs: () => PackSet
@@ -246,6 +248,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     })
 
     // Memory extraction (docs/trd/memory.md#write-path): background work, one job at a time.
+    let memory: MemoryWorker | undefined
     if (config.memory.enabled === 'on') {
       const memoryWorker = createMemoryWorker({
         storage,
@@ -283,6 +286,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         paused: () => started.diskGuard.state().paused.memoryExtraction,
         now
       })
+      memory = memoryWorker
       closers.push(memoryWorker.start(MEMORY_TICK_MS))
     }
 
@@ -340,6 +344,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       paths,
       turns,
       registry,
+      ...(memory ? { memory } : {}),
       server,
       alerter,
       packs,
