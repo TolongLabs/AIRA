@@ -19,6 +19,7 @@
     "test": "vitest run",
     "test:restart": "vitest run tests/restart",
     "test:migration": "vitest run tests/migration",
+    "test:simulator": "vitest run tests/simulator",
     "prepare": "husky",
     "diagrams": "node scripts/export-diagrams.mjs",
     "turn": "tsx scripts/turn.ts",

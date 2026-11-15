@@ -2,6 +2,7 @@ import type { AddressInfo } from 'node:net'
 import { afterEach } from 'vitest'
 import { type App, createApp } from '../../src/app.js'
 import type { Config } from '../../src/config/schema.js'
+import type { MemoryJudge } from '../../src/memory/types.js'
 import { type ModelClient, ModelError, type ModelRequest, type ModelResponse } from '../../src/models/types.js'
 import { createLogger } from '../../src/records/logger.js'
 import { ensureChat, setChatStatus } from '../../src/settings/chats.js'
@@ -55,6 +56,7 @@ export async function startApp(
     dataDir?: string
     character?: string
     ports?: Partial<Omit<ToolPorts, 'filesDir'>>
+    memoryJudge?: MemoryJudge
   } = {}
 ) {
   const dataDir = options.dataDir ?? tmpDir('aira-app-')
@@ -85,6 +87,7 @@ export async function startApp(
     env: {},
     clients: { main, fallback: options.fallback },
     ports: options.ports,
+    memoryJudge: options.memoryJudge,
     logger: createLogger({ level: 'debug', module: 'core', sink: (line) => logs.push(JSON.parse(line)) })
   })
   apps.push(app)
