@@ -219,13 +219,15 @@ describe('MCP external tool servers', () => {
           command: [process.execPath, TEST_SERVER_PATH],
           tools: ['slow', 'broken'],
           chats: [context.chat.chatId],
-          timeoutMs: 200
+          // One limit covers the start of the server and each call. It must leave a slow machine time to start it.
+          timeoutMs: 2_000
         }
       ],
       registry,
       makeLogger()
     )
     hosts.push(host)
+    expect(host.states()[0]?.status).toBe('connected')
 
     const slowRes = await registry.call('example.slow', {}, context, { callId: 'c-slow', source: 'model' })
     expect(slowRes).toMatchObject({ ok: false, kind: 'timeout' })

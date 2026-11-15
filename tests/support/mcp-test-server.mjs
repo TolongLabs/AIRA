@@ -33,11 +33,11 @@ server.registerTool(
 server.registerTool(
   'slow',
   {
-    description: 'Waits 2 seconds then returns',
+    description: 'Waits 30 seconds then returns',
     inputSchema: {}
   },
   async () => {
-    await new Promise((resolve) => setTimeout(resolve, 2000))
+    await new Promise((resolve) => setTimeout(resolve, 30000))
     return {
       content: [{ type: 'text', text: 'late' }]
     }
