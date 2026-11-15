@@ -101,18 +101,22 @@ Video from a linked social post is fetched by the social tool and passed through
 
 ## Spend
 
-Real token counts and prices are recorded per call. At 80% of `llm.monthlyBudgetUsd`, background work (memory
+Real token counts and prices are recorded per call, in the `spend` table by month and role. The cost of a call is
+the cost the provider's response reports. When it reports none, the cost is the token counts times the role's
+prices in `config.yml`. A role with no reported cost and prices of 0 costs nothing on record, so set its prices
+before relying on the cap. At 80% of `llm.monthlyBudgetUsd`, background work (memory
 extraction, the mood judge) stops. At 100%, replies stop with the pack's limit line. The subscription transport
 records estimated cost for comparison and does not count against the cap.
 
 ## Configuration
 
-| Key                     | Default | Effect                               |
-| ----------------------- | ------- | ------------------------------------ |
-| `llm.transport`         | `api`   | Selects the runner                   |
-| `llm.turnDeadlineMs`    | 45000   | Hard limit for one turn's model work |
-| `llm.maxRetries`        | 2       | Retries for a `transient` failure    |
-| `llm.breakerMs`         | 600000  | How long a breaker stays open        |
-| `llm.monthlyBudgetUsd`  | 50      | Spend cap for paid roles             |
-| `media.watcher.model`   | unset   | The media model                      |
-| `media.maxVideoSeconds` | 180     | Longest video that is watched        |
+| Key                                                            | Default | Effect                                                             |
+| -------------------------------------------------------------- | ------- | ------------------------------------------------------------------ |
+| `llm.transport`                                                | `api`   | Selects the runner                                                 |
+| `llm.turnDeadlineMs`                                           | 45000   | Hard limit for one turn's model work                               |
+| `llm.maxRetries`                                               | 2       | Retries for a `transient` failure                                  |
+| `llm.breakerMs`                                                | 600000  | How long a breaker stays open                                      |
+| `llm.monthlyBudgetUsd`                                         | 50      | Spend cap for paid roles                                           |
+| `llm.<role>.usdPerMTokIn`, `usdPerMTokOut`, `usdPerMTokCached` | 0       | Prices for `main` and `fallback`, in US dollars per million tokens |
+| `media.watcher.model`                                          | unset   | The media model                                                    |
+| `media.maxVideoSeconds`                                        | 180     | Longest video that is watched                                      |

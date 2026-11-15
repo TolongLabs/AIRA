@@ -47,10 +47,16 @@ llm:
     provider: '' # Main model provider
     model: '' # Main model id
     baseUrl: '' # Main model endpoint URL
+    usdPerMTokIn: 0 # Price of input tokens, used when the provider reports no cost
+    usdPerMTokOut: 0 # Price of output tokens
+    usdPerMTokCached: 0 # Price of cached input tokens
   fallback:
     provider: '' # Fallback model provider
     model: '' # Fallback model id
     baseUrl: '' # Fallback model endpoint URL
+    usdPerMTokIn: 0 # Price of input tokens, used when the provider reports no cost
+    usdPerMTokOut: 0 # Price of output tokens
+    usdPerMTokCached: 0 # Price of cached input tokens
   turnDeadlineMs: 45000 # Hard limit for one turn's model work
   maxRetries: 2 # Retries for a transient failure
   breakerMs: 600000 # How long a breaker stays open

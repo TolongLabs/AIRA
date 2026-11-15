@@ -77,7 +77,10 @@ The turn record notes which limit was reached. Both defaults are tuned from benc
 
 ## Receipts
 
-A tool with `mutates: true` returns a receipt: what changed, where, and the new state. Code attaches receipts to the
+A tool with `mutates: true` returns a receipt: what changed, where, and the new state. The handler makes its
+change through one `commit` call that the registry gives it. That call is one transaction that holds the change,
+the stored result of the call (table `tool_result`, by call id) and the receipt (table `receipt`). A handler cannot
+commit twice, and a tool that does not mutate cannot commit at all. Code attaches receipts to the
 turn record and, when the pack asks for it, renders one line under the reply. The cleaning chain does not accept a
 claim of a state change without a matching receipt from this turn.
 
@@ -147,7 +150,9 @@ tool and says the rest in their own words.
 - `/read` routes by the address: a social post goes to `read_post`, anything else to `read_page`.
 - `make_report` writes the document. Sending it to the chat is a separate delivery step with its own receipt.
 - The existing gateway schedule stores and fires reminders. `reminder_set` and `reminder_cancel` are the only code
-  that talks to it, and each writes the `reminder` row in the same step.
+  that talks to it, and each writes the `reminder` row in the same step. The row commits first, because a
+  transaction cannot span a call to the gateway. The call to the schedule follows. If it fails, the row stays and
+  the start-up reconciliation in [Persistence](storage.md#everything-in-flight-is-a-row) creates the missing job.
 - Media watching is not a tool. It runs at intake. See [Models](models.md#media-watching).
 
 ### Lessons And Library

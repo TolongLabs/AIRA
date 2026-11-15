@@ -7,10 +7,15 @@ const onOff = z.enum(['on', 'off'])
 const ms = z.number().int().positive()
 const count = z.number().int().positive()
 
+const price = z.number().nonnegative().default(0)
 const modelTarget = z.strictObject({
   provider: z.string(),
   model: z.string(),
-  baseUrl: z.string()
+  baseUrl: z.string(),
+  // US dollars per million tokens. Used for the spend cap when the provider's response reports no cost.
+  usdPerMTokIn: price,
+  usdPerMTokOut: price,
+  usdPerMTokCached: price
 })
 
 export const configSchema = z.strictObject({
