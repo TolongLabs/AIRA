@@ -73,17 +73,21 @@ and timing budgets. They do not assert exact model wording.
 
 ## Fixed Gates
 
-| Gate            | Threshold                                                   | Layer     |
-| --------------- | ----------------------------------------------------------- | --------- |
-| Prompt Size     | Every pack under `prompt.maxSystemTokens`                   | Contract  |
-| Prompt Golden   | Assembled prompt for a fixed turn matches the stored copy   | Contract  |
-| Format          | No unsupported markup after the renderer, on a fixed corpus | Unit      |
-| Persona Purity  | No character name or phrase in `src/`                       | Unit      |
-| Privacy Scan    | No phone number, WhatsApp id or real name in the tree       | Unit      |
-| Memory          | All simulator checks pass                                   | Simulator |
-| Zero Live Calls | Replay and simulator make no live call                      | Replay    |
+| Gate            | Threshold                                                                        | Layer     |
+| --------------- | -------------------------------------------------------------------------------- | --------- |
+| Prompt Size     | Every pack under `prompt.maxSystemTokens`                                        | Contract  |
+| Prompt Golden   | Assembled prompt for a fixed turn matches the stored copy                        | Contract  |
+| Format          | No unsupported markup after the renderer, on a fixed corpus                      | Unit      |
+| Persona Purity  | No character name or phrase in `src/`                                            | Unit      |
+| Privacy Scan    | No phone number, WhatsApp id or real name in the tree                            | Unit      |
+| Memory          | All simulator checks pass                                                        | Simulator |
+| Zero Live Calls | Replay and simulator make no live call                                           | Replay    |
+| Restart         | No lost acknowledged write, no reply sent twice, no stuck lease after a kill     | Replay    |
+| Migration       | Every migration applies, and the previous release still passes on the new schema | Contract  |
 
 A gate's stored value changes only in a pull request that says why.
+
+The Restart, Disk Full, Restore and Migration suites are specified in [Persistence](storage.md#tests).
 
 ## Benchmarks
 

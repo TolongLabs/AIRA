@@ -2,6 +2,8 @@ services:
   aira:
     image: ghcr.io/tolonglabs/aira:stable
     restart: unless-stopped
+    # Longer than shutdown.graceMs in config.yml, so running turns can finish.
+    stop_grace_period: 30s
     env_file: .env
     mem_limit: 1g
     read_only: true

@@ -57,9 +57,10 @@ without a limit.
 - Start-up validates `config.yml`, every character pack, the database schema and every chat's binding. A deployment
   fault stops start-up with one clear message. A fault in one pack or one chat disables that pack or chat only, and
   alerts the operator.
-- A health endpoint reports ready only after validation passes and the database opens.
-- On SIGTERM the core stops admitting turns, lets running turns finish up to `shutdown.graceMs`, flushes records and
-  closes the database.
+- The full start-up order, with the storage checks and the recovery pass, is in
+  [Persistence](storage.md#start-up-sequence). A health endpoint reports ready only after all of it passes.
+- On SIGTERM the core stops admitting turns, lets running turns finish up to `shutdown.graceMs`, releases its job
+  leases and closes the database. See [Persistence](storage.md#shutdown).
 
 ## Operator Alerts
 

@@ -13,7 +13,7 @@ Status: draft 0.1, 15 Nov 2026. Not yet approved by the owner.
 | Surfaces | WhatsApp DMs and small groups: mention, reply, free-response chats, and text slash commands |
 | Host     | One Linux machine on a private network, behind the Hermes Agent WhatsApp gateway            |
 | Scope    | The chatbot only. The owner's operations tools on the same machine are out of scope         |
-| Status   | 43 requirements: 0 Shipped, 13 Exists (faulty), 30 Planned                                  |
+| Status   | 44 requirements: 0 Shipped, 14 Exists (faulty), 30 Planned                                  |
 
 ## Problem
 
@@ -29,6 +29,9 @@ week after its last redesign (64 chat turns, 4 chats):
   failure after it succeeded.
 - **Regressed.** The last redesign dropped the mute check at delivery, the reminder store writer, the fact check on
   saved memories and lesson settlement.
+- **Fragile storage.** State sits in text files, JSON files and several databases. Jobs save their state only when
+  they finish, so a restart repeats or loses them. When the host's disk filled, the database could not be opened,
+  and every backup was on that same disk.
 - **Hard to diagnose.** One summary line is logged per turn. Finding the causes above took a full audit.
 
 The code that produces this is about 133,000 lines of Python around a pinned, patched copy of Hermes Agent. One
@@ -43,7 +46,8 @@ person cannot maintain it, and a second maintainer cannot learn it.
 4. **Memory That Holds:** typed records, one writer, validated input, and no fact ever leaving its chat.
 5. **Explainable Failures:** every turn and every failure leaves a record that supports a post-mortem.
 6. **Testable Without Users:** a harness simulates, replays and benchmarks AIRA offline, and gates changes.
-7. **Maintainable By Two:** a public repository, clear documents, and a codebase both maintainers can read.
+7. **Safe Across Restarts:** a restart, a full disk or a lost disk loses nothing that was acknowledged.
+8. **Maintainable By Two:** a public repository, clear documents, and a codebase both maintainers can read.
 
 ## Target Users
 
@@ -112,16 +116,17 @@ Status values: **Planned** (not built), **Exists (faulty)** (present today with 
 
 ### Tools And Commands
 
-| ID    | Requirement                                                                                                                                                                                                                                      | Status          |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------- |
-| FR-19 | Define each tool once in one registry: name, schema, handler, permission, timeout, whether it changes state.                                                                                                                                     | Planned         |
-| FR-20 | Implicit use: the model may call any tool offered for the turn. Code removes tools the chat may not use before the model sees them.                                                                                                              | Exists (faulty) |
-| FR-21 | Explicit use: a message that starts with `/name` and matches a registered command runs that command's handler directly. The command and the model tool share one handler. An unknown `/name` is treated as ordinary text.                        | Planned         |
-| FR-22 | Ship a first command set of primitives: `/help` (commands this chat may use), `/list` (tools and features switched on in this chat), and one command per tool that is useful to call directly. Grow the set from use.                            | Planned         |
-| FR-23 | Give every tool call a timeout and a typed result. Every state change returns a receipt written by code; no receipt means it did not happen.                                                                                                     | Exists (faulty) |
-| FR-24 | Keep the chat tools in scope at parity: memory recall, note and forget; web search; read a page; read a social post; send a photo; reminders.                                                                                                    | Exists (faulty) |
-| FR-39 | Watch media a member sends, embeds or links, including video from social posts, through a dedicated media model (planned: `gemini-3.5-flash-lite`) with its own key, under size and time limits. Say so in character when a file cannot be read. | Exists (faulty) |
-| FR-25 | Host external tool servers through the Model Context Protocol. A server is added in configuration with an allowlist of its tools and the chats that may use them. No external server is enabled at launch.                                       | Planned         |
+| ID    | Requirement                                                                                                                                                                                                                                                                                                                                                                       | Status          |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| FR-19 | Define each tool once in one registry: name, schema, handler, mode, permission, timeout, whether it changes state. Every tool is atomic: one action, one transaction, safe to repeat, and a removal acts on exactly one named row.                                                                                                                                                | Planned         |
+| FR-20 | Implicit use: the model decides when, which and how many tools to call, in a chain. Code removes tools the chat may not use before the model sees them. A chain ends at a call limit or a tool-time limit, both set in `config.yml` (defaults: 4 calls, 15 s).                                                                                                                    | Exists (faulty) |
+| FR-21 | Explicit use: a message that starts with `/name` and matches a registered command names the tool, and the rest of the message is free text, as in `/remind i have a mtg ltr at 6pm`. The model fills the tool's arguments, code validates them and runs the handler, and the receipt says what happened. One command per message. An unknown `/name` is treated as ordinary text. | Planned         |
+| FR-22 | Ship a first command set: `/help`, `/list`, `/recall`, `/remember`, `/forget`, `/history`, `/search`, `/read`, `/photo`, `/remind`, `/reminders`, `/cancel`, `/mute`, `/unmute` and `/report`. An unclear command asks one short question and runs nothing. A command that removes something must resolve to exactly one target.                                                  | Planned         |
+| FR-23 | Give every tool call a timeout and a typed result. Every state change returns a receipt written by code; no receipt means it did not happen.                                                                                                                                                                                                                                      | Exists (faulty) |
+| FR-24 | Ship the core tool set, each tool marked as callable by the model, by command, or both: recall, note, forget, chat history search, web search, read a page, read a social post, send a photo, set, list and cancel a reminder, mute, write a report, and note a chat's own word.                                                                                                  | Exists (faulty) |
+| FR-39 | Watch media a member sends, embeds or links, including video from social posts, through a dedicated media model (planned: `gemini-3.5-flash-lite`) with its own key, under size and time limits. Say so in character when a file cannot be read.                                                                                                                                  | Exists (faulty) |
+| FR-44 | Provide the lessons and library tools behind a per-chat switch: lyrics, songs, vocabulary, glosses and the library. They follow the same registry rules and are built after the core set.                                                                                                                                                                                         | Exists (faulty) |
+| FR-25 | Host external tool servers through the Model Context Protocol. A server is added in configuration with an allowlist of its tools and the chats that may use them. No external server is enabled at launch.                                                                                                                                                                        | Planned         |
 
 ### Memory
 
@@ -162,18 +167,20 @@ Status values: **Planned** (not built), **Exists (faulty)** (present today with 
 
 ## Non-Functional Requirements
 
-| ID     | Area            | Requirement                                                                                                                                                                                                                                                                                                                                      |
-| ------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| NFR-1  | Latency         | Casual chat with no tool call: reply within 5 to 7 s at the median, 10 s at the 90th percentile. A request that needs tools or media may take longer, with a ceiling of 25 s at the 90th percentile and a visible typing state throughout. Today: 7 s and 11 s without tools, 27 s and 49 s with tools.                                          |
-| NFR-2  | Prompt Size     | System prompt under a fixed token ceiling, enforced by a test (proposed: 8,000). Today about 43,000 per turn.                                                                                                                                                                                                                                    |
-| NFR-3  | Consistency     | The same prompt, tools and cleaning chain on every turn, whichever model answers.                                                                                                                                                                                                                                                                |
-| NFR-4  | Durability      | No acknowledged memory write is lost on a crash or a concurrent write. Proven by the simulator.                                                                                                                                                                                                                                                  |
-| NFR-5  | Privacy         | No real name, phone number or WhatsApp id in the repository, its history, logs or test fixtures.                                                                                                                                                                                                                                                 |
-| NFR-6  | Security        | No secret in the repository. Tools run with the chat's permissions only. Network services bind to loopback or the private network and require a token.                                                                                                                                                                                           |
-| NFR-7  | Operability     | A tagged release builds a container image. The host checks for a new release on a timer, deploys it without a manual step, runs a health check, and returns to the previous image if the check fails. No outside system holds a key to the host. Old images are pruned on every deploy. Configuration errors stop start-up with a clear message. |
-| NFR-8  | Cutover         | One switch in one night, at midnight Malaysia time, for all chats. Before that night the new core must pass the harness gates and a shadow period in which it processes real turns without sending. Rollback is one step and leaves the old memory untouched.                                                                                    |
-| NFR-9  | Maintainability | Small modules with one job each. Documents kept current: PRD, TRD, runbook, decisions.                                                                                                                                                                                                                                                           |
-| NFR-10 | Cost            | A monthly spend cap in configuration, with background work stopping before replies do.                                                                                                                                                                                                                                                           |
+| ID     | Area                | Requirement                                                                                                                                                                                                                                                                                                                                      |
+| ------ | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| NFR-1  | Latency             | Casual chat with no tool call: reply within 5 to 7 s at the median, 10 s at the 90th percentile. A request that needs tools or media may take longer, with a ceiling of 25 s at the 90th percentile and a visible typing state throughout. Today: 7 s and 11 s without tools, 27 s and 49 s with tools.                                          |
+| NFR-2  | Prompt Size         | System prompt under a fixed token ceiling, enforced by a test (proposed: 8,000). Today about 43,000 per turn.                                                                                                                                                                                                                                    |
+| NFR-3  | Consistency         | The same prompt, tools and cleaning chain on every turn, whichever model answers.                                                                                                                                                                                                                                                                |
+| NFR-4  | Durability          | No acknowledged write is lost on a crash or a concurrent write. Proven by the memory simulator and the restart suite.                                                                                                                                                                                                                            |
+| NFR-5  | Privacy             | No real name, phone number or WhatsApp id in the repository, its history, logs or test fixtures.                                                                                                                                                                                                                                                 |
+| NFR-6  | Security            | No secret in the repository. Tools run with the chat's permissions only. Network services bind to loopback or the private network and require a token.                                                                                                                                                                                           |
+| NFR-7  | Operability         | A tagged release builds a container image. The host checks for a new release on a timer, deploys it without a manual step, runs a health check, and returns to the previous image if the check fails. No outside system holds a key to the host. Old images are pruned on every deploy. Configuration errors stop start-up with a clear message. |
+| NFR-8  | Cutover             | One switch in one night, at midnight Malaysia time, for all chats. Before that night the new core must pass the harness gates and a shadow period in which it processes real turns without sending. Rollback is one step and leaves the old memory untouched.                                                                                    |
+| NFR-9  | Maintainability     | Small modules with one job each. Documents kept current: PRD, TRD, runbook, decisions.                                                                                                                                                                                                                                                           |
+| NFR-10 | Cost                | A monthly spend cap in configuration, with background work stopping before replies do.                                                                                                                                                                                                                                                           |
+| NFR-11 | Restart Safety      | A restart at any moment loses no acknowledged write, sends no reply twice and leaves no work stuck. Proven by the restart suite.                                                                                                                                                                                                                 |
+| NFR-12 | Backup And Recovery | A verified, encrypted copy of the database and files exists off the host and is at most 15 minutes old. A restore takes at most 30 minutes and is rehearsed before cutover.                                                                                                                                                                      |
 
 ## Non-Goals
 
@@ -210,12 +217,17 @@ Each group of requirements has one issue. An issue lists its requirements as a c
 | NFR-8                             | [#24](https://github.com/TolongLabs/AIRA/issues/24) |
 | FR-43                             | [#33](https://github.com/TolongLabs/AIRA/issues/33) |
 | Cutover readiness: NFR-1 to NFR-5 | [#32](https://github.com/TolongLabs/AIRA/issues/32) |
+| NFR-4, NFR-11                     | [#35](https://github.com/TolongLabs/AIRA/issues/35) |
+| NFR-12                            | [#36](https://github.com/TolongLabs/AIRA/issues/36) |
+| FR-44                             | [#38](https://github.com/TolongLabs/AIRA/issues/38) |
 
 ## Pending Inputs
 
-| #   | Input                                                                                                | Waiting on  |
-| --- | ---------------------------------------------------------------------------------------------------- | ----------- |
-| 1   | Key for the media model (FR-39).                                                                     | The owner   |
-| 2   | Transport benchmark: wrapper against API key, on the live machine (FR-32).                           | Maintainers |
-| 3   | Confirmation that the owner site may be revamped (FR-40 to FR-42).                                   | The owner   |
-| 4   | Language and agent kit for the chatbot core, and how it attaches to the gateway. Decided in the TRD. | Maintainers |
+| #   | Input                                                                                                                                                         | Waiting on  |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| 1   | Key for the media model (FR-39).                                                                                                                              | The owner   |
+| 2   | Transport benchmark: wrapper against API key, on the live machine (FR-32).                                                                                    | Maintainers |
+| 3   | Confirmation that the owner site may be revamped (FR-40 to FR-42).                                                                                            | The owner   |
+| 4   | Language and agent kit for the chatbot core, and how it attaches to the gateway. Decided in the TRD.                                                          | Maintainers |
+| 5   | The off-host backup destination: another machine on the private network, or a storage bucket (NFR-12).                                                        | The owner   |
+| 6   | What serves the six owner tools in chat after cutover (four market tools, two coding-session tools). The old core that runs them today is retired that night. | The owner   |
