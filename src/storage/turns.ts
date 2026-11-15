@@ -81,6 +81,8 @@ export interface OpenTurnInput {
   /** The inbound messages this turn answers. Empty for a turn the gateway's schedule started without one. */
   mids: readonly string[]
   stage?: string
+  /** Further writes that must commit with the opening record, such as claiming the window messages. */
+  also?: (db: Db) => void
 }
 
 /** Writes the opening turn record and binds its inbound messages to it, in one transaction. */
@@ -103,6 +105,7 @@ export function openTurn(storage: Storage, input: OpenTurnInput, now: Clock = wa
         )
       }
     }
+    input.also?.(db)
   })
 }
 
