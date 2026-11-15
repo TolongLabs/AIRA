@@ -24,6 +24,7 @@ import type { MoodJudge } from './prompt/mood.js'
 import { withStickers } from './prompt/stickers.js'
 import { type Logger, createLogger } from './records/logger.js'
 import { createRedactor, secretsFromEnv } from './records/redact.js'
+import { pruneRecords } from './records/retention.js'
 import { recordModelCall } from './records/turn-record.js'
 import { listChats } from './settings/chats.js'
 import { resolveSettings } from './settings/settings.js'
@@ -319,14 +320,19 @@ export async function createApp(options: AppOptions): Promise<App> {
           logger.error('storage.snapshot_failed', { file: result.file, detail: result.detail })
       }
     })
-    // The daily retention job: rows are exported to the archive before they are deleted.
+    // The daily retention job. With the archive on, rows are exported before they are deleted, and the job waits
+    // while the disk guard pauses the archive. With the archive off, rows are deleted without an export.
     const retention = setInterval(() => {
-      archiveAndPrune(storage, {
-        archiveDir: paths.archive,
-        config: config.records,
-        enabled: config.archive.enabled === 'on' && !started.diskGuard.state().paused.archive,
-        now
-      }).catch((error: unknown) => logger.error('storage.retention_failed', { error }))
+      const run =
+        config.archive.enabled === 'on'
+          ? archiveAndPrune(storage, {
+              archiveDir: paths.archive,
+              config: config.records,
+              enabled: !started.diskGuard.state().paused.archive,
+              now
+            })
+          : Promise.resolve().then(() => pruneRecords(storage, config.records, { now }))
+      run.catch((error: unknown) => logger.error('storage.retention_failed', { error }))
     }, 86_400_000)
     retention.unref()
     closers.push(stopDiskGuard, stopSnapshots, () => clearInterval(retention))
