@@ -16,17 +16,20 @@ Packs are read from two places. A pack on the data volume wins over one in the r
 
 Real character packs are private. They never enter the repository, the release image, test fixtures or recordings.
 
-| File        | Holds                                                                          | Required |
-| ----------- | ------------------------------------------------------------------------------ | -------- |
-| `card.yml`  | Id, display name, languages, core identity, speech rules, default reply length | Yes      |
-| `moods.yml` | The mood list: key, detection rules, tone guidance, openers, endings, faces    | Yes      |
-| `lines.yml` | Fixed lines for errors, limits, refusals, busy and unreadable media            | Yes      |
-| `stickers/` | Expression images per mood, already converted to WhatsApp sticker format       | No       |
+| File        | Holds                                                                            | Required |
+| ----------- | -------------------------------------------------------------------------------- | -------- |
+| `card.yml`  | Id, display name, languages, core identity, speech rules, default reply length   | Yes      |
+| `moods.yml` | The mood list: key, detection rules, tone guidance, openers, endings, faces      | Yes      |
+| `lines.yml` | Fixed lines for errors, limits, refusals, busy, unreadable media and unavailable | Yes      |
+| `stickers/` | Expression images per mood, already converted to WhatsApp sticker format         | No       |
 
 - A pack that fails validation is not loaded. A chat bound to it stops with an operator alert. It never falls back to
   another character (PRD FR-9).
 - Every mood named in the rules must exist in `moods.yml`. Every line kind the core can send must exist in
   `lines.yml`. The validator checks both.
+- The `unavailable` line is what a chat sees when the core cannot be reached. At start-up, and whenever the global
+  default character changes, the core writes that pack's line to `<hostDataDir>/gateway/unavailable.txt`, where the
+  gateway's failure helper reads it. See [System](system.md#gateway-helper-modules).
 
 ## Prompt Blocks
 
@@ -90,23 +93,38 @@ line, and the failure is recorded.
 
 ## WhatsApp Renderer
 
-| Input                       | Output                              |
-| --------------------------- | ----------------------------------- |
-| Bold, italic, strikethrough | `*bold*`, `_italic_`, `~strike~`    |
-| Inline code, code block     | `` `code` ``, triple-backtick block |
-| Bulleted and numbered lists | `- item`, `1. item`                 |
-| Block quote                 | `> quote`                           |
-| Heading                     | A bold line                         |
-| Table                       | A list, one row per item            |
-| Link with text              | The text, then the bare address     |
-| Anything else               | Plain text                          |
+The gateway converts Markdown to WhatsApp markup on every outgoing message, after the core. Measured: `*x*` becomes
+`_x_`, `**x**` becomes `*x*`, `~~x~~` becomes `~x~`, `# x` becomes `*x*`, `[t](u)` becomes `t (u)`; code spans and
+code blocks are left alone. So the renderer writes the form that survives that step, never a single-asterisk bold.
 
-The renderer is the only code that knows WhatsApp markup. Everything before it works on a neutral structure.
+| Input                       | Renderer Writes                     | WhatsApp Shows |
+| --------------------------- | ----------------------------------- | -------------- |
+| Bold                        | `**bold**`                          | `*bold*`       |
+| Italic, strikethrough       | `_italic_`, `~strike~`              | The same       |
+| Inline code, code block     | `` `code` ``, triple-backtick block | The same       |
+| Bulleted and numbered lists | `- item`, `1. item`                 | The same       |
+| Block quote                 | `> quote`                           | The same       |
+| Heading                     | A `**bold**` line                   | A bold line    |
+| Table                       | A list, one row per item            | The same       |
+| Link with text              | The text, then the bare address     | The same       |
+| Anything else               | Plain text                          | The same       |
+
+The renderer is the only code that knows WhatsApp markup. Everything before it works on a neutral structure. A test
+runs the renderer's output through a copy of the gateway's conversion and checks what WhatsApp would show.
 
 ## Bubbles
 
-A reply longer than `format.bubbleMaxChars` is split at a paragraph, else a sentence, else a word. A code block or a
-list item is never cut. Who performs the split at delivery is **Spike S-2** in [System](system.md).
+The core decides the bubbles. The gateway only delivers them.
+
+- A reply longer than `format.bubbleMaxChars` is split at a paragraph, else a sentence, else a word. A code block or
+  a list item is never cut. A reply is at most `format.maxBubbles` bubbles.
+- Between two bubbles the core writes a bubble break: a line holding only the character U+2063.
+- The gateway's bubble patch sends each bubble as its own message, with a typing pause before every bubble after the
+  first. Only the first bubble quotes the user's message. Measured on the staging gateway code, 16 Nov 2026.
+- If the gateway's helper module is missing, the reply goes out as one message. The gateway strips U+2063, so the
+  break never shows.
+- Every bubble stays under the gateway's own chunk limit of 4,096 characters, so the gateway never splits a bubble or
+  adds a page marker.
 
 ## Stickers
 
@@ -116,7 +134,11 @@ list item is never cut. Who performs the split at delivery is **Spike S-2** in [
   chat. The model never sees or chooses it.
 - The sticker is sent as a second message after the text. A mood with no sticker, or a chat with expressions
   switched off, sends text only.
-- The delivery mechanism is **Spike S-1** in [System](system.md).
+- The core names the sticker as the last line of the content: `MEDIA:<hostDataDir>/characters/<id>/stickers/<file>.webp`.
+  The gateway sends every `MEDIA:` file after all text bubbles.
+- The gateway sends a `.webp` as a photo unless told otherwise. The gateway patch `sticker-media-type` sends a `.webp`
+  under a `stickers/` folder as a sticker. The bridge's sticker route then delivers a native WhatsApp sticker: a pack
+  sticker sent that way arrived as a sticker in a real group on 16 Nov 2026.
 
 ## Configuration
 
@@ -126,6 +148,7 @@ list item is never cut. Who performs the split at delivery is **Spike S-2** in [
 | `judge.mood`               | `on`    | Allows the judge to override the rule mood |
 | `judge.moodMinProbability` | 0.3     | Threshold for the override                 |
 | `format.bubbleMaxChars`    | 700     | Split point for bubbles                    |
+| `format.maxBubbles`        | 3       | Most bubbles in one reply                  |
 | `format.leakCheck`         | `on`    | Step 6 of the cleaning chain               |
 
 Per-chat switches for expressions and length are settings, not configuration. See [Data](data.md).

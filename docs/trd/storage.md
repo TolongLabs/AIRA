@@ -99,12 +99,15 @@ assumes all three.
 
 ### Interrupted Turns
 
-A turn can die after the model answered and before the reply left. What the gateway does then is not yet known.
+A turn can die after the model answered and before the reply left. Measured on the gateway (spike S-3): when the
+connection fails or drops, the gateway sends the identical request again, with the same `mid`, up to six times over
+about 22 s to 50 s. Then it sends the failure line to the chat itself.
 
 - The turn is marked `interrupted`, and a failure record is written with the stage it reached.
 - If the gateway sends the same message again, the turn runs again and the reply goes out once.
-- Whether the core may deliver a late reply by itself is decided by **Spike S-3**, which also covers this case.
-  Until then, an interrupted turn is recorded and alerted, and no late reply is sent.
+- The core never sends a late reply by itself. Once the gateway has given up, the chat already has the failure line,
+  and a late reply would arrive out of order. An interrupted turn is recorded and alerted. See
+  [System](system.md#when-the-core-is-slow-or-down).
 
 ### Start-Up Sequence
 
