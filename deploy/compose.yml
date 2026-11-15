@@ -1,0 +1,21 @@
+services:
+  aira:
+    image: ghcr.io/tolonglabs/aira:stable
+    restart: unless-stopped
+    env_file: .env
+    mem_limit: 1g
+    read_only: true
+    tmpfs:
+      - /tmp
+    ports:
+      - '127.0.0.1:9881:9881'
+    volumes:
+      - aira-data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+volumes:
+  aira-data:

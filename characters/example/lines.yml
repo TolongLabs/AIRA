@@ -1,0 +1,7 @@
+error: 'Something went wrong on my end. Please try again in a moment.'
+limit: 'I have hit my usage limit for now, so I cannot reply yet.'
+refusal: 'I cannot help with that request.'
+busy: 'I am still finishing the previous message. One moment.'
+slow: 'That took too long to finish. Please try again.'
+unreadableMedia: 'I could not read that file. Could you send it again or describe it?'
+fallback: 'I could not put together a clean reply just now. Please ask again.'

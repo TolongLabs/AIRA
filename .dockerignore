@@ -1,0 +1,12 @@
+# The build context is an allow-list so secrets, local data, and build output stay out of the image.
+*
+!package.json
+!bun.lock
+!tsconfig.json
+!src/
+!prompts/
+!characters/example/
+!config.yml
+**/node_modules
+**/dist
+**/.env*

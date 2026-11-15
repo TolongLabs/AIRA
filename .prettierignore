@@ -1,0 +1,8 @@
+.agents/
+.claude/
+dist/
+node_modules/
+bun.lock
+CHANGELOG.md
+graphify-out/
+tests/harness/recordings/

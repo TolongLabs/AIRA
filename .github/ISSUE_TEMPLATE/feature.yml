@@ -1,0 +1,19 @@
+name: Feature
+description: Ask for something new
+title: 'feat(<scope>): '
+labels: [needs-triage, 'type:feat']
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What to Add
+      description: Describe what you want and why it matters
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other ways to reach the same outcome
+    validations:
+      required: false
