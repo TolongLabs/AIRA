@@ -406,7 +406,9 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
           parameters: z.toJSONSchema(def.schema) as Record<string, unknown>
         },
         call: async (args: unknown, callId: string, signal: AbortSignal) => {
-          const result = await registry.call(def.name, args, context, { callId, source: 'model', signal })
+          // The tool a skill-style command names is called for the person who typed the command.
+          const source = context.kind === 'command' && context.commandTool === def.name ? 'command' : 'model'
+          const result = await registry.call(def.name, args, context, { callId, source, signal })
           if (result.ok) {
             return {
               ok: true,

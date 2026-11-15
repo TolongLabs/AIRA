@@ -28,6 +28,7 @@ import type {
   ModelCallRecord,
   PromptBuilder,
   ReplyCleaner,
+  RunResult,
   ToolOffer,
   TurnContext,
   TurnHooks,
@@ -218,62 +219,86 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     outcome.fields.windowSize = input.window.length
     outcome.diagnostics = { request: input.pending.map((message) => message.content).join('\n\n') }
 
-    // 4. Command check. A registered command names the tool; the rest of the turn is the command's.
+    // 4. Command check. A message that starts with a registered command names the tool.
     const text = input.pending[input.pending.length - 1]?.content ?? ''
-    const command = deps.commands?.match(text, chat, settings)
-    if (command && deps.commands) {
+    const command = deps.commands?.match(text, context)
+    let built: BuiltPrompt
+    let run: RunResult
+    if (command) {
       stage('command')
       context.kind = 'command'
-      const result = await deps.commands.run({ ...input, text })
-      Object.assign(outcome.fields, result.record, { receipts: result.receipts })
-      outcome.content = result.text
-      outcome.state = 'delivered'
-      outcome.fields.outcome = 'delivered'
-      return outcome
     }
 
-    const built: BuiltPrompt = await deps.prompt.build(input)
-    Object.assign(outcome.fields, built.record)
-    outcome.stamps.push(['built', now()])
+    if (command?.kind === 'direct' && deps.commands) {
+      // A direct command: code runs the handler and writes the answer. No model call.
+      const result = await deps.commands.runDirect(command, context)
+      if (!result.ok) return line('error', 'tool_error', new Error(`the command ${command.name} failed`))
+      built = { system: [], messages: [], record: { lengthBypass: 'command_list' }, shape: { lengthBypass: true } }
+      run = {
+        text: result.text,
+        usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 },
+        costUsd: 0,
+        model: '',
+        role: '',
+        transport: '',
+        calls: [],
+        receipts: result.receipts
+      }
+      Object.assign(outcome.fields, built.record, { receipts: result.receipts } satisfies TurnRecordFields)
+    } else {
+      built = await deps.prompt.build(input)
+      Object.assign(outcome.fields, built.record)
+      outcome.stamps.push(['built', now()])
+      if (command && deps.commands) {
+        // A skill-style command: the model fills the named tool's arguments from the person's own words.
+        context.commandTool = command.tool
+        const extra = await deps.commands.contextFor(command, context)
+        const last = built.messages[built.messages.length - 1]
+        if (extra !== undefined && last?.role === 'user') last.content += `\n\n${extra}`
+      }
 
-    // 6. Run: one loop, inside the turn deadline.
-    stage('run')
-    const abort = new AbortController()
-    const timer = setTimeout(() => abort.abort(), Math.max(0, context.deadline - now().getTime()))
-    let run: Awaited<ReturnType<TurnRunner['run']>>
-    try {
-      run = await Promise.race([
-        deps.runner.run({
-          system: built.system,
-          messages: built.messages,
-          tools: deps.tools?.offered(context) ?? [],
-          context,
-          signal: abort.signal
-        }),
-        new Promise<never>((_, reject) =>
-          abort.signal.addEventListener('abort', () => reject(new ModelError('transient', 'the turn deadline passed')))
-        )
-      ])
-    } catch (error) {
-      if (abort.signal.aborted) return line('slow', 'transient', error)
-      if (error instanceof ModelError) return line(LINE_FOR[error.kind] ?? 'error', error.kind, error)
-      throw error
-    } finally {
-      clearTimeout(timer)
+      // 6. Run: one loop, inside the turn deadline.
+      stage('run')
+      const abort = new AbortController()
+      const timer = setTimeout(() => abort.abort(), Math.max(0, context.deadline - now().getTime()))
+      try {
+        run = await Promise.race([
+          deps.runner.run({
+            system: built.system,
+            messages: built.messages,
+            tools: deps.tools?.offered(context) ?? [],
+            context,
+            signal: abort.signal,
+            firstTool: command?.tool
+          }),
+          new Promise<never>((_, reject) =>
+            abort.signal.addEventListener('abort', () =>
+              reject(new ModelError('transient', 'the turn deadline passed'))
+            )
+          )
+        ])
+      } catch (error) {
+        if (abort.signal.aborted) return line('slow', 'transient', error)
+        if (error instanceof ModelError) return line(LINE_FOR[error.kind] ?? 'error', error.kind, error)
+        throw error
+      } finally {
+        clearTimeout(timer)
+      }
+      outcome.calls = run.calls
+      outcome.stamps.push(['model_done', now()])
+      Object.assign(outcome.fields, {
+        transport: run.transport,
+        role: run.role,
+        model: run.model,
+        attempts: run.calls.length,
+        inputTokens: run.usage.inputTokens,
+        outputTokens: run.usage.outputTokens,
+        cachedTokens: run.usage.cachedTokens,
+        costUsd: run.costUsd,
+        receipts: run.receipts,
+        chainLimit: run.chainLimit
+      } satisfies TurnRecordFields)
     }
-    outcome.calls = run.calls
-    outcome.stamps.push(['model_done', now()])
-    Object.assign(outcome.fields, {
-      transport: run.transport,
-      role: run.role,
-      model: run.model,
-      attempts: run.calls.length,
-      inputTokens: run.usage.inputTokens,
-      outputTokens: run.usage.outputTokens,
-      cachedTokens: run.usage.cachedTokens,
-      costUsd: run.costUsd,
-      receipts: run.receipts
-    } satisfies TurnRecordFields)
     outcome.diagnostics.reply = run.text
 
     // 7. Clean: the cleaning chain, the renderer, the bubbles.
@@ -354,6 +379,9 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
             for (const [stage, at] of outcome.stamps) markStage(db, turnId, stage, () => at)
             markStage(db, turnId, 'returned', now)
             updateTurnRecord(db, turnId, outcome.fields)
+            if (outcome.context?.kind === 'command') {
+              db.prepare("UPDATE turn SET kind = 'command' WHERE turn_id = ?").run(turnId)
+            }
             for (const call of outcome.calls) {
               recordModelCall(db, {
                 turnId,

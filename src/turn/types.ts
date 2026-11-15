@@ -23,6 +23,8 @@ export interface TurnContext {
   delivery: DeliveryKind
   /** When all model work of this turn must end, in milliseconds since the epoch. */
   deadline: number
+  /** For a skill-style command: the tool the command names. Its call is recorded with source `command`. */
+  commandTool?: string
 }
 
 export interface WindowMessage {
@@ -100,6 +102,11 @@ export interface TurnRunner {
     tools: OfferedTool[]
     context: TurnContext
     signal: AbortSignal
+    /**
+     * For a skill-style command: until this tool has been called, it is the only tool offered. The model fills
+     * its arguments, or asks one question and calls nothing.
+     */
+    firstTool?: string
   }): Promise<RunResult>
 }
 
@@ -124,11 +131,27 @@ export interface ToolOffer {
   offered(context: TurnContext): OfferedTool[]
 }
 
-/** Step 4. Commands implements it. A match skips the model loop unless the command needs it. */
+/** A message that starts with a command this chat may use (docs/trd/tools.md#explicit-calls-text-commands). */
+export interface CommandMatch {
+  /** The command name as typed, lower case, without the slash. */
+  name: string
+  /** The tool the command names, after routing. */
+  tool: string
+  kind: 'direct' | 'skill'
+  /** For a direct command: the tool's arguments, built by code. */
+  args?: unknown
+  /** The rest of the message, in the person's own words. */
+  rest: string
+}
+
+/** Step 4. Commands implements it. */
 export interface CommandRouter {
-  /** Pure: says whether the text starts with a command this chat may use. */
-  match(text: string, chat: Chat, settings: Record<string, Resolved>): { name: string } | undefined
-  run(input: TurnInput & { text: string }): Promise<{ text: string; receipts: string[]; record?: TurnRecordFields }>
+  /** Pure. Undefined for text that is not a command, and for a command this chat may not use. */
+  match(text: string, context: TurnContext): CommandMatch | undefined
+  /** Runs a direct command: code runs the handler and writes the answer. No model call. */
+  runDirect(match: CommandMatch, context: TurnContext): Promise<{ ok: boolean; text: string; receipts: string[] }>
+  /** Data a skill-style command needs before the model fills the arguments, as one labelled, untrusted block. */
+  contextFor(match: CommandMatch, context: TurnContext): Promise<string | undefined>
 }
 
 /** Hooks that commit with the close of a turn or decide before it runs. */

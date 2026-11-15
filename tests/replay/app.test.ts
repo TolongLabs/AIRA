@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import type { AddressInfo } from 'node:net'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -10,6 +10,7 @@ import { createLogger } from '../../src/records/logger.js'
 import { ensureChat, setChatStatus } from '../../src/settings/chats.js'
 import { setSetting } from '../../src/settings/settings.js'
 import { FakeGateway, type GatewayMessage } from '../harness/gateway.js'
+import { CHAT, msg, queueModel, startApp } from '../support/app.js'
 import { addPack, testConfig } from '../support/core.js'
 import { gatewayMarkdown } from '../support/gateway-markdown.js'
 import { tmpDir } from '../support/tmp.js'
@@ -17,87 +18,11 @@ import { tmpDir } from '../support/tmp.js'
 // The whole service as the entry point builds it: the real prompt builder, cleaning chain, tool registry, agent
 // loop and routed client. Only the model is replaced, by a queue of answers. Driven by the fake gateway over HTTP.
 
-type Answer = Partial<ModelResponse> | ModelError
-function queueModel(answers: Answer[]): ModelClient & { requests: ModelRequest[] } {
-  const requests: ModelRequest[] = []
-  return {
-    requests,
-    async call(request) {
-      requests.push(structuredClone(request))
-      const answer = answers[Math.min(requests.length, answers.length) - 1] as Answer
-      if (answer instanceof ModelError) throw answer
-      return {
-        text: '',
-        toolCalls: [],
-        usage: { inputTokens: 100, outputTokens: 20, cachedTokens: 0 },
-        costUsd: 0.01,
-        model: request.model,
-        ...answer
-      }
-    }
-  }
-}
-
-const CHAT = 'test-chat-g1'
-const msg = (mid: string, text: string, sender = 'test-member-alice'): GatewayMessage => ({
-  chat: { waId: CHAT, kind: 'group' },
-  sender,
-  mid,
-  text
-})
-
 const apps: App[] = []
 afterEach(async () => {
   for (const app of apps.splice(0)) await app.close()
 })
-
-async function start(
-  main: ModelClient,
-  options: { fallback?: ModelClient; config?: (config: Config) => void; dataDir?: string; character?: string } = {}
-) {
-  const dataDir = options.dataDir ?? tmpDir('aira-app-')
-  const config = testConfig((config) => {
-    config.storage.path = dataDir
-    config.storage.minFreeMb = 2
-    config.storage.criticalFreeMb = 1
-    config.gateway.hostDataDir = '/host/aira-data'
-    config.llm.main = {
-      ...config.llm.main,
-      provider: 'openai-compatible',
-      model: 'main-model',
-      baseUrl: 'https://main.invalid/v1'
-    }
-    if (options.fallback) {
-      config.llm.fallback = {
-        ...config.llm.fallback,
-        provider: 'openai-compatible',
-        model: 'fallback-model',
-        baseUrl: 'https://fallback.invalid/v1'
-      }
-    }
-    options.config?.(config)
-  })
-  const logs: Record<string, unknown>[] = []
-  const app = await createApp({
-    config,
-    env: {},
-    clients: { main, fallback: options.fallback },
-    logger: createLogger({ level: 'debug', module: 'core', sink: (line) => logs.push(JSON.parse(line)) })
-  })
-  apps.push(app)
-  const address = (await app.listen(0, '127.0.0.1')) as AddressInfo
-  const baseUrl = `http://127.0.0.1:${address.port}`
-  setSetting(app.storage, {
-    level: 'global',
-    scope: '',
-    key: 'character',
-    value: options.character ?? 'example',
-    actor: 'test'
-  })
-  const chat = ensureChat(app.storage, { waId: CHAT, type: 'group' })
-  setChatStatus(app.storage, { chatId: chat.chatId, status: 'active', actor: 'test' })
-  return { app, baseUrl, gateway: new FakeGateway({ baseUrl }), chatId: chat.chatId, dataDir, logs, config }
-}
+const start = startApp
 
 const turn = (app: App) =>
   app.storage.read(
@@ -264,6 +189,54 @@ describe('the whole service', () => {
     expect(JSON.parse(turn(app)['attachments'] as string)).toEqual(delivery.media)
   })
 
+  it('follows a reply with one sticker for its mood, never the same one twice in a row, and none when switched off', async () => {
+    const dataDir = tmpDir('aira-app-')
+    addPack(dataDir, 'second')
+    const pack = join(dataDir, 'characters', 'second')
+    mkdirSync(join(pack, 'stickers'))
+    // The header of an extended WebP file with a 512 by 512 canvas: all the validator reads.
+    const sticker = Buffer.alloc(30)
+    sticker.write('RIFF', 0, 'ascii')
+    sticker.writeUInt32LE(22, 4)
+    sticker.write('WEBPVP8X', 8, 'ascii')
+    sticker.writeUIntLE(511, 24, 3)
+    sticker.writeUIntLE(511, 27, 3)
+    for (const file of ['calm-one.webp', 'calm-two.webp']) writeFileSync(join(pack, 'stickers', file), sticker)
+    const moods = join(pack, 'moods.yml')
+    writeFileSync(
+      moods,
+      readFileSync(moods, 'utf8').replace(
+        '    stickers: []',
+        '    stickers:\n      - calm-one.webp\n      - calm-two.webp'
+      )
+    )
+
+    const { app, gateway, chatId } = await start(queueModel([{ text: 'A calm answer.' }]), {
+      dataDir,
+      character: 'second'
+    })
+    const sent: string[] = []
+    for (const mid of ['m-1', 'm-2', 'm-3', 'm-4']) {
+      const delivery = await gateway.send(msg(mid, 'is that okay?'))
+      expect(delivery.bubbles).toEqual(['A calm answer.'])
+      expect(delivery.media).toHaveLength(1)
+      expect(delivery.media[0]).toMatch(/^\/host\/aira-data\/characters\/second\/stickers\/calm-(one|two)\.webp$/)
+      // The sticker is the last line of the content, after the text.
+      expect(delivery.content.split('\n').at(-1)).toBe(`MEDIA:${delivery.media[0]}`)
+      sent.push(delivery.media[0] as string)
+    }
+    for (let n = 1; n < sent.length; n++) expect(sent[n]).not.toBe(sent[n - 1])
+    expect(turn(app)).toMatchObject({ mood: 'neutral', sticker_id: expect.stringMatching(/^calm-/) })
+
+    setSetting(app.storage, { level: 'chat', scope: chatId, key: 'expressions', value: false, actor: 'test' })
+    expect((await gateway.send(msg('m-5', 'is that okay?'))).media).toEqual([])
+  })
+
+  it('sends text only for a pack with no sticker', async () => {
+    const { gateway } = await start(queueModel([{ text: 'Plain text.' }]))
+    expect(await gateway.send(msg('m-1', 'hello?'))).toMatchObject({ bubbles: ['Plain text.'], media: [] })
+  })
+
   it('writes the default pack line the gateway sends when the core cannot be reached, and follows a new default', async () => {
     const dataDir = tmpDir('aira-app-')
     addPack(dataDir, 'second')
@@ -275,7 +248,6 @@ describe('the whole service', () => {
 
     const line = 'A different invented line for the second pack.'
     const lines = join(dataDir, 'characters', 'second', 'lines.yml')
-    const { writeFileSync } = await import('node:fs')
     writeFileSync(lines, readFileSync(lines, 'utf8').replace(/^unavailable: .*$/m, `unavailable: '${line}'`))
     setSetting(app.storage, { level: 'global', scope: '', key: 'character', value: 'second', actor: 'test' })
     app.refreshUnavailableLine()
