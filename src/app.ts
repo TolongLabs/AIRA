@@ -48,6 +48,7 @@ export const SECRET_NAMES = [
   'LLM_FALLBACK_API_KEY',
   'MEDIA_WATCHER_API_KEY',
   'TYPESAFE_API_KEY',
+  'RUNNER_TOKEN',
   'OPENAI_API_KEY'
 ] as const
 

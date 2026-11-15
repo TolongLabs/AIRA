@@ -68,6 +68,39 @@ it safely. When `transport: subscription` is set:
 - It streams the result back. It holds no state and reads no AIRA data.
 - If the service is down, the core treats the transport as unavailable and uses the fallback role.
 
+### Run Request
+
+The core sends one request per turn to `POST <runnerUrl>/run`, with the shared secret `RUNNER_TOKEN` as a bearer
+token. The service answers with the program's output lines as they arrive, one JSON object per line.
+
+| Field       | Meaning                                                                        |
+| ----------- | ------------------------------------------------------------------------------ |
+| `system`    | The prompt blocks joined in order, passed as the program's whole system prompt |
+| `prompt`    | The conversation, as text. See below                                           |
+| `model`     | `llm.subscription.model`, or absent for the program's default                  |
+| `tools`     | The address of the core's tool server for this turn, and this turn's token     |
+| `timeoutMs` | The time left before the turn deadline. The service stops the program after it |
+
+- The program starts with: print mode, stream output, no built-in tools, no settings sources, no saved session, no
+  slash commands, and only the tool server named in the request. The prompt is written to its standard input.
+- The program takes one prompt, not a list of messages. The core writes the earlier messages of the window as a
+  labelled transcript and the messages this turn answers after it (**Assumption A-7**).
+- The last output line of type `result` holds the reply text, the token counts and the estimated cost.
+- The service keeps no state, writes no file and reads no AIRA data. A second request while one runs is accepted:
+  each request is its own program.
+
+### Tool Server For The Program
+
+- The core listens on `llm.subscription.toolServerPort`, on loopback, only while the transport is `subscription`.
+- Each turn gets a random token. A request with a token of no running turn is refused. The token dies when the
+  turn's run ends.
+- The server lists exactly the tools offered to that turn, and calls them through the registry, so permissions,
+  timeouts, receipts and records are the same as on the API runner.
+- The two chain limits of [Tools](tools.md#implicit-calls) are enforced here: past a limit every call is refused.
+- For a skill-style command, the named tool is the only one listed until it has been called.
+- The program shows a tool to the model under a prefixed name. The prompt's tool list is written with the same
+  prefix on this transport (**Assumption A-7**).
+
 ## Failure Kinds
 
 | Kind         | Examples                        | Action                                   |
@@ -110,13 +143,16 @@ records estimated cost for comparison and does not count against the cap.
 
 ## Configuration
 
-| Key                                                            | Default | Effect                                                             |
-| -------------------------------------------------------------- | ------- | ------------------------------------------------------------------ |
-| `llm.transport`                                                | `api`   | Selects the runner                                                 |
-| `llm.turnDeadlineMs`                                           | 45000   | Hard limit for one turn's model work                               |
-| `llm.maxRetries`                                               | 2       | Retries for a `transient` failure                                  |
-| `llm.breakerMs`                                                | 600000  | How long a breaker stays open                                      |
-| `llm.monthlyBudgetUsd`                                         | 50      | Spend cap for paid roles                                           |
-| `llm.<role>.usdPerMTokIn`, `usdPerMTokOut`, `usdPerMTokCached` | 0       | Prices for `main` and `fallback`, in US dollars per million tokens |
-| `media.watcher.model`                                          | unset   | The media model                                                    |
-| `media.maxVideoSeconds`                                        | 180     | Longest video that is watched                                      |
+| Key                                                            | Default                 | Effect                                                             |
+| -------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------ |
+| `llm.transport`                                                | `api`                   | Selects the runner                                                 |
+| `llm.turnDeadlineMs`                                           | 45000                   | Hard limit for one turn's model work                               |
+| `llm.maxRetries`                                               | 2                       | Retries for a `transient` failure                                  |
+| `llm.breakerMs`                                                | 600000                  | How long a breaker stays open                                      |
+| `llm.monthlyBudgetUsd`                                         | 50                      | Spend cap for paid roles                                           |
+| `llm.subscription.runnerUrl`                                   | `http://127.0.0.1:9882` | The host runner service                                            |
+| `llm.subscription.model`                                       | empty                   | Model alias for the program                                        |
+| `llm.subscription.toolServerPort`, `toolServerUrl`             | 9883                    | The core's tool server for the program                             |
+| `llm.<role>.usdPerMTokIn`, `usdPerMTokOut`, `usdPerMTokCached` | 0                       | Prices for `main` and `fallback`, in US dollars per million tokens |
+| `media.watcher.model`                                          | unset                   | The media model                                                    |
+| `media.maxVideoSeconds`                                        | 180                     | Longest video that is watched                                      |
