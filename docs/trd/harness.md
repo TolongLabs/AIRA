@@ -100,10 +100,71 @@ Results are compared with the targets in the PRD (NFR-1). A benchmark does not g
 
 ## Manual Tools
 
+- `bun run sim` opens the WhatsApp simulator. See [WhatsApp Simulator](#whatsapp-simulator).
 - `bun run chat --chat <id>` opens a terminal conversation through the fake gateway, with the turn record printed
   after each reply.
 - `bun run turn <turn_id>` and `bun run report` are described in [Records](records.md).
 - `bun run pack:check <id>` validates one character pack and prints its prompt size.
+
+## WhatsApp Simulator
+
+The simulator lets a maintainer see what a chat member would see, without a WhatsApp account. It has three levels.
+Each level replaces less of the real system and catches a different kind of fault.
+
+| Level           | Replaces                 | Runs For Real                              | Catches                                                            |
+| --------------- | ------------------------ | ------------------------------------------ | ------------------------------------------------------------------ |
+| 1. Fake Gateway | The gateway and WhatsApp | The core                                   | Mood, tools, memory and reply text                                 |
+| 2. Fake Bridge  | The bridge process only  | The gateway with its patches, and the core | Bubble splitting, sticker and media sending, mute, scheduled sends |
+| 3. Chat Preview | The phone                | Nothing; it draws recorded calls           | Formatting, bubble order, the sticker after the text               |
+
+### Fake Bridge
+
+The gateway talks to its bridge over a local HTTP port (3000 by default). The fake bridge is a small server that
+answers the same routes, so the gateway cannot tell the difference.
+
+| Route                                                                | Direction                              | The Fake Bridge Does                                     |
+| -------------------------------------------------------------------- | -------------------------------------- | -------------------------------------------------------- |
+| `GET /health`                                                        | Gateway asks                           | Reports connected                                        |
+| `GET /messages`                                                      | Gateway polls for inbound              | Returns the messages a maintainer or a scenario injected |
+| `POST /send`, `POST /edit`                                           | Gateway sends text                     | Records the call and returns a message id                |
+| `POST /send-media`                                                   | Gateway sends a sticker, photo or file | Records the call and keeps a copy of the file            |
+| `POST /react`, `POST /typing`, `POST /read`                          | Gateway signals                        | Records the call                                         |
+| `GET /chat/:id`, `GET /groups`, `GET /presence`, `POST /resolve-lid` | Gateway looks up                       | Answers from the scenario's chats and members            |
+
+- Inbound messages are injected through a control route that exists only on the fake bridge: a sender, a chat, text,
+  an optional quoted message, an optional mention and an optional media file.
+- Every recorded call keeps its time, route and full payload. Scenario expectations assert on these records.
+- The route list above is read from the pinned bridge's source and the local patches. It is checked against that
+  source whenever the gateway version changes.
+- The fake bridge binds to loopback and never contacts WhatsApp.
+
+### Chat Preview
+
+A local page that draws the recorded calls as a conversation.
+
+- One column per chat, with member bubbles and AIRA's bubbles in send order.
+- Text is drawn with WhatsApp's published markup rules: bold, italic, strikethrough, monospace, inline code, lists
+  and block quotes. Markup WhatsApp does not support is drawn as the raw characters, so a formatting fault is
+  visible.
+- A sticker is drawn at sticker size, as its own message after the text. A photo or file is drawn as an attachment.
+- Light and dark themes, and a narrow phone width.
+- Each bubble links to its turn record.
+
+### Fixture Check
+
+A simulator shows what the project believes WhatsApp does. It is checked against the real app once, and again when
+the renderer changes.
+
+1. A fixed set of formatted messages is sent to a real test chat.
+2. Screenshots are compared with the preview of the same messages.
+3. Differences are fixed in the preview, and the set is stored as the reference.
+
+The sticker path is proven on the real bridge by **Spike S-1** before the preview is trusted for stickers.
+
+### Commands
+
+- `bun run sim` starts the fake bridge, the core and the chat preview together.
+- `bun run sim --gateway` also starts a staging gateway pointed at the fake bridge, for level 2.
 
 ## Shadow Mode
 

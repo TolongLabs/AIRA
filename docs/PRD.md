@@ -13,7 +13,7 @@ Status: draft 0.1, 15 Nov 2026. Not yet approved by the owner.
 | Surfaces | WhatsApp DMs and small groups: mention, reply, free-response chats, and text slash commands |
 | Host     | One Linux machine on a private network, behind the Hermes Agent WhatsApp gateway            |
 | Scope    | The chatbot only. The owner's operations tools on the same machine are out of scope         |
-| Status   | 42 requirements: 0 Shipped, 13 Exists (faulty), 29 Planned                                  |
+| Status   | 43 requirements: 0 Shipped, 13 Exists (faulty), 30 Planned                                  |
 
 ## Problem
 
@@ -151,13 +151,14 @@ Status values: **Planned** (not built), **Exists (faulty)** (present today with 
 
 ### Records And Test Harness
 
-| ID    | Requirement                                                                                                                                                                                                                                | Status  |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| FR-34 | Give every turn an id and write one turn record: chat, character, stage timings, model and transport, real token counts and cost, each tool call with its outcome, retries, fallbacks, the cleaning steps applied, and what was delivered. | Planned |
-| FR-35 | Classify every failure by kind, and record it with the turn id, the stage and the full error. Record background jobs (memory, reminders, proactive) the same way.                                                                          | Planned |
-| FR-36 | Redact message text, phone numbers and keys from logs by default. Keep verbatim text only in a short-lived diagnostics store with a stated retention.                                                                                      | Planned |
-| FR-37 | Provide a harness that runs AIRA without WhatsApp: scripted conversations, recorded model replies replayed without live calls, a memory simulator with ground truth, and latency and cost benchmarks.                                      | Planned |
-| FR-38 | Gate every change in CI on the harness: prompt size ceiling, format rules, memory checks for privacy leaks and lost writes, and the unit tests.                                                                                            | Planned |
+| ID    | Requirement                                                                                                                                                                                                                                             | Status  |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| FR-34 | Give every turn an id and write one turn record: chat, character, stage timings, model and transport, real token counts and cost, each tool call with its outcome, retries, fallbacks, the cleaning steps applied, and what was delivered.              | Planned |
+| FR-35 | Classify every failure by kind, and record it with the turn id, the stage and the full error. Record background jobs (memory, reminders, proactive) the same way.                                                                                       | Planned |
+| FR-36 | Redact message text, phone numbers and keys from logs by default. Keep verbatim text only in a short-lived diagnostics store with a stated retention.                                                                                                   | Planned |
+| FR-37 | Provide a harness that runs AIRA without WhatsApp: scripted conversations, recorded model replies replayed without live calls, a memory simulator with ground truth, and latency and cost benchmarks.                                                   | Planned |
+| FR-38 | Gate every change in CI on the harness: prompt size ceiling, format rules, memory checks for privacy leaks and lost writes, and the unit tests.                                                                                                         | Planned |
+| FR-43 | Provide a WhatsApp simulator in the harness: a fake bridge that stands in for the WhatsApp bridge, and a chat preview that draws what a member would see. A maintainer can check a reply's formatting, bubble order and sticker without using WhatsApp. | Planned |
 
 ## Non-Functional Requirements
 
@@ -187,26 +188,28 @@ Status values: **Planned** (not built), **Exists (faulty)** (present today with 
 
 Each group of requirements has one issue. An issue lists its requirements as a checklist and links back here.
 
-| Requirements               | Issue                                               |
-| -------------------------- | --------------------------------------------------- |
-| FR-1 to 5                  | [#7](https://github.com/TolongLabs/AIRA/issues/7)   |
-| FR-6, FR-7, FR-9, FR-10    | [#8](https://github.com/TolongLabs/AIRA/issues/8)   |
-| FR-8                       | [#9](https://github.com/TolongLabs/AIRA/issues/9)   |
-| FR-11, FR-12, FR-14        | [#10](https://github.com/TolongLabs/AIRA/issues/10) |
-| FR-15 to 18                | [#11](https://github.com/TolongLabs/AIRA/issues/11) |
-| FR-13                      | [#12](https://github.com/TolongLabs/AIRA/issues/12) |
-| FR-19, FR-20, FR-23, FR-24 | [#13](https://github.com/TolongLabs/AIRA/issues/13) |
-| FR-21 to 22                | [#14](https://github.com/TolongLabs/AIRA/issues/14) |
-| FR-25                      | [#15](https://github.com/TolongLabs/AIRA/issues/15) |
-| FR-26 to 30                | [#16](https://github.com/TolongLabs/AIRA/issues/16) |
-| FR-31                      | [#17](https://github.com/TolongLabs/AIRA/issues/17) |
-| FR-32 to 33                | [#18](https://github.com/TolongLabs/AIRA/issues/18) |
-| FR-39                      | [#19](https://github.com/TolongLabs/AIRA/issues/19) |
-| FR-34 to 36                | [#20](https://github.com/TolongLabs/AIRA/issues/20) |
-| FR-37 to 38                | [#21](https://github.com/TolongLabs/AIRA/issues/21) |
-| FR-40 to 42                | [#22](https://github.com/TolongLabs/AIRA/issues/22) |
-| NFR-7                      | [#23](https://github.com/TolongLabs/AIRA/issues/23) |
-| NFR-8                      | [#24](https://github.com/TolongLabs/AIRA/issues/24) |
+| Requirements                      | Issue                                               |
+| --------------------------------- | --------------------------------------------------- |
+| FR-1 to 5                         | [#7](https://github.com/TolongLabs/AIRA/issues/7)   |
+| FR-6, FR-7, FR-9, FR-10           | [#8](https://github.com/TolongLabs/AIRA/issues/8)   |
+| FR-8                              | [#9](https://github.com/TolongLabs/AIRA/issues/9)   |
+| FR-11, FR-12, FR-14               | [#10](https://github.com/TolongLabs/AIRA/issues/10) |
+| FR-15 to 18                       | [#11](https://github.com/TolongLabs/AIRA/issues/11) |
+| FR-13                             | [#12](https://github.com/TolongLabs/AIRA/issues/12) |
+| FR-19, FR-20, FR-23, FR-24        | [#13](https://github.com/TolongLabs/AIRA/issues/13) |
+| FR-21 to 22                       | [#14](https://github.com/TolongLabs/AIRA/issues/14) |
+| FR-25                             | [#15](https://github.com/TolongLabs/AIRA/issues/15) |
+| FR-26 to 30                       | [#16](https://github.com/TolongLabs/AIRA/issues/16) |
+| FR-31                             | [#17](https://github.com/TolongLabs/AIRA/issues/17) |
+| FR-32 to 33                       | [#18](https://github.com/TolongLabs/AIRA/issues/18) |
+| FR-39                             | [#19](https://github.com/TolongLabs/AIRA/issues/19) |
+| FR-34 to 36                       | [#20](https://github.com/TolongLabs/AIRA/issues/20) |
+| FR-37 to 38                       | [#21](https://github.com/TolongLabs/AIRA/issues/21) |
+| FR-40 to 42                       | [#22](https://github.com/TolongLabs/AIRA/issues/22) |
+| NFR-7                             | [#23](https://github.com/TolongLabs/AIRA/issues/23) |
+| NFR-8                             | [#24](https://github.com/TolongLabs/AIRA/issues/24) |
+| FR-43                             | [#33](https://github.com/TolongLabs/AIRA/issues/33) |
+| Cutover readiness: NFR-1 to NFR-5 | [#32](https://github.com/TolongLabs/AIRA/issues/32) |
 
 ## Pending Inputs
 
