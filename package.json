@@ -20,6 +20,7 @@
     "test:restart": "vitest run tests/restart",
     "test:migration": "vitest run tests/migration",
     "test:simulator": "vitest run tests/simulator",
+    "test:gates": "vitest run tests/gates tests/contract/prompt-gates.test.ts tests/unit/format-corpus.test.ts",
     "prepare": "husky",
     "diagrams": "node scripts/export-diagrams.mjs",
     "turn": "tsx scripts/turn.ts",

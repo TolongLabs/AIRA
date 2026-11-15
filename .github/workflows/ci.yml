@@ -31,22 +31,9 @@ jobs:
       - run: bun run typecheck
       - run: bun run lint
       - run: bun run format:check
+      # Every layer that makes no live call: unit, contract, replay, the memory simulator, the fixed gates, and the
+      # Restart, Migration, Disk Full and Restore suites (docs/trd/harness.md#fixed-gates).
       - run: bun run test
-
-  # Enabled when the test harness exists.
-  # harness:
-  #   runs-on: ubuntu-24.04
-  #   timeout-minutes: 15
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #       with:
-  #         persist-credentials: false
-  #     - uses: oven-sh/setup-bun@v2
-  #     - uses: actions/setup-node@v4
-  #       with:
-  #         node-version: '24'
-  #     - run: bun install --frozen-lockfile
-  #     - run: bun run harness
 
   scan:
     runs-on: ubuntu-24.04
