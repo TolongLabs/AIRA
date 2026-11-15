@@ -3,6 +3,7 @@ import { basename, join } from 'node:path'
 import { parse } from 'yaml'
 import type { z } from 'zod'
 import { type LineKind, PACK_ID, cardSchema, linesSchema, moodsSchema } from './schema.js'
+import { readWebpInfo, stickerFault } from './webp.js'
 
 export class PackError extends Error {
   override name = 'PackError'
@@ -96,6 +97,11 @@ export function loadPack(dir: string, source: 'repository' | 'data'): Pack {
         const stickerPath = join(dir, 'stickers', file)
         if (!existsSync(stickerPath) || !statSync(stickerPath).isFile()) {
           faults.push(`moods.yml: moods.${key}.stickers: missing sticker file "${file}"`)
+        } else {
+          const fault = stickerFault(readWebpInfo(readFileSync(stickerPath)))
+          if (fault) {
+            faults.push(`moods.yml: moods.${key}.stickers: sticker "${file}" ${fault}`)
+          }
         }
       }
       moods.set(key, {

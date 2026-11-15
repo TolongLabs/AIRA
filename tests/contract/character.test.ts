@@ -218,7 +218,14 @@ describe('character pack loader', () => {
   it('accepts a sticker that exists in stickers/', () => {
     const dir = copyExamplePack(tmpDir())
     mkdirSync(join(dir, 'stickers'))
-    writeFileSync(join(dir, 'stickers', 'wave.webp'), 'RIFFfakewebp')
+    // The header of an extended WebP file with a 512 by 512 canvas: all the validator reads.
+    const sticker = Buffer.alloc(30)
+    sticker.write('RIFF', 0, 'ascii')
+    sticker.writeUInt32LE(22, 4)
+    sticker.write('WEBPVP8X', 8, 'ascii')
+    sticker.writeUIntLE(511, 24, 3)
+    sticker.writeUIntLE(511, 27, 3)
+    writeFileSync(join(dir, 'stickers', 'wave.webp'), sticker)
     const moodsPath = join(dir, 'moods.yml')
     writeFileSync(
       moodsPath,
