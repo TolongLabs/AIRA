@@ -37,7 +37,7 @@ import { type DataPaths, startStorage } from './storage/startup.js'
 import { createCommandRouter } from './tools/commands.js'
 import { registerCoreTools } from './tools/core/index.js'
 import { connectMcpServers } from './tools/mcp-client.js'
-import type { ToolPorts } from './tools/ports.js'
+import { type ToolPorts, createFetchPagePort } from './tools/ports.js'
 import { type ToolRegistry, createToolRegistry } from './tools/registry.js'
 import { type Alerter, createAlerter } from './turn/alerts.js'
 import { type TurnService, createTurnService } from './turn/pipeline.js'
@@ -240,6 +240,8 @@ export async function createApp(options: AppOptions): Promise<App> {
         verifyThreshold: config.judge.memoryVerify,
         timeoutMs: config.judge.timeoutMs
       }),
+      // The page reader is built in: it refuses private addresses, also after a redirect.
+      page: createFetchPagePort(),
       ...options.ports,
       filesDir: paths.files
     })
