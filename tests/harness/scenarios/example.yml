@@ -1,0 +1,26 @@
+chat:
+  id: example-group
+  type: group
+  character: example
+members:
+  - alice
+  - bob
+steps:
+  - at: '09:00'
+    from: alice
+    text: 'morning everyone, ready for the weekend?'
+    expect:
+      mood: neutral
+      maxChars: 400
+      tools: []
+  - at: '09:05'
+    from: bob
+    text: '/remind 6pm dinner'
+    expect:
+      command: remind
+      receipt: reminder.created
+  - at: '09:10'
+    from: alice
+    text: 'sounds good, see you then'
+    expect:
+      outcome: delivered
