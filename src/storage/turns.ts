@@ -29,10 +29,14 @@ interface InboundRow {
   turn_id: string | null
 }
 
-/** Writes the inbound row before any other work, or reports what an earlier request with this id led to. */
+/**
+ * Writes the inbound row before any other work, or reports what an earlier request with this id led to.
+ * `onNew` runs in the same transaction when the message is seen for the first time, so its text can be stored
+ * with it.
+ */
 export function receiveInbound(
   storage: Storage,
-  input: InboundKey & { senderId: string },
+  input: InboundKey & { senderId: string; onNew?: (db: Db) => void },
   now: Clock = wallClock
 ): InboundStatus {
   return storage.tx((db) => {
@@ -42,7 +46,10 @@ export function receiveInbound(
          VALUES (?, ?, ?, 'received', ?) ON CONFLICT (chat_id, mid) DO NOTHING`
       )
       .run(input.chatId, input.mid, input.senderId, isoNow(now))
-    if (inserted.changes === 1) return { status: 'new' }
+    if (inserted.changes === 1) {
+      input.onNew?.(db)
+      return { status: 'new' }
+    }
 
     const row = db
       .prepare('SELECT state, turn_id FROM inbound_message WHERE chat_id = ? AND mid = ?')
@@ -112,6 +119,11 @@ export interface CloseTurnInput {
   state: 'delivered' | 'declined' | 'failed'
   /** The content returned to the gateway. Required for delivered, absent for declined, optional for failed. */
   reply?: string
+  /**
+   * When one turn answers several merged messages, the one message the reply is returned for. The others are
+   * closed as dropped, so a repeat of one of them returns nothing and the reply goes out once.
+   */
+  replyMid?: string
   /** Further writes that must commit with the close: window rows, records, receipts. */
   also?: (db: Db) => void
 }
@@ -137,11 +149,12 @@ export function closeTurn(storage: Storage, input: CloseTurnInput, now: Clock = 
          SELECT chat_id, turn_id, 'assistant', ?, ? FROM turn WHERE turn_id = ?`
       ).run(input.reply, at, input.turnId)
     }
-    db.prepare("UPDATE inbound_message SET state = ?, closed_at = ? WHERE turn_id = ? AND state = 'received'").run(
-      input.reply === undefined ? 'dropped' : 'answered',
-      at,
-      input.turnId
-    )
+    db.prepare(
+      `UPDATE inbound_message
+       SET state = CASE WHEN ? = 0 THEN 'dropped' WHEN ? IS NULL OR mid = ? THEN 'answered' ELSE 'dropped' END,
+           closed_at = ?
+       WHERE turn_id = ? AND state = 'received'`
+    ).run(input.reply === undefined ? 0 : 1, input.replyMid ?? null, input.replyMid ?? null, at, input.turnId)
     input.also?.(db)
     return true
   })

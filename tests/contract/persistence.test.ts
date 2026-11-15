@@ -99,6 +99,29 @@ describe('inbound messages and turns', () => {
     expect(receiveInbound(storage, { ...key, mid: 'm-2' })).toMatchObject({ status: 'answered', reply: 'both' })
   })
 
+  it('when merged messages share a turn, the reply is stored for one of them and the rest are dropped', () => {
+    const storage = tmpStorage()
+    receiveInbound(storage, key)
+    receiveInbound(storage, { ...key, mid: 'm-2' })
+    open(storage, 't-1', ['m-1', 'm-2'])
+    closeTurn(storage, { turnId: 't-1', state: 'delivered', reply: 'one reply', replyMid: 'm-2' })
+    expect(receiveInbound(storage, key)).toEqual({ status: 'dropped' })
+    expect(receiveInbound(storage, { ...key, mid: 'm-2' })).toMatchObject({ status: 'answered', reply: 'one reply' })
+  })
+
+  it('stores what onNew writes with the first sight of a message, and never again', () => {
+    const storage = tmpStorage()
+    const store = (db: import('../../src/storage/database.js').Db) =>
+      db
+        .prepare(
+          "INSERT INTO session_message (chat_id, role, sender_id, content, mid, created_at) VALUES ('chat-1', 'user', 'sender-1', 'hi', 'm-1', '2026-01-01')"
+        )
+        .run()
+    expect(receiveInbound(storage, { ...key, onNew: store })).toEqual({ status: 'new' })
+    expect(receiveInbound(storage, { ...key, onNew: store })).toEqual({ status: 'retry' })
+    expect(one(storage, 'SELECT count(*) FROM session_message')).toBe(1)
+  })
+
   it('refuses a second running turn for one message, and a turn for an unknown message', () => {
     const storage = tmpStorage()
     receiveInbound(storage, key)
