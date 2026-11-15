@@ -60,7 +60,23 @@ describe('migrations from an empty file', () => {
   it('creates the tables the persistence contract names', () => {
     const storage = tmpStorage()
     const names = tables(storage).map((table) => table.name)
-    for (const name of ['inbound_message', 'turn', 'memory_job', 'backup_run', 'schema_migration', 'file']) {
+    for (const name of [
+      'inbound_message',
+      'turn',
+      'memory_job',
+      'backup_run',
+      'schema_migration',
+      'file',
+      'chat',
+      'identity',
+      'setting',
+      'setting_change',
+      'chat_state',
+      'model_call',
+      'tool_call',
+      'job_run',
+      'failure_diagnostics'
+    ]) {
       expect(names).toContain(name)
     }
   })
