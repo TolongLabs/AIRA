@@ -61,7 +61,11 @@ export function pruneRecords(
       .prepare('DELETE FROM failure_diagnostics WHERE created_at < ?')
       .run(diagnosticsCutoff).changes
 
-    counts.session_message = db.prepare('DELETE FROM session_message WHERE created_at < ?').run(windowCutoff).changes
+    // The newest window row always stays. Its id is the high-water mark the memory cursors count from: an empty
+    // table would hand out the same ids again, and memory would skip the new messages.
+    counts.session_message = db
+      .prepare('DELETE FROM session_message WHERE created_at < ? AND id < (SELECT max(id) FROM session_message)')
+      .run(windowCutoff).changes
 
     const oldTurnsWhere = "state <> 'running' AND received_at < ?"
     const oldTurnSubquery = `turn_id IN (SELECT turn_id FROM turn WHERE ${oldTurnsWhere})`
@@ -70,7 +74,7 @@ export function pruneRecords(
       .prepare(`DELETE FROM failure_diagnostics WHERE ${oldTurnSubquery}`)
       .run(retentionCutoff).changes
     counts.session_message += db
-      .prepare(`DELETE FROM session_message WHERE ${oldTurnSubquery}`)
+      .prepare(`DELETE FROM session_message WHERE ${oldTurnSubquery} AND id < (SELECT max(id) FROM session_message)`)
       .run(retentionCutoff).changes
     counts.inbound_message += deleteRows(db, 'inbound_message', oldTurnSubquery, [retentionCutoff], beforeDelete)
     counts.model_call += deleteRows(db, 'model_call', oldTurnSubquery, [retentionCutoff], beforeDelete)

@@ -54,6 +54,8 @@ export interface TurnRecordFields {
   attachments?: string[]
   receipts?: string[]
   cleaningSteps?: string[]
+  /** Which chain limit ended the tool chain, if one did. */
+  chainLimit?: 'calls' | 'time'
 }
 
 const FIELD_COLUMN: Record<keyof TurnRecordFields, string> = {
@@ -80,7 +82,8 @@ const FIELD_COLUMN: Record<keyof TurnRecordFields, string> = {
   stickerId: 'sticker_id',
   attachments: 'attachments',
   receipts: 'receipts',
-  cleaningSteps: 'cleaning_steps'
+  cleaningSteps: 'cleaning_steps',
+  chainLimit: 'chain_limit'
 }
 
 const JSON_FIELDS = new Set<keyof TurnRecordFields>(['recalledIds', 'attachments', 'receipts', 'cleaningSteps'])

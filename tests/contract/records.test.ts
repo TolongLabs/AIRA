@@ -373,7 +373,12 @@ describe('retention pruning', () => {
     expect(result.counts['failure']).toBe(1)
     expect(result.counts['inbound_message']).toBe(1)
     expect(result.counts['failure_diagnostics']).toBe(2)
-    expect(result.counts['session_message']).toBe(2)
+    // Both window messages are past the window. The newest row of the table always stays: its id is the
+    // high-water mark the memory cursors count from.
+    expect(result.counts['session_message']).toBe(1)
+    expect(storage.read((db) => db.prepare('SELECT content FROM session_message').pluck().all())).toEqual([
+      'recent reply'
+    ])
 
     const remainingTurns = storage.read((db) =>
       db.prepare('SELECT turn_id FROM turn ORDER BY turn_id').pluck().all()

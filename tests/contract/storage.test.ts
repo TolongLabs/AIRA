@@ -13,10 +13,18 @@ describe('storage connection rules', () => {
       synchronous: db.pragma('synchronous', { simple: true }),
       foreignKeys: db.pragma('foreign_keys', { simple: true }),
       busyTimeout: db.pragma('busy_timeout', { simple: true }),
-      trustedSchema: db.pragma('trusted_schema', { simple: true })
+      trustedSchema: db.pragma('trusted_schema', { simple: true }),
+      secureDelete: db.pragma('secure_delete', { simple: true })
     }))
     // synchronous 2 is FULL.
-    expect(pragmas).toEqual({ journal: 'wal', synchronous: 2, foreignKeys: 1, busyTimeout: 5000, trustedSchema: 0 })
+    expect(pragmas).toEqual({
+      journal: 'wal',
+      synchronous: 2,
+      foreignKeys: 1,
+      busyTimeout: 5000,
+      trustedSchema: 0,
+      secureDelete: 1
+    })
   })
 
   it('commits a transaction and rolls back all of it when the callback throws', () => {
