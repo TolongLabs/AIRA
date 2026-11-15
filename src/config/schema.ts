@@ -23,6 +23,8 @@ export const configSchema = z.strictObject({
     maxSystemTokens: count
   }),
   judge: z.strictObject({
+    // The hosted judge's versioned model id. Empty means no judge: mood by rules only, and memory admits nothing.
+    model: z.string().default(''),
     mood: onOff,
     moodMinProbability: z.number().min(0).max(1),
     memoryAdmit: z.number().min(0).max(1),
