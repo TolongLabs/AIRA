@@ -1,0 +1,18 @@
+# Present only when the subscription transport is selected.
+# Runs as the owner because the program needs the owner's login.
+
+[Unit]
+Description=AIRA host runner (subscription transport)
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/aira/runner.env
+ExecStart=/usr/bin/node /opt/aira/host-runner/runner.mjs
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
