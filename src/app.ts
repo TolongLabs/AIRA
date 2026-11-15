@@ -27,6 +27,7 @@ import { createRedactor, secretsFromEnv } from './records/redact.js'
 import { recordModelCall } from './records/turn-record.js'
 import { listChats } from './settings/chats.js'
 import { resolveSettings } from './settings/settings.js'
+import { archiveAndPrune } from './storage/archive.js'
 import type { Storage } from './storage/database.js'
 import { type SnapshotReason, type SnapshotResult, startSnapshotTimer, takeSnapshot } from './storage/snapshot.js'
 import { type DataPaths, startStorage } from './storage/startup.js'
@@ -318,7 +319,17 @@ export async function createApp(options: AppOptions): Promise<App> {
           logger.error('storage.snapshot_failed', { file: result.file, detail: result.detail })
       }
     })
-    closers.push(stopDiskGuard, stopSnapshots)
+    // The daily retention job: rows are exported to the archive before they are deleted.
+    const retention = setInterval(() => {
+      archiveAndPrune(storage, {
+        archiveDir: paths.archive,
+        config: config.records,
+        enabled: !started.diskGuard.state().paused.archive,
+        now
+      }).catch((error: unknown) => logger.error('storage.retention_failed', { error }))
+    }, 86_400_000)
+    retention.unref()
+    closers.push(stopDiskGuard, stopSnapshots, () => clearInterval(retention))
 
     // Step 6: report ready.
     let ready = true
