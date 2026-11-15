@@ -1,0 +1,187 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Message Path",
+    "quality_profile": "showcase",
+    "output": ".archify/message-path.html"
+  },
+  "lanes": [
+    {
+      "id": "wa",
+      "label": "WhatsApp Transport"
+    },
+    {
+      "id": "core",
+      "label": "AIRA Core"
+    },
+    {
+      "id": "ext",
+      "label": "Models"
+    },
+    {
+      "id": "data",
+      "label": "One Database"
+    }
+  ],
+  "mainPath": ["user", "gateway", "resolve", "build", "loop", "clean", "reply"],
+  "nodes": [
+    {
+      "id": "user",
+      "lane": "wa",
+      "col": 0,
+      "type": "external",
+      "label": "Chat Member",
+      "sublabel": "DM or group"
+    },
+    {
+      "id": "gateway",
+      "lane": "wa",
+      "col": 1,
+      "type": "messagebus",
+      "label": "Hermes Gateway",
+      "sublabel": "unchanged"
+    },
+    {
+      "id": "reply",
+      "lane": "wa",
+      "col": 5,
+      "type": "frontend",
+      "label": "Reply + Sticker",
+      "sublabel": "text, then sticker"
+    },
+    {
+      "id": "resolve",
+      "lane": "core",
+      "col": 1,
+      "type": "security",
+      "label": "Resolve Chat",
+      "sublabel": "card, settings, mute"
+    },
+    {
+      "id": "build",
+      "lane": "core",
+      "col": 2,
+      "type": "backend",
+      "label": "Build Turn",
+      "sublabel": "mood, shape, recall",
+      "tag": "8K-token ceiling"
+    },
+    {
+      "id": "loop",
+      "lane": "core",
+      "col": 3,
+      "type": "backend",
+      "label": "One Agent Loop",
+      "sublabel": "one tool registry"
+    },
+    {
+      "id": "clean",
+      "lane": "core",
+      "col": 4,
+      "type": "backend",
+      "label": "Clean + Format",
+      "sublabel": "WhatsApp renderer"
+    },
+    {
+      "id": "main",
+      "lane": "ext",
+      "col": 3,
+      "type": "cloud",
+      "label": "Main Model",
+      "sublabel": "API key or subscription"
+    },
+    {
+      "id": "fallback",
+      "lane": "ext",
+      "col": 4,
+      "type": "cloud",
+      "label": "Fallback Model",
+      "sublabel": "same prompt and tools"
+    },
+    {
+      "id": "memory",
+      "lane": "data",
+      "col": 2,
+      "type": "database",
+      "label": "Typed Memory",
+      "sublabel": "scoped to this chat"
+    },
+    {
+      "id": "record",
+      "lane": "data",
+      "col": 4,
+      "type": "database",
+      "label": "Turn Record",
+      "sublabel": "stages, tools, cost"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "user",
+      "to": "gateway",
+      "label": "message"
+    },
+    {
+      "id": "e2",
+      "from": "gateway",
+      "to": "resolve",
+      "label": "same address",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e3",
+      "from": "resolve",
+      "to": "build"
+    },
+    {
+      "id": "e4",
+      "from": "build",
+      "to": "loop"
+    },
+    {
+      "id": "e5",
+      "from": "loop",
+      "to": "clean"
+    },
+    {
+      "id": "e6",
+      "from": "clean",
+      "to": "reply",
+      "label": "reply",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e7",
+      "from": "loop",
+      "to": "main",
+      "label": "calls",
+      "role": "branch"
+    },
+    {
+      "id": "e8",
+      "from": "loop",
+      "to": "fallback",
+      "label": "on failure",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "e9",
+      "from": "memory",
+      "to": "build",
+      "label": "recall",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "e10",
+      "from": "clean",
+      "to": "record",
+      "label": "writes",
+      "variant": "dashed",
+      "role": "async"
+    }
+  ]
+}

@@ -1,0 +1,190 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "System Overview",
+    "quality_profile": "showcase",
+    "output": ".archify/system-overview.html"
+  },
+  "lanes": [
+    {
+      "id": "host",
+      "label": "Host"
+    },
+    {
+      "id": "core",
+      "label": "AIRA Core Container"
+    },
+    {
+      "id": "svc",
+      "label": "Model Services"
+    },
+    {
+      "id": "owner",
+      "label": "Owner Site"
+    }
+  ],
+  "mainPath": ["wa", "gateway", "core", "model"],
+  "nodes": [
+    {
+      "id": "wa",
+      "lane": "host",
+      "col": 0,
+      "type": "external",
+      "label": "WhatsApp",
+      "sublabel": "DMs and groups"
+    },
+    {
+      "id": "gateway",
+      "lane": "host",
+      "col": 1,
+      "type": "messagebus",
+      "label": "Hermes Gateway",
+      "sublabel": "bridge, sessions, cron"
+    },
+    {
+      "id": "tools",
+      "lane": "host",
+      "col": 2,
+      "type": "backend",
+      "label": "Owner Tools",
+      "sublabel": "unchanged"
+    },
+    {
+      "id": "core",
+      "lane": "core",
+      "col": 1,
+      "type": "backend",
+      "label": "Turn Pipeline",
+      "sublabel": "prompt, tools, records"
+    },
+    {
+      "id": "db",
+      "lane": "core",
+      "col": 2,
+      "type": "database",
+      "label": "SQLite File",
+      "sublabel": "one writer"
+    },
+    {
+      "id": "api",
+      "lane": "core",
+      "col": 3,
+      "type": "backend",
+      "label": "Site API",
+      "sublabel": "chatbot pages"
+    },
+    {
+      "id": "runner",
+      "lane": "svc",
+      "col": 0,
+      "type": "backend",
+      "label": "Host Runner",
+      "sublabel": "claude program"
+    },
+    {
+      "id": "model",
+      "lane": "svc",
+      "col": 1,
+      "type": "cloud",
+      "label": "Model API",
+      "sublabel": "main and fallback"
+    },
+    {
+      "id": "judge",
+      "lane": "svc",
+      "col": 2,
+      "type": "cloud",
+      "label": "Judge + Media",
+      "sublabel": "small models"
+    },
+    {
+      "id": "site",
+      "lane": "owner",
+      "col": 3,
+      "type": "frontend",
+      "label": "Owner Site",
+      "sublabel": "React, private network"
+    },
+    {
+      "id": "legacy",
+      "lane": "owner",
+      "col": 4,
+      "type": "backend",
+      "label": "Legacy Site API",
+      "sublabel": "owner-tool pages"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "wa",
+      "to": "gateway",
+      "label": "messages"
+    },
+    {
+      "id": "e2",
+      "from": "gateway",
+      "to": "core",
+      "label": "HTTP :9881",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e3",
+      "from": "gateway",
+      "to": "tools",
+      "label": "cron, delivery",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "e4",
+      "from": "core",
+      "to": "db",
+      "label": "reads, writes"
+    },
+    {
+      "id": "e5",
+      "from": "core",
+      "to": "model",
+      "label": "API runner",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e6",
+      "from": "core",
+      "to": "runner",
+      "label": "subscription",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "e7",
+      "from": "core",
+      "to": "judge",
+      "label": "judge, media",
+      "role": "branch"
+    },
+    {
+      "id": "e8",
+      "from": "api",
+      "to": "db",
+      "label": "through the core"
+    },
+    {
+      "id": "e9",
+      "from": "site",
+      "to": "api",
+      "label": "chatbot pages",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e10",
+      "from": "site",
+      "to": "legacy",
+      "label": "owner tools",
+      "variant": "dashed",
+      "role": "branch"
+    }
+  ]
+}

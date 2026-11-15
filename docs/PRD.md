@@ -183,6 +183,31 @@ Status values: **Planned** (not built), **Exists (faulty)** (present today with 
 - A second chat platform.
 - New chat features beyond those listed, until the listed ones meet their targets.
 
+## Tracking
+
+Each group of requirements has one issue. An issue lists its requirements as a checklist and links back here.
+
+| Requirements               | Issue                                               |
+| -------------------------- | --------------------------------------------------- |
+| FR-1 to 5                  | [#7](https://github.com/TolongLabs/AIRA/issues/7)   |
+| FR-6, FR-7, FR-9, FR-10    | [#8](https://github.com/TolongLabs/AIRA/issues/8)   |
+| FR-8                       | [#9](https://github.com/TolongLabs/AIRA/issues/9)   |
+| FR-11, FR-12, FR-14        | [#10](https://github.com/TolongLabs/AIRA/issues/10) |
+| FR-15 to 18                | [#11](https://github.com/TolongLabs/AIRA/issues/11) |
+| FR-13                      | [#12](https://github.com/TolongLabs/AIRA/issues/12) |
+| FR-19, FR-20, FR-23, FR-24 | [#13](https://github.com/TolongLabs/AIRA/issues/13) |
+| FR-21 to 22                | [#14](https://github.com/TolongLabs/AIRA/issues/14) |
+| FR-25                      | [#15](https://github.com/TolongLabs/AIRA/issues/15) |
+| FR-26 to 30                | [#16](https://github.com/TolongLabs/AIRA/issues/16) |
+| FR-31                      | [#17](https://github.com/TolongLabs/AIRA/issues/17) |
+| FR-32 to 33                | [#18](https://github.com/TolongLabs/AIRA/issues/18) |
+| FR-39                      | [#19](https://github.com/TolongLabs/AIRA/issues/19) |
+| FR-34 to 36                | [#20](https://github.com/TolongLabs/AIRA/issues/20) |
+| FR-37 to 38                | [#21](https://github.com/TolongLabs/AIRA/issues/21) |
+| FR-40 to 42                | [#22](https://github.com/TolongLabs/AIRA/issues/22) |
+| NFR-7                      | [#23](https://github.com/TolongLabs/AIRA/issues/23) |
+| NFR-8                      | [#24](https://github.com/TolongLabs/AIRA/issues/24) |
+
 ## Pending Inputs
 
 | #   | Input                                                                                                | Waiting on  |

@@ -26,16 +26,7 @@ for what AIRA must do and [Technical Requirements](docs/TRD.md) for the subsyste
 
 ## How It Fits Together
 
-```
-WhatsApp  <->  bridge  <->  Hermes gateway  --HTTP-->  AIRA core (container)
-               (host, pinned, patched)                 | prompt engine, tools, memory, records
-                    |                                  +--> model API  (API runner)
-                    | cron, delivery                   +--> host runner service --> claude program
-                    v                                  +--> judge model, media model, search
-               owner tools (unchanged)                 +--> SQLite file (data volume)
-                                                       ^
-owner site (React)  --HTTP-->  core API (chatbot pages) |   legacy site API (owner-tool pages)
-```
+![System overview: WhatsApp reaches the Hermes gateway, which calls the AIRA core; the core uses one SQLite file and the model services; the owner site calls the core's API](docs/diagrams/system-overview.svg)
 
 ## Repository Layout
 

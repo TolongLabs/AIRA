@@ -96,3 +96,6 @@ characters/*
 # Graphify
 graphify-out/*
 !graphify-out/graph.json
+
+# Rendered diagram pages (docs/diagrams keeps the sources and the SVGs)
+.archify/
