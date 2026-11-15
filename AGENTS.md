@@ -18,6 +18,7 @@ directly. Edit this file, never `CLAUDE.md` or `GEMINI.md`, which are symlinks t
 - @docs/agents/graphify.md — query the knowledge graph in `graphify-out/` before reading or searching raw files.
 - @docs/agents/rtk.md — shell output comes back condensed; re-run a command with `rtk proxy` only when its result is
   unusable.
+- @docs/agents/skills.md — which skills are installed in `.agents/skills/`, and how to restore or update them.
 
 ## References
 
