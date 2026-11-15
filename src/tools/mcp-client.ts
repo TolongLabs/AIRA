@@ -124,7 +124,9 @@ export async function connectMcpServers(
             const res = await client.callTool(
               { name: tool.name, arguments: toolArgs as Record<string, unknown> },
               undefined,
-              { signal, timeout: server.timeoutMs }
+              // The registry owns the time limit and aborts through the signal. The client's own timer is set later,
+              // so one slow call always ends as a timeout, never as a failure of the server.
+              { signal, timeout: server.timeoutMs + 5000 }
             )
             if (res.isError) {
               throw new Error(`mcp tool ${fullName} returned an error`)
