@@ -36,6 +36,7 @@ import { type SnapshotReason, type SnapshotResult, startSnapshotTimer, takeSnaps
 import { type DataPaths, startStorage } from './storage/startup.js'
 import { createCommandRouter } from './tools/commands.js'
 import { registerCoreTools } from './tools/core/index.js'
+import { registerLessonTools } from './tools/lessons/index.js'
 import { connectMcpServers } from './tools/mcp-client.js'
 import { type ToolPorts, createFetchPagePort } from './tools/ports.js'
 import { type ToolRegistry, createToolRegistry } from './tools/registry.js'
@@ -245,6 +246,8 @@ export async function createApp(options: AppOptions): Promise<App> {
       ...options.ports,
       filesDir: paths.files
     })
+    // The lessons and library tools, behind `features.lessons`. No lyrics provider is built: those two tools say so.
+    registerLessonTools(registry, { ...options.ports, filesDir: paths.files })
     // External tool servers (docs/trd/tools.md#external-tool-servers). None is configured at launch.
     if (config.mcp.servers.length > 0) {
       const mcp = await connectMcpServers(config.mcp.servers, registry, logger)
