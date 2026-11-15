@@ -1,0 +1,75 @@
+{
+  "photoDescription": {
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "{\"description\": \"A red bicycle leaning against a brick wall on a sunny street.\"}"
+            }
+          ]
+        },
+        "finishReason": "STOP"
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 310,
+      "candidatesTokenCount": 18
+    }
+  },
+  "voiceNoteWithTranscript": {
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "{\"description\": \"A person speaking in a quiet room.\", \"transcript\": \"Hey, can you pick up some milk on the way home?\"}"
+            }
+          ]
+        },
+        "finishReason": "STOP"
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 520,
+      "candidatesTokenCount": 34,
+      "cachedContentTokenCount": 100
+    }
+  },
+  "blockedPrompt": {
+    "promptFeedback": {
+      "blockReason": "SAFETY"
+    },
+    "usageMetadata": {
+      "promptTokenCount": 140
+    }
+  },
+  "noCandidate": {
+    "candidates": [],
+    "usageMetadata": {
+      "promptTokenCount": 140,
+      "candidatesTokenCount": 0
+    }
+  },
+  "nonJsonText": {
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "I cannot format that as JSON right now."
+            }
+          ]
+        },
+        "finishReason": "STOP"
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 200,
+      "candidatesTokenCount": 10
+    }
+  }
+}
