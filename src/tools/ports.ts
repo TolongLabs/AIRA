@@ -3,13 +3,24 @@ import { isIP } from 'node:net'
 import type { Db } from '../storage/database.js'
 
 export interface MemoryPort {
-  recall(chatId: string, query: string, limit: number): { itemId: string; text: string }[]
+  /** Facts and summaries of this chat. With an asker, a line says whether a fact is about them or another member. */
+  recall(chatId: string, query: string, limit: number, askerId?: string): { itemId: string; text: string }[]
   history(chatId: string, query: string, limit: number): { at: string; senderId?: string; text: string }[]
-  /** Writes one fact inside the caller's transaction. Returns its id. */
-  note(db: Db, input: { chatId: string; subjectId: string; text: string; callId: string }): string
-  /** Forgets one fact of this chat inside the caller's transaction. False when the chat has no such fact. */
+  /** Validates a note and asks the judge. It runs before the commit, outside any transaction. */
+  checkNote(
+    input: { chatId: string; subjectId: string; text: string },
+    signal: AbortSignal
+  ): Promise<{ ok: true } | { ok: false; reason: string }>
+  /** Stores a note inside the caller's transaction. */
+  note(
+    db: Db,
+    input: { chatId: string; subjectId: string; text: string; turnId: string }
+  ): { itemId: string; effect: 'added' | 'unchanged' }
+  /** Forgets one fact of this chat by id and sets the forget barrier, inside the caller's transaction. False when the chat has no such fact. */
   forget(db: Db, input: { chatId: string; itemId: string }): boolean
-  lingo(db: Db, input: { chatId: string; word: string; meaning: string; callId: string }): string
+  /** Sets the forget barrier alone, inside the caller's transaction. */
+  forgetPending(db: Db, input: { chatId: string }): void
+  lingo(db: Db, input: { chatId: string; word: string; meaning: string; turnId: string }): string
 }
 
 export interface SearchPort {
