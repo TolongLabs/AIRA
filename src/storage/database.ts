@@ -47,6 +47,11 @@ function isThenable(value: unknown): boolean {
   return typeof value === 'object' && value !== null && typeof (value as { then?: unknown }).then === 'function'
 }
 
+/** Opens a query_only connection to a database file. For operator scripts and reports; the caller closes it. */
+export function openReader(file: string): Db {
+  return openReaderAt(file)
+}
+
 function openReaderAt(file: string): Db {
   const reader = new Database(file, { readonly: true, fileMustExist: true })
   reader.pragma('query_only = ON')

@@ -20,7 +20,8 @@
     "test:restart": "vitest run tests/restart",
     "test:migration": "vitest run tests/migration",
     "prepare": "husky",
-    "diagrams": "node scripts/export-diagrams.mjs"
+    "diagrams": "node scripts/export-diagrams.mjs",
+    "turn": "tsx scripts/turn.ts"
   },
   "lint-staged": {
     "*.{ts,tsx}": "biome check --write",
