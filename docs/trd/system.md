@@ -191,12 +191,13 @@ spike runs, 16 Nov 2026.
 
 ## Assumptions And Spikes
 
-| ID  | Kind       | Statement                                                                                                                                             | Affects               |
-| --- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
-| A-1 | Assumption | Bun manages packages and runs scripts. Node 24 runs the service in the container.                                                                     | Tech stack            |
-| A-3 | Assumption | The judge model is reachable from the host network with acceptable latency for the mood override.                                                     | Prompt engine, memory |
-| A-4 | Assumption | The gateway sends nothing to the chat when the core returns empty content. To confirm on the staging gateway with the fake bridge in step 3.          | Gateway contract      |
-| A-5 | Assumption | A request the gateway's schedule starts carries the scope marker of the job's chat and the job's text unchanged. To confirm in step 3.                | Scheduled turns       |
-| A-6 | Assumption | The gateway forwards a group message only when it mentions AIRA, replies to AIRA, or the chat is free response there. To confirm in step 3.           | Turn admission        |
-| S-4 | Spike      | Benchmark the two transports on the live machine with the same prompts. Tracked in [#28](https://github.com/TolongLabs/AIRA/issues/28).               | Launch default        |
-| S-5 | Spike      | Build the shadow tap: copy real requests to the new core without sending its replies. Tracked in [#29](https://github.com/TolongLabs/AIRA/issues/29). | Cutover               |
+| ID  | Kind       | Statement                                                                                                                                                          | Affects               |
+| --- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------- |
+| A-1 | Assumption | Bun manages packages and runs scripts. Node 24 runs the service in the container.                                                                                  | Tech stack            |
+| A-3 | Assumption | The judge model is reachable from the host network with acceptable latency for the mood override.                                                                  | Prompt engine, memory |
+| A-4 | Assumption | The gateway sends nothing to the chat when the core returns empty content. To confirm on the staging gateway with the fake bridge in step 3.                       | Gateway contract      |
+| A-5 | Assumption | A request the gateway's schedule starts carries the scope marker of the job's chat and the job's text unchanged. To confirm in step 3.                             | Scheduled turns       |
+| A-6 | Assumption | The gateway forwards a group message only when it mentions AIRA, replies to AIRA, or the chat is free response there. To confirm in step 3.                        | Turn admission        |
+| A-7 | Assumption | The `claude` program accepts the window as one transcript prompt, and names a served tool `mcp__aira__<name>`. Tested with a fake program only; to confirm in S-4. | Subscription runner   |
+| S-4 | Spike      | Benchmark the two transports on the live machine with the same prompts. Tracked in [#28](https://github.com/TolongLabs/AIRA/issues/28).                            | Launch default        |
+| S-5 | Spike      | Build the shadow tap: copy real requests to the new core without sending its replies. Tracked in [#29](https://github.com/TolongLabs/AIRA/issues/29).              | Cutover               |

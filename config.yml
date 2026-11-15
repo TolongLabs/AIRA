@@ -62,6 +62,11 @@ llm:
   maxRetries: 2 # Retries for a transient failure
   breakerMs: 600000 # How long a breaker stays open
   monthlyBudgetUsd: 50 # Spend cap for paid roles
+  subscription: # Used only when transport is 'subscription'
+    runnerUrl: 'http://127.0.0.1:9882' # The host runner service
+    model: '' # Model alias for the program. Empty: the program's default
+    toolServerPort: 9883 # Port of the core's tool server for the program
+    toolServerUrl: 'http://127.0.0.1:9883' # Where the program reaches that tool server
 
 # Owned by docs/trd/models.md
 media:
