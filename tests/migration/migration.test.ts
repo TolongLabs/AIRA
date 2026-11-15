@@ -75,7 +75,11 @@ describe('migrations from an empty file', () => {
       'model_call',
       'tool_call',
       'job_run',
-      'failure_diagnostics'
+      'failure_diagnostics',
+      'tool_result',
+      'receipt',
+      'reminder',
+      'spend'
     ]) {
       expect(names).toContain(name)
     }
