@@ -87,6 +87,10 @@ and timing budgets. They do not assert exact model wording.
 
 A gate's stored value changes only in a pull request that says why.
 
+Every gate is a test that `bun run test` runs, and CI runs that command on every pull request. A test that calls
+any host but its own machine fails: the test setup refuses the request. The Privacy Scan finds WhatsApp ids and
+phone numbers by pattern. It cannot find a real name: fixtures use invented names, and review checks that.
+
 The Restart, Disk Full, Restore and Migration suites are specified in [Persistence](storage.md#tests).
 
 ## Benchmarks
