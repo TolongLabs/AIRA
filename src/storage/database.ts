@@ -70,6 +70,8 @@ export function openDatabase(file: string, options: OpenOptions = {}): Storage {
     writer.pragma('foreign_keys = ON')
     writer.pragma('busy_timeout = 5000')
     writer.pragma('trusted_schema = OFF')
+    // A deleted or cleared value is overwritten on disk, so a forgotten fact does not stay in free pages.
+    writer.pragma('secure_delete = ON')
   } catch (cause) {
     throw new StorageError(`cannot open the database at ${file}: ${(cause as Error).message}`, 'storage_error', {
       cause

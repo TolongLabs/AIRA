@@ -57,13 +57,14 @@ blocks that move: all access goes through one storage module, and no other modul
   one short transaction.
 - Statements are prepared and parameterised. No SQL is built from input text.
 
-| Pragma           | Value   | Reason                                                       |
-| ---------------- | ------- | ------------------------------------------------------------ |
-| `journal_mode`   | `WAL`   | Readers do not block the writer                              |
-| `synchronous`    | `FULL`  | A committed transaction survives a power cut or a host crash |
-| `foreign_keys`   | `ON`    | Orphan rows are refused                                      |
-| `busy_timeout`   | 5000 ms | A short lock wait is retried, not failed                     |
-| `trusted_schema` | `OFF`   | The file cannot run code through its schema                  |
+| Pragma           | Value   | Reason                                                                                       |
+| ---------------- | ------- | -------------------------------------------------------------------------------------------- |
+| `journal_mode`   | `WAL`   | Readers do not block the writer                                                              |
+| `synchronous`    | `FULL`  | A committed transaction survives a power cut or a host crash                                 |
+| `foreign_keys`   | `ON`    | Orphan rows are refused                                                                      |
+| `busy_timeout`   | 5000 ms | A short lock wait is retried, not failed                                                     |
+| `trusted_schema` | `OFF`   | The file cannot run code through its schema                                                  |
+| `secure_delete`  | `ON`    | A deleted or cleared value is overwritten, so a forgotten fact leaves no trace in free pages |
 
 At 4 to 16 turns a day, `synchronous=FULL` costs nothing that a person can notice.
 

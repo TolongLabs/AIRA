@@ -73,7 +73,7 @@ Two limits end the chain. The first one reached wins.
 | Call count | `tools.maxCallsPerTurn` | 4       | The tool list is withdrawn, and the model answers with what it has |
 | Tool time  | `tools.timeBudgetMs`    | 15000   | The same. A call in flight is cancelled at its own timeout         |
 
-The turn record notes which limit was reached. Both defaults are tuned from benchmark results.
+The turn record notes which limit was reached, in `chain_limit`. Both defaults are tuned from benchmark results.
 
 ## Receipts
 
@@ -123,6 +123,18 @@ tool and says the rest in their own words.
 - **Chaining is allowed after the named tool,** within the limits in [Implicit Calls](#implicit-calls). `/search`
   may go on to read a page.
 - A command counts as one tool call toward `tools.maxCallsPerTurn`.
+- **Until the named tool has been called, it is the only tool the model is offered.** A call to any other tool
+  in that step is dropped. The model may instead ask its one question and call nothing.
+- **The model is shown what it must choose from.** Before the model fills the arguments of `/cancel` or `/forget`,
+  code runs `reminder_list` or `recall` and adds the result to the message as a labelled, untrusted block. The
+  model names one row by its id, or asks.
+
+### Direct Command Answers
+
+A character pack has no template for a command answer yet, so code writes the answer of a direct command from the
+tool's result in plain words: a list for `/help`, `/list` and `/reminders`, one fixed sentence for `/mute` and
+`/unmute`. The answer still passes the cleaning chain and the bubble splitter. Pack templates for these answers
+are a later change to the pack contract.
 
 ## Tool Set
 

@@ -28,7 +28,11 @@ function tables(storage: Storage): { name: string; strict: number }[] {
   return storage.read(
     (db) =>
       db
-        .prepare("SELECT name, strict FROM pragma_table_list WHERE schema = 'main' AND name NOT LIKE 'sqlite_%'")
+        .prepare(
+          // A full-text index is a virtual table with shadow tables. SQLite does not let either be strict.
+          `SELECT name, strict FROM pragma_table_list
+           WHERE schema = 'main' AND name NOT LIKE 'sqlite_%' AND type = 'table' AND name NOT LIKE 'memory_fts%'`
+        )
         .all() as { name: string; strict: number }[]
   )
 }
@@ -79,7 +83,11 @@ describe('migrations from an empty file', () => {
       'tool_result',
       'receipt',
       'reminder',
-      'spend'
+      'spend',
+      'memory_item',
+      'memory_embedding',
+      'memory_cursor',
+      'memory_event'
     ]) {
       expect(names).toContain(name)
     }
