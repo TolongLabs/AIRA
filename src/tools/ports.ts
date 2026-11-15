@@ -44,9 +44,19 @@ export interface SchedulePort {
   list(): Promise<string[]>
 }
 
+/** The lyrics provider of the lessons tools (docs/trd/tools.md#lessons-data-model). Its text is untrusted. */
+export interface LyricsPort {
+  /** The provider's name, stored with each candidate. */
+  name: string
+  search(query: string, signal: AbortSignal): Promise<{ ref: string; title: string; artist: string }[]>
+  /** The lyrics of one result, by the reference the provider gave in a search. */
+  fetch(ref: string, signal: AbortSignal): Promise<{ title: string; artist: string; lines: string[] }>
+}
+
 export interface ToolPorts {
   memory?: MemoryPort
   search?: SearchPort
+  lyrics?: LyricsPort
   page?: PagePort
   post?: PostPort
   schedule?: SchedulePort
