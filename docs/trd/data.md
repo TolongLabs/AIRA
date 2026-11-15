@@ -19,19 +19,19 @@ The SQLite file, its tables, the settings hierarchy, and which file owns which k
 One file on the data volume. Only the core process opens it for writing. How it is opened, migrated, recovered and
 copied is specified in [Persistence](storage.md). This module owns what the tables are.
 
-| Table                                                                          | Purpose                                                                   | Owner Module                      |
-| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------- | --------------------------------- |
-| `chat`                                                                         | One row per chat instance: id, type, label                                | This module                       |
-| `identity`                                                                     | Maps WhatsApp ids for one person to one subject id                        | This module                       |
-| `setting`                                                                      | The settings hierarchy                                                    | This module                       |
-| `setting_change`                                                               | Change log for settings and packs                                         | [Records](records.md)             |
-| `session_message`                                                              | The conversation window                                                   | [System](system.md)               |
-| `memory_item`, `memory_job`, `memory_event`                                    | Memory                                                                    | [Memory](memory.md)               |
-| `reminder`                                                                     | Reminders and their gateway job ids                                       | [Tools](tools.md)                 |
-| `turn`, `model_call`, `tool_call`, `failure`, `job_run`, `failure_diagnostics` | Records                                                                   | [Records](records.md)             |
-| `spend`                                                                        | Cost per role per month                                                   | [Models](models.md)               |
-| `chat_state`                                                                   | Per-chat runtime state: last opener, last sticker, mute                   | [Prompt Engine](prompt-engine.md) |
-| `inbound_message`, `schema_migration`, `backup_run`                            | Inbound requests by gateway message id, applied migrations, snapshot runs | [Persistence](storage.md)         |
+| Table                                                                          | Purpose                                                                                                      | Owner Module                      |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ | --------------------------------- |
+| `chat`                                                                         | One row per chat instance: id, type, label                                                                   | This module                       |
+| `identity`                                                                     | Maps WhatsApp ids for one person to one subject id                                                           | This module                       |
+| `setting`                                                                      | The settings hierarchy                                                                                       | This module                       |
+| `setting_change`                                                               | Change log for settings and packs                                                                            | [Records](records.md)             |
+| `session_message`                                                              | The conversation window                                                                                      | [System](system.md)               |
+| `memory_item`, `memory_job`, `memory_event`                                    | Memory                                                                                                       | [Memory](memory.md)               |
+| `reminder`                                                                     | Reminders and their gateway job ids                                                                          | [Tools](tools.md)                 |
+| `turn`, `model_call`, `tool_call`, `failure`, `job_run`, `failure_diagnostics` | Records                                                                                                      | [Records](records.md)             |
+| `spend`                                                                        | Cost per role per month                                                                                      | [Models](models.md)               |
+| `chat_state`                                                                   | Per-chat runtime state: last opener, last sticker, mute                                                      | [Prompt Engine](prompt-engine.md) |
+| `inbound_message`, `schema_migration`, `backup_run`, `file`                    | Inbound requests by chat and gateway message id, applied migrations, snapshot runs, files on the data volume | [Persistence](storage.md)         |
 
 ## Settings Hierarchy
 
