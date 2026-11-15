@@ -1,6 +1,7 @@
 services:
   aira:
-    image: ghcr.io/tolonglabs/aira:stable
+    # The updater sets AIRA_VERSION to the release it deploys, or to the previous one when it rolls back.
+    image: ghcr.io/tolonglabs/aira:${AIRA_VERSION:-stable}
     restart: unless-stopped
     # Longer than shutdown.graceMs in config.yml, so running turns can finish.
     stop_grace_period: 30s

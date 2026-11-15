@@ -1,0 +1,12 @@
+# Runs the AIRA pull-deploy updater once per timer tick.
+# No outside system connects to the host: the host pulls releases and images itself.
+
+[Unit]
+Description=AIRA pull-deploy updater
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/aira/updater.env
+ExecStart=/usr/bin/node /opt/aira/updater/main.js

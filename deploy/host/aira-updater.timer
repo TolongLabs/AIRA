@@ -1,0 +1,13 @@
+# Schedules the AIRA pull-deploy updater every 15 minutes after boot.
+# No outside system connects to the host: the host pulls releases and images itself.
+
+[Unit]
+Description=Run AIRA pull-deploy updater every 15 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
