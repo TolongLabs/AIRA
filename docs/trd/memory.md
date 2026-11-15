@@ -75,6 +75,9 @@ Steps 4, 7 and 9 are code. Steps 5, 6 and 8 are model judgements with code decid
 - One worker processes one chat's jobs in order. Two jobs for one chat never run together.
 - A failed job retries after 1, 5, 20 and 60 minutes. After the last retry it is marked `failed` and stays in the
   table with its error code, and the operator is alerted. It is never deleted silently.
+- With no judge configured, or no judge key, nothing is admitted and `note` is refused: the judge fails closed.
+- Extraction is background work. It waits while the spend cap or the disk guard pauses background work.
+- An episode summary is stored only beside an accepted fact of the same job, after the judge confirms it.
 - `memory_event` and a job's error hold reason codes only. They never hold message text, a fact's value or a
   model's words.
 
@@ -104,12 +107,13 @@ extracted either.
 
 ### What Forget Leaves
 
-| Where                     | Until                                                 |
-| ------------------------- | ----------------------------------------------------- |
-| AIRA's own replies        | The window's retention, `records.windowDays`          |
-| Local snapshots           | `backup.keepDays`                                     |
-| The off-host copy         | That repository's own prune horizon                   |
-| A restore from a snapshot | A restore from before the forget brings the fact back |
+| Where                                                                      | Until                                                                           |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| AIRA's own replies                                                         | The window's retention, `records.windowDays`                                    |
+| Another message that said the same thing, and a summary of another episode | The window's retention; the summary stays until it is forgotten by its own fact |
+| Local snapshots                                                            | `backup.keepDays`                                                               |
+| The off-host copy                                                          | That repository's own prune horizon                                             |
+| A restore from a snapshot                                                  | A restore from before the forget brings the fact back                           |
 
 ## Recall
 
@@ -158,6 +162,7 @@ model is specified. See [Tools](tools.md#lessons-and-library).
 | `memory.episodeIdleMs`      | 180000  | Idle time that closes an episode         |
 | `memory.episodeMaxMessages` | 25      | Message count that closes an episode     |
 | `memory.recallTokenBudget`  | 1200    | Size of recalled memory in the prompt    |
+| `judge.model`               | empty   | The judge's model id. Empty: no judge    |
 | `judge.memoryAdmit`         | 0.5     | Admission threshold                      |
 | `judge.memoryVerify`        | 0.5     | Verification threshold                   |
 | `embeddings.provider`       | `off`   | Embedding backend for episodes and media |

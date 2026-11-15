@@ -8,6 +8,11 @@ import type { Config } from './config/schema.js'
 import { withAttachments } from './format/attachments.js'
 import { createReplyCleaner } from './format/clean.js'
 import { createGatewayServer } from './gateway/server.js'
+import { createSystemOneClient, createSystemOneMemoryJudge, createSystemOneMoodJudge } from './judge/systemone.js'
+import { createMemoryPort } from './memory/port.js'
+import { presentLabels, recallForTurn } from './memory/recall.js'
+import type { MemoryJudge } from './memory/types.js'
+import { createMemoryWorker } from './memory/worker.js'
 import { createApiRunner } from './models/api-runner.js'
 import { createBreaker } from './models/breaker.js'
 import { createOpenAiClient } from './models/openai-client.js'
@@ -19,6 +24,7 @@ import type { MoodJudge } from './prompt/mood.js'
 import { withStickers } from './prompt/stickers.js'
 import { type Logger, createLogger } from './records/logger.js'
 import { createRedactor, secretsFromEnv } from './records/redact.js'
+import { recordModelCall } from './records/turn-record.js'
 import { listChats } from './settings/chats.js'
 import { resolveSettings } from './settings/settings.js'
 import type { Storage } from './storage/database.js'
@@ -45,6 +51,9 @@ export const SECRET_NAMES = [
   'OPENAI_API_KEY'
 ] as const
 
+/** How often the memory worker looks for a closed episode or a due job. */
+const MEMORY_TICK_MS = 15_000
+
 export interface AppOptions {
   config: Config
   /** Where secrets are read from, by name. */
@@ -54,6 +63,8 @@ export interface AppOptions {
   clients?: { main?: ModelClient; fallback?: ModelClient }
   /** The mood judge. Absent means rules only. */
   judge?: MoodJudge
+  /** The memory judge. Absent means the hosted judge when it is configured, else none: memory admits nothing. */
+  memoryJudge?: MemoryJudge
   ports?: Partial<Omit<ToolPorts, 'filesDir'>>
   /** The folder of the packs that ship with the release. */
   repositoryCharactersDir?: string
@@ -165,9 +176,27 @@ export async function createApp(options: AppOptions): Promise<App> {
       now
     })
 
+    // The hosted judge, when its model and key are set. Without it the mood comes from rules and memory admits nothing.
+    const judgeKey = env['TYPESAFE_API_KEY']
+    const hosted =
+      config.judge.model !== '' && judgeKey
+        ? createSystemOneClient({ apiKey: judgeKey, model: config.judge.model })
+        : undefined
+    const moodJudge = options.judge ?? (hosted ? createSystemOneMoodJudge(hosted) : undefined)
+    const memoryJudge = options.memoryJudge ?? (hosted ? createSystemOneMemoryJudge(hosted) : undefined)
+
     // Tools: one registry. The prompt text about tools and the cleaner's name list come from it.
     const registry = createToolRegistry({ storage, config, logger, redactor, now })
-    registerCoreTools(registry, { ...options.ports, filesDir: paths.files })
+    registerCoreTools(registry, {
+      memory: createMemoryPort({
+        storage,
+        judge: memoryJudge,
+        verifyThreshold: config.judge.memoryVerify,
+        timeoutMs: config.judge.timeoutMs
+      }),
+      ...options.ports,
+      filesDir: paths.files
+    })
     // External tool servers (docs/trd/tools.md#external-tool-servers). None is configured at launch.
     if (config.mcp.servers.length > 0) {
       const mcp = await connectMcpServers(config.mcp.servers, registry, logger)
@@ -178,7 +207,15 @@ export async function createApp(options: AppOptions): Promise<App> {
       storage,
       config,
       harnessRules: loadHarnessRules(options.harnessRulesPath),
-      judge: options.judge,
+      judge: moodJudge,
+      recall: (input) =>
+        recallForTurn(storage, {
+          chatId: input.context.chat.chatId,
+          present: presentLabels(input.window, input.context.chat.type === 'group'),
+          queryTexts: input.pending.map((message) => message.content),
+          tokenBudget: config.memory.recallTokenBudget,
+          now
+        }),
       toolRules: (context) => registry.rulesText(context),
       now
     })
@@ -207,6 +244,47 @@ export async function createApp(options: AppOptions): Promise<App> {
       hooks: { spendAllows: () => spendState(storage, config.llm.monthlyBudgetUsd, now).repliesAllowed },
       now
     })
+
+    // Memory extraction (docs/trd/memory.md#write-path): background work, one job at a time.
+    if (config.memory.enabled === 'on') {
+      const memoryWorker = createMemoryWorker({
+        storage,
+        config,
+        client: createRoutedClient({
+          main: { client: main, model: config.llm.main.model },
+          fallback: fallback ? { client: fallback, model: config.llm.fallback.model } : undefined,
+          config,
+          breaker,
+          storage,
+          transport: 'api',
+          onCall: (call) => {
+            storage.tx((db) =>
+              recordModelCall(db, {
+                role: call.role,
+                model: call.model,
+                transport: call.transport,
+                attempt: call.attempt,
+                startedAt: call.startedAt,
+                durationMs: call.durationMs,
+                inputTokens: call.usage?.inputTokens,
+                outputTokens: call.usage?.outputTokens,
+                cachedTokens: call.usage?.cachedTokens,
+                costUsd: call.costUsd,
+                failureKind: call.failureKind
+              })
+            )
+          },
+          onAuthFailure: (role) => alerter.raise('model_auth', { role }),
+          now
+        }),
+        judge: memoryJudge,
+        logger,
+        alerter,
+        paused: () => started.diskGuard.state().paused.memoryExtraction,
+        now
+      })
+      closers.push(memoryWorker.start(MEMORY_TICK_MS))
+    }
 
     // The gateway's failure helper reads the default pack's unavailable line from the data volume.
     let writtenLine: string | undefined
