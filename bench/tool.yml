@@ -1,0 +1,11 @@
+name: tool
+description: Invented messages that should make a model search or read a page
+prompts:
+  - search for the tallest mountain in Borneo and tell me its height
+  - look up the current release notes for TypeScript and summarize the main point
+  - find out when the next total solar eclipse is visible from Asia
+  - read https://example.com and tell me what the page says
+  - search for the population of Iceland and how many volcanoes it has
+  - look up the boiling point of water at two thousand meters elevation
+  - find the official documentation for Node.js readline promises and list one method
+  - search for who invented the printing press and what year it happened
