@@ -168,3 +168,37 @@ describe('what is not a command', () => {
     expect(lastTurn(app)['kind']).toBe('reply')
   })
 })
+
+describe('lessons commands', () => {
+  it('are ordinary text until the chat switches lessons on, and then file and fetch a song', async () => {
+    const model = queueModel([
+      { text: 'I do not know that command.' },
+      {
+        toolCalls: [
+          {
+            id: 'c1',
+            name: 'song_save',
+            args: { title: 'Morning Rain', lines: [{ text: 'rain on the tin roof', meaning: 'it rains' }] }
+          }
+        ]
+      },
+      { text: 'Filed.' },
+      { toolCalls: [{ id: 'c2', name: 'song_get', args: { title: 'morning rain' } }] },
+      { text: 'Here it is.' }
+    ])
+    const { app, gateway, chatId } = await startApp(model)
+    await gateway.send(msg('m-1', '/song morning rain'))
+    expect(names(model.requests[0])).not.toContain('song_get')
+    expect(lastTurn(app)).toMatchObject({ kind: 'reply' })
+
+    setSetting(app.storage, { level: 'chat', scope: chatId, key: 'features.lessons', value: true, actor: 'test' })
+    await gateway.send(msg('m-2', 'file this song: Morning Rain. rain on the tin roof'))
+    expect(names(model.requests[1])).toContain('song_save')
+    expect(rows(app, 'SELECT kind FROM receipt')).toEqual([{ kind: 'lesson.song_saved' }])
+
+    expect((await gateway.send(msg('m-3', '/song morning rain'))).content).toBe('Here it is.')
+    expect(names(model.requests[3])).toEqual(['song_get'])
+    expect(model.requests[4]?.messages.at(-1)?.content).toContain('rain on the tin roof')
+    expect(lastTurn(app)).toMatchObject({ kind: 'command', state: 'delivered' })
+  })
+})
