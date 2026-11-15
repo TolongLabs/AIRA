@@ -21,7 +21,7 @@ copied is specified in [Persistence](storage.md). This module owns what the tabl
 
 | Table                                                                          | Purpose                                                                                                      | Owner Module                      |
 | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ | --------------------------------- |
-| `chat`                                                                         | One row per chat instance: id, type, label                                                                   | This module                       |
+| `chat`                                                                         | One row per chat instance: ids, type, label, status                                                          | This module                       |
 | `identity`                                                                     | Maps WhatsApp ids for one person to one subject id                                                           | This module                       |
 | `setting`                                                                      | The settings hierarchy                                                                                       | This module                       |
 | `setting_change`                                                               | Change log for settings and packs                                                                            | [Records](records.md)             |
@@ -30,8 +30,19 @@ copied is specified in [Persistence](storage.md). This module owns what the tabl
 | `reminder`                                                                     | Reminders and their gateway job ids                                                                          | [Tools](tools.md)                 |
 | `turn`, `model_call`, `tool_call`, `failure`, `job_run`, `failure_diagnostics` | Records                                                                                                      | [Records](records.md)             |
 | `spend`                                                                        | Cost per role per month                                                                                      | [Models](models.md)               |
-| `chat_state`                                                                   | Per-chat runtime state: last opener, last sticker, mute                                                      | [Prompt Engine](prompt-engine.md) |
+| `chat_state`                                                                   | Runtime state by chat and character: last opener, sticker                                                    | [Prompt Engine](prompt-engine.md) |
 | `inbound_message`, `schema_migration`, `backup_run`, `file`                    | Inbound requests by chat and gateway message id, applied migrations, snapshot runs, files on the data volume | [Persistence](storage.md)         |
+
+### Chats And Identities
+
+Record tables and logs never hold a WhatsApp id. Code maps each one to an internal id at the door.
+
+- **Chat.** `chat` maps a chat's WhatsApp id to an internal `chat_id`. Every other table uses the internal id. The
+  first message from an unseen chat creates its row as `pending`. A pending chat gets no reply: the turn ends at
+  admission check 1 in [Reliability](reliability.md#turn-admission), with an operator alert. The owner site, the
+  migration or an operator command sets a chat `active`.
+- **Subject.** `identity` maps each WhatsApp id of a person to one `subject_id`. A sender seen for the first time
+  gets a new subject. Two ids of one person are joined by the site or the migration, never by a model.
 
 ## Settings Hierarchy
 

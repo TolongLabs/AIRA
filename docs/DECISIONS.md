@@ -39,6 +39,8 @@ that makes a new decision.
 | 2026-11-16 | A release starts on a schema that holds migrations it does not know.                                                                                  | An image rollback runs the previous release on the newer schema. Refusing to start would turn every rollback into a restore.                           |
 | 2026-11-16 | At start-up every job lease returns to the queue, expired or not.                                                                                     | One process writes the file, so every earlier lease owner is gone. Waiting for the expiry would only delay the work.                                   |
 | 2026-11-16 | A snapshot is one file with a rollback journal, and the recovery pass empties `snapshots/` of everything else.                                        | The Restart suite found that a kill during verification left a stray file beside a snapshot.                                                           |
+| 2026-11-16 | Every table uses an internal chat id and subject id. Only `chat` and `identity` hold a WhatsApp id.                                                   | Record tables must not hold WhatsApp ids. One mapping at the door keeps them out of every other table and log.                                         |
+| 2026-11-16 | A chat seen for the first time is stored as `pending` and gets no reply until it is set `active`.                                                     | The admission rules refuse an unknown chat. A pending row lets the owner see it and switch it on, and lets records name it.                            |
 
 ## Site
 
