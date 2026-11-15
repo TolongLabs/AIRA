@@ -34,6 +34,8 @@ All memory is rows in `memory_item`.
 
 ## Write Path
 
+![Memory write path: an episode closes, is queued, admitted by the judge, extracted by the main model, checked, confirmed and applied in one transaction](../diagrams/memory-write-path.svg)
+
 1. **Capture.** Each delivered turn appends its messages to `session_message`.
 2. **Close.** An episode closes after `memory.episodeIdleMs` without a message, or `memory.episodeMaxMessages`.
 3. **Queue.** A job row is written to `memory_job`. The queue lives in SQLite and survives a restart.

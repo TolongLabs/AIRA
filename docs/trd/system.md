@@ -15,16 +15,7 @@ How the processes fit together, what the gateway and the core promise each other
 
 ## Processes
 
-```
-WhatsApp  <->  bridge  <->  Hermes gateway  --HTTP-->  AIRA core (container)
-               (host, pinned, patched)                 | prompt engine, tools, memory, records
-                    |                                  +--> model API  (API runner)
-                    | cron, delivery                   +--> host runner service --> claude program
-                    v                                  +--> judge model, media model, search
-               owner tools (unchanged)                 +--> SQLite file (data volume)
-                                                       ^
-owner site (React)  --HTTP-->  core API (chatbot pages) |   legacy site API (owner-tool pages)
-```
+![System overview: WhatsApp reaches the Hermes gateway, which calls the AIRA core; the core uses one SQLite file and the model services; the owner site calls the core's API](../diagrams/system-overview.svg)
 
 - **Gateway:** receives and sends WhatsApp messages, keeps its sessions, and runs its cron. It calls the core as its
   model. Its fallback provider list is empty.
@@ -98,6 +89,8 @@ deploy/                 Dockerfile, compose file, host units
 
 ## One Turn
 
+![Message path: resolve the chat, build the turn, run one agent loop, clean and format, then reply](../diagrams/message-path.svg)
+
 1. **Receive.** The gateway posts the request. The core assigns a turn id and writes the opening turn record.
 2. **Resolve.** Code maps the session id to a chat, resolves its settings through the hierarchy, and loads the bound
    character pack. A broken binding stops the turn with a record and an operator alert. See [Data](data.md).
@@ -117,14 +110,14 @@ deploy/                 Dockerfile, compose file, host units
 
 ## Assumptions And Spikes
 
-| ID  | Kind       | Statement                                                                                             | Affects               |
-| --- | ---------- | ----------------------------------------------------------------------------------------------------- | --------------------- |
-| A-1 | Assumption | Bun manages packages and runs scripts. Node 24 runs the service in the container.                     | Tech stack            |
-| A-2 | Assumption | The gateway's session id header is enough to identify the chat and the sender in a group.             | Gateway contract      |
-| A-3 | Assumption | The judge model is reachable from the host network with acceptable latency for the mood override.     | Prompt engine, memory |
-| S-1 | Spike      | Send a native sticker through the pinned bridge, and find how the core names it in a response.        | Delivery              |
-| S-2 | Spike      | Decide who splits bubbles: the existing gateway patch or the core returning several messages.         | Delivery              |
-| S-3 | Spike      | Confirm what the gateway does with an empty fallback list when the core is down.                      | D-4, cutover          |
-| S-4 | Spike      | Benchmark the two transports on the live machine with the same prompts.                               | Launch default        |
-| S-5 | Spike      | Build the shadow tap: copy real requests to the new core without sending its replies.                 | Cutover               |
-| S-6 | Spike      | List which of the 67 gateway patches the chatbot still needs once the core owns replies and failures. | Maintenance           |
+| ID  | Kind       | Statement                                                                                                                                                             | Affects               |
+| --- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| A-1 | Assumption | Bun manages packages and runs scripts. Node 24 runs the service in the container.                                                                                     | Tech stack            |
+| A-2 | Assumption | The gateway's session id header is enough to identify the chat and the sender in a group.                                                                             | Gateway contract      |
+| A-3 | Assumption | The judge model is reachable from the host network with acceptable latency for the mood override.                                                                     | Prompt engine, memory |
+| S-1 | Spike      | Send a native sticker through the pinned bridge, and find how the core names it in a response. Tracked in [#25](https://github.com/TolongLabs/AIRA/issues/25).        | Delivery              |
+| S-2 | Spike      | Decide who splits bubbles: the existing gateway patch or the core returning several messages. Tracked in [#26](https://github.com/TolongLabs/AIRA/issues/26).         | Delivery              |
+| S-3 | Spike      | Confirm what the gateway does with an empty fallback list when the core is down. Tracked in [#27](https://github.com/TolongLabs/AIRA/issues/27).                      | D-4, cutover          |
+| S-4 | Spike      | Benchmark the two transports on the live machine with the same prompts. Tracked in [#28](https://github.com/TolongLabs/AIRA/issues/28).                               | Launch default        |
+| S-5 | Spike      | Build the shadow tap: copy real requests to the new core without sending its replies. Tracked in [#29](https://github.com/TolongLabs/AIRA/issues/29).                 | Cutover               |
+| S-6 | Spike      | List which of the 67 gateway patches the chatbot still needs once the core owns replies and failures. Tracked in [#30](https://github.com/TolongLabs/AIRA/issues/30). | Maintenance           |

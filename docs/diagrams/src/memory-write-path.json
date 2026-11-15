@@ -1,0 +1,150 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Memory Write Path",
+    "quality_profile": "showcase",
+    "output": ".archify/memory-write-path.html"
+  },
+  "lanes": [
+    {
+      "id": "code",
+      "label": "Code"
+    },
+    {
+      "id": "judge",
+      "label": "Judge Model"
+    },
+    {
+      "id": "llm",
+      "label": "Main Model"
+    },
+    {
+      "id": "db",
+      "label": "Database"
+    }
+  ],
+  "mainPath": ["close", "queue", "admit", "extract", "quote", "verify", "apply"],
+  "nodes": [
+    {
+      "id": "close",
+      "lane": "code",
+      "col": 0,
+      "type": "backend",
+      "label": "Episode Closes",
+      "sublabel": "3 min idle or 25 msgs"
+    },
+    {
+      "id": "quote",
+      "lane": "code",
+      "col": 3,
+      "type": "security",
+      "label": "Check Quote",
+      "sublabel": "must exist in chat"
+    },
+    {
+      "id": "admit",
+      "lane": "judge",
+      "col": 1,
+      "type": "cloud",
+      "label": "Worth Keeping?",
+      "sublabel": "admission"
+    },
+    {
+      "id": "verify",
+      "lane": "judge",
+      "col": 4,
+      "type": "cloud",
+      "label": "Confirm Each",
+      "sublabel": "fails closed"
+    },
+    {
+      "id": "extract",
+      "lane": "llm",
+      "col": 2,
+      "type": "cloud",
+      "label": "Propose Changes",
+      "sublabel": "each with a quote"
+    },
+    {
+      "id": "queue",
+      "lane": "db",
+      "col": 0,
+      "type": "database",
+      "label": "Job Queue",
+      "sublabel": "survives restart"
+    },
+    {
+      "id": "apply",
+      "lane": "db",
+      "col": 5,
+      "type": "database",
+      "label": "One Transaction",
+      "sublabel": "scoped to this chat"
+    },
+    {
+      "id": "retry",
+      "lane": "db",
+      "col": 3,
+      "type": "messagebus",
+      "label": "Retry",
+      "sublabel": "1, 5, 20, 60 min"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "close",
+      "to": "queue",
+      "label": "enqueue"
+    },
+    {
+      "id": "e2",
+      "from": "queue",
+      "to": "admit",
+      "label": "job",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e3",
+      "from": "admit",
+      "to": "extract",
+      "label": "yes"
+    },
+    {
+      "id": "e4",
+      "from": "extract",
+      "to": "quote",
+      "label": "operations"
+    },
+    {
+      "id": "e5",
+      "from": "quote",
+      "to": "verify",
+      "label": "valid"
+    },
+    {
+      "id": "e6",
+      "from": "verify",
+      "to": "apply",
+      "label": "accepted",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e7",
+      "from": "extract",
+      "to": "retry",
+      "label": "failure",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "e8",
+      "from": "retry",
+      "to": "queue",
+      "label": "requeue",
+      "variant": "dashed",
+      "role": "return"
+    }
+  ]
+}
