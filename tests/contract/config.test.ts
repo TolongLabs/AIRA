@@ -40,7 +40,15 @@ describe('config.yml', () => {
   it('refuses to deploy while gateway.hostDataDir is empty', () => {
     const config = parseConfig(source)
     expect(() => requireDeployable(config)).toThrow(/gateway\.hostDataDir/)
-    expect(() => requireDeployable({ ...config, gateway: { hostDataDir: '/srv/aira-data' } })).not.toThrow()
+    const placed = { ...config, gateway: { hostDataDir: '/srv/aira-data' } }
+    expect(() => requireDeployable(placed)).toThrow(/llm\.main\.provider/)
+    const main = {
+      ...config.llm.main,
+      provider: 'openai-compatible',
+      model: 'a-model',
+      baseUrl: 'https://provider.example/v1'
+    }
+    expect(() => requireDeployable({ ...placed, llm: { ...config.llm, main } })).not.toThrow()
   })
 })
 

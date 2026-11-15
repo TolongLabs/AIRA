@@ -18,6 +18,10 @@ export interface GatewayServerOptions {
   redactor: Redactor
   /** True once start-up has passed every step. The health endpoint reports it. */
   ready: () => boolean
+  /** More fields for the health report, such as the newest snapshot. The updater reads them. */
+  health?: () => Record<string, unknown>
+  /** Called after each turn request has been answered. It must not throw. */
+  afterTurn?: () => void
   /** The fixed answer to a gateway chore such as a session title. */
   auxiliaryText?: string
   maxBodyBytes?: number
@@ -89,6 +93,7 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
     try {
       const reply = await turns.handle(parsed)
       writeReply(response, { id: reply.turnId ?? 'none', content: reply.content }, { ...parsed, now })
+      options.afterTurn?.()
     } catch (error) {
       // Nothing was acknowledged. Dropping the connection makes the gateway send the same request again.
       log.error('gateway.turn_failed', { error })
@@ -101,7 +106,11 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
     const path = (request.url ?? '').split('?')[0]
     if (request.method === 'GET' && path === '/health') {
       const ready = options.ready()
-      json(response, ready ? 200 : 503, { status: ready ? 'ready' : 'starting' })
+      json(response, ready ? 200 : 503, {
+        ...options.health?.(),
+        status: ready ? 'ready' : 'starting',
+        activeTurns: turns.active()
+      })
       return
     }
     if (request.method === 'POST' && path === '/v1/chat/completions') {

@@ -4,6 +4,7 @@
 !bun.lock
 !tsconfig.json
 !src/
+!scripts/
 !prompts/
 !characters/example/
 !config.yml
