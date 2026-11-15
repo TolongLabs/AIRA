@@ -1,0 +1,4 @@
+bunx lint-staged
+# Scan staged changes for secrets before committing.
+command -v gitleaks >/dev/null 2>&1 || { echo 'pre-commit: install gitleaks (brew install gitleaks) to scan staged changes' >&2; exit 1; }
+gitleaks git --pre-commit --staged --redact --no-banner

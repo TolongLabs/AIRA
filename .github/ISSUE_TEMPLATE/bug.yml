@@ -1,0 +1,36 @@
+name: Bug
+description: Report something broken
+title: 'fix(<scope>): '
+labels: [needs-triage, 'type:fix']
+body:
+  - type: markdown
+    attributes:
+      value: Never paste chat text, phone numbers, or real names in this form.
+  - type: textarea
+    id: what
+    attributes:
+      label: What Happened
+      description: Describe what went wrong
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+      description: Describe what should have happened instead
+    validations:
+      required: true
+  - type: input
+    id: turn-id
+    attributes:
+      label: Turn ID
+      description: The turn id if known
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The AIRA version or commit SHA
+    validations:
+      required: true

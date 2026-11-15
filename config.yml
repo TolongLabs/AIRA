@@ -1,0 +1,94 @@
+# Owned by docs/trd/prompt-engine.md
+prompt:
+  maxSystemTokens: 8000 # Ceiling enforced by the size test
+
+# Owned by docs/trd/prompt-engine.md and docs/trd/memory.md
+judge:
+  mood: 'on' # Allows the judge to override the rule mood
+  moodMinProbability: 0.3 # Threshold for the override
+  memoryAdmit: 0.5 # Admission threshold
+  memoryVerify: 0.5 # Verification threshold
+
+# Owned by docs/trd/prompt-engine.md
+format:
+  bubbleMaxChars: 700 # Split point for bubbles
+  leakCheck: 'on' # Step 6 of the cleaning chain
+
+# Owned by docs/trd/tools.md
+tools:
+  maxCallsPerTurn: 6 # Limit on tool calls in one turn
+  defaultTimeoutMs: 15000 # Timeout when a tool sets none
+
+# Owned by docs/trd/tools.md
+search:
+  provider: 'off' # Web search backend, or off
+
+# Owned by docs/trd/tools.md
+mcp:
+  servers: [] # External tool servers
+
+# Owned by docs/trd/memory.md
+memory:
+  enabled: 'on' # Master switch for passive memory
+  episodeIdleMs: 180000 # Idle time that closes an episode
+  episodeMaxMessages: 25 # Message count that closes an episode
+  recallTokenBudget: 1200 # Size of recalled memory in the prompt
+
+# Owned by docs/trd/memory.md
+embeddings:
+  provider: 'off' # Embedding backend for episodes and media
+
+# Owned by docs/trd/models.md
+llm:
+  transport: 'api' # Selects the runner
+  main:
+    provider: '' # Main model provider
+    model: '' # Main model id
+    baseUrl: '' # Main model endpoint URL
+  fallback:
+    provider: '' # Fallback model provider
+    model: '' # Fallback model id
+    baseUrl: '' # Fallback model endpoint URL
+  turnDeadlineMs: 45000 # Hard limit for one turn's model work
+  maxRetries: 2 # Retries for a transient failure
+  breakerMs: 600000 # How long a breaker stays open
+  monthlyBudgetUsd: 50 # Spend cap for paid roles
+
+# Owned by docs/trd/models.md
+media:
+  watcher:
+    model: null # The media model
+  maxVideoSeconds: 180 # Longest video that is watched
+
+# Owned by docs/trd/reliability.md
+turn:
+  batchMs: 1500 # Window that merges quick messages
+  mediaWaitMs: 8000 # Wait for a caption after a bare photo
+
+# Owned by docs/trd/reliability.md
+shutdown:
+  graceMs: 20000 # Time for running turns at shutdown
+
+# Owned by docs/trd/reliability.md
+alerts:
+  minGapMs: 900000 # Minimum gap between alerts of one kind
+
+# Owned by docs/trd/records.md
+records:
+  retentionDays: 90 # Turn and child records
+  diagnosticsHours: 72 # Verbatim failed-turn diagnostics
+  windowDays: 7 # Conversation window messages
+
+# Owned by docs/trd/records.md
+log:
+  level: 'info' # Minimum log level
+
+# Owned by docs/trd/deployment.md
+deploy:
+  checkEveryMin: 15 # How often the host looks for a release
+  waitForIdleMs: 120000 # Longest wait for a running turn
+  healthTimeoutMs: 60000 # Longest wait for the new image to be ready
+
+# Owned by docs/trd/deployment.md
+backup:
+  keepDays: 14 # Database backups kept

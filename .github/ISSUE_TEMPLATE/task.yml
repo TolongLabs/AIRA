@@ -1,0 +1,12 @@
+name: Task
+description: Routine work that is neither a bug nor a feature
+title: 'chore(<scope>): '
+labels: [needs-triage, 'type:chore']
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What to Do
+      description: Describe what needs doing and when it is done
+    validations:
+      required: true
