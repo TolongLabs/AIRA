@@ -308,6 +308,18 @@ describe('the whole service', () => {
     expect(lines.join('')).not.toContain(secret)
   })
 
+  it('has the page reader built in, and it refuses a private address', async () => {
+    const model = queueModel([
+      { toolCalls: [{ id: 'c1', name: 'read_page', args: { url: 'http://127.0.0.1:1/private' } }] },
+      { text: 'I cannot open that address.' }
+    ])
+    const { gateway } = await startApp(model)
+    await gateway.send(msg('m-1', 'read http://127.0.0.1:1/private for me'))
+    const toolResult = model.requests[1]?.messages.at(-1)?.content ?? ''
+    expect(toolResult).toContain('forbidden address')
+    expect(toolResult).not.toContain('not set up')
+  })
+
   it('alerts the operator when a write fails with an I/O error, and keeps running', async () => {
     const { app, gateway, logs, baseUrl } = await startApp(queueModel([{ text: 'hello' }]))
     await gateway.send(msg('m-1', 'first'))
