@@ -71,7 +71,7 @@ At 4 to 16 turns a day, `synchronous=FULL` costs nothing that a person can notic
 
 - A write is **acknowledged** when its transaction has committed. Only then may code issue a receipt, tick a job as
   done, or tell the model that something was saved.
-- A file is written to a temporary name in the same folder, flushed to disk, then renamed. Its database row is
+- A file is written to a temporary name in the same folder, flushed to disk, then renamed. Its row in `file` is
   written after the rename. A file with no row is removed by the start-up sweep; a row with no file is a failure
   record.
 - A multi-step change is one transaction or it is a job. There is no third kind.
@@ -91,7 +91,11 @@ assumes all three.
 | Reminder        | `reminder`                           | `active`, `fired`, `cancelled`                              | Reconciled with the gateway's schedule: missing ones are recreated     |
 | Snapshot        | `backup_run`                         | `started`, `verified`, `failed`                             | A `started` row becomes `failed` and its file is removed               |
 
-- An inbound request is written to `inbound_message`, keyed by the gateway's message id, before any other work.
+- An inbound request is written to `inbound_message`, keyed by the chat and the gateway's message id, before any
+  other work. The chat is part of the key because a message id is unique only inside its chat, and a stored reply
+  must never be returned to another chat.
+- The reply of a turn is stored once, as that turn's assistant row in `session_message`, exactly as it was returned
+  to the gateway. It is not copied into a record table.
 - **A repeated id never runs a second turn.** If the first turn is delivered, the stored reply is returned. If it
   is still running, the request waits for it.
 - A job handler is idempotent: running it twice for one job id leaves the same rows as running it once.
@@ -173,6 +177,8 @@ replication of the write-ahead log is the upgrade if 15 minutes is ever too much
 - **Add first, remove later.** A migration must leave the previous release able to run. A column or table is
   removed one release after the code stopped using it.
 - So an image rollback needs no data restore. A restore is for a damaged file only.
+- A release that finds migrations in `schema_migration` that it does not know starts anyway: a newer release
+  applied them, and they are add-first.
 - A migration that cannot keep the previous release working ships in a release marked `manual`, with its own
   rehearsed restore.
 

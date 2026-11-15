@@ -1,0 +1,163 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import type { Storage } from '../../src/storage/database.js'
+import { applyMigrations, planMigrations, readMigrations } from '../../src/storage/migrate.js'
+import { tmpDir, tmpStorage } from '../support/tmp.js'
+
+// The Migration suite (docs/trd/storage.md#tests). It runs in CI on every change.
+
+interface Baseline {
+  releasedVersion: number
+}
+
+const baseline = JSON.parse(readFileSync(join(import.meta.dirname, 'baseline.json'), 'utf8')) as Baseline
+
+// Statements that break a previous release that is still running on the same file.
+const REMOVES = /\b(DROP\s+(TABLE|COLUMN|INDEX|VIEW|TRIGGER)|RENAME\s+(TO|COLUMN)|ALTER\s+TABLE\s+\w+\s+DROP)\b/i
+
+function addFirstFaults(sql: string): string[] {
+  if (/^--\s*manual\b/i.test(sql)) return []
+  return sql
+    .split('\n')
+    .map((line) => line.replace(/--.*$/, ''))
+    .filter((line) => REMOVES.test(line))
+}
+
+function tables(storage: Storage): { name: string; strict: number }[] {
+  return storage.read(
+    (db) =>
+      db
+        .prepare("SELECT name, strict FROM pragma_table_list WHERE schema = 'main' AND name NOT LIKE 'sqlite_%'")
+        .all() as { name: string; strict: number }[]
+  )
+}
+
+function scratchMigrations(files: Record<string, string>): string {
+  const dir = join(tmpDir(), 'migrations')
+  mkdirSync(dir)
+  for (const [name, sql] of Object.entries(files)) writeFileSync(join(dir, name), sql)
+  return dir
+}
+
+describe('migrations from an empty file', () => {
+  it('applies every migration and records each with its checksum', () => {
+    const storage = tmpStorage({ migrate: false })
+    const migrations = readMigrations()
+    expect(migrations.length).toBeGreaterThan(0)
+    expect(applyMigrations(storage)).toEqual(migrations.map((migration) => migration.version))
+    const rows = storage.read((db) => db.prepare('SELECT version, checksum FROM schema_migration').all())
+    expect(rows).toEqual(migrations.map(({ version, checksum }) => ({ version, checksum })))
+    expect(() => storage.check()).not.toThrow()
+  })
+
+  it('declares every table strict', () => {
+    const storage = tmpStorage()
+    const loose = tables(storage).filter((table) => table.strict !== 1)
+    expect(loose).toEqual([])
+  })
+
+  it('creates the tables the persistence contract names', () => {
+    const storage = tmpStorage()
+    const names = tables(storage).map((table) => table.name)
+    for (const name of ['inbound_message', 'turn', 'memory_job', 'backup_run', 'schema_migration', 'file']) {
+      expect(names).toContain(name)
+    }
+  })
+
+  it('does nothing on a second run', () => {
+    const storage = tmpStorage()
+    expect(applyMigrations(storage)).toEqual([])
+    expect(planMigrations(storage)).toEqual({ pending: [], newer: [] })
+  })
+})
+
+describe('migration ledger', () => {
+  const first = 'CREATE TABLE note (id INTEGER PRIMARY KEY, body TEXT NOT NULL) STRICT;'
+
+  it('stops when an applied migration file changed', () => {
+    const storage = tmpStorage({ migrate: false })
+    applyMigrations(storage, readMigrations(scratchMigrations({ '0001_note.sql': first })))
+    const changed = readMigrations(scratchMigrations({ '0001_note.sql': first + '\n-- edited' }))
+    expect(() => applyMigrations(storage, changed)).toThrow(/0001_note changed after it was applied/)
+  })
+
+  it('applies a failing migration not at all, and records nothing for it', () => {
+    const storage = tmpStorage({ migrate: false })
+    const dir = scratchMigrations({
+      '0001_note.sql': first,
+      '0002_broken.sql': 'CREATE TABLE half (id INTEGER PRIMARY KEY) STRICT; INSERT INTO missing VALUES (1);'
+    })
+    expect(() => applyMigrations(storage, readMigrations(dir))).toThrow(/no such table: missing/)
+    expect(storage.read((db) => db.prepare('SELECT version FROM schema_migration').pluck().all())).toEqual([1])
+    expect(tables(storage).map((table) => table.name)).not.toContain('half')
+  })
+
+  it('refuses a gap or a badly named file', () => {
+    expect(() => readMigrations(scratchMigrations({ '0001_a.sql': first, '0003_c.sql': first }))).toThrow(/no gap/)
+    expect(() => readMigrations(scratchMigrations({ 'first.sql': first }))).toThrow(/NNNN_name\.sql/)
+  })
+
+  it('lets an older release start on a schema a newer release migrated', () => {
+    const storage = tmpStorage({ migrate: false })
+    const newer = scratchMigrations({
+      '0001_note.sql': first,
+      '0002_more.sql': "ALTER TABLE note ADD COLUMN tag TEXT NOT NULL DEFAULT '';"
+    })
+    applyMigrations(storage, readMigrations(newer))
+    const older = readMigrations(scratchMigrations({ '0001_note.sql': first }))
+    expect(planMigrations(storage, older)).toEqual({ pending: [], newer: [2] })
+    expect(applyMigrations(storage, older)).toEqual([])
+  })
+
+  it('treats line endings as equal when it checks a checksum', () => {
+    const unix = readMigrations(scratchMigrations({ '0001_note.sql': first + '\n' }))
+    const windows = readMigrations(scratchMigrations({ '0001_note.sql': first + '\r\n' }))
+    expect(unix[0]?.checksum).toBe(windows[0]?.checksum)
+  })
+})
+
+describe('add first, remove later', () => {
+  it('no migration removes or renames what a running release may still use', () => {
+    const faults = readMigrations().flatMap((migration) =>
+      addFirstFaults(migration.sql).map((line) => `${migration.version}: ${line.trim()}`)
+    )
+    expect(faults).toEqual([])
+  })
+
+  it('the check catches a removal and accepts a release marked manual', () => {
+    expect(addFirstFaults('ALTER TABLE turn DROP COLUMN stage;')).toHaveLength(1)
+    expect(addFirstFaults('ALTER TABLE turn RENAME TO turns;')).toHaveLength(1)
+    expect(addFirstFaults('DROP TABLE turn;')).toHaveLength(1)
+    expect(addFirstFaults('-- manual: rehearsed restore\nDROP TABLE turn;')).toEqual([])
+    expect(addFirstFaults('ALTER TABLE turn ADD COLUMN note TEXT; -- we do not DROP TABLE here')).toEqual([])
+  })
+
+  it('rows written by the previous release survive every later migration', () => {
+    // The seed holds rows as the released schema stored them. There is no seed before the first release.
+    const seedFile = join(import.meta.dirname, `seed-${String(baseline.releasedVersion).padStart(4, '0')}.sql`)
+    const migrations = readMigrations()
+    expect(baseline.releasedVersion).toBeLessThanOrEqual(migrations.length)
+    expect(existsSync(seedFile)).toBe(baseline.releasedVersion > 0)
+
+    const storage = tmpStorage({ migrate: false })
+    applyMigrations(storage, migrations.slice(0, baseline.releasedVersion))
+    const before = new Map<string, number>()
+    if (baseline.releasedVersion > 0) {
+      storage.tx((db) => db.exec(readFileSync(seedFile, 'utf8')))
+      for (const { name } of tables(storage)) {
+        before.set(name, storage.read((db) => db.prepare(`SELECT count(*) FROM "${name}"`).pluck().get()) as number)
+      }
+    }
+
+    applyMigrations(storage, migrations)
+    expect(() => storage.check()).not.toThrow()
+    for (const [name, count] of before) {
+      if (name === 'schema_migration') continue
+      expect(storage.read((db) => db.prepare(`SELECT count(*) FROM "${name}"`).pluck().get())).toBe(count)
+    }
+    // The previous release must still be able to write the rows it knows.
+    if (baseline.releasedVersion > 0)
+      expect(() => storage.tx((db) => db.exec(readFileSync(seedFile, 'utf8')))).toThrow(/UNIQUE|PRIMARY/)
+  })
+})
