@@ -58,6 +58,8 @@ The gateway calls `POST /v1/chat/completions` on the core.
 | Logs            | Structured JSON lines with redaction                         |
 | Tests           | Vitest, in the layers defined in [Test Harness](harness.md)  |
 | Lint and Format | Biome and Prettier, commit messages checked by commitlint    |
+| Analytics       | DuckDB, for report and benchmark scripts only                |
+| Off-Host Backup | An encrypted, deduplicated backup tool on a timer            |
 | Site            | React, Vite and Tailwind, as the site uses today             |
 
 ## Repository Layout
@@ -110,14 +112,14 @@ deploy/                 Dockerfile, compose file, host units
 
 ## Assumptions And Spikes
 
-| ID  | Kind       | Statement                                                                                                                                                             | Affects               |
-| --- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
-| A-1 | Assumption | Bun manages packages and runs scripts. Node 24 runs the service in the container.                                                                                     | Tech stack            |
-| A-2 | Assumption | The gateway's session id header is enough to identify the chat and the sender in a group.                                                                             | Gateway contract      |
-| A-3 | Assumption | The judge model is reachable from the host network with acceptable latency for the mood override.                                                                     | Prompt engine, memory |
-| S-1 | Spike      | Send a native sticker through the pinned bridge, and find how the core names it in a response. Tracked in [#25](https://github.com/TolongLabs/AIRA/issues/25).        | Delivery              |
-| S-2 | Spike      | Decide who splits bubbles: the existing gateway patch or the core returning several messages. Tracked in [#26](https://github.com/TolongLabs/AIRA/issues/26).         | Delivery              |
-| S-3 | Spike      | Confirm what the gateway does with an empty fallback list when the core is down. Tracked in [#27](https://github.com/TolongLabs/AIRA/issues/27).                      | D-4, cutover          |
-| S-4 | Spike      | Benchmark the two transports on the live machine with the same prompts. Tracked in [#28](https://github.com/TolongLabs/AIRA/issues/28).                               | Launch default        |
-| S-5 | Spike      | Build the shadow tap: copy real requests to the new core without sending its replies. Tracked in [#29](https://github.com/TolongLabs/AIRA/issues/29).                 | Cutover               |
-| S-6 | Spike      | List which of the 67 gateway patches the chatbot still needs once the core owns replies and failures. Tracked in [#30](https://github.com/TolongLabs/AIRA/issues/30). | Maintenance           |
+| ID  | Kind       | Statement                                                                                                                                                                                                                                                                             | Affects               |
+| --- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| A-1 | Assumption | Bun manages packages and runs scripts. Node 24 runs the service in the container.                                                                                                                                                                                                     | Tech stack            |
+| A-2 | Assumption | The gateway's session id header is enough to identify the chat and the sender in a group.                                                                                                                                                                                             | Gateway contract      |
+| A-3 | Assumption | The judge model is reachable from the host network with acceptable latency for the mood override.                                                                                                                                                                                     | Prompt engine, memory |
+| S-1 | Spike      | Send a native sticker through the pinned bridge, and find how the core names it in a response. Tracked in [#25](https://github.com/TolongLabs/AIRA/issues/25).                                                                                                                        | Delivery              |
+| S-2 | Spike      | Decide who splits bubbles: the existing gateway patch or the core returning several messages. Tracked in [#26](https://github.com/TolongLabs/AIRA/issues/26).                                                                                                                         | Delivery              |
+| S-3 | Spike      | Confirm what the gateway does with an empty fallback list when the core is down, and when the core's connection drops in the middle of a turn: does it send the message again, and may the core deliver a late reply. Tracked in [#27](https://github.com/TolongLabs/AIRA/issues/27). | D-4, cutover          |
+| S-4 | Spike      | Benchmark the two transports on the live machine with the same prompts. Tracked in [#28](https://github.com/TolongLabs/AIRA/issues/28).                                                                                                                                               | Launch default        |
+| S-5 | Spike      | Build the shadow tap: copy real requests to the new core without sending its replies. Tracked in [#29](https://github.com/TolongLabs/AIRA/issues/29).                                                                                                                                 | Cutover               |
+| S-6 | Spike      | List which of the 67 gateway patches the chatbot still needs once the core owns replies and failures. Tracked in [#30](https://github.com/TolongLabs/AIRA/issues/30).                                                                                                                 | Maintenance           |

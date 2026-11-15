@@ -42,7 +42,8 @@ A `failure` row is written for handled failures too. A retry that succeeds still
 
 One list, used by records, alerts and tests: the model kinds in [Models](models.md#failure-kinds), plus
 `tool_timeout`, `tool_error`, `tool_refused`, `judge_unavailable`, `media_unreadable`, `memory_rejected`,
-`memory_job_failed`, `config_invalid`, `binding_invalid`, `gateway_malformed`, `internal`.
+`memory_job_failed`, `config_invalid`, `binding_invalid`, `gateway_malformed`, `turn_interrupted`, `storage_error`,
+`storage_low_space`, `backup_failed`, `internal`.
 
 ## Logs
 
@@ -69,7 +70,8 @@ Verbatim text is kept in two places only:
 ## Retention
 
 A daily job prunes by table. Defaults: turn and child records 90 days, diagnostics 72 hours, window messages 7
-days, setting changes kept. Pruning writes its own `job_run` row with counts.
+days, setting changes kept. Pruning writes its own `job_run` row with counts. Rows are exported to the archive before
+they are deleted. See [Persistence](storage.md#analytics-and-the-archive).
 
 ## Operator Views
 

@@ -25,14 +25,15 @@ one night.
 
 ## Host Layout
 
-| Item              | Location On The Host                                              |
-| ----------------- | ----------------------------------------------------------------- |
-| Compose file      | `deploy/compose.yml`, copied at install                           |
-| Secrets           | `.env`, mode 600, never in git                                    |
-| Data volume       | SQLite file, backups, uploaded stickers, packs made in the studio |
-| Core port         | `127.0.0.1:9881`, published to loopback only                      |
-| Site and API port | Private network address only                                      |
-| Runner service    | A host unit, present only for the subscription transport          |
+| Item              | Location On The Host                                                                    |
+| ----------------- | --------------------------------------------------------------------------------------- |
+| Compose file      | `deploy/compose.yml`, copied at install                                                 |
+| Secrets           | `.env`, mode 600, never in git                                                          |
+| Data volume       | The database, files, snapshots, archive and cache. See [Persistence](storage.md#stores) |
+| Off-host copy     | An encrypted repository on another machine                                              |
+| Core port         | `127.0.0.1:9881`, published to loopback only                                            |
+| Site and API port | Private network address only                                                            |
+| Runner service    | A host unit, present only for the subscription transport                                |
 
 ## Pull Deploy
 
@@ -41,13 +42,13 @@ A host timer runs the updater. No outside system connects to the host.
 1. Read the newest release tag from the registry.
 2. If it equals the running version, stop.
 3. If a turn is in flight, wait up to `deploy.waitForIdleMs`.
-4. Back up the database.
+4. Take a verified snapshot of the database.
 5. Pull the image and start it. Start-up runs migrations inside a transaction.
 6. Poll the health endpoint until ready, up to `deploy.healthTimeoutMs`.
 7. Send one synthetic turn through the endpoint and check for a deliverable reply.
 8. On success: record the deploy and remove images older than the previous one.
-9. On failure: start the previous image, restore the backup if a migration ran, record the failure and alert the
-   operator.
+9. On failure: start the previous image, record the failure and alert the operator. No data is restored, because a
+   migration keeps the previous release working. See [Persistence](storage.md#migrations).
 
 - A release marked `manual` in its notes is skipped by the timer and waits for the operator. Use it for a release
   with a migration that cannot be reversed.
@@ -96,4 +97,3 @@ by the new core since cutover exist only in the new database; the rollback recor
 | `deploy.checkEveryMin`   | 15      | How often the host looks for a release     |
 | `deploy.waitForIdleMs`   | 120000  | Longest wait for a running turn            |
 | `deploy.healthTimeoutMs` | 60000   | Longest wait for the new image to be ready |
-| `backup.keepDays`        | 14      | Database backups kept                      |

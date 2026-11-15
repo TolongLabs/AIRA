@@ -89,6 +89,20 @@ deploy:
   waitForIdleMs: 120000 # Longest wait for a running turn
   healthTimeoutMs: 60000 # Longest wait for the new image to be ready
 
-# Owned by docs/trd/deployment.md
+# Owned by docs/trd/storage.md
+storage:
+  path: '/data' # The data volume inside the container
+  minFreeMb: 2048 # Warn level for free space
+  criticalFreeMb: 512 # Critical level for free space
+  checkEveryMin: 5 # How often free space is checked
+  cacheMaxMb: 512 # Size cap for cache/
+
+# Owned by docs/trd/storage.md
 backup:
-  keepDays: 14 # Database backups kept
+  everyMin: 15 # Interval between snapshots
+  keepDays: 14 # How long verified snapshots stay on the data volume
+  offsite: 'off' # The off-host repository. off until a destination is set
+
+# Owned by docs/trd/storage.md
+archive:
+  enabled: 'on' # Export records to Parquet before they are pruned
