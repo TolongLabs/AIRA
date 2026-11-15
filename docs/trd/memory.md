@@ -97,7 +97,8 @@ The existing memory is migrated, never wiped (PRD FR-31).
 5. **Review** the report. The real run needs an explicit confirmation flag.
 6. **Import** in one transaction. The old stores are left in place and untouched.
 
-Song and vocabulary study notes belong to an optional feature. They are migrated only when that feature is in scope.
+Song, vocabulary and library notes belong to the lessons feature. They are migrated with that work, once its data
+model is specified. See [Tools](tools.md#lessons-and-library).
 
 ## Configuration
 

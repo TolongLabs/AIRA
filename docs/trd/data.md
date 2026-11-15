@@ -71,6 +71,7 @@ The primary key is `(level, scope, key)`. Deleting a row at a level restores inh
 | `features.media`     | Boolean                       | `true`           |
 | `features.voice`     | Boolean                       | `false`          |
 | `features.lessons`   | Boolean                       | `false`          |
+| `features.reports`   | Boolean                       | `true`           |
 | `mcp.<server id>`    | Boolean                       | `false`          |
 
 Each optional chat feature is one `features.*` key. A tool or behaviour names the key that enables it.

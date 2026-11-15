@@ -13,7 +13,7 @@ Status: draft 0.1, 15 Nov 2026. Not yet approved by the owner.
 | Surfaces | WhatsApp DMs and small groups: mention, reply, free-response chats, and text slash commands |
 | Host     | One Linux machine on a private network, behind the Hermes Agent WhatsApp gateway            |
 | Scope    | The chatbot only. The owner's operations tools on the same machine are out of scope         |
-| Status   | 43 requirements: 0 Shipped, 13 Exists (faulty), 30 Planned                                  |
+| Status   | 44 requirements: 0 Shipped, 14 Exists (faulty), 30 Planned                                  |
 
 ## Problem
 
@@ -116,16 +116,17 @@ Status values: **Planned** (not built), **Exists (faulty)** (present today with 
 
 ### Tools And Commands
 
-| ID    | Requirement                                                                                                                                                                                                                                      | Status          |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------- |
-| FR-19 | Define each tool once in one registry: name, schema, handler, permission, timeout, whether it changes state.                                                                                                                                     | Planned         |
-| FR-20 | Implicit use: the model may call any tool offered for the turn. Code removes tools the chat may not use before the model sees them.                                                                                                              | Exists (faulty) |
-| FR-21 | Explicit use: a message that starts with `/name` and matches a registered command runs that command's handler directly. The command and the model tool share one handler. An unknown `/name` is treated as ordinary text.                        | Planned         |
-| FR-22 | Ship a first command set of primitives: `/help` (commands this chat may use), `/list` (tools and features switched on in this chat), and one command per tool that is useful to call directly. Grow the set from use.                            | Planned         |
-| FR-23 | Give every tool call a timeout and a typed result. Every state change returns a receipt written by code; no receipt means it did not happen.                                                                                                     | Exists (faulty) |
-| FR-24 | Keep the chat tools in scope at parity: memory recall, note and forget; web search; read a page; read a social post; send a photo; reminders.                                                                                                    | Exists (faulty) |
-| FR-39 | Watch media a member sends, embeds or links, including video from social posts, through a dedicated media model (planned: `gemini-3.5-flash-lite`) with its own key, under size and time limits. Say so in character when a file cannot be read. | Exists (faulty) |
-| FR-25 | Host external tool servers through the Model Context Protocol. A server is added in configuration with an allowlist of its tools and the chats that may use them. No external server is enabled at launch.                                       | Planned         |
+| ID    | Requirement                                                                                                                                                                                                                                                                                                                                                                       | Status          |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| FR-19 | Define each tool once in one registry: name, schema, handler, mode, permission, timeout, whether it changes state. Every tool is atomic: one action, one transaction, safe to repeat, and a removal acts on exactly one named row.                                                                                                                                                | Planned         |
+| FR-20 | Implicit use: the model decides when, which and how many tools to call, in a chain. Code removes tools the chat may not use before the model sees them. A chain ends at a call limit or a tool-time limit, both set in `config.yml` (defaults: 4 calls, 15 s).                                                                                                                    | Exists (faulty) |
+| FR-21 | Explicit use: a message that starts with `/name` and matches a registered command names the tool, and the rest of the message is free text, as in `/remind i have a mtg ltr at 6pm`. The model fills the tool's arguments, code validates them and runs the handler, and the receipt says what happened. One command per message. An unknown `/name` is treated as ordinary text. | Planned         |
+| FR-22 | Ship a first command set: `/help`, `/list`, `/recall`, `/remember`, `/forget`, `/history`, `/search`, `/read`, `/photo`, `/remind`, `/reminders`, `/cancel`, `/mute`, `/unmute` and `/report`. An unclear command asks one short question and runs nothing. A command that removes something must resolve to exactly one target.                                                  | Planned         |
+| FR-23 | Give every tool call a timeout and a typed result. Every state change returns a receipt written by code; no receipt means it did not happen.                                                                                                                                                                                                                                      | Exists (faulty) |
+| FR-24 | Ship the core tool set, each tool marked as callable by the model, by command, or both: recall, note, forget, chat history search, web search, read a page, read a social post, send a photo, set, list and cancel a reminder, mute, write a report, and note a chat's own word.                                                                                                  | Exists (faulty) |
+| FR-39 | Watch media a member sends, embeds or links, including video from social posts, through a dedicated media model (planned: `gemini-3.5-flash-lite`) with its own key, under size and time limits. Say so in character when a file cannot be read.                                                                                                                                  | Exists (faulty) |
+| FR-44 | Provide the lessons and library tools behind a per-chat switch: lyrics, songs, vocabulary, glosses and the library. They follow the same registry rules and are built after the core set.                                                                                                                                                                                         | Exists (faulty) |
+| FR-25 | Host external tool servers through the Model Context Protocol. A server is added in configuration with an allowlist of its tools and the chats that may use them. No external server is enabled at launch.                                                                                                                                                                        | Planned         |
 
 ### Memory
 
@@ -218,13 +219,15 @@ Each group of requirements has one issue. An issue lists its requirements as a c
 | Cutover readiness: NFR-1 to NFR-5 | [#32](https://github.com/TolongLabs/AIRA/issues/32) |
 | NFR-4, NFR-11                     | [#35](https://github.com/TolongLabs/AIRA/issues/35) |
 | NFR-12                            | [#36](https://github.com/TolongLabs/AIRA/issues/36) |
+| FR-44                             | [#38](https://github.com/TolongLabs/AIRA/issues/38) |
 
 ## Pending Inputs
 
-| #   | Input                                                                                                  | Waiting on  |
-| --- | ------------------------------------------------------------------------------------------------------ | ----------- |
-| 1   | Key for the media model (FR-39).                                                                       | The owner   |
-| 2   | Transport benchmark: wrapper against API key, on the live machine (FR-32).                             | Maintainers |
-| 3   | Confirmation that the owner site may be revamped (FR-40 to FR-42).                                     | The owner   |
-| 4   | Language and agent kit for the chatbot core, and how it attaches to the gateway. Decided in the TRD.   | Maintainers |
-| 5   | The off-host backup destination: another machine on the private network, or a storage bucket (NFR-12). | The owner   |
+| #   | Input                                                                                                                                                         | Waiting on  |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| 1   | Key for the media model (FR-39).                                                                                                                              | The owner   |
+| 2   | Transport benchmark: wrapper against API key, on the live machine (FR-32).                                                                                    | Maintainers |
+| 3   | Confirmation that the owner site may be revamped (FR-40 to FR-42).                                                                                            | The owner   |
+| 4   | Language and agent kit for the chatbot core, and how it attaches to the gateway. Decided in the TRD.                                                          | Maintainers |
+| 5   | The off-host backup destination: another machine on the private network, or a storage bucket (NFR-12).                                                        | The owner   |
+| 6   | What serves the six owner tools in chat after cutover (four market tools, two coding-session tools). The old core that runs them today is retired that night. | The owner   |
