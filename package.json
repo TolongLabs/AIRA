@@ -21,7 +21,8 @@
     "test:migration": "vitest run tests/migration",
     "prepare": "husky",
     "diagrams": "node scripts/export-diagrams.mjs",
-    "turn": "tsx scripts/turn.ts"
+    "turn": "tsx scripts/turn.ts",
+    "report": "tsx scripts/report.ts"
   },
   "lint-staged": {
     "*.{ts,tsx}": "biome check --write",
@@ -41,7 +42,9 @@
     "vitest": "5.1.0"
   },
   "dependencies": {
+    "@duckdb/node-api": "^2.0.0-r.1",
     "@google/adk": "^2.5.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "better-sqlite3": "^13.2.0",
     "yaml": "^2.9.1",
     "zod": "^4.6.7"
