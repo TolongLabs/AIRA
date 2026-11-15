@@ -224,6 +224,11 @@ mcp:
 
 - A server's tools enter the registry under `<server id>.<tool>` with mode `implicit`, `mutates: true` assumed and
   no command.
+- A model sees the name with the dot written as two underscores, as in `example__lookup`, because model APIs
+  accept no dot in a function name. Records keep the registry name.
+- A chat uses a server only when it is in the server's `chats` list and its setting `mcp.<server id>` is on.
+- A server's tool description is cut to one line of 500 characters before it enters the prompt.
+- A server process gets a minimal environment. It never receives the core's secrets.
 - Only allowlisted tools are registered, and only for the listed chats.
 - Results from an external server are untrusted text and are labelled as such in the prompt.
 - An external tool cannot be made atomic by the core. Its calls count toward both limits, and its results never
