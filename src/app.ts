@@ -26,6 +26,7 @@ import { type SnapshotReason, type SnapshotResult, startSnapshotTimer, takeSnaps
 import { type DataPaths, startStorage } from './storage/startup.js'
 import { createCommandRouter } from './tools/commands.js'
 import { registerCoreTools } from './tools/core/index.js'
+import { connectMcpServers } from './tools/mcp-client.js'
 import type { ToolPorts } from './tools/ports.js'
 import { type ToolRegistry, createToolRegistry } from './tools/registry.js'
 import { type Alerter, createAlerter } from './turn/alerts.js'
@@ -167,6 +168,11 @@ export async function createApp(options: AppOptions): Promise<App> {
     // Tools: one registry. The prompt text about tools and the cleaner's name list come from it.
     const registry = createToolRegistry({ storage, config, logger, redactor, now })
     registerCoreTools(registry, { ...options.ports, filesDir: paths.files })
+    // External tool servers (docs/trd/tools.md#external-tool-servers). None is configured at launch.
+    if (config.mcp.servers.length > 0) {
+      const mcp = await connectMcpServers(config.mcp.servers, registry, logger)
+      closers.push(() => mcp.close())
+    }
 
     const prompt = createPromptBuilder({
       storage,
