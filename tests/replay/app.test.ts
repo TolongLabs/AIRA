@@ -323,8 +323,10 @@ describe('the whole service', () => {
       baseUrl: 'https://main.invalid/v1'
     }
     await expect(createApp({ config, env: {}, logger: quiet })).rejects.toThrow(/key for llm\.main/)
+    // The subscription transport needs no main model behind a key, but it needs the host runner's secret.
     config.llm.transport = 'subscription'
-    await expect(createApp({ config, env: {}, logger: quiet })).rejects.toThrow(/subscription/)
+    config.llm.main = { ...config.llm.main, provider: '', model: '', baseUrl: '' }
+    await expect(createApp({ config, env: {}, logger: quiet })).rejects.toThrow(/RUNNER_TOKEN/)
     expect(existsSync(join(config.storage.path, 'aira.db'))).toBe(true)
   })
 })

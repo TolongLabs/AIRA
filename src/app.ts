@@ -14,10 +14,12 @@ import { presentLabels, recallForTurn } from './memory/recall.js'
 import type { MemoryJudge } from './memory/types.js'
 import { type MemoryWorker, createMemoryWorker } from './memory/worker.js'
 import { createApiRunner } from './models/api-runner.js'
-import { createBreaker } from './models/breaker.js'
+import { type Breaker, createBreaker } from './models/breaker.js'
 import { createOpenAiClient } from './models/openai-client.js'
 import { createRoutedClient } from './models/routed-client.js'
 import { spendState } from './models/spend.js'
+import { createSubscriptionRunner } from './models/subscription-runner.js'
+import { createToolServer } from './models/tool-server.js'
 import type { ModelClient } from './models/types.js'
 import { createPromptBuilder, loadHarnessRules } from './prompt/builder.js'
 import type { MoodJudge } from './prompt/mood.js'
@@ -147,11 +149,9 @@ export async function createApp(options: AppOptions): Promise<App> {
     }
 
     // Models: one loop, one tool set. A fallback changes the model and nothing else.
-    if (config.llm.transport !== 'api') {
-      throw new ConfigError('llm.transport is "subscription": the subscription runner is not built in this release')
-    }
+    const subscription = config.llm.transport === 'subscription'
     const main = modelClient(config.llm.main, env['LLM_API_KEY'], 'main', options.clients?.main)
-    if (!main) throw new ConfigError('llm.main.model and llm.main.baseUrl must be set')
+    if (!main && !subscription) throw new ConfigError('llm.main.model and llm.main.baseUrl must be set')
     const fallback = modelClient(
       config.llm.fallback,
       env['LLM_FALLBACK_API_KEY'],
@@ -163,23 +163,57 @@ export async function createApp(options: AppOptions): Promise<App> {
       now,
       onOpen: (role) => alerter.raise('breaker_open', { role })
     })
-    const runner: TurnRunner = createApiRunner({
-      clientFor: (onCall) =>
-        createRoutedClient({
-          main: { client: main, model: config.llm.main.model },
-          fallback: fallback ? { client: fallback, model: config.llm.fallback.model } : undefined,
-          config,
-          breaker,
-          storage,
-          transport: 'api',
-          onCall,
-          onAuthFailure: (role) => alerter.raise('model_auth', { role }),
-          now
-        }),
-      model: config.llm.main.model,
-      limits: { maxCallsPerTurn: config.tools.maxCallsPerTurn, timeBudgetMs: config.tools.timeBudgetMs },
-      now
-    })
+    const limits = { maxCallsPerTurn: config.tools.maxCallsPerTurn, timeBudgetMs: config.tools.timeBudgetMs }
+    type Target = { client: ModelClient; model: string }
+    /** The API runner on one model, with an optional second model behind it. */
+    const apiRunner = (first: Target, second: Target | undefined, roleBreaker: Breaker): TurnRunner =>
+      createApiRunner({
+        clientFor: (onCall) =>
+          createRoutedClient({
+            main: first,
+            fallback: second,
+            config,
+            breaker: roleBreaker,
+            storage,
+            transport: 'api',
+            onCall,
+            onAuthFailure: (role) => alerter.raise('model_auth', { role }),
+            now
+          }),
+        model: first.model,
+        limits,
+        now
+      })
+    const mainTarget = main ? { client: main, model: config.llm.main.model } : undefined
+    const fallbackTarget = fallback ? { client: fallback, model: config.llm.fallback.model } : undefined
+
+    let runner: TurnRunner
+    if (!subscription) {
+      runner = apiRunner(mainTarget as Target, fallbackTarget, breaker)
+    } else {
+      // The program on the host runs the loop and calls the tools through the core's tool server. The fallback
+      // model answers on the API runner, with its own breaker: the two limits it guards are different accounts.
+      const runnerToken = env['RUNNER_TOKEN']
+      if (!runnerToken)
+        throw new ConfigError('RUNNER_TOKEN is not set in the environment (llm.transport is "subscription")')
+      const toolServer = createToolServer({ limits, logger, now })
+      await toolServer.listen(config.llm.subscription.toolServerPort)
+      closers.push(() => toolServer.close())
+      runner = createSubscriptionRunner({
+        subscription: config.llm.subscription,
+        runnerToken,
+        toolServer,
+        breaker,
+        fallback: fallbackTarget
+          ? apiRunner(fallbackTarget, undefined, createBreaker({ breakerMs: config.llm.breakerMs, now }))
+          : undefined,
+        onAuthFailure: (role) => alerter.raise('model_auth', { role }),
+        logger,
+        now
+      })
+    }
+    // Memory extraction needs a model behind a key: the main one, or on the subscription transport the fallback.
+    const extractionTarget = mainTarget ?? fallbackTarget
 
     // The hosted judge, when its model and key are set. Without it the mood comes from rules and memory admits nothing.
     const judgeKey = env['TYPESAFE_API_KEY']
@@ -252,13 +286,15 @@ export async function createApp(options: AppOptions): Promise<App> {
 
     // Memory extraction (docs/trd/memory.md#write-path): background work, one job at a time.
     let memory: MemoryWorker | undefined
-    if (config.memory.enabled === 'on') {
+    if (config.memory.enabled === 'on' && !extractionTarget) {
+      logger.warn('memory.no_extraction_model', {})
+    } else if (config.memory.enabled === 'on' && extractionTarget) {
       const memoryWorker = createMemoryWorker({
         storage,
         config,
         client: createRoutedClient({
-          main: { client: main, model: config.llm.main.model },
-          fallback: fallback ? { client: fallback, model: config.llm.fallback.model } : undefined,
+          main: extractionTarget,
+          fallback: extractionTarget === mainTarget ? fallbackTarget : undefined,
           config,
           breaker,
           storage,

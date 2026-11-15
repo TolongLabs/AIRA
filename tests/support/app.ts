@@ -49,7 +49,7 @@ afterEach(async () => {
 })
 
 export async function startApp(
-  main: ModelClient,
+  main: ModelClient | undefined,
   options: {
     fallback?: ModelClient
     config?: (config: Config) => void
@@ -57,6 +57,7 @@ export async function startApp(
     character?: string
     ports?: Partial<Omit<ToolPorts, 'filesDir'>>
     memoryJudge?: MemoryJudge
+    env?: NodeJS.ProcessEnv
   } = {}
 ) {
   const dataDir = options.dataDir ?? tmpDir('aira-app-')
@@ -84,8 +85,8 @@ export async function startApp(
   const logs: Record<string, unknown>[] = []
   const app = await createApp({
     config,
-    env: {},
-    clients: { main, fallback: options.fallback },
+    env: options.env ?? {},
+    clients: { ...(main ? { main } : {}), fallback: options.fallback },
     ports: options.ports,
     memoryJudge: options.memoryJudge,
     logger: createLogger({ level: 'debug', module: 'core', sink: (line) => logs.push(JSON.parse(line)) })

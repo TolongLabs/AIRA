@@ -67,6 +67,9 @@ it safely. When `transport: subscription` is set:
   address.
 - It streams the result back. It holds no state and reads no AIRA data.
 - If the service is down, the core treats the transport as unavailable and uses the fallback role.
+- On this transport the fallback model answers on the API runner, with a breaker of its own. Memory extraction
+  uses `llm.main` when it has a key, else `llm.fallback`. With neither, nothing is extracted.
+- One run is one program start. There is no retry inside the subscription runner.
 
 ### Run Request
 
@@ -86,8 +89,9 @@ token. The service answers with the program's output lines as they arrive, one J
 - The program takes one prompt, not a list of messages. The core writes the earlier messages of the window as a
   labelled transcript and the messages this turn answers after it (**Assumption A-7**).
 - The last output line of type `result` holds the reply text, the token counts and the estimated cost.
-- The system prompt holds recalled memory. The service passes it in a private temporary file, removed when the
-  program ends, so it never shows in the host's process list.
+- The system prompt holds recalled memory, and the tool server address comes with this turn's token. The service
+  passes both in private temporary files, removed when the program ends, so neither shows in the host's process
+  list. The program never receives the service's own secret.
 - The service keeps no state and reads no AIRA data. A second request while one runs is accepted:
   each request is its own program.
 
