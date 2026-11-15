@@ -44,6 +44,12 @@ export const configSchema = z.strictObject({
   search: z.strictObject({
     provider: z.string().min(1)
   }),
+  lessons: z
+    .strictObject({
+      // The lyrics provider for lyrics_search and lyrics_fetch, or `off`.
+      lyricsProvider: z.string().min(1)
+    })
+    .default({ lyricsProvider: 'off' }),
   mcp: z.strictObject({
     servers: z.array(
       z.strictObject({

@@ -27,6 +27,10 @@ search:
   provider: 'off' # Web search backend, or off
 
 # Owned by docs/trd/tools.md
+lessons:
+  lyricsProvider: 'off' # The lyrics provider, or off
+
+# Owned by docs/trd/tools.md
 mcp:
   servers: [] # External tool servers
 
