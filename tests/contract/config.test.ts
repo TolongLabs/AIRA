@@ -37,6 +37,22 @@ describe('config.yml', () => {
     expect(() => loadConfig('no-such-config.yml')).toThrow(ConfigError)
   })
 
+  it('reads an external tool server entry, and refuses one with an unknown key', () => {
+    const server = `mcp:
+  servers:
+    - id: example
+      transport: stdio
+      command: ['example-server']
+      tools: ['lookup']
+      chats: []
+`
+    const withServer = source.replace(/mcp:\n {2}servers: \[\][^\n]*\n/, server)
+    expect(parseConfig(withServer).mcp.servers).toEqual([
+      { id: 'example', transport: 'stdio', command: ['example-server'], tools: ['lookup'], chats: [], timeoutMs: 10000 }
+    ])
+    expect(() => parseConfig(withServer.replace('chats: []', 'chats: []\n      shell: true'))).toThrow(/mcp/)
+  })
+
   it('refuses to deploy while gateway.hostDataDir is empty', () => {
     const config = parseConfig(source)
     expect(() => requireDeployable(config)).toThrow(/gateway\.hostDataDir/)

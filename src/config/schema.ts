@@ -43,7 +43,19 @@ export const configSchema = z.strictObject({
     provider: z.string().min(1)
   }),
   mcp: z.strictObject({
-    servers: z.array(z.record(z.string(), z.unknown()))
+    servers: z.array(
+      z.strictObject({
+        id: z.string().regex(/^[a-z][a-z0-9_-]{0,31}$/),
+        transport: z.literal('stdio'),
+        // The program and its arguments. Never run through a shell.
+        command: z.array(z.string().min(1)).min(1),
+        // The allowlist of the server's tools. Anything else is ignored.
+        tools: z.array(z.string().min(1)),
+        // The chat ids that may use it. Empty means none.
+        chats: z.array(z.string().min(1)),
+        timeoutMs: ms.default(10000)
+      })
+    )
   }),
   memory: z.strictObject({
     enabled: onOff,
