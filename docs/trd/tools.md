@@ -169,7 +169,8 @@ are a later change to the pack contract.
 
 ### Lessons And Library
 
-Built after the core set, behind `features.lessons`. Their data model is specified when that work starts.
+Built after the core set, behind `features.lessons`. A chat with the switch off is offered none of these tools.
+Their data is specified in [Lessons Data Model](#lessons-data-model).
 
 | Tool             | Does                                       | Mode     | Command   | Kind        |
 | ---------------- | ------------------------------------------ | -------- | --------- | ----------- |
@@ -183,6 +184,47 @@ Built after the core set, behind `features.lessons`. Their data model is specifi
 | `library_search` | Searches the library and follows its links | implicit | none      |             |
 | `library_write`  | Files one library node                     | implicit | none      |             |
 | `library_open`   | Reads one library node by title            | implicit | none      |             |
+
+### Lessons Data Model
+
+Lessons data is study material a chat built: songs it worked through, the words in them, and library notes. It
+lives in the same SQLite file, in its own tables. Every row belongs to one chat instance, and every query filters
+by chat id, as for [Memory](memory.md#scope).
+
+| Table                     | One Row Is                                                  | Key                     |
+| ------------------------- | ----------------------------------------------------------- | ----------------------- |
+| `lesson_song`             | One filed song: title, artist, language, where it came from | Chat, title and artist  |
+| `lesson_song_line`        | One line of a filed song: its text, reading and meaning     | Song and position       |
+| `lesson_word`             | One word or pattern: its reading and what it means          | Chat, kind and the word |
+| `lesson_word_seen`        | One place a word appeared: a song and a line                | Word, song and position |
+| `lesson_lyrics_candidate` | One result of a lyrics search, kept so a fetch can name it  | Chat and candidate id   |
+| `library_node`            | One library note: a title and a body                        | Chat and title          |
+| `library_link`            | One link from a note to a title                             | Note and target title   |
+
+- **Titles and words are matched without case.** A second song with the same title and artist, a second word and a
+  second note with the same title replace the first. Nothing is filed twice.
+- **A word starts without a meaning.** `song_save` files the words of a song with the lines they appeared in.
+  `gloss_set` fills in what one word or pattern means. A `kind` column tells a word from a pattern.
+- **Links are written by code.** A note's body marks a link as `[[Title]]`. On `library_write`, code reads the marks
+  and stores one `library_link` row for each. A link may name a title that has no note yet.
+- **Gaps are computed.** `library_gaps` lists link targets with no note and words with no meaning. It stores
+  nothing.
+- **Search follows one step.** `library_search` returns the notes that match by keyword, and the notes they link
+  to, within a result limit. It uses a full-text index kept in step by code, in the same transaction.
+- **Lyrics come from a provider.** `lyrics_search` asks the lyrics provider and stores its results as candidates.
+  `lyrics_fetch` takes the id of one stored candidate of this chat, never an address from the model. Lyrics text is
+  untrusted and is labelled as such. With `lessons.lyricsProvider` set to `off`, both tools answer that lyrics are
+  not available.
+- **Limits.** A title holds at most 120 characters, a note body 8,000, a song 200 lines, a line 500 characters.
+  A text over a limit is refused, not cut.
+- **Receipts.** `song_save`, `gloss_set` and `library_write` change state and return receipts of kind
+  `lesson.song_saved`, `lesson.gloss_set` and `library.written`. The other seven tools change no lessons data;
+  `lyrics_search` stores candidates only, which are a cache.
+
+Two things here are decided without the old data, which only the production host holds (**Assumption A-8**): the
+library is kept per chat, and a song is stored as lines with a reading and a meaning. Both are checked against the
+old songs, vocabulary and library notes before they are migrated. That migration follows the steps of the
+[memory migration](memory.md#migration).
 
 ### Changed From The Old Tool Set
 
@@ -247,3 +289,4 @@ registry over that protocol so both runners use identical tools. See [Models](mo
 | `tools.defaultTimeoutMs` | 15000   | Timeout when a tool sets none        |
 | `search.provider`        | `off`   | Web search backend, or `off`         |
 | `mcp.servers`            | `[]`    | External tool servers                |
+| `lessons.lyricsProvider` | `off`   | The lyrics provider, or `off`        |
