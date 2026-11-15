@@ -31,6 +31,12 @@ Messages that arrive while a turn runs are held and merged into the next turn fo
 within `turn.batchMs` of each other, before a turn starts, form one turn. A photo with no caption waits
 `turn.mediaWaitMs` for a following text.
 
+- The wait before a turn starts is at most three times `turn.batchMs`, however many messages keep arriving.
+- A turn that follows a running turn starts at once: its messages have waited already.
+- One turn sends one reply. It is returned for the newest message of the turn. The requests of the other merged
+  messages get an empty reply, and a repeat of one of them gets an empty reply too.
+- A repeat of a message whose turn is still running waits for that turn and gets its reply.
+
 ## Deadlines
 
 | Limit                    | Default | Applies To                       |

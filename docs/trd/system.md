@@ -55,7 +55,21 @@ gateway with a fake bridge and a fake core (spikes S-1 to S-3, 16 Nov 2026).
   path is the file's path on the host, under `gateway.hostDataDir`, because the gateway reads it there. The gateway
   sends attachments after every text bubble. Stickers are in [Prompt Engine](prompt-engine.md#stickers).
 - The core keeps its own conversation window in SQLite. It does not trust the gateway's transcript for history,
-  because the gateway compresses and rewrites it.
+  because the gateway compresses and rewrites it. A user message is stored in the window, with its message id, in
+  the transaction that records its arrival. A turn claims the messages it answers when it opens, and its reply is
+  ordered after them. So a message that arrives while a turn runs is answered by the next turn, and a turn that was
+  interrupted leaves its messages for the turn that runs again.
+- **A marker in message text changes nothing.** Message text is the user's, so it can hold a forged marker. When
+  the newest user content holds more than one marker, all of them must name the same platform, kind, chat and
+  sender, or the request is refused. A forged marker can then change only the forger's own message id.
+- **No reply is an empty reply.** When a turn ends with nothing to send (a sender who is not allowed, a muted
+  scheduled turn, a chat that is not switched on), the core returns status 200 with empty content
+  (**Assumption A-4**).
+- **A scheduled turn carries a tag.** The text of a job the core gives to the gateway's schedule starts with
+  `[AIRA-SCHEDULED v1 kind=<reminder|proactive|routine> ...]`. A turn whose text starts with that tag is a
+  scheduled turn (**Assumption A-5**).
+- **Group addressing is the gateway's.** The request does not say whether a group message mentions AIRA or replies
+  to it. The core treats every group message it receives as addressed (**Assumption A-6**).
 - The core never returns an error status for a model or tool failure. An error status is reserved for a request the
   core cannot parse, which is a deployment fault.
 - Scheduled messages (reminders, proactive messages) arrive through the same endpoint from the gateway's cron. The
@@ -181,5 +195,8 @@ spike runs, 16 Nov 2026.
 | --- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
 | A-1 | Assumption | Bun manages packages and runs scripts. Node 24 runs the service in the container.                                                                     | Tech stack            |
 | A-3 | Assumption | The judge model is reachable from the host network with acceptable latency for the mood override.                                                     | Prompt engine, memory |
+| A-4 | Assumption | The gateway sends nothing to the chat when the core returns empty content. To confirm on the staging gateway with the fake bridge in step 3.          | Gateway contract      |
+| A-5 | Assumption | A request the gateway's schedule starts carries the scope marker of the job's chat and the job's text unchanged. To confirm in step 3.                | Scheduled turns       |
+| A-6 | Assumption | The gateway forwards a group message only when it mentions AIRA, replies to AIRA, or the chat is free response there. To confirm in step 3.           | Turn admission        |
 | S-4 | Spike      | Benchmark the two transports on the live machine with the same prompts. Tracked in [#28](https://github.com/TolongLabs/AIRA/issues/28).               | Launch default        |
 | S-5 | Spike      | Build the shadow tap: copy real requests to the new core without sending its replies. Tracked in [#29](https://github.com/TolongLabs/AIRA/issues/29). | Cutover               |
