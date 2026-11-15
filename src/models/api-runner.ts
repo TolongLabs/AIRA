@@ -43,6 +43,8 @@ interface LoopState {
   model: string
   text?: string
   receipts: string[]
+  /** For a skill-style command: the one tool offered until it has been called. */
+  firstTool?: string
   /** The first failure of the loop. The agent kit must not swallow it. */
   error?: unknown
 }
@@ -97,7 +99,12 @@ class SeamLlm extends BaseLlm {
       system: state.system,
       messages: [...state.messages, ...loopMessages(llmRequest.contents)],
       // When a chain limit is reached, the tool list is withdrawn and the model answers with what it has.
-      tools: state.chainLimit ? [] : state.tools.map((tool) => tool.schema),
+      // For a command, the named tool is the only one offered until it has been called.
+      tools: state.chainLimit
+        ? []
+        : state.tools
+            .filter((tool) => state.firstTool === undefined || tool.schema.name === state.firstTool)
+            .map((tool) => tool.schema),
       params: this.options.params ?? {}
     }
     try {
@@ -107,7 +114,10 @@ class SeamLlm extends BaseLlm {
       state.usage.cachedTokens += response.usage.cachedTokens
       state.costUsd += response.costUsd
       state.model = response.model
-      const toolCalls = state.chainLimit ? [] : response.toolCalls
+      // A call to a tool that was not offered in this step is dropped.
+      const toolCalls = state.chainLimit
+        ? []
+        : response.toolCalls.filter((call) => state.firstTool === undefined || call.name === state.firstTool)
       if (toolCalls.length === 0) {
         if (response.text.trim() === '')
           throw new ModelError('malformed', 'the model returned no text and no tool call')
@@ -157,6 +167,7 @@ class SeamTool extends BaseTool {
       return { content: JSON.stringify({ error: 'refused', reason: 'the tool limit for this turn is reached' }) }
     }
     state.toolCalls += 1
+    if (state.firstTool === this.name) state.firstTool = undefined
     const callId = `${state.turnId}:${toolContext.functionCallId ?? state.toolCalls}`
     const started = now().getTime()
     try {
@@ -176,7 +187,7 @@ class SeamTool extends BaseTool {
 
 export function createApiRunner(options: ApiRunnerOptions): TurnRunner {
   return {
-    async run({ system, messages, tools, context, signal }): Promise<RunResult> {
+    async run({ system, messages, tools, context, signal, firstTool }): Promise<RunResult> {
       const calls: ModelCallRecord[] = []
       const state: LoopState = {
         system,
@@ -190,7 +201,9 @@ export function createApiRunner(options: ApiRunnerOptions): TurnRunner {
         usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 },
         costUsd: 0,
         model: options.model,
-        receipts: []
+        receipts: [],
+        // A command for a tool this chat is not offered has nothing to wait for.
+        firstTool: tools.some((tool) => tool.schema.name === firstTool) ? firstTool : undefined
       }
       const agent = new LlmAgent({
         name: 'turn',

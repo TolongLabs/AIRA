@@ -16,6 +16,7 @@ import { spendState } from './models/spend.js'
 import type { ModelClient } from './models/types.js'
 import { createPromptBuilder, loadHarnessRules } from './prompt/builder.js'
 import type { MoodJudge } from './prompt/mood.js'
+import { withStickers } from './prompt/stickers.js'
 import { type Logger, createLogger } from './records/logger.js'
 import { createRedactor, secretsFromEnv } from './records/redact.js'
 import { listChats } from './settings/chats.js'
@@ -23,12 +24,13 @@ import { resolveSettings } from './settings/settings.js'
 import type { Storage } from './storage/database.js'
 import { type SnapshotReason, type SnapshotResult, startSnapshotTimer, takeSnapshot } from './storage/snapshot.js'
 import { type DataPaths, startStorage } from './storage/startup.js'
+import { createCommandRouter } from './tools/commands.js'
 import { registerCoreTools } from './tools/core/index.js'
 import type { ToolPorts } from './tools/ports.js'
 import { type ToolRegistry, createToolRegistry } from './tools/registry.js'
 import { type Alerter, createAlerter } from './turn/alerts.js'
 import { type TurnService, createTurnService } from './turn/pipeline.js'
-import type { ReplyCleaner, TurnRunner } from './turn/types.js'
+import type { TurnRunner } from './turn/types.js'
 
 // The service, put together (docs/trd/system.md). One function builds every part in the start-up order of
 // docs/trd/storage.md#start-up-sequence, so the entry point, the tests and the harness run the same core.
@@ -52,8 +54,6 @@ export interface AppOptions {
   /** The mood judge. Absent means rules only. */
   judge?: MoodJudge
   ports?: Partial<Omit<ToolPorts, 'filesDir'>>
-  /** Wraps the reply cleaner, for steps that follow it, such as stickers. */
-  wrapCleaner?: (cleaner: ReplyCleaner, parts: { storage: Storage; hostDataDir: string }) => ReplyCleaner
   /** The folder of the packs that ship with the release. */
   repositoryCharactersDir?: string
   harnessRulesPath?: string
@@ -177,11 +177,14 @@ export async function createApp(options: AppOptions): Promise<App> {
       now
     })
     const hostDataDir = config.gateway.hostDataDir === '' ? paths.root : config.gateway.hostDataDir
-    const baseCleaner = withAttachments(
-      createReplyCleaner(config, () => registry.toolNames()),
-      { storage, hostDataDir }
+    // After the cleaning chain: files a tool made, then the mood's sticker, which is always the last line.
+    const cleaner = withStickers(
+      withAttachments(
+        createReplyCleaner(config, () => registry.toolNames()),
+        { storage, hostDataDir }
+      ),
+      { storage, hostDataDir, now }
     )
-    const cleaner = options.wrapCleaner?.(baseCleaner, { storage, hostDataDir }) ?? baseCleaner
 
     const turns = createTurnService({
       storage,
@@ -194,6 +197,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       cleaner,
       alerter,
       tools: registry,
+      commands: createCommandRouter(registry),
       hooks: { spendAllows: () => spendState(storage, config.llm.monthlyBudgetUsd, now).repliesAllowed },
       now
     })
