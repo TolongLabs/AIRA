@@ -308,6 +308,31 @@ describe('the whole service', () => {
     expect(lines.join('')).not.toContain(secret)
   })
 
+  it('alerts the operator when a write fails with an I/O error, and keeps running', async () => {
+    const { app, gateway, logs, baseUrl } = await startApp(queueModel([{ text: 'hello' }]))
+    await gateway.send(msg('m-1', 'first'))
+    // Fill the database file: cap its size, then write until a write is refused.
+    app.storage.tx((db) => db.pragma(`max_page_count = ${db.pragma('page_count', { simple: true }) as number}`))
+    let refused = false
+    for (let index = 0; index < 500 && !refused; index += 1) {
+      try {
+        app.storage.tx((db) =>
+          db
+            .prepare("INSERT INTO session_message (chat_id, role, content, created_at) VALUES ('filler', 'user', ?, ?)")
+            .run('x'.repeat(2000), new Date().toISOString())
+        )
+      } catch {
+        refused = true
+      }
+    }
+    expect(refused).toBe(true)
+    expect(logs.some((line) => line['event'] === 'storage.write_failed' && line['kind'] === 'storage_error')).toBe(true)
+    expect(
+      logs.some((line) => line['event'] === 'alert' && line['kind'] === 'storage' && line['level'] === 'error')
+    ).toBe(true)
+    expect((await fetch(`${baseUrl}/health`)).status).toBeLessThan(600)
+  })
+
   it('stops start-up with one clear message when the model is not configured', async () => {
     const config = testConfig((config) => {
       config.storage.path = tmpDir('aira-app-')

@@ -118,11 +118,18 @@ export async function createApp(options: AppOptions): Promise<App> {
   const logger = options.logger ?? createLogger({ level: config.log.level, module: 'core', redactor })
 
   // Steps 1 to 4: the data volume, the database, migrations, the recovery pass.
-  const started = await startStorage({ config, logger, now })
+  const alerter = createAlerter({ minGapMs: config.alerts.minGapMs, logger, now })
+  // Steps 1 to 4. The disk guard's three levels each alert the operator.
+  const started = await startStorage({
+    config,
+    logger,
+    now,
+    onDiskAlert: (state) => alerter.raise('storage', { level: state.level, freeMb: state.freeMb }),
+    onStorageError: () => alerter.raise('storage', { level: 'error' })
+  })
   const { storage, paths } = started
   const closers: (() => void | Promise<void>)[] = []
   try {
-    const alerter = createAlerter({ minGapMs: config.alerts.minGapMs, logger, now })
     for (const turnId of started.recovery.interruptedTurns) alerter.raise('turn_interrupted', { turnId })
 
     // Step 5: character packs and bindings. A fault in one pack or one chat disables that pack or chat only.
