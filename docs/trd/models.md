@@ -87,8 +87,13 @@ token. The service answers with the program's output lines as they arrive, one J
 - The program starts with: print mode, stream output, no built-in tools, no settings sources, no saved session, no
   slash commands, and only the tool server named in the request. The prompt is written to its standard input.
 - The program takes one prompt, not a list of messages. The core writes the earlier messages of the window as a
-  labelled transcript and the messages this turn answers after it (**Assumption A-7**).
+  labelled transcript and the messages this turn answers after it (**Assumption A-7**, the tool names confirmed).
 - The last output line of type `result` holds the reply text, the token counts and the estimated cost.
+- A failed run is a `result` line with `is_error` true, even when its `subtype` says `success`. Its kind comes from
+  `api_error_status` (429 or 529 is a rate limit, 401 or 403 is auth), then from the program's own `error` on the
+  assistant line, then from the text: "You've hit your session limit" is a rate limit. The program then exits with
+  an error, so the service's exit line is the cause only when no failed result came. Measured on the host with a
+  spent subscription, 16 Nov 2026.
 - The system prompt holds recalled memory, and the tool server address comes with this turn's token. The service
   passes both in private temporary files, removed when the program ends, so neither shows in the host's process
   list. The program never receives the service's own secret.
@@ -105,7 +110,7 @@ token. The service answers with the program's output lines as they arrive, one J
 - The two chain limits of [Tools](tools.md#implicit-calls) are enforced here: past a limit every call is refused.
 - For a skill-style command, the named tool is the only one listed until it has been called.
 - The program shows a tool to the model under a prefixed name. The prompt's tool list is written with the same
-  prefix on this transport (**Assumption A-7**).
+  prefix on this transport (**Assumption A-7**, the tool names confirmed).
 
 ## Failure Kinds
 
