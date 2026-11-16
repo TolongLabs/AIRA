@@ -83,7 +83,7 @@ describe('the whole service', () => {
     ])
     const { app, gateway, chatId } = await start(model)
     const delivery = await gateway.send(msg('m-1', 'please stop the proactive messages'))
-    expect(delivery.content).toBe('Okay, I will stay quiet until you unmute me.')
+    expect(delivery.content).toBe('Okay, I will stay quiet until you unmute me.\n\n_🛠️ changed mute_')
 
     const read = <T>(sql: string, ...args: unknown[]) => app.storage.read((db) => db.prepare(sql).get(...args) as T)
     const receipt = read<{ receipt_id: string; kind: string; target: string }>(
@@ -123,9 +123,9 @@ describe('the whole service', () => {
 
   it('falls back to the second model with the same prompt and tools: only the model changes', async () => {
     const main = queueModel([new ModelError('rate_limit', 'scripted limit')])
-    const fallback = queueModel([{ text: 'the fallback answers' }])
+    const fallback = queueModel([{ text: 'The fallback answers' }])
     const { app, gateway } = await start(main, { fallback })
-    expect((await gateway.send(msg('m-1', 'hello'))).content).toBe('the fallback answers')
+    expect((await gateway.send(msg('m-1', 'hello'))).content).toBe('The fallback answers')
 
     const { role: _mainRole, model: _mainModel, ...mainRest } = main.requests[0] as ModelRequest
     const { role, model, ...fallbackRest } = fallback.requests[0] as ModelRequest
@@ -155,14 +155,14 @@ describe('the whole service', () => {
   })
 
   it('stops replies with the limit line at the monthly spend cap', async () => {
-    const model = queueModel([{ text: 'an expensive answer', costUsd: 0.6 }])
+    const model = queueModel([{ text: 'An expensive answer', costUsd: 0.6 }])
     const { app, gateway } = await start(model, {
       config: (config) => {
         config.llm.monthlyBudgetUsd = 1
       }
     })
-    expect((await gateway.send(msg('m-1', 'one'))).content).toBe('an expensive answer')
-    expect((await gateway.send(msg('m-2', 'two'))).content).toBe('an expensive answer')
+    expect((await gateway.send(msg('m-1', 'one'))).content).toBe('An expensive answer')
+    expect((await gateway.send(msg('m-2', 'two'))).content).toBe('An expensive answer')
     const capped = await gateway.send(msg('m-3', 'three'))
     expect(capped.content).toBe(app.packs().packs.get('example')?.lines.limit)
     expect(model.requests).toHaveLength(2)
@@ -180,7 +180,7 @@ describe('the whole service', () => {
     ])
     const { app, gateway, dataDir } = await start(model)
     const delivery = await gateway.send(msg('m-1', '/report weekly notes'))
-    expect(delivery.bubbles).toEqual(['Here is the report.'])
+    expect(delivery.bubbles).toEqual(['Here is the report.\n\n_🛠️ wrote a report_'])
     expect(delivery.media).toHaveLength(1)
     expect(delivery.media[0]).toMatch(/^\/host\/aira-data\/files\/[0-9a-f]{2}\/[0-9a-f]{64}\.md$/)
     // The same file exists on the data volume, where the gateway reads it through the host path.

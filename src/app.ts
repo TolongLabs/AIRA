@@ -35,6 +35,7 @@ import { type Logger, createLogger } from './records/logger.js'
 import { createRedactor, secretsFromEnv } from './records/redact.js'
 import { pruneRecords } from './records/retention.js'
 import { recordModelCall } from './records/turn-record.js'
+import { okToolsOfTurn } from './records/turn-view.js'
 import { listChats } from './settings/chats.js'
 import { resolveSettings } from './settings/settings.js'
 import { archiveAndPrune } from './storage/archive.js'
@@ -321,7 +322,11 @@ export async function createApp(options: AppOptions): Promise<App> {
     // After the cleaning chain: files a tool made, then the mood's sticker, which is always the last line.
     const cleaner = withStickers(
       withAttachments(
-        createReplyCleaner(config, () => registry.toolNames()),
+        createReplyCleaner(
+          config,
+          () => registry.toolNames(),
+          (turnId) => okToolsOfTurn(storage, turnId)
+        ),
         { storage, hostDataDir }
       ),
       { storage, hostDataDir, now }

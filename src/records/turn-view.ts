@@ -1,4 +1,4 @@
-import { type Db } from '../storage/database.js'
+import { type Db, type Storage } from '../storage/database.js'
 
 // Operator view for one turn and its child records (docs/trd/records.md#operator-views).
 
@@ -121,4 +121,15 @@ export function formatTurn(view: TurnView): string {
   for (const event of events) lines.push(event.line)
 
   return lines.join('\n')
+}
+
+/** The tools that ran with outcome `ok` in a turn, in call order, for the reply footer. */
+export function okToolsOfTurn(storage: Storage, turnId: string): string[] {
+  const rows = storage.read(
+    (db) =>
+      db
+        .prepare(`SELECT tool FROM tool_call WHERE turn_id = ? AND outcome = 'ok' ORDER BY started_at, id`)
+        .all(turnId) as { tool: string }[]
+  )
+  return rows.map((row) => row.tool)
 }

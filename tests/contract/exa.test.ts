@@ -143,7 +143,7 @@ describe('createExaSearchPort', () => {
     })
 
     const delivery = await gateway.send(msg('m-1', 'search for exa test'))
-    expect(delivery.content).toBe('Here is what I found.')
+    expect(delivery.content).toBe('Here is what I found.\n\n_🛠️ searched the web_')
     const toolMessage = model.requests[1]?.messages.at(-1)
     expect(toolMessage).toMatchObject({ role: 'tool', name: 'web_search' })
     expect(JSON.parse(String(toolMessage?.content))).toEqual({

@@ -68,7 +68,7 @@ const rows = <T>(app: App, sql: string) => app.storage.read((db) => db.prepare(s
 describe('the subscription transport in the service', () => {
   it('runs a turn through the host runner, with the tools served by the core, and counts no spend', async () => {
     const runnerUrl = await startRunner()
-    const fallback = queueModel([{ text: 'the fallback answered' }])
+    const fallback = queueModel([{ text: 'The fallback answered' }])
     const { app, gateway } = await startApp(undefined, {
       fallback,
       env: { RUNNER_TOKEN: TOKEN },
@@ -92,14 +92,14 @@ describe('the subscription transport in the service', () => {
 
   it('answers with the fallback model when the subscription reaches its limit, and then skips the service', async () => {
     const runnerUrl = await startRunner()
-    const fallback = queueModel([{ text: 'the fallback answered' }])
+    const fallback = queueModel([{ text: 'The fallback answered' }])
     const { app, gateway } = await startApp(undefined, {
       fallback,
       env: { RUNNER_TOKEN: TOKEN },
       config: subscription(runnerUrl, await freePort())
     })
 
-    expect((await gateway.send(msg('m-1', 'FAKE_RATE_LIMIT'))).content).toBe('the fallback answered')
+    expect((await gateway.send(msg('m-1', 'FAKE_RATE_LIMIT'))).content).toBe('The fallback answered')
     expect(lastTurn(app)).toMatchObject({ state: 'delivered', role: 'fallback' })
     expect(
       rows<{ transport: string; failure_kind: string | null }>(
@@ -110,19 +110,19 @@ describe('the subscription transport in the service', () => {
       { transport: 'subscription', failure_kind: 'rate_limit' },
       { transport: 'api', failure_kind: null }
     ])
-    expect((await gateway.send(msg('m-2', 'are you there')))?.content).toBe('the fallback answered')
+    expect((await gateway.send(msg('m-2', 'are you there')))?.content).toBe('The fallback answered')
     // The breaker is open: the second turn made no subscription attempt.
     expect(rows(app, "SELECT 1 FROM model_call WHERE transport = 'subscription'")).toHaveLength(1)
   })
 
   it('answers with the fallback model when the host runner service is down', async () => {
-    const fallback = queueModel([{ text: 'the fallback answered' }])
+    const fallback = queueModel([{ text: 'The fallback answered' }])
     const { gateway } = await startApp(undefined, {
       fallback,
       env: { RUNNER_TOKEN: TOKEN },
       config: subscription(`http://127.0.0.1:${await freePort()}`, await freePort())
     })
-    expect((await gateway.send(msg('m-1', 'hello'))).content).toBe('the fallback answered')
+    expect((await gateway.send(msg('m-1', 'hello'))).content).toBe('The fallback answered')
   })
 
   it('refuses to start without the shared secret', async () => {

@@ -33,6 +33,7 @@ export interface Pack {
     coreIdentity: string
     speechRules: string[]
     defaultReplyLength: 'short' | 'default' | 'long'
+    toolFooter?: { icon?: string; labels?: Record<string, string> }
   }
   defaultMood: string
   moods: Map<string, Mood>

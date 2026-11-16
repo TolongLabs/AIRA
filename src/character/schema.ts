@@ -26,7 +26,14 @@ export const cardSchema = z.strictObject({
   languages: z.array(languageTag).min(1),
   coreIdentity: nonEmpty,
   speechRules: z.array(nonEmpty).min(1),
-  defaultReplyLength: z.enum(['short', 'default', 'long'])
+  defaultReplyLength: z.enum(['short', 'default', 'long']),
+  /** The tool footer's icon and labels, keyed by tool name (docs/trd/prompt-engine.md#tool-footer). */
+  toolFooter: z
+    .strictObject({
+      icon: z.string().min(1).max(8).optional(),
+      labels: z.record(z.string().regex(/^[a-z][a-z0-9_]{0,63}$/), z.string().min(1).max(40)).optional()
+    })
+    .optional()
 })
 
 const moodSchema = z.strictObject({
