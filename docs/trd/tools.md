@@ -186,24 +186,36 @@ Their data is specified in [Lessons Data Model](#lessons-data-model).
 
 ### Lessons Data Model
 
-Lessons data is study material a chat built: songs it worked through, the words in them, and library notes. It
-lives in the same SQLite file, in its own tables. Every row belongs to one chat instance, and every query filters
-by chat id, as for [Memory](memory.md#scope).
+Lessons data is study material: songs worked through, the words and patterns in them, and library notes. It lives
+in the same SQLite file, in its own tables. It is **one library shared by every chat** that has `features.lessons`
+on, as the old core kept it (measured on the production host, 16 Nov 2026). Only a lyrics search's results belong to
+the chat that searched.
 
-| Table                     | One Row Is                                                  | Key                     |
-| ------------------------- | ----------------------------------------------------------- | ----------------------- |
-| `lesson_song`             | One filed song: title, artist, language, where it came from | Chat, title and artist  |
-| `lesson_song_line`        | One line of a filed song: its text, reading and meaning     | Song and position       |
-| `lesson_word`             | One word or pattern: its reading and what it means          | Chat, kind and the word |
-| `lesson_word_seen`        | One place a word appeared: a song and a line                | Word, song and position |
-| `lesson_lyrics_candidate` | One result of a lyrics search, kept so a fetch can name it  | Chat and candidate id   |
-| `library_node`            | One library note: a title and a body                        | Chat and title          |
-| `library_link`            | One link from a note to a title                             | Note and target title   |
+| Table                      | One Row Is                                                                                    | Key                      |
+| -------------------------- | --------------------------------------------------------------------------------------------- | ------------------------ |
+| `lesson_song`              | One filed song: title, artist, language, where it came from                                   | Title and artist         |
+| `lesson_song_line`         | One line of a filed song: its text and reading                                                | Song and position        |
+| `lesson_song_line_meaning` | What one line means in one language                                                           | Song, position, language |
+| `lesson_word`              | One word or pattern: its reading, and its level, part of speech, forms and example when known | Kind and the word        |
+| `lesson_word_meaning`      | What one word or pattern means in one language                                                | Word and language        |
+| `lesson_word_seen`         | One place a word appeared: a song and a line                                                  | Word, song and position  |
+| `lesson_lyrics_candidate`  | One result of a lyrics search, kept so a fetch can name it                                    | Chat and candidate id    |
+| `library_node`             | One library note: a title and a body                                                          | Title                    |
+| `library_link`             | One link from a note to a title                                                               | Note and target title    |
 
+- **Shared, never personal.** The library holds study material, not memory. No lessons table holds a subject id or
+  a fact about a member, and the lessons tools' descriptions say the library is shared by every chat. Memory stays
+  in its own chat, by [Memory](memory.md#scope).
+- **Meanings are per language.** A line, a word or a pattern can carry a meaning in several languages, keyed by a
+  language code such as `en` or `zh`. `gloss_set` names the language it fills in. `song_get` and `vocab_lookup`
+  return every meaning, the chat's own `language` setting first.
+- **Words keep what the old library knew.** `level` (such as a JLPT level), `pos`, `forms` (a list) and `example`
+  are optional. A pattern is a word row of kind `pattern`.
+- **A lyrics candidate stays in its chat.** A fetch names a candidate of its own chat only.
 - **Titles and words are matched without case.** A second song with the same title and artist, a second word and a
   second note with the same title replace the first. Nothing is filed twice.
 - **A word starts without a meaning.** `song_save` files the words of a song with the lines they appeared in.
-  `gloss_set` fills in what one word or pattern means. A `kind` column tells a word from a pattern.
+  `gloss_set` fills in what one word or pattern means in one language. A `kind` column tells a word from a pattern.
 - **Links are written by code.** A note's body marks a link as `[[Title]]`. On `library_write`, code reads the marks
   and stores one `library_link` row for each. A link may name a title that has no note yet.
 - **Gaps are computed.** `library_gaps` lists link targets with no note and words with no meaning. It stores
@@ -220,10 +232,10 @@ by chat id, as for [Memory](memory.md#scope).
   `lesson.song_saved`, `lesson.gloss_set` and `library.written`. The other seven tools change no lessons data;
   `lyrics_search` stores candidates only, which are a cache.
 
-Two things here are decided without the old data, which only the production host holds (**Assumption A-8**): the
-library is kept per chat, and a song is stored as lines with a reading and a meaning. Both are checked against the
-old songs, vocabulary and library notes before they are migrated. That migration follows the steps of the
-[memory migration](memory.md#migration).
+Measured against the old library on the production host, 16 Nov 2026 (it replaced Assumption A-8): one shared
+library of about 2,100 notes (1,848 words, 240 patterns, 7 songs, 5 artists), words and lines with an English and a
+Chinese meaning, and no chat with lessons switched on. Its migration follows the steps of the
+[memory migration](memory.md#migration). An artist note with no body has no row to become and is reported.
 
 ### Changed From The Old Tool Set
 
