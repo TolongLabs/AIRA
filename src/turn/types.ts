@@ -45,6 +45,8 @@ export interface TurnInput {
   window: WindowMessage[]
   /** The user messages this turn answers. */
   pending: WindowMessage[]
+  /** What the files those messages carried show, as labelled text for prompt block 4. Absent: no files. */
+  media?: string
 }
 
 /** Step 5. Prompt Engine implements it. */

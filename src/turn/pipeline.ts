@@ -2,8 +2,9 @@ import { randomUUID } from 'node:crypto'
 import type { PackSet } from '../character/loader.js'
 import type { LineKind } from '../character/schema.js'
 import type { Config } from '../config/schema.js'
-import type { GatewayRequest } from '../gateway/request.js'
+import type { Attachment, GatewayRequest } from '../gateway/request.js'
 import { compactDue } from '../gateway/schedule.js'
+import { type TurnMedia, mediaPromptText, mediaToRead } from '../media/turn-media.js'
 import { ModelError } from '../models/types.js'
 import type { FailureKind } from '../records/kinds.js'
 import type { Logger } from '../records/logger.js'
@@ -73,6 +74,8 @@ export interface TurnServiceDeps {
   alerter: Alerter
   tools?: ToolOffer
   commands?: CommandRouter
+  /** Reads the files members send, before the model runs (docs/trd/models.md#media-watching). Absent: no media. */
+  media?: TurnMedia
   hooks?: TurnHooks
   /** How many window messages a turn reads. */
   maxWindowMessages?: number
@@ -94,6 +97,8 @@ interface Waiter {
   mid: string
   senderId: string
   scheduled?: DeliveryKind
+  /** The files the gateway saved for this message. Kept in memory: a restart answers from the text alone. */
+  attachments?: Attachment[]
   resolvers: ((reply: TurnReply) => void)[]
 }
 
@@ -279,6 +284,24 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       }
       Object.assign(outcome.fields, built.record, { receipts: result.receipts } satisfies TurnRecordFields)
     } else {
+      // The files members sent are read before the model runs. A file that cannot be read never ends the turn:
+      // the prompt carries a note, and the failure is recorded.
+      const files = mediaToRead(batch.map((waiter) => waiter.attachments ?? []))
+      if (deps.media && files.length > 0) {
+        stage('media')
+        const read = await deps.media.read(files, context.deadline)
+        input.media = mediaPromptText(read, pack.lines.unreadableMedia)
+        outcome.calls.push(...read.calls)
+        for (const item of read.unreadable) {
+          outcome.failures.push({
+            stage: 'media',
+            kind: 'media_unreadable',
+            error: new Error(`${item.kind}: ${item.reason}`),
+            handledBy: 'line:unreadableMedia'
+          })
+        }
+        if (read.calls.some((call) => call.failureKind === 'auth')) deps.alerter.raise('model_auth', { role: 'media' })
+      }
       built = await deps.prompt.build(input)
       Object.assign(outcome.fields, built.record)
       outcome.stamps.push(['built', now()])
@@ -317,7 +340,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       } finally {
         clearTimeout(timer)
       }
-      outcome.calls = run.calls
+      outcome.calls.push(...run.calls)
       outcome.stamps.push(['model_done', now()])
       Object.assign(outcome.fields, {
         transport: run.transport,
@@ -497,27 +520,34 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     const senderId = ensureSubject(storage, request.marker.sender, now)
     const key = { chatId: chat.chatId, mid: request.marker.mid, senderId }
 
-    return admit(chat, key, undefined, (db) => {
-      // The window is the durable input of a turn. Earlier text the gateway resent is stored only if the
-      // core does not hold it already.
-      if (request.earlier !== '') {
-        const held = unansweredTexts(db, chat.chatId).join('\n\n')
-        if (!held.includes(request.earlier)) {
-          storeUserMessage(db, { chatId: chat.chatId, senderId, content: request.earlier }, now)
+    return admit(
+      chat,
+      key,
+      undefined,
+      (db) => {
+        // The window is the durable input of a turn. Earlier text the gateway resent is stored only if the
+        // core does not hold it already.
+        if (request.earlier !== '') {
+          const held = unansweredTexts(db, chat.chatId).join('\n\n')
+          if (!held.includes(request.earlier)) {
+            storeUserMessage(db, { chatId: chat.chatId, senderId, content: request.earlier }, now)
+          }
         }
-      }
-      storeUserMessage(
-        db,
-        {
-          chatId: chat.chatId,
-          senderId,
-          content: request.text,
-          mid: request.marker.mid,
-          ...(request.quote ? { quote: request.quote } : {})
-        },
-        now
-      )
-    })
+        storeUserMessage(
+          db,
+          {
+            chatId: chat.chatId,
+            senderId,
+            content: request.text,
+            mid: request.marker.mid,
+            ...(request.quote ? { quote: request.quote } : {})
+          },
+          now
+        )
+      },
+      undefined,
+      request.attachments
+    )
   }
 
   /**
@@ -529,7 +559,8 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     key: { chatId: string; mid: string; senderId: string },
     scheduled: DeliveryKind | undefined,
     onNew: (db: Db) => void,
-    afterNew?: () => void
+    afterNew?: () => void,
+    attachments?: Attachment[]
   ): Promise<TurnReply> {
     for (let round = 0; round < 3; round++) {
       const status = receiveInbound(storage, { ...key, onNew }, now)
@@ -543,7 +574,12 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         continue
       }
       afterNew?.()
-      return enqueue(chat, { mid: key.mid, senderId: key.senderId, ...(scheduled ? { scheduled } : {}) })
+      return enqueue(chat, {
+        mid: key.mid,
+        senderId: key.senderId,
+        ...(scheduled ? { scheduled } : {}),
+        ...(attachments && attachments.length > 0 ? { attachments } : {})
+      })
     }
     throw new Error('a repeated message did not settle')
   }
