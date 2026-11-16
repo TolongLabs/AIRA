@@ -152,6 +152,12 @@ export function createPromptBuilder(options: PromptBuilderOptions): PromptBuilde
         key: 'lastOpener'
       })
       const lastOpener = typeof rawLastOpener === 'string' ? rawLastOpener : undefined
+      const rawLastEnding = getChatState(options.storage, {
+        chatId: input.context.chat.chatId,
+        characterId: pack.id,
+        key: 'lastEnding'
+      })
+      const lastEnding = typeof rawLastEnding === 'string' ? rawLastEnding : undefined
 
       const rawReplyLength = input.context.settings['replyLength']?.value
       const replyLength = rawReplyLength === 'short' || rawReplyLength === 'long' ? rawReplyLength : 'default'
@@ -161,19 +167,18 @@ export function createPromptBuilder(options: PromptBuilderOptions): PromptBuilde
         mood: moodResult.mood,
         replyLength,
         lastOpener,
+        lastEnding,
         bypassReason,
         seed
       })
 
-      if (shape.opener !== undefined) {
-        const opener = shape.opener
+      for (const [key, value] of [
+        ['lastOpener', shape.opener],
+        ['lastEnding', shape.ending]
+      ] as const) {
+        if (value === undefined) continue
         options.storage.tx((db) => {
-          setChatState(
-            db,
-            { chatId: input.context.chat.chatId, characterId: pack.id, key: 'lastOpener' },
-            opener,
-            clock
-          )
+          setChatState(db, { chatId: input.context.chat.chatId, characterId: pack.id, key }, value, clock)
         })
       }
 

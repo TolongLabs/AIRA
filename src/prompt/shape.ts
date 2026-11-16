@@ -30,12 +30,22 @@ export function detectLengthBypass(input: {
   return undefined
 }
 
+/** How often a reply is given an opener, and an ending, to write in the spirit of. */
+export const OPENER_RATE = 1 / 3
+export const ENDING_RATE = 1 / 4
+
+function pickFresh(options: string[], last: string | undefined, random: () => number): string | undefined {
+  const fresh = options.filter((option) => option !== last)
+  return fresh.length > 0 ? pick(fresh, random) : undefined
+}
+
 export function drawShape(input: {
   pack: Pack
   mood: string
   /** The resolved `replyLength` setting: 'short', 'default' or 'long'. */
   replyLength: 'short' | 'default' | 'long'
   lastOpener?: string
+  lastEnding?: string
   bypassReason?: string
   seed: number
 }): ReplyShape {
@@ -46,16 +56,10 @@ export function drawShape(input: {
 
   const random = seededRandom(input.seed)
 
-  let opener: string | undefined
-  if (mood && mood.openers.length > 0) {
-    const filtered =
-      input.lastOpener !== undefined && mood.openers.length > 1
-        ? mood.openers.filter((o) => o !== input.lastOpener)
-        : mood.openers
-    opener = pick(filtered.length > 0 ? filtered : mood.openers, random)
-  }
-
-  const ending = mood ? pick(mood.endings, random) : undefined
+  // An opener or ending is drawn only for some replies, and never the one the chat saw last: a fixed phrase in
+  // every reply reads as a tic.
+  const opener = mood && random() < OPENER_RATE ? pickFresh(mood.openers, input.lastOpener, random) : undefined
+  const ending = mood && random() < ENDING_RATE ? pickFresh(mood.endings, input.lastEnding, random) : undefined
 
   const faces: string[] = []
   if (mood && mood.faces.length > 0) {
