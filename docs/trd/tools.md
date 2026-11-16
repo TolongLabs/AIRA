@@ -257,19 +257,24 @@ Chinese meaning, and no chat with lessons switched on. Its migration follows the
 
 ### Owner Tools
 
-The owner's market and coding-session tools, ported into the core in TypeScript, with the same behaviour as the old
+The owner's market and coding-session tools, ported as atomic tools (the old `market_watch` and `session_notices` each bundled several actions) into the core in TypeScript, with the same behaviour as the old
 Python (`plugins/markets`, `scripts/brain/markets.py`, `plugins/claudecode`). The state that host services still read
 stays in its host file, mounted into the container, so the `market-alerts.timer` and the `cc-relay` service keep
 working unchanged.
 
-| Tool              | Does                                                                   | Mode | Changes State | Host State                                                  |
-| ----------------- | ---------------------------------------------------------------------- | ---- | ------------- | ----------------------------------------------------------- |
-| `market_quote`    | Live prices for one or more tickers, indices or coins                  | both | No            | None                                                        |
-| `market_analyse`  | One symbol: price, 52-week position, moving averages, volatility, news | both | No            | None                                                        |
-| `market_news`     | Recent headlines for a ticker or a market topic                        | both | No            | None                                                        |
-| `market_watch`    | List, add or remove a watchlist entry, holding or price alert          | both | Yes           | `owner.marketsConfig`, read and written by the alerts timer |
-| `claude_sessions` | What Claude Code sessions are doing on the host                        | both | No            | `owner.claudeProjectsDir`, read only                        |
-| `session_notices` | Turn this chat's Claude Code session notices on or off, or report them | both | Yes           | `owner.noticeRoutesFile`, read by the `cc-relay` service    |
+| Tool                                         | Does                                                                   | Mode | Changes State | Host State                                                  |
+| -------------------------------------------- | ---------------------------------------------------------------------- | ---- | ------------- | ----------------------------------------------------------- |
+| `market_quote`                               | Live prices for one or more tickers, indices or coins                  | both | No            | None                                                        |
+| `market_analyse`                             | One symbol: price, 52-week position, moving averages, volatility, news | both | No            | None                                                        |
+| `market_news`                                | Recent headlines for a ticker or a market topic                        | both | No            | None                                                        |
+| `market_watch_list`                          | The watchlist, holdings and alerts of this chat, with prices           | both | No            | `owner.marketsConfig`, read                                 |
+| `market_symbol_search`                       | Find the ticker for a company or asset name                            | both | No            | None                                                        |
+| `market_watch_add`, `market_watch_remove`    | Add or remove watchlist symbols                                        | both | Yes           | `owner.marketsConfig`, read and written by the alerts timer |
+| `market_alert_set`, `market_alert_clear`     | Arm or disarm a price alert                                            | both | Yes           | `owner.marketsConfig`                                       |
+| `market_holding_set`, `market_holding_clear` | Record or remove a holding                                             | both | Yes           | `owner.marketsConfig`                                       |
+| `claude_sessions`                            | What Claude Code sessions are doing on the host                        | both | No            | `owner.claudeProjectsDir`, read only                        |
+| `session_notices_status`                     | Whether Claude Code session notices arrive in this chat                | both | No            | `owner.noticeRoutesFile`, read                              |
+| `session_notices_set`                        | Turn this chat's Claude Code session notices on or off                 | both | Yes           | `owner.noticeRoutesFile`, read by the `cc-relay` service    |
 
 - **Gate:** every owner tool needs the chat setting `features.owner`, off by default. Code removes the tools from any
   other chat before the model sees them.
@@ -278,7 +283,7 @@ working unchanged.
 - **Files:** each path is a container path under a read-write or read-only mount in compose. A path left empty turns
   its tool off. A write replaces the file atomically (write a temporary file, then rename) and keeps the old file's
   keys it does not own, so the host service that reads it never sees half a file.
-- `market_watch` and `session_notices` commit their receipt only after the file write succeeds.
+- A tool that changes a file commits its receipt only after the write succeeds. Receipts name the chat by its internal id.
 
 ### Changed From The Old Tool Set
 
