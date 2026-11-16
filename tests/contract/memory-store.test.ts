@@ -274,6 +274,46 @@ describe('memory store', () => {
     expectFtsInSync(storage, chat.chatId)
   })
 
+  it('forgetItem also clears every quote of the message that supported the fact, and no other quote', () => {
+    const storage = tmpStorage()
+    const chat = ensureChat(storage, { waId: 'fake-chat-q', type: 'group' })
+    const insert = (content: string, mid: string, quote: string | null, quoteMid: string | null) =>
+      storage.tx((db) =>
+        Number(
+          db
+            .prepare(
+              "INSERT INTO session_message (chat_id, role, sender_id, content, mid, quote, quote_mid, created_at) VALUES (?, 'user', 'subj-1', ?, ?, ?, ?, '2026-11-16T00:00:00.000Z')"
+            )
+            .run(chat.chatId, content, mid, quote, quoteMid).lastInsertRowid
+        )
+      )
+    const source = insert('i live in porto now', 'm-src', null, null)
+    const quoting = insert('since when?', 'm-2', 'i live in porto now', 'm-src')
+    const other = insert('and this?', 'm-3', 'something else entirely', 'm-other')
+    const fact = storage.tx((db) =>
+      applyOperation(
+        db,
+        chat.chatId,
+        {
+          op: 'add',
+          subjectId: 'subj-1',
+          key: 'home.city',
+          value: 'Porto',
+          quote: 'q',
+          sourceMessageId: source
+        },
+        {}
+      )
+    )
+    expect(fact).toMatchObject({ accepted: true })
+    if (!fact.accepted) return
+    expect(storage.tx((db) => forgetItem(db, chat.chatId, fact.itemId))).toBe(true)
+    const quoteOf = (id: number) =>
+      storage.read((db) => db.prepare('SELECT quote FROM session_message WHERE id = ?').pluck().get(id))
+    expect(quoteOf(quoting)).toBeNull()
+    expect(quoteOf(other)).toBe('something else entirely')
+  })
+
   it('forgetItem clears the fact, older versions, episode summary, embedding, source message, and sets barrier', () => {
     const storage = tmpStorage()
     const chat = ensureChat(storage, { waId: 'fake-chat-6', type: 'group' })

@@ -5,6 +5,7 @@ import type { Storage } from '../storage/database.js'
 import type { PromptBuilder, TurnContext, TurnInput } from '../turn/types.js'
 import { getChatState, setChatState } from './chat-state.js'
 import { type MoodJudge, detectMood } from './mood.js'
+import { withQuote } from './quote.js'
 import { newSeed } from './random.js'
 import { detectLengthBypass, drawShape, shapeText } from './shape.js'
 
@@ -78,7 +79,7 @@ function formatMessages(input: TurnInput): ModelMessage[] {
       messages.push({ role: 'assistant', content: message.content })
       continue
     }
-    let content = message.content
+    let content = withQuote(message)
     if (isGroup) {
       const senderKey = message.senderId ?? ''
       let memberNumber = memberNumbers.get(senderKey)

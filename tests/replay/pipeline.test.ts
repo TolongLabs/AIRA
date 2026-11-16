@@ -105,6 +105,32 @@ describe('a scripted conversation', () => {
       { role: 'user', content: 'what is my cat called?' }
     ])
   })
+  it('gives the model a quoted message as a labelled block, never as part of the sender text', async () => {
+    const runner = scriptedRunner(() => 'about that quote')
+    const core = await startTestCore({ runner })
+    const chatId = core.activate(CHAT)
+    await core.gateway.send({
+      ...msg('m-1', 'is this still true?'),
+      quote: { text: 'the shop opens at nine', id: 'q-1' }
+    })
+    expect(userText(runner.inputs[0] as never)).toBe(
+      '<quoted from="member" untrusted="true">the shop opens at nine</quoted>\nis this still true?'
+    )
+    expect(
+      rows(core.storage, "SELECT content, quote, quote_mid, quote_of_aira FROM session_message WHERE role = 'user'")
+    ).toEqual([{ content: 'is this still true?', quote: 'the shop opens at nine', quote_mid: 'q-1', quote_of_aira: 0 }])
+    expect(one(core.storage, 'SELECT count(*) FROM session_message WHERE chat_id = ?', chatId)).toBe(2)
+  })
+
+  it('marks a quote of a message AIRA sent', async () => {
+    const runner = scriptedRunner(() => 'yes')
+    const core = await startTestCore({ runner })
+    core.activate(CHAT)
+    await core.gateway.send({ ...msg('m-1', 'really?'), quote: { text: 'an earlier reply', id: 'q-2', ofAira: true } })
+    expect(userText(runner.inputs[0] as never)).toBe(
+      '<quoted from="aira" untrusted="true">an earlier reply</quoted>\nreally?'
+    )
+  })
 })
 
 describe('turn admission', () => {

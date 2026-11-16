@@ -478,7 +478,17 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
                 storeUserMessage(db, { chatId: chat.chatId, senderId, content: request.earlier }, now)
               }
             }
-            storeUserMessage(db, { chatId: chat.chatId, senderId, content: request.text, mid: request.marker.mid }, now)
+            storeUserMessage(
+              db,
+              {
+                chatId: chat.chatId,
+                senderId,
+                content: request.text,
+                mid: request.marker.mid,
+                ...(request.quote ? { quote: request.quote } : {})
+              },
+              now
+            )
           }
         },
         now

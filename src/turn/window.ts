@@ -7,15 +7,30 @@ import type { WindowMessage } from './types.js'
 /** Stores one user message of a chat. A message id is stored once: a repeat changes nothing. */
 export function storeUserMessage(
   db: Db,
-  message: { chatId: string; senderId: string; content: string; mid?: string },
+  message: {
+    chatId: string
+    senderId: string
+    content: string
+    mid?: string
+    quote?: { text: string; id?: string; ofAira: boolean }
+  },
   now: () => Date = () => new Date()
 ): boolean {
   const result = db
     .prepare(
-      `INSERT INTO session_message (chat_id, role, sender_id, content, mid, created_at)
-       VALUES (?, 'user', ?, ?, ?, ?) ON CONFLICT DO NOTHING`
+      `INSERT INTO session_message (chat_id, role, sender_id, content, mid, quote, quote_mid, quote_of_aira, created_at)
+       VALUES (?, 'user', ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`
     )
-    .run(message.chatId, message.senderId, message.content, message.mid ?? null, isoNow(now))
+    .run(
+      message.chatId,
+      message.senderId,
+      message.content,
+      message.mid ?? null,
+      message.quote?.text ?? null,
+      message.quote?.id ?? null,
+      message.quote?.ofAira ? 1 : 0,
+      isoNow(now)
+    )
   return result.changes === 1
 }
 
@@ -39,6 +54,8 @@ interface Row {
   role: 'user' | 'assistant'
   sender_id: string | null
   content: string
+  quote: string | null
+  quote_of_aira: number
   created_at: string
   turn_id: string | null
 }
@@ -58,7 +75,7 @@ export function readWindow(
     (db) =>
       db
         .prepare(
-          `SELECT role, sender_id, content, created_at, turn_id,
+          `SELECT role, sender_id, content, quote, quote_of_aira, created_at, turn_id,
              CASE WHEN role = 'assistant' THEN coalesce(
                (SELECT max(asked.id) FROM session_message AS asked
                 WHERE asked.chat_id = message.chat_id AND asked.turn_id = message.turn_id AND asked.role = 'user'),
@@ -74,6 +91,7 @@ export function readWindow(
     ...(row.sender_id === null ? {} : { senderId: row.sender_id }),
     ...(row.turn_id === null ? {} : { turnId: row.turn_id }),
     content: row.content,
+    ...(row.quote === null ? {} : { quote: { text: row.quote, ofAira: row.quote_of_aira === 1 } }),
     at: row.created_at
   }))
 }

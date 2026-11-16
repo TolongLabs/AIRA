@@ -434,6 +434,15 @@ export function forgetItem(db: Db, chatId: string, itemId: string, now: Clock = 
   const clearTurnMessages = db.prepare(
     "UPDATE session_message SET content = ? WHERE chat_id = ? AND turn_id = ? AND role = 'user'"
   )
+  // A quote is a copy of the quoted message's text.
+  const clearQuotesOfMessage = db.prepare(
+    `UPDATE session_message SET quote = NULL WHERE chat_id = ? AND quote_mid IS NOT NULL
+       AND quote_mid = (SELECT mid FROM session_message WHERE id = ? AND chat_id = ?)`
+  )
+  const clearQuotesOfTurn = db.prepare(
+    `UPDATE session_message SET quote = NULL WHERE chat_id = ? AND quote_mid IN (
+       SELECT mid FROM session_message WHERE chat_id = ? AND turn_id = ? AND role = 'user' AND mid IS NOT NULL)`
+  )
   const isNote = target.key.startsWith('note.')
 
   for (const row of slot) {
@@ -448,8 +457,14 @@ export function forgetItem(db: Db, chatId: string, itemId: string, now: Clock = 
       }
     }
     // The window message that said it. A note has no quote: the messages of the turn that stored it said it.
-    if (row.source_message_id !== null) clearMessage.run(FORGOTTEN_MESSAGE, row.source_message_id, chatId)
-    if (isNote && row.source_turn !== null) clearTurnMessages.run(FORGOTTEN_MESSAGE, chatId, row.source_turn)
+    if (row.source_message_id !== null) {
+      clearMessage.run(FORGOTTEN_MESSAGE, row.source_message_id, chatId)
+      clearQuotesOfMessage.run(chatId, row.source_message_id, chatId)
+    }
+    if (isNote && row.source_turn !== null) {
+      clearTurnMessages.run(FORGOTTEN_MESSAGE, chatId, row.source_turn)
+      clearQuotesOfTurn.run(chatId, chatId, row.source_turn)
+    }
   }
 
   recordEvent(db, chatId, { step: 'forget', outcome: 'done', itemId }, now)
