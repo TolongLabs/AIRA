@@ -15,6 +15,7 @@ format:
   bubbleMaxChars: 700 # Split point for bubbles
   maxBubbles: 3 # Most bubbles in one reply
   leakCheck: 'on' # Step 6 of the cleaning chain
+  timeZone: 'Asia/Kuala_Lumpur' # Time zone of times code writes in a reply, such as /reminders
 
 # Owned by docs/trd/tools.md
 tools:

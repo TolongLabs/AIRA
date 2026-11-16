@@ -20,7 +20,8 @@ export function helpTool(registry: ToolRegistry): ToolDefinition<z.infer<typeof 
     handler(_args, context) {
       const commands = registry.commands(context).map((entry) => ({
         command: `/${entry.name}`,
-        usage: entry.usage
+        usage: entry.usage,
+        description: registry.get(entry.tool)?.description ?? ''
       }))
       return { ok: true, data: { commands } }
     }

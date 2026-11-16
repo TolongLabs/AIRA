@@ -43,7 +43,7 @@ describe('direct commands', () => {
 
   it('/reminders lists this chat only', async () => {
     const { gateway } = await startApp(queueModel([{ text: 'unused' }]))
-    expect((await gateway.send(msg('m-1', '/reminders'))).content).toBe('reminders: none')
+    expect((await gateway.send(msg('m-1', '/reminders'))).content).toBe('No reminders in this chat.')
   })
 })
 
