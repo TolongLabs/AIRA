@@ -186,6 +186,26 @@ describe('FakeGateway', () => {
     expect(gateway.requests).toHaveLength(1)
   })
 
+  it('reads the turn id from the completion id, streamed or not, and none from `none`', async () => {
+    const streamed = await startStub((_req, _body, res) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' })
+      const chunk = { id: 'chatcmpl-turn-stream', choices: [{ delta: { content: 'hi' } }] }
+      res.end(`data: ${JSON.stringify(chunk)}\n\ndata: [DONE]\n\n`)
+    })
+    const json = await startStub((_req, _body, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ id: 'chatcmpl-turn-json', choices: [{ message: { content: 'hi' } }] }))
+    })
+    const none = await startStub((_req, _body, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ id: 'chatcmpl-none', choices: [{ message: { content: 'NO_REPLY' } }] }))
+    })
+
+    expect((await new FakeGateway({ baseUrl: streamed }).send(makeMessage())).turnId).toBe('turn-stream')
+    expect((await new FakeGateway({ baseUrl: json }).send(makeMessage())).turnId).toBe('turn-json')
+    expect((await new FakeGateway({ baseUrl: none }).send(makeMessage())).turnId).toBeUndefined()
+  })
+
   it('reads a non-streamed JSON reply', async () => {
     const baseUrl = await startStub((_req, _body, res) => {
       res.writeHead(200, { 'content-type': 'application/json' })
