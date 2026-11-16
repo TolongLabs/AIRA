@@ -93,10 +93,15 @@ export interface TurnService {
   active(): number
 }
 
+/** A message that starts with a slash command, by the parser's own shape. An unknown name runs alone too. */
+const COMMAND_TEXT = /^\s*\/[a-z][a-z0-9_-]*(?:\s|$)/i
+
 interface Waiter {
   mid: string
   senderId: string
   scheduled?: DeliveryKind
+  /** The text starts with a slash command. Such a message is never merged with another one. */
+  command?: boolean
   /** The files the gateway saved for this message. Kept in memory: a restart answers from the text alone. */
   attachments?: Attachment[]
   resolvers: ((reply: TurnReply) => void)[]
@@ -402,7 +407,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
           senderId: newest.senderId,
           kind: newest.scheduled ? 'scheduled' : 'reply',
           mids: batch.map((waiter) => waiter.mid),
-          also: (db) => claimPending(db, chat.chatId, turnId)
+          also: (db) => claimPending(db, chat.chatId, turnId, newest.mid)
         },
         now
       )
@@ -479,11 +484,21 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     }
   }
 
+  /**
+   * How many pending messages the next turn answers: a command alone, else the messages before the next command.
+   * One merged turn answers only its newest message, so a command merged with others would be lost.
+   */
+  function batchLength(pending: Waiter[]): number {
+    if (pending[0]?.command) return 1
+    const next = pending.findIndex((waiter) => waiter.command)
+    return next === -1 ? pending.length : next
+  }
+
   function start(queue: ChatQueue): void {
     if (queue.timer) clearTimeout(queue.timer)
     queue.timer = undefined
     queue.firstPendingAt = undefined
-    const batch = queue.pending.splice(0)
+    const batch = queue.pending.splice(0, batchLength(queue.pending))
     queue.current = runTurn(queue.chat, batch).finally(() => {
       queue.current = undefined
       // Messages that arrived while the turn ran have waited already: the next turn starts at once.
@@ -546,7 +561,8 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         )
       },
       undefined,
-      request.attachments
+      request.attachments,
+      COMMAND_TEXT.test(request.text)
     )
   }
 
@@ -560,7 +576,8 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     scheduled: DeliveryKind | undefined,
     onNew: (db: Db) => void,
     afterNew?: () => void,
-    attachments?: Attachment[]
+    attachments?: Attachment[],
+    command?: boolean
   ): Promise<TurnReply> {
     for (let round = 0; round < 3; round++) {
       const status = receiveInbound(storage, { ...key, onNew }, now)
@@ -578,6 +595,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         mid: key.mid,
         senderId: key.senderId,
         ...(scheduled ? { scheduled } : {}),
+        ...(command ? { command } : {}),
         ...(attachments && attachments.length > 0 ? { attachments } : {})
       })
     }

@@ -23,6 +23,8 @@ export interface PromptBuilderOptions {
   config: {
     prompt: { maxSystemTokens: number }
     judge: { mood: 'on' | 'off'; moodMinProbability: number; timeoutMs: number }
+    /** The deployment time zone. Absent: UTC. */
+    format?: { timeZone: string }
   }
   /** The text of prompts/harness.md. */
   harnessRules: string
@@ -58,9 +60,29 @@ export function buildSystemBlocks(input: {
   ]
 }
 
-function formatContextBlock(input: TurnInput, nowDate: Date, recalled: string[]): string {
-  const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: 'UTC' }).format(nowDate)
-  const lines = [`Chat type: ${input.context.chat.type}`, `Time: ${nowDate.toISOString()} (${weekday})`]
+/** The local time for the model, with its zone and offset, so times it writes and reads are local. */
+export function localTimeLine(nowDate: Date, timeZone: string): string {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      weekday: 'long',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+      timeZoneName: 'longOffset'
+    })
+      .formatToParts(nowDate)
+      .map((part) => [part.type, part.value])
+  )
+  const offset = parts['timeZoneName'] === 'GMT' ? '+00:00' : String(parts['timeZoneName']).replace('GMT', '')
+  return `Time: ${parts['weekday']} ${parts['year']}-${parts['month']}-${parts['day']} ${parts['hour']}:${parts['minute']}, ${timeZone} (UTC${offset}). Write and read times in this zone; a tool time takes this offset.`
+}
+
+function formatContextBlock(input: TurnInput, nowDate: Date, recalled: string[], timeZone: string): string {
+  const lines = [`Chat type: ${input.context.chat.type}`, localTimeLine(nowDate, timeZone)]
   const language = input.context.settings['language']?.value
   if (typeof language === 'string' && language !== 'auto') {
     lines.push(`Language: ${language}`)
@@ -158,7 +180,7 @@ export function createPromptBuilder(options: PromptBuilderOptions): PromptBuilde
       const moodObj = pack.moods.get(moodResult.mood) ?? pack.moods.get(pack.defaultMood)
       const tone = moodObj?.tone ?? ''
       const recalled = options.recall ? options.recall(input) : []
-      const contextText = formatContextBlock(input, clock(), recalled)
+      const contextText = formatContextBlock(input, clock(), recalled, options.config.format?.timeZone ?? 'UTC')
       const toolRules = options.toolRules ? options.toolRules(input.context) : undefined
 
       const system = buildSystemBlocks({

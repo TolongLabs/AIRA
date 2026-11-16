@@ -282,6 +282,29 @@ describe('batching', () => {
     expect((await core.gateway.send(msg('m-1', 'first half'))).content).toBe('NO_REPLY')
   })
 
+  it('never merges a command: each one runs as its own turn, in order, and every message gets its reply', async () => {
+    const runner = scriptedRunner((input) => `saw: ${userText(input)}`)
+    const core = await startTestCore({
+      runner,
+      config: testConfig((config) => {
+        config.turn.batchMs = 150
+      })
+    })
+    core.activate(CHAT)
+    const replies = await Promise.all(
+      ['before', '/zzz first command', '/zzz second command', 'after'].map((text, i) =>
+        new Promise((resolve) => setTimeout(resolve, i * 20)).then(() => core.gateway.send(msg(`m-${i + 1}`, text)))
+      )
+    )
+    expect(replies.map((reply) => reply.content)).toEqual([
+      'saw: before',
+      'saw: /zzz first command',
+      'saw: /zzz second command',
+      'saw: after'
+    ])
+    expect(one(core.storage, 'SELECT count(*) FROM turn')).toBe(4)
+  })
+
   it('runs one turn per chat: a message that arrives while a turn runs joins the next turn', async () => {
     const releases: ((text: string) => void)[] = []
     const runner = scriptedRunner(() => new Promise<string>((resolve) => releases.push(resolve)))
