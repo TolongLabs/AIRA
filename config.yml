@@ -133,3 +133,4 @@ archive:
 # Owned by docs/trd/site.md
 site:
   port: 9890 # The site API's port inside the container. Never the gateway's port
+  allowedOrigins: [] # Origins whose browser writes are accepted. Empty: a write that carries Origin is refused

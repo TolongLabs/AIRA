@@ -1,13 +1,36 @@
 import { timingSafeEqual } from 'node:crypto'
-import { type Server, type ServerResponse, createServer } from 'node:http'
+import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http'
 import type { Logger } from '../records/logger.js'
 import { type SiteApiDeps, dispatchGet, isKnownRoute } from './routes.js'
+import { dispatchWrite, hostAllowed, isWriteRoute, originAllowed } from './writes.js'
 
 // The core's private HTTP API for the owner site (docs/trd/site.md#serving-the-api).
 
 export interface SiteApiServerOptions extends SiteApiDeps {
   token: string
   logger: Logger
+  /** `site.allowedOrigins` */
+  allowedOrigins: readonly string[]
+}
+
+const MAX_BODY_BYTES = 16 * 1024
+
+/** The JSON body, or a reason code. Reads at most MAX_BODY_BYTES. */
+async function readJson(request: IncomingMessage): Promise<{ body: unknown } | { error: string; status: number }> {
+  const type = request.headers['content-type'] ?? ''
+  if (!/^application\/json(\s*;|$)/i.test(type)) return { status: 415, error: 'unsupported_media_type' }
+  const chunks: Buffer[] = []
+  let size = 0
+  for await (const chunk of request) {
+    size += (chunk as Buffer).length
+    if (size > MAX_BODY_BYTES) return { status: 413, error: 'body_too_large' }
+    chunks.push(chunk as Buffer)
+  }
+  try {
+    return { body: JSON.parse(Buffer.concat(chunks).toString('utf8')) }
+  } catch {
+    return { status: 400, error: 'invalid_json' }
+  }
 }
 
 function json(response: ServerResponse, status: number, body: unknown): void {
@@ -26,22 +49,37 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
   const log = options.logger.child({ module: 'site_api' })
   const expectedToken = Buffer.from(options.token, 'utf8')
 
-  async function handle(
-    method: string | undefined,
-    rawUrl: string | undefined,
-    authorization: string | undefined,
-    response: ServerResponse
-  ): Promise<void> {
-    if (!tokenMatches(authorization, expectedToken)) {
+  async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    if (!tokenMatches(request.headers.authorization, expectedToken)) {
       json(response, 401, { error: 'unauthorized' })
       return
     }
 
     let url: URL
     try {
-      url = new URL(rawUrl ?? '/', 'http://localhost')
+      url = new URL(request.url ?? '/', 'http://localhost')
     } catch {
       json(response, 400, { error: 'bad_request' })
+      return
+    }
+
+    if (isWriteRoute(url.pathname)) {
+      if (!hostAllowed(request.headers.host)) {
+        json(response, 403, { error: 'host_refused' })
+        return
+      }
+      if (!originAllowed(request.headers.origin, options.allowedOrigins)) {
+        json(response, 403, { error: 'origin_refused' })
+        return
+      }
+      const read = await readJson(request)
+      if ('error' in read) {
+        json(response, read.status, { error: read.error })
+        return
+      }
+      const result = dispatchWrite(options, request.method ?? '', url.pathname, read.body)
+      if (result.status === 200) log.info('site_api.write', { route: 'chat_status' })
+      json(response, result.status, result.body)
       return
     }
 
@@ -50,7 +88,7 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
       return
     }
 
-    if (method !== 'GET') {
+    if (request.method !== 'GET') {
       json(response, 405, { error: 'method_not_allowed' })
       return
     }
@@ -60,7 +98,7 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
   }
 
   return createServer((request, response) => {
-    void handle(request.method, request.url, request.headers.authorization, response).catch((error: unknown) => {
+    void handle(request, response).catch((error: unknown) => {
       log.error('site_api.error', { error })
       json(response, 500, { error: 'internal' })
     })

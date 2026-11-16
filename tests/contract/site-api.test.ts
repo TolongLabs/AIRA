@@ -1,4 +1,6 @@
+import { request as httpRequest } from 'node:http'
 import { describe, expect, it } from 'vitest'
+import { hostAllowed, originAllowed } from '../../src/api/writes.js'
 import { applyOperation } from '../../src/memory/store.js'
 import { ModelError } from '../../src/models/types.js'
 import { ensureChat } from '../../src/settings/chats.js'
@@ -197,5 +199,97 @@ describe('site API read routes', () => {
     expect(app.siteServer).toBeUndefined()
     expect(await app.listenSite(0, '127.0.0.1')).toBeUndefined()
     expect(logs.some((entry) => entry['event'] === 'site_api.no_token')).toBe(true)
+  })
+})
+
+function writeStatus(siteUrl: string, chatId: string, body: unknown, headers: Record<string, string> = {}) {
+  return fetch(`${siteUrl}/api/chats/${encodeURIComponent(chatId)}/status`, {
+    method: 'PUT',
+    headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json', ...headers },
+    body: typeof body === 'string' ? body : JSON.stringify(body)
+  })
+}
+
+describe('site API write routes', () => {
+  it('switches a chat on and off, once, with a change record by the site', async () => {
+    const { app, siteUrl } = await startWithSite()
+    const chat = ensureChat(app.storage, { waId: 'test-chat-w1', type: 'dm' })
+    const on = await writeStatus(siteUrl, chat.chatId, { status: 'active' })
+    expect(on.status).toBe(200)
+    expect(await on.json()).toEqual({ chatId: chat.chatId, status: 'active', changed: true })
+    const again = await writeStatus(siteUrl, chat.chatId, { status: 'active' })
+    expect(await again.json()).toEqual({ chatId: chat.chatId, status: 'active', changed: false })
+    const rows = app.storage.read((db) =>
+      db.prepare("SELECT actor, new_value FROM setting_change WHERE scope = ? AND key = 'status'").all(chat.chatId)
+    )
+    expect(rows).toEqual([{ actor: 'site', new_value: '"active"' }])
+    const listed = (await (await apiFetch(siteUrl, '/api/chats', { token: TOKEN })).json()) as {
+      chats: { chatId: string; status: string }[]
+    }
+    expect(listed.chats.find((entry) => entry.chatId === chat.chatId)?.status).toBe('active')
+    const off = await writeStatus(siteUrl, chat.chatId, { status: 'pending' })
+    expect(await off.json()).toMatchObject({ status: 'pending', changed: true })
+  })
+
+  it('refuses a missing token, a body that is not JSON, a bad body, an unknown chat and a foreign origin', async () => {
+    const { app, siteUrl } = await startWithSite()
+    const chat = ensureChat(app.storage, { waId: 'test-chat-w2', type: 'dm' })
+    const noToken = await fetch(`${siteUrl}/api/chats/${chat.chatId}/status`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: '{"status":"active"}'
+    })
+    expect(noToken.status).toBe(401)
+    expect((await writeStatus(siteUrl, chat.chatId, 'status=active', { 'content-type': 'text/plain' })).status).toBe(
+      415
+    )
+    expect((await writeStatus(siteUrl, chat.chatId, '{not json')).status).toBe(400)
+    expect((await writeStatus(siteUrl, chat.chatId, { status: 'on' })).status).toBe(400)
+    expect((await writeStatus(siteUrl, chat.chatId, { status: 'active', extra: 1 })).status).toBe(400)
+    expect((await writeStatus(siteUrl, 'c_missing', { status: 'active' })).status).toBe(404)
+    const foreign = await writeStatus(siteUrl, chat.chatId, { status: 'active' }, { origin: 'https://evil.example' })
+    expect(foreign.status).toBe(403)
+    expect(await foreign.json()).toEqual({ error: 'origin_refused' })
+    expect((await writeStatus(siteUrl, chat.chatId, 'x'.repeat(17 * 1024))).status).toBe(413)
+    const status = app.storage.read((db) =>
+      db.prepare('SELECT status FROM chat WHERE chat_id = ?').pluck().get(chat.chatId)
+    )
+    expect(status).toBe('pending')
+  })
+
+  it('refuses a write whose Host is a name, so a rebound page cannot reach the API', async () => {
+    const { app, siteUrl } = await startWithSite()
+    const chat = ensureChat(app.storage, { waId: 'test-chat-w3', type: 'dm' })
+    const { port } = new URL(siteUrl)
+    const status = await new Promise<number>((resolve, reject) => {
+      const req = httpRequest(
+        {
+          host: '127.0.0.1',
+          port,
+          method: 'PUT',
+          path: `/api/chats/${chat.chatId}/status`,
+          headers: {
+            host: `attacker.example:${port}`,
+            authorization: `Bearer ${TOKEN}`,
+            'content-type': 'application/json'
+          }
+        },
+        (res) => {
+          res.resume()
+          resolve(res.statusCode ?? 0)
+        }
+      )
+      req.on('error', reject)
+      req.end('{"status":"active"}')
+    })
+    expect(status).toBe(403)
+    expect(hostAllowed('127.0.0.1:9898')).toBe(true)
+    expect(hostAllowed('localhost:9898')).toBe(true)
+    expect(hostAllowed('[::1]:9898')).toBe(true)
+    expect(hostAllowed('aira.example:9898')).toBe(false)
+    expect(hostAllowed(undefined)).toBe(false)
+    expect(originAllowed(undefined, [])).toBe(true)
+    expect(originAllowed('https://site.example', ['https://site.example/'])).toBe(true)
+    expect(originAllowed('https://other.example', ['https://site.example'])).toBe(false)
   })
 })
