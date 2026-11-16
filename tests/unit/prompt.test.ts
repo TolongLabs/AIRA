@@ -282,6 +282,23 @@ describe('reply shape and length bypass', () => {
     expect(shapeText(shape)).toContain('Use the length the answer needs.')
   })
 
+  it('draws each beat at its odds and writes a drawn beat into the shape', () => {
+    const base = examplePack()
+    const neutral = base.moods.get('neutral')!
+    const moods = new Map(base.moods)
+    moods.set('neutral', {
+      ...neutral,
+      beats: [
+        { name: 'always', line: '- Do the always beat.', odds: 1 },
+        { name: 'never', line: '- Do the never beat.', odds: 0 }
+      ]
+    })
+    const shape = drawShape({ pack: { ...base, moods }, mood: 'neutral', replyLength: 'default', seed: 5 })
+    expect(shape.beats).toEqual(['- Do the always beat.'])
+    expect(shapeText(shape)).toContain('- Do the always beat.')
+    expect(shapeText(shape)).not.toContain('never beat')
+  })
+
   it('shapeText includes header, length, opener, ending and faces lines', () => {
     const facePack = makePackWithFaces([':)', ':D'])
     const shapes = Array.from({ length: 200 }, (_, i) =>
@@ -294,7 +311,7 @@ describe('reply shape and length bypass', () => {
     expect(lines[1]).toBe(`Keep the reply under ${LENGTH_CHARS.short} characters.`)
     expect(lines.some((l) => l.startsWith('Open in the spirit of: '))).toBe(true)
     expect(lines.some((l) => l.startsWith('Close in the spirit of: '))).toBe(true)
-    expect(lines.some((l) => l.startsWith('You may use at most 2 of these faces: '))).toBe(true)
+    expect(lines.some((l) => l.startsWith('Faces that fit: :) :D') || l.startsWith('Faces that fit: :D :)'))).toBe(true)
     // Openers and endings are drawn only for some replies.
     const openers = shapes.filter((shape) => shape.opener !== undefined).length
     const endings = shapes.filter((shape) => shape.ending !== undefined).length

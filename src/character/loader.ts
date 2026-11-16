@@ -17,7 +17,10 @@ export interface Mood {
   tone: string
   openers: string[]
   endings: string[]
+  /** The mood's own faces and those of its face groups, without repeats. */
   faces: string[]
+  /** The beats this mood allows, with their odds per reply. */
+  beats: { name: string; line: string; odds: number }[]
   stickers: string[]
 }
 
@@ -105,13 +108,24 @@ export function loadPack(dir: string, source: 'repository' | 'data'): Pack {
           }
         }
       }
+      const groupFaces = (entry.faceGroups ?? []).flatMap((group) => {
+        const faces = moodsRaw.faceGroups?.[group]
+        if (!faces) faults.push(`moods.yml: moods.${key}.faceGroups: unknown face group "${group}"`)
+        return faces ?? []
+      })
+      const beats = Object.entries(entry.beats ?? {}).flatMap(([name, odds]) => {
+        const beat = moodsRaw.beats?.find((b) => b.name === name)
+        if (!beat) faults.push(`moods.yml: moods.${key}.beats: unknown beat "${name}"`)
+        return beat ? [{ name, line: beat.line, odds }] : []
+      })
       moods.set(key, {
         key,
         patterns,
         tone: entry.tone,
         openers: entry.openers,
         endings: entry.endings,
-        faces: entry.faces,
+        faces: [...new Set([...entry.faces, ...groupFaces])],
+        beats,
         stickers: entry.stickers
       })
     }

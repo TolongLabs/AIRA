@@ -29,8 +29,12 @@ function longestShapeText(mood: Mood): string {
   if (ending !== undefined) lines.push(`Close in the spirit of: "${ending}"`)
   if (mood.faces.length > 0) {
     const longestFaces = [...mood.faces].sort((a, b) => b.length - a.length).slice(0, FACE_LIMIT)
-    lines.push(`You may use at most ${longestFaces.length} of these faces: ${longestFaces.join(' ')}`)
+    lines.push(
+      `Faces that fit: ${longestFaces.join(' ')}. Use one, or two when flustered or excited; a sincere moment may need none. Use no other face.`
+    )
   }
+  // The worst case draws every beat.
+  for (const beat of mood.beats) lines.push(beat.line)
   return lines.join('\n')
 }
 

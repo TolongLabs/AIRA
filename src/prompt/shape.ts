@@ -3,7 +3,8 @@ import { detectFormatRequest } from '../format/request.js'
 import { pick, seededRandom } from './random.js'
 
 export const LENGTH_CHARS = { short: 280, default: 600, long: 1400 } as const
-export const FACE_LIMIT = 2
+/** How many faces a reply is offered, drawn fresh each time from the mood's pool. */
+export const FACE_LIMIT = 4
 
 export interface ReplyShape {
   length: 'short' | 'default' | 'long'
@@ -14,6 +15,8 @@ export interface ReplyShape {
   opener?: string
   ending?: string
   faces: string[]
+  /** The lines of the beats drawn for this reply. */
+  beats: string[]
   seed: number
 }
 
@@ -72,6 +75,9 @@ export function drawShape(input: {
     }
   }
 
+  // Each beat the mood allows is rolled once, at its odds. Left to the prompt, beats were rare.
+  const beats = (mood?.beats ?? []).filter((beat) => random() < beat.odds).map((beat) => beat.line)
+
   return {
     length,
     maxChars,
@@ -80,6 +86,7 @@ export function drawShape(input: {
     opener,
     ending,
     faces,
+    beats,
     seed: input.seed
   }
 }
@@ -95,7 +102,10 @@ export function shapeText(shape: ReplyShape): string {
   if (shape.opener !== undefined) lines.push(`Open in the spirit of: "${shape.opener}"`)
   if (shape.ending !== undefined) lines.push(`Close in the spirit of: "${shape.ending}"`)
   if (shape.faces.length > 0) {
-    lines.push(`You may use at most ${shape.faces.length} of these faces: ${shape.faces.join(' ')}`)
+    lines.push(
+      `Faces that fit: ${shape.faces.join(' ')}. Use one, or two when flustered or excited; a sincere moment may need none. Use no other face.`
+    )
   }
+  for (const beat of shape.beats) lines.push(beat)
   return lines.join('\n')
 }

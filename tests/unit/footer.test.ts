@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { type CleanOptions, cleanReply } from '../../src/format/clean.js'
+import { isFace } from '../../src/character/schema.js'
+import { type CleanOptions, cleanReply, guardFaces } from '../../src/format/clean.js'
 import { buildFooter, capitaliseBubble, forReplay, superscript } from '../../src/format/footer.js'
 import { BUBBLE_BREAK } from '../../src/gateway/response.js'
 
@@ -133,5 +134,23 @@ describe('forReplay', () => {
 
   it('keeps a reply that is only small text', () => {
     expect(forReplay('🛠️ ʰⁱ')).toBe('🛠️ ʰⁱ')
+  })
+})
+
+describe('guardFaces', () => {
+  it('turns markdown characters inside faces into full-width forms, and leaves code and words alone', () => {
+    expect(guardFaces('Yay (*^▽^*) and (>_<) ~')).toBe('Yay (＊^▽^＊) and (>＿<) ~')
+    expect(guardFaces('Hm (´・ω・`) see `npm i` now')).toBe('Hm (´・ω・｀) see `npm i` now')
+    expect(guardFaces('```\n(>_<)\n```')).toBe('```\n(>_<)\n```')
+    expect(guardFaces('call (my_func) here')).toBe('call (my_func) here')
+    expect(guardFaces('¯\\_(ツ)_/¯ ok')).toBe('¯\\＿(ツ)＿/¯ ok')
+  })
+})
+
+describe('isFace', () => {
+  it('accepts kaomoji and refuses bracketed words', () => {
+    for (const face of ['(≧▽≦)', '(ﾉ◕ヮ◕)ﾉ', 'σ(≧ε≦σ)', '( ˘▽˘)っ', 'ᕦ(ò_óˇ)ᕤ', '(O_O)'])
+      expect(isFace(face)).toBe(true)
+    for (const word of ['(hello)', 'smile', '(a)(b)', `(${'・'.repeat(21)})`]) expect(isFace(word)).toBe(false)
   })
 })
