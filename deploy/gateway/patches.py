@@ -55,6 +55,22 @@ assert not m._message_is_reply_to_bot({"quotedParticipant": "9876@lid", "botIds"
 '''
 
 
+VOICE_FROM_CORE_TEST = '''import json, os, sys, tempfile
+from pathlib import Path
+sys.path.insert(0, str(Path(os.path.expanduser(os.environ.get("HERMES_HOME", "~/.hermes"))) / "scripts"))
+from brain import chatflags
+with tempfile.TemporaryDirectory() as d:
+    (Path(d) / "gateway").mkdir()
+    (Path(d) / "gateway" / "chats.json").write_text(
+        json.dumps({"version": 1, "chats": {"0000000000@lid": {"voice": "all", "reactions": True}}}),
+        encoding="utf-8",
+    )
+    os.environ["AIRA_HOST_DATA_DIR"] = d
+    assert chatflags.voice_mode("0000000000@lid") == "all"
+    assert chatflags.voice_mode("1234567890@s.whatsapp.net") == "off"
+'''
+
+
 def patches() -> list[dict]:
     """Every patch, in the order it is applied. Paths are relative to the gateway tree."""
     py = ["{python}", "-m", "py_compile", "{target}"]
@@ -367,6 +383,46 @@ async def test_reply_prefix_still_injected_when_text_in_history():
             "cwd": ".",
             "why": "the test expected a quote order the gateway no longer writes, and failed",
         },
+        {
+            "name": "voice-from-core",
+            "target": "gateway/run.py",
+            "targets": ("gateway/run.py", "gateway/platforms/base.py"),
+            "present": "[aira] voice-from-core",
+            "edits": (
+        ('''        chat_id = event.source.chat_id
+        voice_key = self._voice_key(event.source.platform, chat_id)
+        voice_mode = self._voice_mode.get(voice_key)
+        is_voice_input = (event.message_type == MessageType.VOICE)
+''',
+         '''        chat_id = event.source.chat_id
+        voice_key = self._voice_key(event.source.platform, chat_id)
+        voice_mode = self._voice_mode.get(voice_key)
+        # [aira] voice-from-core: WhatsApp voice mode comes from the core's chats.json.
+        if str(getattr(event.source.platform, "value", event.source.platform) or "").lower() == "whatsapp":
+            try:
+                from brain import chatflags
+                voice_mode = chatflags.voice_mode(chat_id)
+            except Exception:
+                voice_mode = "off"
+        is_voice_input = (event.message_type == MessageType.VOICE)
+'''),
+        ('''        if chat_id in self._auto_tts_enabled_chats:
+''',
+         '''        # [aira] voice-from-core: WhatsApp auto-TTS follows the core's chats.json.
+        if str(getattr(getattr(self, "platform", None), "value", getattr(self, "platform", None)) or "").lower() == "whatsapp":
+            try:
+                from brain import chatflags
+                return chatflags.voice_mode(chat_id) == "all"
+            except Exception:
+                return False
+        elif chat_id in self._auto_tts_enabled_chats:
+'''),
+    ),
+            "syntax": py,
+            "tests": [["{python}", "-c", VOICE_FROM_CORE_TEST]],
+            "cwd": ".",
+            "why": "WhatsApp voice mode was stored in gateway state instead of following the core's chats.json",
+        },
     ]
 
 
@@ -383,12 +439,15 @@ def is_applied(patch: dict, text: str) -> bool:
 def apply_patch(patch: dict, tree: Path, *, check_only: bool, python: str) -> bool:
     """Applies one patch. True when it is in place afterwards."""
     name = patch["name"]
-    target = tree / patch["target"]
-    if not target.exists():
-        print(f"  {name}: TARGET MISSING: {target}")
-        return False
-    text = target.read_text(encoding="utf-8")
-    if is_applied(patch, text):
+    edit_targets = list(patch.get("targets") or [patch["target"]] * len(patch["edits"]))
+    unique_rels = list(dict.fromkeys(edit_targets))
+    files = {rel: tree / rel for rel in unique_rels}
+    for rel, target in files.items():
+        if not target.exists():
+            print(f"  {name}: TARGET MISSING: {target}")
+            return False
+    texts = {rel: target.read_text(encoding="utf-8") for rel, target in files.items()}
+    if all(is_applied(patch, texts[rel]) for rel in unique_rels):
         print(f"  {name}: already applied")
         return True
     print(f"  {name}: ABSENT ({patch['why']})")
@@ -396,28 +455,36 @@ def apply_patch(patch: dict, tree: Path, *, check_only: bool, python: str) -> bo
         return False
 
     # Every anchor is checked before anything is written: a partial edit neither works nor looks broken.
-    for i, (find, _) in enumerate(patch["edits"], 1):
-        count = text.count(find)
+    for i, (rel, (find, _)) in enumerate(zip(edit_targets, patch["edits"]), 1):
+        count = texts[rel].count(find)
         if count != 1:
             print(f"  {name}: ABORT: anchor {i} found {count} times, expected 1. "
-                  f"Upstream changed {target.name}; re-derive this patch by hand. Nothing was written.")
+                  f"Upstream changed {files[rel].name}; re-derive this patch by hand. Nothing was written.")
             return False
 
-    backup = target.with_name(target.name + f".bak-{datetime.now():%Y%m%d-%H%M%S-%f}")
-    shutil.copy2(target, backup)
-    out = text
-    for find, replace in patch["edits"]:
-        out = out.replace(find, replace, 1)
-    target.write_text(out, encoding="utf-8")
+    stamp = f".bak-{datetime.now():%Y%m%d-%H%M%S-%f}"
+    backups = {}
+    outs = dict(texts)
+    for rel, target in files.items():
+        backup = target.with_name(target.name + stamp)
+        shutil.copy2(target, backup)
+        backups[rel] = backup
+    for rel, (find, replace) in zip(edit_targets, patch["edits"]):
+        outs[rel] = outs[rel].replace(find, replace, 1)
+    for rel, target in files.items():
+        target.write_text(outs[rel], encoding="utf-8")
 
     def revert(reason: str) -> bool:
-        shutil.copy2(backup, target)
-        print(f"  {name}: FAILED ({reason}), restored from {backup.name}")
+        for rel, target in files.items():
+            shutil.copy2(backups[rel], target)
+        backup_names = ", ".join(b.name for b in backups.values())
+        print(f"  {name}: FAILED ({reason}), restored from {backup_names}")
         return False
 
     cwd = tree / patch["cwd"]
-    for cmd in [patch["syntax"], *patch["tests"]]:
-        argv = _argv(cmd, tree, target, python)
+    syntax_cmds = [_argv(patch["syntax"], tree, files[rel], python) for rel in unique_rels]
+    test_cmds = [_argv(cmd, tree, files[unique_rels[0]], python) for cmd in patch["tests"]]
+    for argv in [*syntax_cmds, *test_cmds]:
         try:
             run = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=300)
         except (OSError, subprocess.TimeoutExpired) as error:
@@ -425,7 +492,8 @@ def apply_patch(patch: dict, tree: Path, *, check_only: bool, python: str) -> bo
         if run.returncode != 0:
             tail = (run.stdout + run.stderr).strip().splitlines()[-3:]
             return revert(" | ".join(tail) or f"exit {run.returncode}")
-    print(f"  {name}: applied, syntax and tests OK (backup {backup.name})")
+    backup_names = ", ".join(b.name for b in backups.values())
+    print(f"  {name}: applied, syntax and tests OK (backup {backup_names})")
     return True
 
 
