@@ -78,9 +78,10 @@ validation as start-up and is logged to `setting_change`.
 
 ### Write Routes
 
-| Route                       | Body                                    | Answer                                          |
-| --------------------------- | --------------------------------------- | ----------------------------------------------- |
-| `PUT /api/chats/:id/status` | `{ "status": "active" }` or `"pending"` | `chatId`, `status`, and `changed` true or false |
+| Route                       | Body                                                                 | Answer                                          |
+| --------------------------- | -------------------------------------------------------------------- | ----------------------------------------------- |
+| `PUT /api/chats/:id/status` | `{ "status": "active" }` or `"pending"`                              | `chatId`, `status`, and `changed` true or false |
+| `PUT /api/settings`         | `{ "level", "scope", "key", "value" }`; `value: null` clears the row | `level`, `scope`, `key`, `value`, `changed`     |
 
 - A write needs `Content-Type: application/json` (else 415) and a body of at most 16 KB that the route's schema
   accepts (else 400). An unknown chat gets 404.
@@ -88,6 +89,9 @@ validation as start-up and is logged to `setting_change`.
   rebinds its own name to the private address cannot reach the API.
 - A request that carries `Origin` gets 403 `origin_refused` unless that origin is listed in `site.allowedOrigins`.
   The list is empty by default. A request from a server, with no `Origin`, relies on the token.
+- A setting is checked as start-up checks it: a known key, a valid scope for its level, a value its schema accepts
+  (else 400 `invalid_setting`), and for `character` a pack that is loaded (else 400 `unknown_character`). A chat
+  scope that does not exist gets 404. Clearing a value restores inheritance from the level above.
 - Every applied change writes a `setting_change` row with actor `site`. Setting the status a chat already has
   changes nothing and writes no row.
 
