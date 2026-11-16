@@ -87,7 +87,18 @@ export const SETTING_KEYS: Record<string, SettingDefinition> = {
   'features.media': { schema: z.boolean(), default: true },
   'features.voice': { schema: z.boolean(), default: false },
   'features.lessons': { schema: z.boolean(), default: false },
-  'features.reports': { schema: z.boolean(), default: true }
+  'features.reports': { schema: z.boolean(), default: true },
+  'features.toolFooter': { schema: z.boolean(), default: true },
+  footerEmoji: {
+    schema: z
+      .string()
+      .min(1)
+      .max(8)
+      .refine(
+        (value) => /\p{Extended_Pictographic}/u.test(value) && !/[\p{L}\p{N}\s]/u.test(value),
+        'must be one emoji'
+      )
+  }
 }
 
 /** Returns the definition for a static setting key or a dynamic mcp.<id> key, or undefined if unknown. */

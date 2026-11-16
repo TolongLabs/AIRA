@@ -57,6 +57,8 @@ export interface ToolRegistry {
   all(): ToolDefinition[]
   /** Every registered tool name, for the cleaning chain's narration check. */
   toolNames(): string[]
+  /** The URLs a turn read or found, pages read first, then search results in rank order. Read once, then gone. */
+  takeSources(turnId: string): string[]
   /** May this chat use this tool, in any mode? Feature switch and permission. */
   enabled(name: string, context: TurnContext): boolean
   /** The tools the model may call this turn: mode `both` or `implicit`, and enabled. Implements `ToolOffer`. */
@@ -356,6 +358,19 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
     }
   }
 
+  // Sources for the reply footer (docs/trd/prompt-engine.md#tool-footer). Kept in memory for the turn only.
+  const sources = new Map<string, { read: string[]; found: string[] }>()
+  const noteSources = (turnId: string, name: string, args: unknown, data: unknown): void => {
+    const entry = sources.get(turnId) ?? { read: [], found: [] }
+    if ((name === 'read_page' || name === 'read_post') && typeof (args as { url?: unknown })?.url === 'string') {
+      entry.read.push((args as { url: string }).url)
+    } else if (name === 'web_search') {
+      const results = (data as { results?: { url?: unknown }[] })?.results ?? []
+      for (const result of results) if (typeof result.url === 'string') entry.found.push(result.url)
+    } else return
+    sources.set(turnId, entry)
+  }
+
   const recordOutcome = (
     name: string,
     args: unknown,
@@ -365,6 +380,7 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
     outcome: ToolResult,
     error: unknown
   ): void => {
+    if (outcome.ok) noteSources(context.turnId, name, args, outcome.data)
     const durationMs = Math.max(0, now().getTime() - startedAt.getTime())
     const outcomeLabel = outcome.ok ? 'ok' : outcome.kind
     const receiptId = outcome.ok ? outcome.receipt?.receiptId : undefined
@@ -528,6 +544,12 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
 
     all(): ToolDefinition[] {
       return [...tools.values()]
+    },
+
+    takeSources(turnId: string): string[] {
+      const entry = sources.get(turnId)
+      sources.delete(turnId)
+      return entry ? [...entry.read, ...entry.found] : []
     },
 
     toolNames(): string[] {

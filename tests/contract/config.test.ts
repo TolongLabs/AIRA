@@ -8,7 +8,7 @@ const source = readFileSync('config.yml', 'utf8')
 describe('config.yml', () => {
   it('parses the repository file', () => {
     const config = loadConfig('config.yml')
-    expect(config.format.maxBubbles).toBe(3)
+    expect(config.format.maxBubbles).toBe(1)
     expect(config.gateway.hostDataDir).toBe('')
     expect(config.storage.path).toBe('/data')
   })
@@ -21,11 +21,11 @@ describe('config.yml', () => {
 
   it('stops on an unknown key', () => {
     expect(() => parseConfig(source + '\nsurprise:\n  key: 1\n')).toThrow(ConfigError)
-    expect(() => parseConfig(source.replace('maxBubbles: 3', 'maxBubbles: 3\n  extra: 1'))).toThrow(/format/)
+    expect(() => parseConfig(source.replace('maxBubbles: 1', 'maxBubbles: 1\n  extra: 1'))).toThrow(/format/)
   })
 
   it('stops on a wrong type and names the key', () => {
-    expect(() => parseConfig(source.replace('maxBubbles: 3', "maxBubbles: 'three'"))).toThrow(/format\.maxBubbles/)
+    expect(() => parseConfig(source.replace('maxBubbles: 1', "maxBubbles: 'three'"))).toThrow(/format\.maxBubbles/)
   })
 
   it('stops when the critical free space is not below the warn level', () => {

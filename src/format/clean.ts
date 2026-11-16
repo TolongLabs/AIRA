@@ -33,6 +33,10 @@ export interface CleanOptions {
   commandTool?: string
   /** The card's footer icon and labels. */
   footer?: { icon?: string; labels?: Record<string, string> }
+  /** The chat's footer switch and emoji, and the URLs the turn read or found. */
+  footerOff?: boolean
+  footerEmoji?: string
+  sources?: string[]
 }
 
 const ELLIPSIS = String.fromCodePoint(0x2026)
@@ -447,7 +451,13 @@ export function cleanReply(text: string, options: CleanOptions): CleanedReply {
 
     const capitalised = bubbles.map(capitaliseParagraphs)
     if (capitalised.some((bubble, i) => bubble !== bubbles[i])) steps.push('capitals')
-    const footer = replacedBy ? undefined : buildFooter(toolsOk, options.footer)
+    const footer =
+      replacedBy || options.footerOff
+        ? undefined
+        : buildFooter(toolsOk, options.footer, {
+            ...(options.footerEmoji ? { emoji: options.footerEmoji } : {}),
+            ...(options.sources ? { sources: options.sources } : {})
+          })
     if (footer !== undefined && capitalised.length > 0) {
       capitalised[capitalised.length - 1] = `${capitalised[capitalised.length - 1]}\n\n${footer}`
       steps.push('footer')
@@ -470,7 +480,9 @@ export function createReplyCleaner(
   config: { format: { bubbleMaxChars: number; maxBubbles: number; leakCheck: 'on' | 'off' } },
   toolNames?: () => string[],
   /** The tools that ran with outcome `ok` in a turn, in call order. */
-  toolsOk?: (turnId: string) => string[]
+  toolsOk?: (turnId: string) => string[],
+  /** The URLs a turn read or found, for the sources line. */
+  sources?: (turnId: string) => string[]
 ): ReplyCleaner {
   return {
     clean({ text, context, built, run }) {
@@ -495,7 +507,12 @@ export function createReplyCleaner(
         // A direct command runs no model and gets no footer.
         toolsOk: toolsOk && run.calls.length > 0 ? toolsOk(context.turnId) : [],
         ...(context.commandTool === undefined ? {} : { commandTool: context.commandTool }),
-        ...(context.character.card.toolFooter ? { footer: context.character.card.toolFooter } : {})
+        ...(context.character.card.toolFooter ? { footer: context.character.card.toolFooter } : {}),
+        footerOff: context.settings?.['features.toolFooter']?.value === false,
+        ...(typeof context.settings?.['footerEmoji']?.value === 'string'
+          ? { footerEmoji: context.settings['footerEmoji'].value }
+          : {}),
+        sources: sources ? sources(context.turnId) : []
       })
     }
   }

@@ -164,6 +164,44 @@ function LanguageField({ chat, onSave }: { chat: CoreChat; onSave: (value: unkno
   )
 }
 
+const FOOTER_EMOJI = ['🛠️', '🧪', '🔬', '🔎', '✨', '🌸', '📎']
+
+function FooterEmojiField({ chat, onSave }: { chat: CoreChat; onSave: (value: unknown) => void }) {
+  const current = valueOf<string | undefined>(chat, 'footerEmoji', undefined)
+  const [text, setText] = useState(current ?? '')
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="footer emoji">
+        {FOOTER_EMOJI.map((emoji) => (
+          <Button
+            key={emoji}
+            size="sm"
+            variant={current === emoji ? 'primary' : 'outline'}
+            aria-pressed={current === emoji}
+            onClick={() => onSave(emoji)}
+          >
+            {emoji}
+          </Button>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && text.trim() && onSave(text.trim())}
+          className="w-24"
+          aria-label="custom footer emoji"
+          placeholder="Other"
+          autoComplete="off"
+        />
+        <Button size="sm" disabled={!text.trim()} onClick={() => onSave(text.trim())}>
+          Use this emoji
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function ChatRow({
   chat,
   characters,
@@ -343,6 +381,20 @@ function ChatRow({
                       hint="Off: text only."
                     />
                   </SettingRow>
+                  <SettingRow chat={chat} name="features.toolFooter" label="Tool footer" onClear={clear}>
+                    <Toggle
+                      checked={valueOf(chat, 'features.toolFooter', true)}
+                      disabled={busy}
+                      onChange={(v) => save('features.toolFooter', v)}
+                      label="Say which tools a reply used, and its sources"
+                      hint="A small line at the end of a reply that searched, read or saved something."
+                    />
+                  </SettingRow>
+                  {valueOf(chat, 'features.toolFooter', true) && (
+                    <SettingRow chat={chat} name="footerEmoji" label="Footer emoji" onClear={clear}>
+                      <FooterEmojiField chat={chat} onSave={(v) => save('footerEmoji', v)} />
+                    </SettingRow>
+                  )}
                   {chat.type === 'group' && (
                     <SettingRow chat={chat} name="freeResponse" label="Free response" onClear={clear}>
                       <Toggle

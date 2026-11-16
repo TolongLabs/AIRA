@@ -109,7 +109,7 @@ describe('memory in the service', () => {
       return response
     }
     const delivery = await gateway.send(msg('m-3', 'please forget what I like to drink'))
-    expect(delivery.content).toBe('Done, I forgot that.\n\n_🛠️ forgot a note_')
+    expect(delivery.content).toBe('Done, I forgot that.\n\n🛠️ ᶠᵒʳᵍᵒᵗ ᵃ ⁿᵒᵗᵉ')
     const afterSearch = answers[4]?.messages.at(-1)?.content ?? ''
     expect(afterSearch).toContain('"forgotten":false')
     expect(afterSearch).toContain(itemId)
@@ -161,7 +161,7 @@ describe('memory in the service', () => {
     )
     const { app, gateway, chatId } = await startApp(model, { config: fast, memoryJudge: scriptedJudge() })
     expect((await gateway.send(msg('m-1', '/remember the spare key is under the blue pot'))).content).toBe(
-      'Got it.\n\n_🛠️ saved a note_'
+      'Got it.\n\n🛠️ ˢᵃᵛᵉᵈ ᵃ ⁿᵒᵗᵉ'
     )
     expect(rows(app, 'SELECT kind FROM receipt')).toEqual([{ kind: 'memory.noted' }])
 

@@ -83,7 +83,7 @@ describe('the whole service', () => {
     ])
     const { app, gateway, chatId } = await start(model)
     const delivery = await gateway.send(msg('m-1', 'please stop the proactive messages'))
-    expect(delivery.content).toBe('Okay, I will stay quiet until you unmute me.\n\n_🛠️ changed mute_')
+    expect(delivery.content).toBe('Okay, I will stay quiet until you unmute me.\n\n🛠️ ᶜʰᵃⁿᵍᵉᵈ ᵐᵘᵗᵉ')
 
     const read = <T>(sql: string, ...args: unknown[]) => app.storage.read((db) => db.prepare(sql).get(...args) as T)
     const receipt = read<{ receipt_id: string; kind: string; target: string }>(
@@ -117,8 +117,8 @@ describe('the whole service', () => {
     const full = await gateway.send(msg('m-2', 'explain in detail how it works'))
     expect(full.bubbles.join(' ')).toContain('Sentence number 30 of a long answer.')
     expect(turn(app)['length_bypass']).toBe('format:detail')
-    expect(full.bubbles.length).toBeGreaterThan(1)
-    expect(full.bubbles.length).toBeLessThanOrEqual(3)
+    // One text message per reply (format.maxBubbles 1).
+    expect(full.bubbles.length).toBe(1)
   })
 
   it('falls back to the second model with the same prompt and tools: only the model changes', async () => {
@@ -180,7 +180,7 @@ describe('the whole service', () => {
     ])
     const { app, gateway, dataDir } = await start(model)
     const delivery = await gateway.send(msg('m-1', '/report weekly notes'))
-    expect(delivery.bubbles).toEqual(['Here is the report.\n\n_🛠️ wrote a report_'])
+    expect(delivery.bubbles).toEqual(['Here is the report.\n\n🛠️ ʷʳᵒᵗᵉ ᵃ ʳᵉᵖᵒʳᵗ'])
     expect(delivery.media).toHaveLength(1)
     expect(delivery.media[0]).toMatch(/^\/host\/aira-data\/files\/[0-9a-f]{2}\/[0-9a-f]{64}\.md$/)
     // The same file exists on the data volume, where the gateway reads it through the host path.
