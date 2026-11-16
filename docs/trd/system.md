@@ -67,6 +67,9 @@ Each request is one of four kinds, decided in this order (measured on the stagin
   | `[The user sent a voice message`                                           | The voice note's path on the host, when the gateway did not transcribe it |
   | `[The user sent an audio file`, `a video`, `a document`, `a text document` | The file's path on the host, after `saved at:`                            |
 
+  The quote is stored with its message in `session_message` (`quote`, `quote_mid`, `quote_of_aira`), never in the
+  message text: memory and mood read the text only, so a quoted member's words never count as the sender's. The
+  model sees it as a labelled block before that message, `<quoted from="aira|member" untrusted="true">...</quoted>`.
   A voice note the gateway transcribed arrives as one quoted line, `"<transcript>"`, before a marker followed by no
   text. That line is the message text. The image description the gateway writes is the core's own auxiliary answer,
   so the core ignores it. Media is read by the core at intake, and only from a path under the gateway's media cache

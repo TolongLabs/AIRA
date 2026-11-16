@@ -98,6 +98,7 @@ Forgetting a fact also, in the same transaction:
   `retired`);
 - forgets the episode summary that came from the same memory job;
 - replaces the text of the window message that supported the fact with a marker.
+- clears every stored quote of that message, because a quote is a copy of its text.
 
 **Every forget is a barrier.** Whether or not it found a fact, a forget moves the chat's cursor to its newest
 message, ends the chat's queued memory jobs as skipped, and increases the chat's forget counter. A job that is
