@@ -24,6 +24,12 @@ tools:
   defaultTimeoutMs: 15000 # Timeout when a tool sets none
 
 # Owned by docs/trd/tools.md
+owner:
+  marketsConfig: '' # The markets config the alerts timer reads, as mounted: /owner/config/markets.yaml. Host only
+  claudeProjectsDir: '' # Claude Code's projects folder, mounted read-only: /owner/claude-projects. Host only
+  noticeRoutesFile: '' # The session relay's routes file, as mounted: /owner/config/session_notice_routes.json. Host only
+  timeoutMs: 15000 # Longest wait for one market provider call
+
 search:
   provider: 'exa' # Web search backend: exa, or off
 
