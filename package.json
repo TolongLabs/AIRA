@@ -33,7 +33,7 @@
     "migrate:settings": "tsx scripts/migrate-settings.ts"
   },
   "lint-staged": {
-    "*.{ts,tsx}": "biome check --write",
+    "*.{ts,tsx}": "biome check --write --no-errors-on-unmatched",
     "*.{md,json,yml,yaml}": "prettier --write"
   },
   "devDependencies": {
