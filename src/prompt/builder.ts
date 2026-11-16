@@ -9,6 +9,9 @@ import { withQuote } from './quote.js'
 import { newSeed } from './random.js'
 import { detectLengthBypass, drawShape, shapeText } from './shape.js'
 
+/** What the model sees for a message with no text: a file sent with no caption. */
+const NO_TEXT = '(no text, only a file)'
+
 /** A conservative token estimate for the size ceiling: one token per three characters, rounded up. */
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 3)
@@ -66,6 +69,7 @@ function formatContextBlock(input: TurnInput, nowDate: Date, recalled: string[])
     const safe = recalled.map((item) => item.replace(/<\/?memory[^>]*>/gi, '').replace(/\s*\n\s*/g, ' '))
     lines.push('<memory untrusted="true">', ...safe.map((item) => `- ${item}`), '</memory>')
   }
+  if (input.media) lines.push(input.media)
   return lines.join('\n')
 }
 
@@ -79,7 +83,8 @@ function formatMessages(input: TurnInput): ModelMessage[] {
       messages.push({ role: 'assistant', content: message.content })
       continue
     }
-    let content = withQuote(message)
+    // A file sent with no caption has no text, and a model API refuses an empty message.
+    let content = withQuote(message.content.trim() === '' ? { ...message, content: NO_TEXT } : message)
     if (isGroup) {
       const senderKey = message.senderId ?? ''
       let memberNumber = memberNumbers.get(senderKey)
