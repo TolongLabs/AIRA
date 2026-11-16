@@ -42,7 +42,7 @@ A `failure` row is written for handled failures too. A retry that succeeds still
 
 One list, used by records, alerts and tests: the model kinds in [Models](models.md#failure-kinds), plus
 `tool_timeout`, `tool_error`, `tool_refused`, `judge_unavailable`, `media_unreadable`, `memory_rejected`,
-`memory_job_failed`, `config_invalid`, `binding_invalid`, `gateway_malformed`, `turn_interrupted`, `storage_error`,
+`memory_job_failed`, `config_invalid`, `binding_invalid`, `gateway_malformed`, `gateway_unmarked`, `turn_interrupted`, `storage_error`,
 `storage_low_space`, `backup_failed`, `internal`.
 
 ## Logs
