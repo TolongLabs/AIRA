@@ -152,6 +152,9 @@ export const configSchema = z.strictObject({
   }),
   archive: z.strictObject({
     enabled: onOff
+  }),
+  site: z.strictObject({
+    port: z.number().int().min(1).max(65535)
   })
 })
 

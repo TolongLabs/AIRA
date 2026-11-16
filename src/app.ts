@@ -1,6 +1,7 @@
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { join } from 'node:path'
+import { createSiteApiServer } from './api/server.js'
 import { type PackSet, loadPacks } from './character/loader.js'
 import { writeUnavailableLine } from './character/unavailable.js'
 import { ConfigError } from './config/loader.js'
@@ -55,16 +56,19 @@ export const SECRET_NAMES = [
   'MEDIA_WATCHER_API_KEY',
   'TYPESAFE_API_KEY',
   'RUNNER_TOKEN',
-  'OPENAI_API_KEY'
+  'OPENAI_API_KEY',
+  'SITE_TOKEN'
 ] as const
 
 /** How often the memory worker looks for a closed episode or a due job. */
 const MEMORY_TICK_MS = 15_000
+const MIN_SITE_TOKEN_LENGTH = 32
 
 export interface AppOptions {
   config: Config
   /** Where secrets are read from, by name. */
   env: NodeJS.ProcessEnv
+  version?: string
   logger?: Logger
   /** Model clients to use instead of the configured endpoints: recordings, fakes. */
   clients?: { main?: ModelClient; fallback?: ModelClient }
@@ -87,9 +91,11 @@ export interface App {
   /** The memory worker, when passive memory is on. Its timer runs it; a test or an operator may run one tick. */
   memory?: MemoryWorker
   server: Server
+  siteServer?: Server
   alerter: Alerter
   packs: () => PackSet
   listen(port: number, host: string): Promise<AddressInfo>
+  listenSite(port: number, host: string): Promise<AddressInfo | undefined>
   /** Takes one verified snapshot now. */
   snapshot(reason: SnapshotReason): Promise<SnapshotResult>
   /** Writes the default pack's unavailable line for the gateway, if it changed. */
@@ -197,6 +203,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     const fallbackTarget = fallback ? { client: fallback, model: config.llm.fallback.model } : undefined
 
     let runner: TurnRunner
+    let fallbackBreaker: Breaker | undefined
     if (!subscription) {
       runner = apiRunner(mainTarget as Target, fallbackTarget, breaker)
     } else {
@@ -208,14 +215,13 @@ export async function createApp(options: AppOptions): Promise<App> {
       const toolServer = createToolServer({ limits, logger, now })
       await toolServer.listen(config.llm.subscription.toolServerPort)
       closers.push(() => toolServer.close())
+      fallbackBreaker = fallbackTarget ? createBreaker({ breakerMs: config.llm.breakerMs, now }) : undefined
       runner = createSubscriptionRunner({
         subscription: config.llm.subscription,
         runnerToken,
         toolServer,
         breaker,
-        fallback: fallbackTarget
-          ? apiRunner(fallbackTarget, undefined, createBreaker({ breakerMs: config.llm.breakerMs, now }))
-          : undefined,
+        fallback: fallbackTarget && fallbackBreaker ? apiRunner(fallbackTarget, undefined, fallbackBreaker) : undefined,
         onAuthFailure: (role) => alerter.raise('model_auth', { role }),
         logger,
         now
@@ -417,6 +423,35 @@ export async function createApp(options: AppOptions): Promise<App> {
       })
     })
 
+    const siteToken = env['SITE_TOKEN']
+    let siteServer: Server | undefined
+    if (siteToken !== undefined && siteToken.length >= MIN_SITE_TOKEN_LENGTH) {
+      siteServer = createSiteApiServer({
+        token: siteToken,
+        storage,
+        paths,
+        version: options.version ?? '0.0.0',
+        ready: () => ready,
+        activeTurns: () => turns.active(),
+        roles: () => ({
+          main: { configured: Boolean(mainTarget) || subscription, breakerOpen: breaker.isOpen('main') },
+          fallback: {
+            configured: Boolean(fallbackTarget),
+            breakerOpen: subscription ? (fallbackBreaker?.isOpen('main') ?? false) : breaker.isOpen('fallback')
+          },
+          judge: { configured: Boolean(moodJudge || memoryJudge), breakerOpen: false },
+          media: {
+            configured: config.media.watcher.model !== null && Boolean(env['MEDIA_WATCHER_API_KEY']),
+            breakerOpen: false
+          }
+        }),
+        logger,
+        now
+      })
+    } else {
+      logger.warn('site_api.no_token', { reason: siteToken ? 'too_short' : 'unset' })
+    }
+
     let closed = false
     return {
       storage,
@@ -425,6 +460,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       registry,
       ...(memory ? { memory } : {}),
       server,
+      ...(siteServer ? { siteServer } : {}),
       alerter,
       packs,
       refreshUnavailableLine,
@@ -434,6 +470,13 @@ export async function createApp(options: AppOptions): Promise<App> {
           server.once('error', reject)
           server.listen(port, host, () => resolve(server.address() as AddressInfo))
         }),
+      listenSite: (port, host) => {
+        if (!siteServer) return Promise.resolve(undefined)
+        return new Promise((resolve, reject) => {
+          siteServer.once('error', reject)
+          siteServer.listen(port, host, () => resolve(siteServer.address() as AddressInfo))
+        })
+      },
       async close() {
         if (closed) return
         closed = true
@@ -442,6 +485,10 @@ export async function createApp(options: AppOptions): Promise<App> {
         await turns.drain(config.shutdown.graceMs)
         server.closeAllConnections()
         if (server.listening) await new Promise((resolve) => server.close(resolve))
+        if (siteServer) {
+          siteServer.closeAllConnections()
+          if (siteServer.listening) await new Promise((resolve) => siteServer.close(resolve))
+        }
         for (const stop of closers) await stop()
         storage.close()
       }
