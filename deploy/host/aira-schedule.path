@@ -1,0 +1,12 @@
+# Runs the AIRA schedule reconciler as soon as the core rewrites its wanted-jobs file, so a reminder reaches the
+# gateway within a second. aira-schedule.timer stays as the safety net. Edit the path if the data folder is elsewhere.
+
+[Unit]
+Description=Run the AIRA schedule reconciler when the core changes its schedule file
+
+[Path]
+PathChanged=%h/aira/data/gateway/schedule.json
+Unit=aira-schedule.service
+
+[Install]
+WantedBy=paths.target
