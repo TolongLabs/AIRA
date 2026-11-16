@@ -51,7 +51,12 @@ const FEATURES: { key: string; label: string; hint: string }[] = [
   { key: 'features.reports', label: 'Reports', hint: 'Off: /report is not offered.' },
   { key: 'features.proactive', label: 'Messages first', hint: 'Off: replies only when written to.' },
   { key: 'features.voice', label: 'Voice notes', hint: 'Off: replies are text.' },
-  { key: 'features.lessons', label: 'Lessons', hint: 'Off: songs, words and the library are not offered.' }
+  { key: 'features.lessons', label: 'Lessons', hint: 'Off: songs, words and the library are not offered.' },
+  {
+    key: 'features.owner',
+    label: 'Owner tools',
+    hint: "Markets and Claude Code sessions. For the owner's own chats."
+  }
 ]
 
 function sourceText(level: SourceLevel, type: CoreChat['type']): string {
@@ -396,16 +401,48 @@ function ChatRow({
                     </SettingRow>
                   )}
                   {chat.type === 'group' && (
-                    <SettingRow chat={chat} name="freeResponse" label="Free response" onClear={clear}>
-                      <Toggle
-                        checked={valueOf(chat, 'freeResponse', false)}
-                        disabled={busy}
-                        onChange={(v) => save('freeResponse', v)}
-                        label="Answer any message in this group"
-                        hint="Off: answers a mention or a reply only."
-                      />
-                    </SettingRow>
+                    <>
+                      <SettingRow chat={chat} name="freeResponse" label="Free response" onClear={clear}>
+                        <Toggle
+                          checked={valueOf(chat, 'freeResponse', false)}
+                          disabled={busy}
+                          onChange={(v) => save('freeResponse', v)}
+                          label="Answer any message in this group"
+                          hint="Off: answers a mention or a reply only."
+                        />
+                      </SettingRow>
+                      <SettingRow chat={chat} name="nameCall" label="Name call" onClear={clear}>
+                        <Toggle
+                          checked={valueOf(chat, 'nameCall', false)}
+                          disabled={busy}
+                          onChange={(v) => save('nameCall', v)}
+                          label="Answer a message that says the character's name"
+                          hint="Off: answers a mention, a reply or a command only."
+                        />
+                      </SettingRow>
+                    </>
                   )}
+                  <SettingRow chat={chat} name="reactions" label="Reactions" onClear={clear}>
+                    <Toggle
+                      checked={valueOf(chat, 'reactions', false)}
+                      disabled={busy}
+                      onChange={(v) => save('reactions', v)}
+                      label="React to members' messages with an emoji"
+                    />
+                  </SettingRow>
+                  <SettingRow
+                    chat={chat}
+                    name="commands.maxPerMessage"
+                    label="Commands per message"
+                    hint="How many slash commands one message may run."
+                    onClear={clear}
+                  >
+                    <Segmented
+                      options={['1', '2', '3', '4', '5'] as const}
+                      value={String(valueOf(chat, 'commands.maxPerMessage', 1)) as '1' | '2' | '3' | '4' | '5'}
+                      onChange={(v) => save('commands.maxPerMessage', Number(v))}
+                    />
+                  </SettingRow>
                 </>
               )}
               {tab === 'features' &&
