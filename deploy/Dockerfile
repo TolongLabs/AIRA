@@ -8,6 +8,8 @@ WORKDIR /repo
 COPY . .
 RUN bun install --frozen-lockfile
 RUN bun run build
+# The owner site (docs/trd/site.md#serving-the-site), built here and served by the core under /app/.
+RUN cd site && bun install --frozen-lockfile && bun run build
 RUN bun install --frozen-lockfile --production
 
 FROM node:24-slim
@@ -18,6 +20,7 @@ COPY --from=build /repo/node_modules ./node_modules
 COPY --from=build /repo/prompts ./prompts
 COPY --from=build /repo/characters/example ./characters/example
 COPY --from=build /repo/config.yml ./config.yml
+COPY --from=build /repo/site/dist ./site/dist
 USER node
 VOLUME ["/data"]
 EXPOSE 9881

@@ -1,4 +1,6 @@
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { request as httpRequest } from 'node:http'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { hostAllowed, originAllowed } from '../../src/api/writes.js'
 import { applyOperation } from '../../src/memory/store.js'
@@ -6,6 +8,7 @@ import { ModelError } from '../../src/models/types.js'
 import { ensureChat } from '../../src/settings/chats.js'
 import { setSetting } from '../../src/settings/settings.js'
 import { type Answer, CHAT, msg, queueModel, startApp } from '../support/app.js'
+import { tmpDir } from '../support/tmp.js'
 
 const TOKEN = 'test-site-token-0123456789abcdefghijklmn' // 40 invented characters
 const WRONG_TOKEN = 'xxxx-site-token-0123456789abcdefghijklmn' // same length (40)
@@ -347,5 +350,49 @@ describe('site API settings write', () => {
       404,
       'not_found'
     ])
+  })
+})
+
+describe('serving the site', () => {
+  async function startServing() {
+    const siteDir = tmpDir('aira-site-')
+    mkdirSync(join(siteDir, 'assets'))
+    writeFileSync(join(siteDir, 'index.html'), '<!doctype html><title>AIRA</title>')
+    writeFileSync(join(siteDir, 'assets', 'app-1a2b.js'), 'console.log(1)')
+    writeFileSync(join(siteDir, 'secret.env'), 'NOT_SERVED=1')
+    const started = await startApp(queueModel([{ text: 'hi' }]), { env: { SITE_TOKEN: TOKEN }, siteDir })
+    const address = await started.app.listenSite(0, '127.0.0.1')
+    if (!address) throw new Error('expected site server to listen')
+    return { ...started, siteUrl: `http://127.0.0.1:${address.port}` }
+  }
+
+  it('serves the build under /app/ without a token, and redirects / there', async () => {
+    const { siteUrl } = await startServing()
+    const page = await fetch(`${siteUrl}/app/`)
+    expect(page.status).toBe(200)
+    expect(page.headers.get('content-type')).toContain('text/html')
+    expect(page.headers.get('cache-control')).toBe('no-cache')
+    expect(await page.text()).toContain('<title>AIRA</title>')
+    const asset = await fetch(`${siteUrl}/app/assets/app-1a2b.js`)
+    expect(asset.headers.get('cache-control')).toContain('immutable')
+    const root = await fetch(`${siteUrl}/`, { redirect: 'manual' })
+    expect(root.status).toBe(302)
+    expect(root.headers.get('location')).toBe('/app/')
+  })
+
+  it('serves nothing outside the build, no unknown file type, and no write', async () => {
+    const { siteUrl } = await startServing()
+    for (const path of ['/app/../config.yml', '/app/%2e%2e/config.yml', '/app/secret.env', '/app/missing.html', '/x']) {
+      expect((await fetch(`${siteUrl}${path}`)).status).toBe(404)
+    }
+    expect((await fetch(`${siteUrl}/app/`, { method: 'POST' })).status).toBe(405)
+    expect((await fetch(`${siteUrl}/api/health`)).status).toBe(401)
+  })
+
+  it("accepts a browser write from the API's own origin", async () => {
+    const { app, siteUrl } = await startServing()
+    const chat = ensureChat(app.storage, { waId: 'test-chat-w4', type: 'dm' })
+    const ok = await writeStatus(siteUrl, chat.chatId, { status: 'active' }, { origin: siteUrl })
+    expect(ok.status).toBe(200)
   })
 })

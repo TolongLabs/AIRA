@@ -1,5 +1,7 @@
 import { timingSafeEqual } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http'
+import { extname, resolve, sep } from 'node:path'
 import type { Logger } from '../records/logger.js'
 import { type SiteApiDeps, dispatchGet, isKnownRoute } from './routes.js'
 import { type SiteWriteDeps, dispatchWrite, hostAllowed, isWriteRoute, originAllowed } from './writes.js'
@@ -11,6 +13,41 @@ export interface SiteApiServerOptions extends SiteWriteDeps {
   logger: Logger
   /** `site.allowedOrigins` */
   allowedOrigins: readonly string[]
+  /** The built site, served under /app/ (docs/trd/site.md#serving-the-site). Absent: no pages are served. */
+  siteDir?: string
+}
+
+const TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2'
+}
+
+/** One file of the build, or undefined. A path that leaves the build folder is never read. */
+async function siteFile(siteDir: string, pathname: string): Promise<{ body: Buffer; type: string } | undefined> {
+  let relative: string
+  try {
+    relative = decodeURIComponent(pathname.slice('/app/'.length))
+  } catch {
+    return undefined
+  }
+  if (relative === '' || relative.endsWith('/')) relative += 'index.html'
+  const root = resolve(siteDir)
+  const file = resolve(root, relative)
+  if (!file.startsWith(root + sep)) return undefined
+  const type = TYPES[extname(file).toLowerCase()]
+  if (!type) return undefined
+  try {
+    return { body: await readFile(file), type }
+  } catch {
+    return undefined
+  }
 }
 
 const MAX_BODY_BYTES = 16 * 1024
@@ -50,6 +87,12 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
   const expectedToken = Buffer.from(options.token, 'utf8')
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const path = (request.url ?? '/').split('?')[0] ?? '/'
+    if (!path.startsWith('/api/')) {
+      await serveSite(path, request.method, response)
+      return
+    }
+
     if (!tokenMatches(request.headers.authorization, expectedToken)) {
       json(response, 401, { error: 'unauthorized' })
       return
@@ -68,7 +111,7 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
         json(response, 403, { error: 'host_refused' })
         return
       }
-      if (!originAllowed(request.headers.origin, options.allowedOrigins)) {
+      if (!originAllowed(request.headers.origin, options.allowedOrigins, request.headers.host)) {
         json(response, 403, { error: 'origin_refused' })
         return
       }
@@ -95,6 +138,31 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
 
     const result = await dispatchGet(options, url)
     json(response, result.status, result.body)
+  }
+
+  async function serveSite(path: string, method: string | undefined, response: ServerResponse): Promise<void> {
+    if (method !== 'GET' && method !== 'HEAD') {
+      json(response, 405, { error: 'method_not_allowed' })
+      return
+    }
+    if (path === '/' && options.siteDir) {
+      response.writeHead(302, { location: '/app/' }).end()
+      return
+    }
+    const file = options.siteDir && path.startsWith('/app/') ? await siteFile(options.siteDir, path) : undefined
+    if (!file) {
+      json(response, 404, { error: 'not_found' })
+      return
+    }
+    // Hashed assets never change; pages are checked again on every load.
+    const cache = path.startsWith('/app/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache'
+    response.writeHead(200, {
+      'content-type': file.type,
+      'cache-control': cache,
+      'x-content-type-options': 'nosniff',
+      'referrer-policy': 'no-referrer'
+    })
+    response.end(method === 'HEAD' ? undefined : file.body)
   }
 
   return createServer((request, response) => {
