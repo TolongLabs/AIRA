@@ -164,7 +164,9 @@ The core runs them as turns in their chat, with the bound character and the chat
 - **A job is listed, then tagged.** `gateway.jobs` in the host's `config.yml` lists each job the core runs: the job's
   id and the WhatsApp id of the chat it belongs to. The repository's file lists none. `deploy/gateway/jobs.py --tag`
   puts the line `[AIRA-SCHEDULED v1 kind=job id=<job id>]` first in each listed job's text, through the gateway's
-  `cron.jobs` functions and their lock; `--untag` takes it out. Cutover tags, rollback untags.
+  `cron.jobs` functions and their lock; `--untag` takes it out. Cutover tags, rollback untags. Tagging also removes
+  any `HERMES-SCOPE` marker from the job's text: a job made from a chat keeps that chat's marker, and a request with a
+  marker is a member's message. Untagging does not bring it back; rollback restores the gateway's job file.
 - **Identity comes from the list.** A job tag is honoured only in an unmarked request, like a reminder's. The chat
   comes from `gateway.jobs`, never from the text. An id that is not listed, or whose chat is not active, is an
   unmarked request and sends nothing.

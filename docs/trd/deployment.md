@@ -126,7 +126,7 @@ One switch, one night, all chats. Start at 00:00 Malaysia time.
 Available at any step and for as long as the old stores are kept.
 
 1. Stop the new core.
-2. Untag the gateway jobs with `deploy/gateway/jobs.py --untag`. Restore the gateway config, `.env` and helper module backups. This restores the fallback list, turns the scope
+2. Untag the gateway jobs with `deploy/gateway/jobs.py --untag`. Restore the gateway config, `.env`, job file and helper module backups. This restores the fallback list, turns the scope
    stamp off and gives the old core its own bubble and failure modules back.
 3. Start the old core on port 9881.
 
