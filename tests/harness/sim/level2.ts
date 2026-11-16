@@ -28,6 +28,8 @@ export interface Level2Options {
   /** The ids the gateway knows the two chats by. */
   dmId?: string
   groupId?: string
+  /** Folders the gateway's media may come from: its media cache and the core's data folder. */
+  mediaRoots?: string[]
 }
 
 export interface Level2 extends SimBackend {
@@ -84,7 +86,7 @@ export async function startLevel2(options: Level2Options = {}): Promise<Level2> 
       isGroup: chat.kind === 'group',
       members: chat.members.map((name) => ({ id: `sim-member-${slug(name)}`, name }))
     }))
-    bridge = createFakeBridge({ filesDir, chats: known })
+    bridge = createFakeBridge({ filesDir, chats: known, mediaRoots: options.mediaRoots ?? [] })
     bridgeUrl = await bridge.start(options.bridgePort ?? 3000)
   }
   const base = bridgeUrl
@@ -160,7 +162,9 @@ export async function startLevel2(options: Level2Options = {}): Promise<Level2> 
 
     const file = call.file
     const caption = text(body, 'caption')
-    const sticker = text(body, 'mediaType', 'type') === 'sticker' || file?.contentType === 'image/webp'
+    // The gateway's own type wins. A WebP file counts as a sticker only when no type was sent.
+    const sentType = text(body, 'mediaType', 'type')
+    const sticker = sentType === 'sticker' || (sentType === '' && file?.contentType === 'image/webp')
     const name = file?.name ?? 'file'
     const url = `/file/${call.seq}`
     if (sticker) chat.log.add({ ...common, html: '', text: '', sticker: { url, name } })
@@ -239,7 +243,16 @@ export async function startLevel2(options: Level2Options = {}): Promise<Level2> 
           text: message,
           isGroup: chat.kind === 'group',
           ...(chat.kind === 'group' && input.mention ? { mentionsBot: true } : {}),
-          ...(quoted ? { quoted: { id: quoted.id, text: quoteText(quoted), fromMe: quoted.kind === 'aira' } } : {})
+          // The gateway passes up to 500 characters of a quote; the shortened text is for display only.
+          ...(quoted
+            ? {
+                quoted: {
+                  id: quoted.id,
+                  text: (quoted.text || quoteText(quoted)).slice(0, 500),
+                  fromMe: quoted.kind === 'aira'
+                }
+              }
+            : {})
         })
       })
       if (!response.ok) throw new SimInputError(`the fake bridge answered ${response.status} to /control/inject`, 502)

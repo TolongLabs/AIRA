@@ -1,6 +1,6 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http'
-import { basename, extname, join } from 'node:path'
+import { basename, extname, join, sep } from 'node:path'
 
 export interface RecordedCall {
   seq: number
@@ -35,6 +35,11 @@ export interface FakeBridgeOptions {
   chats?: ChatInfo[]
   /** Where copies of sent files are kept. */
   filesDir: string
+  /**
+   * Folders a `/send-media` file path may lie in, as the gateway's own media and the core's data folder. A path
+   * outside them is recorded but never read, so a request cannot make the bridge copy and serve any file.
+   */
+  mediaRoots?: string[]
   now?: () => Date
 }
 
@@ -143,13 +148,36 @@ async function parseMultipart(
   return file ? { payload, file } : { payload }
 }
 
+/** The real path of a file under one of the roots, or undefined. Symlinks are resolved before the check. */
+export function insideRoots(filePath: string, roots: readonly string[]): string | undefined {
+  let real: string
+  try {
+    real = realpathSync(filePath)
+  } catch {
+    return undefined
+  }
+  for (const root of roots) {
+    let base: string
+    try {
+      base = realpathSync(root)
+    } catch {
+      continue
+    }
+    if (real.startsWith(base.endsWith(sep) ? base : `${base}${sep}`)) return real
+  }
+  return undefined
+}
+
 function copyJsonMedia(
   payload: Record<string, unknown>,
   filesDir: string,
-  seq: number
+  seq: number,
+  roots: readonly string[]
 ): RecordedCall['file'] | undefined {
-  const filePath = payload['filePath']
-  if (typeof filePath !== 'string' || filePath.length === 0) return undefined
+  const raw = payload['filePath']
+  if (typeof raw !== 'string' || raw.length === 0) return undefined
+  const filePath = insideRoots(raw, roots)
+  if (filePath === undefined) return undefined
   const data = readFileSync(filePath)
   const name = basename(filePath)
   mkdirSync(filesDir, { recursive: true })
@@ -214,6 +242,11 @@ export function createFakeBridge(options: FakeBridgeOptions): FakeBridge {
   }
 
   async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    // Loopback only, by name too: a page that rebinds its own name to 127.0.0.1 must not reach the control routes.
+    if (!/^(127\.0\.0\.1|localhost|\[::1\]):\d{1,5}$/.test(req.headers.host ?? '')) {
+      sendJson(res, 403, { error: 'host_refused' })
+      return
+    }
     const method = (req.method ?? 'GET').toUpperCase()
     const url = new URL(req.url ?? '/', 'http://127.0.0.1')
     const route = url.pathname
@@ -261,7 +294,7 @@ export function createFakeBridge(options: FakeBridgeOptions): FakeBridge {
         return
       }
       if (route === '/send-media' && method === 'POST' && payload && typeof payload === 'object') {
-        file = copyJsonMedia(payload as Record<string, unknown>, options.filesDir, seq)
+        file = copyJsonMedia(payload as Record<string, unknown>, options.filesDir, seq, options.mediaRoots ?? [])
       }
     }
 

@@ -20,6 +20,7 @@ const USAGE = `usage: bun run sim [options]
   --gateway           level 2: do not start a core; draw the calls a staging gateway makes to a fake bridge
   --bridge <url>      level 2: use the fake bridge already running at <url> (default: start one)
   --bridge-port <n>   level 2: port of the fake bridge the sim starts (default 3000)
+  --media-root <dir>  level 2: a folder sent files may come from (repeat; others are recorded, never read)
   --dm-id <id>        level 2: the id the gateway knows the direct chat by (default sim-dm-0001)
   --group-id <id>     level 2: the id the gateway knows the group by (default sim-group-0001)
 `
@@ -43,6 +44,7 @@ try {
       'bridge-port': { type: 'string' },
       'dm-id': { type: 'string' },
       'group-id': { type: 'string' },
+      'media-root': { type: 'string', multiple: true },
       help: { type: 'boolean', short: 'h', default: false }
     }
   }).values
@@ -79,7 +81,8 @@ try {
       ...(text('bridge') !== undefined ? { bridgeUrl: text('bridge') as string } : {}),
       bridgePort: port('bridge-port', 3000),
       ...(text('dm-id') !== undefined ? { dmId: text('dm-id') as string } : {}),
-      ...(text('group-id') !== undefined ? { groupId: text('group-id') as string } : {})
+      ...(text('group-id') !== undefined ? { groupId: text('group-id') as string } : {}),
+      mediaRoots: (values['media-root'] as string[] | undefined) ?? []
     })
     backend = level2
     const ids = level2.info().chats.map((chat) => `${chat.kind} ${chat.id}`)
