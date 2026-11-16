@@ -29,7 +29,8 @@
     "chat": "tsx scripts/chat.ts",
     "pack:check": "tsx scripts/pack-check.ts",
     "export:memory": "tsx scripts/export-memory.ts",
-    "migrate:memory": "tsx scripts/migrate-memory.ts"
+    "migrate:memory": "tsx scripts/migrate-memory.ts",
+    "migrate:settings": "tsx scripts/migrate-settings.ts"
   },
   "lint-staged": {
     "*.{ts,tsx}": "biome check --write",
