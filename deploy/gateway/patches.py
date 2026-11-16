@@ -123,6 +123,25 @@ def patches() -> list[dict]:
             "why": "a reply to the bot in a group was not seen as addressed to it, so the bot never answered",
         },
         {
+            "name": "cron-tick-10s",
+            "target": "gateway/run.py",
+            "present": "[aira] cron-tick-10s",
+            "edits": (
+        ('''    if isinstance(cron_provider, InProcessCronScheduler):
+        cron_start_kwargs["can_dispatch"] = lambda: not (
+''',
+         '''    if isinstance(cron_provider, InProcessCronScheduler):
+        # [aira] cron-tick-10s: AIRA's reminders are one-time jobs; a 60 s tick made them up to a minute late.
+        cron_start_kwargs["interval"] = 10
+        cron_start_kwargs["can_dispatch"] = lambda: not (
+'''),
+    ),
+            "syntax": py,
+            "tests": [],
+            "cwd": ".",
+            "why": "the in-process cron ticker polled every 60 s, so a reminder could fire up to a minute late",
+        },
+        {
             "name": "aira-edit-jitter",
             "target": "gateway/stream_consumer.py",
             "present": "[aira-jitter]",
