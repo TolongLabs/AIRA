@@ -35,6 +35,7 @@ validation as start-up and is logged to `setting_change`.
 | Method And Path                        | Purpose                                                           |
 | -------------------------------------- | ----------------------------------------------------------------- |
 | `GET /api/chats`                       | Chats with their resolved settings and source levels              |
+| `PUT /api/chats/:id/status`            | Switch one chat on (`active`) or off (`pending`)                  |
 | `GET /api/settings?level=&scope=`      | Raw values at one level                                           |
 | `PUT /api/settings`                    | Set or clear one key at one level                                 |
 | `GET /api/characters`                  | Packs, with validation state and prompt size                      |
@@ -74,6 +75,21 @@ validation as start-up and is logged to `setting_change`.
 | `GET /api/turns/:id` | One turn record with its model calls, tool calls and failure records                                                                                           |
 | `GET /api/report`    | The figures of `bun run report`: latency, failures, cost and fallback rate                                                                                     |
 | `GET /api/memory`    | With `chat` (required): that chat's memory items: id, kind, subject, key, value, status, updated time                                                          |
+
+### Write Routes
+
+| Route                       | Body                                    | Answer                                          |
+| --------------------------- | --------------------------------------- | ----------------------------------------------- |
+| `PUT /api/chats/:id/status` | `{ "status": "active" }` or `"pending"` | `chatId`, `status`, and `changed` true or false |
+
+- A write needs `Content-Type: application/json` (else 415) and a body of at most 16 KB that the route's schema
+  accepts (else 400). An unknown chat gets 404.
+- `Host` must be an IP address or `localhost`, with a port. Any other name gets 403 `host_refused`, so a page that
+  rebinds its own name to the private address cannot reach the API.
+- A request that carries `Origin` gets 403 `origin_refused` unless that origin is listed in `site.allowedOrigins`.
+  The list is empty by default. A request from a server, with no `Origin`, relies on the token.
+- Every applied change writes a `setting_change` row with actor `site`. Setting the status a chat already has
+  changes nothing and writes no row.
 
 The site is the owner's console on the private network, so it may show a chat's WhatsApp id. Record tables and logs
 still never hold one.

@@ -84,9 +84,10 @@ that makes a new decision.
 
 ## Site
 
-| Date       | Decision                                                                                                                                  | Why                                                   |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| 2026-11-15 | The owner site keeps its React front end and design contract. Chatbot pages call the core's API. Owner-tool pages keep their current API. | It revamps the site without touching the owner tools. |
+| Date       | Decision                                                                                                                                                                              | Why                                                                                                                                        |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-11-15 | The owner site keeps its React front end and design contract. Chatbot pages call the core's API. Owner-tool pages keep their current API.                                             | It revamps the site without touching the owner tools.                                                                                      |
+| 2026-11-16 | A site write needs a literal `Host` (an IP address or localhost) and, when it carries `Origin`, one listed in `site.allowedOrigins`. The first write is the chat's on and off switch. | The token alone does not stop a page that rebinds its name to the private address. Switching a chat on was the one step no route could do. |
 
 ## Deployment
 
