@@ -366,7 +366,7 @@ def apply_patch(patch: dict, tree: Path, *, check_only: bool, python: str) -> bo
                   f"Upstream changed {target.name}; re-derive this patch by hand. Nothing was written.")
             return False
 
-    backup = target.with_name(target.name + f".bak-{datetime.now():%Y%m%d-%H%M%S}")
+    backup = target.with_name(target.name + f".bak-{datetime.now():%Y%m%d-%H%M%S-%f}")
     shutil.copy2(target, backup)
     out = text
     for find, replace in patch["edits"]:

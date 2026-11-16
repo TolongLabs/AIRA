@@ -54,6 +54,13 @@ class ApplyTest(unittest.TestCase):
         self.assertTrue(ok)
         self.assertIn("already applied", out)
 
+    def test_two_patches_on_one_file_keep_two_backups(self):
+        self.assertTrue(self.apply(patch())[0])
+        second = patch(name="demo2", present="# [two]", edits=(("x = 1  # [demo]\n", "x = 1  # [demo] [two]\n"),))
+        self.assertTrue(self.apply(second)[0])
+        backups = sorted(self.tree.glob("gateway/demo.py.bak-*"))
+        self.assertEqual([b.read_text(encoding="utf-8") for b in backups], ["x = 1\n", "x = 1  # [demo]\n"])
+
     def test_check_only_writes_nothing(self):
         ok, out = self.apply(patch(), check_only=True)
         self.assertFalse(ok)
