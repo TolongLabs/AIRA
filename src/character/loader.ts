@@ -32,6 +32,7 @@ export interface Pack {
   card: {
     id: string
     displayName: string
+    aliases?: string[]
     languages: string[]
     coreIdentity: string
     speechRules: string[]

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { PackSet } from '../character/loader.js'
+import type { Pack, PackSet } from '../character/loader.js'
 import type { LineKind } from '../character/schema.js'
 import type { Config } from '../config/schema.js'
 import type { Attachment, GatewayRequest } from '../gateway/request.js'
@@ -18,7 +18,15 @@ import {
   saveDiagnostics,
   updateTurnRecord
 } from '../records/turn-record.js'
-import { type Chat, ensureChat, ensureSubject, getChat, getChatByWaId } from '../settings/chats.js'
+import {
+  type Chat,
+  displayNameOfNumber,
+  ensureChat,
+  ensureSubject,
+  getChat,
+  getChatByWaId,
+  setDisplayName
+} from '../settings/chats.js'
 import { type Resolved, resolveSettings } from '../settings/settings.js'
 import { type Db, type Storage, isoNow } from '../storage/database.js'
 import { advanceTurn, closeTurn, openTurn, receiveInbound } from '../storage/turns.js'
@@ -63,7 +71,7 @@ export interface TurnServiceDeps {
   /** Called after a firing changed a reminder, so the wanted-jobs file is written again. */
   onScheduleChange?: () => void
   storage: Storage
-  config: Pick<Config, 'turn' | 'llm' | 'records'> & { gateway?: Pick<Config['gateway'], 'jobs'> }
+  config: Pick<Config, 'turn' | 'llm' | 'records'> & { gateway?: Partial<Pick<Config['gateway'], 'jobs' | 'selfIds'>> }
   logger: Logger
   redactor: Redactor
   /** The loaded packs. A function, so a saved pack applies to the next turn. */
@@ -529,11 +537,54 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     })
   }
 
-  async function handle(request: TurnRequest): Promise<TurnReply> {
+  /** True when the text names the character by its display name or an alias, whole word, in any case. */
+  function namesCharacter(text: string, pack: Pack): boolean {
+    const names = [pack.card.displayName, ...(pack.card.aliases ?? [])]
+    return names.some((name) =>
+      new RegExp(`(^|[^\\p{L}\\p{N}])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\p{L}\\p{N}])`, 'iu').test(
+        text
+      )
+    )
+  }
+
+  async function handle(incoming: TurnRequest): Promise<TurnReply> {
+    let request = incoming
     // Identity comes from code: the scope marker's ids are mapped to internal ids here, once.
     const chat = ensureChat(storage, { waId: request.marker.chat, type: request.marker.kind }, now)
     const senderId = ensureSubject(storage, request.marker.sender, now)
+    if (request.senderName) setDisplayName(storage, request.marker.sender, request.senderName)
     const key = { chatId: chat.chatId, mid: request.marker.mid, senderId }
+
+    // A WhatsApp id never reaches the window, the model or a reply: a mention becomes a name.
+    const settings = resolveSettings(storage, chat)
+    const characterId = settings['character']?.value
+    const pack = typeof characterId === 'string' ? deps.packs().packs.get(characterId) : undefined
+    const selfIds = new Set((config.gateway?.selfIds ?? []).map((id) => id.replace(/@.*$/, '')))
+    let mentionsSelf = false
+    const text = request.text.replace(/@(\d{6,20})\b/g, (_, number: string) => {
+      if (selfIds.has(number)) {
+        mentionsSelf = true
+        return `@${pack?.card.displayName ?? 'you'}`
+      }
+      return `@${displayNameOfNumber(storage, number) ?? 'member'}`
+    })
+    request = { ...request, text }
+
+    // A group message that only names the character is answered only when the chat allows name calls.
+    if (
+      chat.type === 'group' &&
+      selfIds.size > 0 &&
+      !mentionsSelf &&
+      !request.quote?.ofAira &&
+      settings['freeResponse']?.value !== true &&
+      settings['nameCall']?.value !== true &&
+      !COMMAND_TEXT.test(text) &&
+      pack !== undefined &&
+      namesCharacter(text, pack)
+    ) {
+      logger.info('turn.name_call_off', { chatId: chat.chatId })
+      return { content: 'NO_REPLY', replayed: true }
+    }
 
     return admit(
       chat,
@@ -604,7 +655,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
 
   /** An owner's gateway job, run as a routine turn in the chat the host's list names. */
   async function handleJob(request: Extract<ScheduledRequest, { kind: 'job' }>): Promise<TurnReply | null> {
-    const listed = deps.config.gateway?.jobs.find((job) => job.id === request.jobId)
+    const listed = deps.config.gateway?.jobs?.find((job) => job.id === request.jobId)
     const chat = listed ? getChatByWaId(storage, listed.chat) : undefined
     if (!chat || chat.status !== 'active' || request.text === '') return null
     // One firing per 10-minute window: the gateway's repeats of a firing are answered from the stored reply.

@@ -226,3 +226,30 @@ describe('gateway response', () => {
     expect(body.usage.total_tokens).toBe(5)
   })
 })
+
+describe('the sender name before a group marker', () => {
+  it('is the sender display name, not earlier text, after a quote note too', () => {
+    const parsed = parseGatewayRequest(request(`[Replying to: "the plan: lunch"]\n\n[Alice] ${marker()}\nsounds good`))
+    expect(parsed).toMatchObject({
+      type: 'turn',
+      senderName: 'Alice',
+      earlier: '',
+      text: 'sounds good',
+      quote: { text: 'the plan: lunch', ofAira: false }
+    })
+  })
+
+  it('names the newest sender only, and keeps the earlier message text clean', () => {
+    const parsed = parseGatewayRequest(
+      request(
+        `[Alice] ${marker()}\nfirst try\n\n[Alice] ${marker('platform=whatsapp kind=group chat=test-chat-g1 sender=test-member-alice mid=m-2')}\nsecond try`
+      )
+    )
+    expect(parsed).toMatchObject({ senderName: 'Alice', earlier: 'first try', text: 'second try' })
+  })
+
+  it('is absent when there is no bracket, and a note is never taken for a name', () => {
+    expect(parseGatewayRequest(request(`${marker()}\nhi`))).not.toHaveProperty('senderName')
+    expect(parseGatewayRequest(request(`[Replying to: "x"] ${marker()}\nhi`))).not.toHaveProperty('senderName')
+  })
+})

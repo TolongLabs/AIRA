@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import type { Pack } from '../character/loader.js'
 import { forReplay } from '../format/footer.js'
 import type { ModelMessage, PromptBlock } from '../models/types.js'
+import { displayNames } from '../settings/chats.js'
 import type { Storage } from '../storage/database.js'
 import type { PromptBuilder, TurnContext, TurnInput } from '../turn/types.js'
 import { getChatState, setChatState } from './chat-state.js'
@@ -96,7 +97,7 @@ function formatContextBlock(input: TurnInput, nowDate: Date, recalled: string[],
   return lines.join('\n')
 }
 
-function formatMessages(input: TurnInput): ModelMessage[] {
+function formatMessages(input: TurnInput, names: Map<string, string> = new Map()): ModelMessage[] {
   const isGroup = input.context.chat.type === 'group'
   const memberNumbers = new Map<string, number>()
   const messages: ModelMessage[] = []
@@ -115,7 +116,9 @@ function formatMessages(input: TurnInput): ModelMessage[] {
         memberNumber = memberNumbers.size + 1
         memberNumbers.set(senderKey, memberNumber)
       }
-      content = `[member ${memberNumber}] ${content}`
+      // A member the gateway named is called by name; anyone else keeps a stable number.
+      const name = names.get(senderKey)
+      content = `[${name ? name.replace(/[[\]\n]/g, '') : `member ${memberNumber}`}] ${content}`
     }
     const last = messages[messages.length - 1]
     if (last?.role === 'user') last.content += `\n\n${content}`
@@ -205,7 +208,12 @@ export function createPromptBuilder(options: PromptBuilderOptions): PromptBuilde
 
       return {
         system,
-        messages: formatMessages(input),
+        messages: formatMessages(
+          input,
+          input.context.chat.type === 'group'
+            ? displayNames(options.storage, [...new Set(input.window.flatMap((m) => (m.senderId ? [m.senderId] : [])))])
+            : new Map()
+        ),
         record: {
           mood: moodResult.mood,
           moodSource: moodResult.source,

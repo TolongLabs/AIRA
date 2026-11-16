@@ -116,6 +116,7 @@ deploy:
 # Owned by docs/trd/deployment.md
 gateway:
   hostDataDir: '' # The data volume's path on the host. Set at install; start-up fails while empty
+  selfIds: [] # The bot's own WhatsApp ids, to tell a mention of the bot from a name call. Host only
   jobs: [] # The owner's gateway jobs the core runs, as { id, chat }. Listed in the host's file only
 
 # Owned by docs/trd/storage.md
