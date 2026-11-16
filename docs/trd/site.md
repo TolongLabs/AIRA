@@ -53,6 +53,31 @@ validation as start-up and is logged to `setting_change`.
 - The token is sent in a header, never in a URL.
 - Routes that read another chat's memory do not exist. The chat id is required.
 
+### Serving The API
+
+- The core serves the API on its own port, `site.port` (default 9890), never on the gateway's port. The compose file
+  publishes it on the host's private-network address only, `AIRA_SITE_BIND`. While the new core runs beside the old
+  one, that address is loopback.
+- Every route needs `Authorization: Bearer <SITE_TOKEN>`. `SITE_TOKEN` is a secret of at least 32 characters in
+  `.env`, compared in constant time. With no token set, the API does not start and the core logs why; the gateway
+  endpoint is not affected.
+- Answers are JSON. A missing or wrong token gets 401, a bad query 400, an unknown id 404, a write that is not JSON 415. An error body is `{ "error": "<reason code>" }` and never holds message text.
+
+### Read Routes
+
+| Route                | Answer                                                                                                                                                         |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/health`    | `status` (`ready` or `starting`), `version`, `activeTurns`, and per model role whether it is configured and whether its breaker is open                        |
+| `GET /api/chats`     | `chats`: each chat's id, WhatsApp id, type, label, status, and every setting key with its value and the level it came from                                     |
+| `GET /api/settings`  | With `level` and `scope`: the raw values set at that one level                                                                                                 |
+| `GET /api/turns`     | The newest turn records, newest first, at most `limit` (default 50, at most 200), optionally for one `chat` and `before` a time. Records only: no message text |
+| `GET /api/turns/:id` | One turn record with its model calls, tool calls and failure records                                                                                           |
+| `GET /api/report`    | The figures of `bun run report`: latency, failures, cost and fallback rate                                                                                     |
+| `GET /api/memory`    | With `chat` (required): that chat's memory items: id, kind, subject, key, value, status, updated time                                                          |
+
+The site is the owner's console on the private network, so it may show a chat's WhatsApp id. Record tables and logs
+still never hold one.
+
 ## Hierarchy Editing
 
 - The Chats page shows, for each key, the resolved value and a marker: inherited from global, inherited from chat
