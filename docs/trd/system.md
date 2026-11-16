@@ -29,28 +29,56 @@ How the processes fit together, what the gateway and the core promise each other
 The gateway calls `POST /v1/chat/completions` on the core. The shapes below were measured on the pinned, patched
 gateway with a fake bridge and a fake core (spikes S-1 to S-3, 16 Nov 2026).
 
-| Direction | Field                        | Meaning                                                                                     |
-| --------- | ---------------------------- | ------------------------------------------------------------------------------------------- |
-| Request   | Headers                      | OpenAI client headers only. No chat, sender or message id travels in a header.              |
-| Request   | Scope marker                 | `[HERMES-SCOPE v1 platform= kind= chat= sender= mid=]` before the newest user text          |
-| Request   | `messages`                   | The gateway's transcript. The core reads only the newest user content from it.              |
-| Request   | `stream`                     | `true`, with `stream_options.include_usage`. The core answers as a server-sent event stream |
-| Request   | `tools`, system message      | The gateway's own prompt and tool schemas. The core ignores both                            |
-| Response  | `choices[0].message.content` | The cleaned reply text, with bubble breaks and attachment lines. See below                  |
-| Response  | HTTP status                  | Always 200 with a deliverable reply. Failures become an in-character line.                  |
+| Direction | Field                        | Meaning                                                                                                                                   |
+| --------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Request   | Headers                      | OpenAI client headers only. No chat, sender or message id travels in a header.                                                            |
+| Request   | Scope marker                 | `[HERMES-SCOPE v1 platform= kind= chat= sender= mid=]` before each user message's text, with `qid=` added when the message quotes another |
+| Request   | `messages`                   | The gateway's transcript. The core reads only the newest user content from it.                                                            |
+| Request   | `stream`                     | `true` for a chat turn, with `stream_options.include_usage`. The core answers in the shape asked for                                      |
+| Request   | `tools`, system message      | The gateway's own prompt and tool schemas. The core ignores both, except that `tools` tells a turn from a chore                           |
+| Response  | `choices[0].message.content` | The cleaned reply text, with bubble breaks and attachment lines, or `NO_REPLY`. See below                                                 |
+| Response  | HTTP status                  | Always 200 with a deliverable reply. Failures become an in-character line.                                                                |
+
+Each request is one of four kinds, decided in this order (measured on the staging gateway, 16 Nov 2026):
+
+| Kind      | Recognised By                                                | The Core Does                                                                |
+| --------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| Auxiliary | No `tools`, whatever the text holds                          | Fixed short text. No model call, no turn record                              |
+| Chat turn | `tools` and a scope marker in the newest user content        | Runs a turn                                                                  |
+| Scheduled | `tools`, no marker, and the core's scheduled tag in the text | Runs a scheduled turn. See [Scheduled Turns](#scheduled-turns)               |
+| Unmarked  | `tools`, no marker and no tag                                | `NO_REPLY`, no model call, a `gateway_unmarked` record and an operator alert |
 
 - **Identity comes from the scope marker.** The gateway's scope stamp patch writes it when `WHATSAPP_SCOPE_STAMP=1`.
-  It is off on the live gateway today and is switched on at cutover. A request without a marker is refused as a
-  deployment fault. The marker's `mid` is the gateway message id that keys `inbound_message` in
-  [Persistence](storage.md).
-- **Earlier unanswered messages ride along.** After a failed turn the gateway keeps the user's text and prepends it
-  to the next user content, separated by blank lines, before the marker. The core treats text before the marker as
-  earlier messages from the same sender that got no reply.
+  It is off on the live gateway today and is switched on at cutover. The marker's `mid` is the gateway message id
+  that keys `inbound_message` in [Persistence](storage.md).
+- **Earlier unanswered messages ride along.** After a failed turn the gateway keeps the user's message, with its own
+  marker, and puts it before the next one, separated by a blank line. The text after each earlier marker is an
+  earlier message from the same sender that got no reply.
 - **Gateway notes are removed.** On a chat's first message the gateway appends a `[System note: ...]` block to the
   user text. The core strips every such block before the text enters a turn.
-- **Auxiliary requests.** The gateway also calls the same endpoint for its own chores, such as a session title. Such
-  a request has no `tools` and no scope marker. The core answers it with a short fixed text, makes no model call and
-  writes no turn record.
+- **Quotes and media are notes before the marker.** The gateway writes what it knows about a message as bracketed
+  notes just before that message's marker. The core takes them out of the message text and keeps what they carry:
+
+  | Note Starts With                                                           | Carries                                                                   |
+  | -------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+  | `[Replying to: "`                                                          | The quoted text, at most 500 characters. `qid` is its id                  |
+  | `[Replying to your previous message: "`                                    | The same, for a message AIRA sent                                         |
+  | `[The user sent an image~`, `[The user sent an image but`                  | The picture's path on the host, after `image_url:`                        |
+  | `[The user sent a voice message`                                           | The voice note's path on the host, when the gateway did not transcribe it |
+  | `[The user sent an audio file`, `a video`, `a document`, `a text document` | The file's path on the host, after `saved at:`                            |
+
+  A voice note the gateway transcribed arrives as one quoted line, `"<transcript>"`, before a marker followed by no
+  text. That line is the message text. The image description the gateway writes is the core's own auxiliary answer,
+  so the core ignores it. Media is read by the core at intake. See [Models](models.md#media-watching).
+
+- **Auxiliary requests.** The gateway also calls the same endpoint for its own chores: a session title, a context
+  summary, a picture description. Such a request has no `tools`. Its text can hold markers, because a title or a
+  summary request quotes the transcript. The core answers it with a short fixed text, makes no model call and writes
+  no turn record.
+- **Unmarked requests.** A request with `tools` and no marker comes from the gateway's own background work, such as
+  its skill review, or from a gateway with the scope stamp off. The core sends nothing to the chat and records it, so
+  a stamp that is off shows in the records and alerts on the first turn. At cutover the gateway's skill review is
+  switched off (`skills.creation_nudge_interval: 0`).
 - **Attachments are lines in the content.** Each attachment is one `MEDIA:<path>` line at the end of the content. The
   path is the file's path on the host, under `gateway.hostDataDir`, because the gateway reads it there. The gateway
   sends attachments after every text bubble. Stickers are in [Prompt Engine](prompt-engine.md#stickers).
@@ -62,18 +90,33 @@ gateway with a fake bridge and a fake core (spikes S-1 to S-3, 16 Nov 2026).
 - **A marker in message text changes nothing.** Message text is the user's, so it can hold a forged marker. When
   the newest user content holds more than one marker, all of them must name the same platform, kind, chat and
   sender, or the request is refused. A forged marker can then change only the forger's own message id.
-- **No reply is an empty reply.** When a turn ends with nothing to send (a sender who is not allowed, a muted
-  scheduled turn, a chat that is not switched on), the core returns status 200 with empty content
-  (**Assumption A-4**).
-- **A scheduled turn carries a tag.** The text of a job the core gives to the gateway's schedule starts with
-  `[AIRA-SCHEDULED v1 kind=<reminder|proactive|routine> ...]`. A turn whose text starts with that tag is a
-  scheduled turn (**Assumption A-5**).
+- **No reply is `NO_REPLY`.** When a turn ends with nothing to send (a sender who is not allowed, a muted scheduled
+  turn, a chat that is not switched on, a merged request whose reply went with the newest one), the content is
+  exactly `NO_REPLY`. The gateway sends nothing for it. Empty content is never returned: the gateway reads it as a
+  failed model, asks 3 more times, then sends its own "No reply" notice to the chat. Measured.
 - **Group addressing is the gateway's.** The request does not say whether a group message mentions AIRA or replies
-  to it. The core treats every group message it receives as addressed (**Assumption A-6**).
+  to it. The gateway forwards a group message only when it mentions AIRA, replies to AIRA, or the chat is set to free
+  response, and only from an allowed group. So the core treats every group message it receives as addressed.
+  Measured with all five cases.
 - The core never returns an error status for a model or tool failure. An error status is reserved for a request the
   core cannot parse, which is a deployment fault.
-- Scheduled messages (reminders, proactive messages) arrive through the same endpoint from the gateway's cron. The
-  core applies mute and quiet rules to them like any other turn. See [Reliability](reliability.md).
+
+### Scheduled Turns
+
+Reminders and proactive messages are jobs the core gives to the gateway's schedule. When a job is due, the gateway
+calls the same endpoint. Measured with a one-time job, 16 Nov 2026:
+
+- The request has `tools`, is not streamed, and carries **no scope marker**: the scope stamp runs only on incoming
+  WhatsApp messages.
+- The newest user content is the gateway's `[IMPORTANT: You are running as a scheduled cron job. ...]` block, a blank
+  line, then the job's text unchanged.
+- The job's text starts with the core's tag, `[AIRA-SCHEDULED v1 kind=<reminder|proactive|routine> ... id=<job>]`.
+  The core finds the tag after the gateway's block. Identity comes from the core's own row for that job id, never
+  from the request: a tag that names no known job is an unmarked request.
+- The gateway delivers the reply to the job's chat. `NO_REPLY` or `[SILENT]` sends nothing.
+- The gateway wraps a delivered reply in a "Cronjob Response" header and footer unless `cron.wrap_response` is
+  `false`. It is `false` on the live gateway. Cutover checks it.
+- The core applies mute and quiet rules to a scheduled turn like any other turn. See [Reliability](reliability.md).
 
 ### When the Core Is Slow or Down
 
@@ -81,6 +124,7 @@ gateway with a fake bridge and a fake core (spikes S-1 to S-3, 16 Nov 2026).
 | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | Connection refused             | Retries the identical request, 6 attempts in two rounds of 3, then sends the failure line. About 22 s                                     |
 | Connection dropped mid-request | Same: 6 identical requests with the same `mid`, then the failure line. About 35 s to 50 s                                                 |
+| Error status 500               | 3 identical requests, then the failure line                                                                                               |
 | No answer                      | Waits up to its read timeout of 1,800 s. The core's own turn deadline must end the turn long before                                       |
 | Every attempt failed           | Sends one line from the helper module `brain.failure` (see [Gateway Helper Modules](#gateway-helper-modules)), quoting the user's message |
 
@@ -195,9 +239,6 @@ spike runs, 16 Nov 2026.
 | --- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
 | A-1 | Assumption | Bun manages packages and runs scripts. Node 24 runs the service in the container.                                                                                                                               | Tech stack            |
 | A-3 | Assumption | The judge model is reachable from the host network with acceptable latency for the mood override.                                                                                                               | Prompt engine, memory |
-| A-4 | Assumption | The gateway sends nothing to the chat when the core returns empty content. To confirm on the staging gateway with the fake bridge in step 3.                                                                    | Gateway contract      |
-| A-5 | Assumption | A request the gateway's schedule starts carries the scope marker of the job's chat and the job's text unchanged. To confirm in step 3.                                                                          | Scheduled turns       |
-| A-6 | Assumption | The gateway forwards a group message only when it mentions AIRA, replies to AIRA, or the chat is free response there. To confirm in step 3.                                                                     | Turn admission        |
 | A-7 | Assumption | The `claude` program accepts the window as one transcript prompt, and names a served tool `mcp__aira__<name>`. Tested with a fake program only; to confirm in S-4.                                              | Subscription runner   |
 | A-8 | Assumption | The lessons library is kept per chat, and a song is stored as lines with a reading and a meaning. To check against the old songs, vocabulary and library notes on the production host before they are migrated. | Lessons data model    |
 | S-4 | Spike      | Benchmark the two transports on the live machine with the same prompts. Tracked in [#28](https://github.com/TolongLabs/AIRA/issues/28).                                                                         | Launch default        |
