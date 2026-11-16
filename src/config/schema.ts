@@ -22,6 +22,15 @@ const modelTarget = z.strictObject({
   usdPerMTokCached: price
 })
 
+/** An absolute path with no `..`, and never the root: a pair that maps `/` would let any path through. */
+const absoluteDir = z
+  .string()
+  .regex(/^\/[^\0]*$/, 'must be an absolute path')
+  .refine((path) => path.replace(/\/+$/, '') !== '' && !path.split('/').includes('..'), {
+    message: 'must not be the root and must not contain ..'
+  })
+const gatewayDir = z.strictObject({ host: absoluteDir, container: absoluteDir })
+
 export const configSchema = z.strictObject({
   prompt: z.strictObject({
     maxSystemTokens: count
@@ -133,6 +142,8 @@ export const configSchema = z.strictObject({
     watcher: z.strictObject({
       model: z.string().min(1).nullable()
     }),
+    // The gateway's media folders as the gateway writes them in its notes, and where this process mounts them.
+    gatewayDirs: z.array(gatewayDir).default([]),
     maxVideoSeconds: count,
     timeoutMs: ms.default(30000)
   }),
