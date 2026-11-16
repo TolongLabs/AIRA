@@ -72,7 +72,8 @@ Each request is one of four kinds, decided in this order (measured on the stagin
   does not. Typo matches are not used: they would wake on ordinary words and other people's names.
 - **The gateway wakes on the chat's names.** The core writes each name-call chat's names into `chats.json` (see Chat
   Flags File). The patch `name-call-from-core` makes the gateway's group check also wake on those names for that
-  chat. The global `mention_patterns` stay as they are; the core still decides.
+  chat. It also wakes on every message in a chat whose entry has `free: true`. The global `mention_patterns` stay as
+  they are; the core still decides.
 - **Quotes and media are notes before the marker.** The gateway writes what it knows about a message as bracketed
   notes just before that message's marker. The core takes them out of the message text and keeps what they carry:
 
@@ -212,6 +213,7 @@ and declares them in `<hostDataDir>/gateway/chats.json`, which the gateway reads
 - `voice` is `all` when `features.voice` is on, else the chat is absent and gets no voice note.
 - `names` is present for a group with `nameCall` on: the chat's resolved names, as in Name call above. The file is
   also written after a change to `nameCall`, `nameCall.names` or `character`.
+- `free` is `true` for a group with `freeResponse` on; the gateway then answers every message there, as the site shows.
 - The gateway reads the file again when its modification time changes, so a change on the site applies to the next
   reply without a restart. A missing or unreadable file means no voice and no reactions anywhere.
 - The same write refreshes `<hostDataDir>/gateway/unavailable.txt` when the global default character changes.
