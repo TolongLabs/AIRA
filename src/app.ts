@@ -444,6 +444,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       siteServer = createSiteApiServer({
         token: siteToken,
         allowedOrigins: config.site.allowedOrigins,
+        characters: () => new Set(packs().packs.keys()),
         storage,
         paths,
         version: options.version ?? '0.0.0',

@@ -293,3 +293,59 @@ describe('site API write routes', () => {
     expect(originAllowed('https://other.example', ['https://site.example'])).toBe(false)
   })
 })
+
+function writeSetting(siteUrl: string, body: unknown) {
+  return fetch(`${siteUrl}/api/settings`, {
+    method: 'PUT',
+    headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+}
+
+describe('site API settings write', () => {
+  it('sets, repeats and clears one key at one level, with change records by the site', async () => {
+    const { app, siteUrl } = await startWithSite()
+    const set = await writeSetting(siteUrl, { level: 'type', scope: 'dm', key: 'language', value: 'ms' })
+    expect(await set.json()).toEqual({ level: 'type', scope: 'dm', key: 'language', value: 'ms', changed: true })
+    const repeat = await writeSetting(siteUrl, { level: 'type', scope: 'dm', key: 'language', value: 'ms' })
+    expect(await repeat.json()).toMatchObject({ changed: false })
+    const cleared = await writeSetting(siteUrl, { level: 'type', scope: 'dm', key: 'language', value: null })
+    expect(await cleared.json()).toMatchObject({ value: null, changed: true })
+    const actors = app.storage.read((db) =>
+      db.prepare("SELECT actor FROM setting_change WHERE key = 'language' ORDER BY rowid").pluck().all()
+    )
+    expect(actors).toEqual(['site', 'site'])
+  })
+
+  it('binds a loaded pack and refuses one that is not loaded', async () => {
+    const { app, siteUrl, chatId } = await startWithSite()
+    const loaded = [...app.packs().packs.keys()][0] as string
+    const bound = await writeSetting(siteUrl, { level: 'chat', scope: chatId, key: 'character', value: loaded })
+    expect(bound.status).toBe(200)
+    const missing = await writeSetting(siteUrl, { level: 'global', scope: '', key: 'character', value: 'no-such-pack' })
+    expect(missing.status).toBe(400)
+    expect(await missing.json()).toEqual({ error: 'unknown_character' })
+  })
+
+  it('refuses an unknown key, a bad value, a bad scope, a missing value and an unknown chat', async () => {
+    const { siteUrl } = await startWithSite()
+    const refused = async (body: unknown) => {
+      const res = await writeSetting(siteUrl, body)
+      return [res.status, ((await res.json()) as { error: string }).error]
+    }
+    expect(await refused({ level: 'global', scope: '', key: 'no_such_key', value: 1 })).toEqual([
+      400,
+      'invalid_setting'
+    ])
+    expect(await refused({ level: 'global', scope: '', key: 'language', value: 42 })).toEqual([400, 'invalid_setting'])
+    expect(await refused({ level: 'type', scope: 'channel', key: 'language', value: 'ms' })).toEqual([
+      400,
+      'invalid_setting'
+    ])
+    expect(await refused({ level: 'global', scope: '', key: 'language' })).toEqual([400, 'invalid_body'])
+    expect(await refused({ level: 'chat', scope: 'c_missing', key: 'language', value: 'ms' })).toEqual([
+      404,
+      'not_found'
+    ])
+  })
+})

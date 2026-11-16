@@ -2,11 +2,11 @@ import { timingSafeEqual } from 'node:crypto'
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http'
 import type { Logger } from '../records/logger.js'
 import { type SiteApiDeps, dispatchGet, isKnownRoute } from './routes.js'
-import { dispatchWrite, hostAllowed, isWriteRoute, originAllowed } from './writes.js'
+import { type SiteWriteDeps, dispatchWrite, hostAllowed, isWriteRoute, originAllowed } from './writes.js'
 
 // The core's private HTTP API for the owner site (docs/trd/site.md#serving-the-api).
 
-export interface SiteApiServerOptions extends SiteApiDeps {
+export interface SiteApiServerOptions extends SiteWriteDeps {
   token: string
   logger: Logger
   /** `site.allowedOrigins` */
@@ -63,7 +63,7 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
       return
     }
 
-    if (isWriteRoute(url.pathname)) {
+    if (request.method !== 'GET' && isWriteRoute(url.pathname)) {
       if (!hostAllowed(request.headers.host)) {
         json(response, 403, { error: 'host_refused' })
         return
