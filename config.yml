@@ -24,7 +24,7 @@ tools:
 
 # Owned by docs/trd/tools.md
 search:
-  provider: 'off' # Web search backend, or off
+  provider: 'exa' # Web search backend: exa, or off
 
 # Owned by docs/trd/tools.md
 lessons:

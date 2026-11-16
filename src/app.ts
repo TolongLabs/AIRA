@@ -39,6 +39,7 @@ import { type SnapshotReason, type SnapshotResult, startSnapshotTimer, takeSnaps
 import { type DataPaths, startStorage } from './storage/startup.js'
 import { createCommandRouter } from './tools/commands.js'
 import { registerCoreTools } from './tools/core/index.js'
+import { createExaSearchPort } from './tools/exa.js'
 import { registerLessonTools } from './tools/lessons/index.js'
 import { connectMcpServers } from './tools/mcp-client.js'
 import { type ToolPorts, createFetchPagePort } from './tools/ports.js'
@@ -56,6 +57,7 @@ export const SECRET_NAMES = [
   'LLM_FALLBACK_API_KEY',
   'MEDIA_WATCHER_API_KEY',
   'TYPESAFE_API_KEY',
+  'EXA_API_KEY',
   'RUNNER_TOKEN',
   'OPENAI_API_KEY',
   'SITE_TOKEN'
@@ -262,6 +264,15 @@ export async function createApp(options: AppOptions): Promise<App> {
     const schedule = { sync: () => void writeScheduleFile(storage, paths.root, now) }
     logger.info('schedule.written', { reminders: writeScheduleFile(storage, paths.root, now) })
     const registry = createToolRegistry({ storage, config, logger, redactor, now })
+    const exaKey = env['EXA_API_KEY']
+    let search = options.ports?.search
+    if (!search && config.search.provider === 'exa') {
+      if (typeof exaKey === 'string' && exaKey.length > 0) {
+        search = createExaSearchPort({ apiKey: exaKey })
+      } else {
+        logger.warn('search.off', { reason: 'no_key' })
+      }
+    }
     registerCoreTools(registry, {
       memory: createMemoryPort({
         storage,
@@ -272,6 +283,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       // The page reader is built in: it refuses private addresses, also after a redirect.
       page: createFetchPagePort(),
       schedule,
+      ...(search ? { search } : {}),
       ...options.ports,
       filesDir: paths.files
     })
