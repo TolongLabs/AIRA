@@ -103,10 +103,11 @@ tool and says the rest in their own words.
 | Groups       | A message that starts with a registered command addresses AIRA by itself. A command later in a group message needs the message to address AIRA as usual                   |
 | Reply-to     | When the message replies to another, the quoted message is given to the commands as context                                                                               |
 
-- **One direct command alone** (the whole message is `/help`, `/reminders`, `/mute` or `/unmute`) is answered by code
-  with no model call, as before.
-- **Anything else with commands** is one model turn. Every named tool, direct or skill-style, is offered alone until it
-  has been called once; then the chat's other tools are offered as usual. The model writes one reply that covers them
+- **A message whose only command is a direct one** (`/help`, `/reminders`, `/mute` or `/unmute`) is answered by code
+  with no model call, wherever the command stands. The words after it are its arguments, as in `/mute 2 hours`.
+- **Anything else with commands** is one model turn. Every named skill-style tool is offered alone until it has been
+  called once; then the chat's other tools are offered as usual. A direct command next to others is ordinary text,
+  because the model is never offered a direct command's tool. The model writes one reply that covers them
   all. Its text is the message with the command tokens kept, so the model sees where each one was asked for.
 - **`/help` is built per call** from the commands this chat may use right now: its feature switches, permissions and
   `commands.maxPerMessage`. A change on the site shows in the next `/help`.
