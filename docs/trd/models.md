@@ -67,7 +67,8 @@ that asked for them, and DeepSeek's own API does the same without `reasoning_con
 - The client returns that state with the response. The API runner keeps it for the turn, keyed by the tool calls it
   came with, and the client sends it back with that assistant step.
 - It never outlives the turn and is never stored. The window holds text only, so a later turn starts without it.
-- A fallback starts its own loop, so one provider's state never reaches another.
+- The fallback can take over mid-loop, so the state carries its provider. A client sends back only state of its
+  own provider and drops the rest.
 
 ## Turn Runner Interface
 
