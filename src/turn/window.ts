@@ -39,15 +39,27 @@ export function storeUserMessage(
  * turn that was interrupted. Call it in the transaction that opens the turn. A message that arrives later
  * stays unclaimed, for the next turn.
  */
-export function claimPending(db: Db, chatId: string, turnId: string): number {
+/**
+ * Claims the chat's unanswered user messages for a turn, up to and including the message `upToMid` when it is
+ * stored. A message after it waits for its own turn, so a command is never answered inside another turn.
+ */
+export function claimPending(db: Db, chatId: string, turnId: string, upToMid?: string): number {
+  const last =
+    upToMid === undefined
+      ? undefined
+      : (
+          db
+            .prepare(`SELECT max(id) AS id FROM session_message WHERE chat_id = ? AND role = 'user' AND mid = ?`)
+            .get(chatId, upToMid) as { id: number | null }
+        ).id
   return db
     .prepare(
       `UPDATE session_message SET turn_id = ?
-       WHERE chat_id = ? AND role = 'user'
+       WHERE chat_id = ? AND role = 'user' AND id <= ?
          AND (turn_id IS NULL
            OR turn_id IN (SELECT turn_id FROM turn WHERE chat_id = ? AND state = 'interrupted'))`
     )
-    .run(turnId, chatId, chatId).changes
+    .run(turnId, chatId, last ?? Number.MAX_SAFE_INTEGER, chatId).changes
 }
 
 interface Row {

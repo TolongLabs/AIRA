@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { type Pack, loadPack } from '../../src/character/loader.js'
 import type { ModelClient, ModelRequest } from '../../src/models/types.js'
+import { localTimeLine } from '../../src/prompt/builder.js'
 import { createPromptBuilder, estimateTokens } from '../../src/prompt/builder.js'
 import { getChatState, setChatState } from '../../src/prompt/chat-state.js'
 import { type MoodJudge, createModelMoodJudge, detectMood, detectMoodByRules } from '../../src/prompt/mood.js'
@@ -354,7 +355,7 @@ describe('prompt builder', () => {
     expect(built.system.map((b) => b.name)).toEqual(['core', 'speech', 'harness', 'context', 'tone', 'shape'])
     expect(built.system[2]?.text).toBe('Harness rules text.\n\nTool rules text.')
     expect(built.system[3]?.text).toContain('Chat type: dm')
-    expect(built.system[3]?.text).toContain('Time: 2026-01-02T03:04:05.000Z (Friday)')
+    expect(built.system[3]?.text).toContain('Time: Friday 2026-01-02 03:04, UTC (UTC+00:00).')
     expect(built.system[3]?.text).toContain('<memory untrusted="true">\n- recalled fact one\n</memory>')
 
     for (const block of built.system) {
@@ -444,5 +445,13 @@ describe('prompt builder', () => {
     })
 
     await expect(builder.build(makeTurnInput({}))).rejects.toThrow(/example.*10/)
+  })
+})
+
+describe('localTimeLine', () => {
+  it('writes the local time with its zone and offset', () => {
+    expect(localTimeLine(new Date('2026-11-16T17:46:00Z'), 'Asia/Kuala_Lumpur')).toMatch(
+      /^Time: Tuesday 2026-11-17 01:46, Asia\/Kuala_Lumpur \(UTC\+08:00\)\./
+    )
   })
 })
