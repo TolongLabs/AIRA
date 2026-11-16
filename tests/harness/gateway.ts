@@ -13,6 +13,8 @@ export interface GatewayMessage {
   quote?: { text: string; id: string; ofAira?: boolean }
   /** Files the gateway saved for this message, written as the gateway writes its notes before the marker. */
   media?: { kind: 'image' | 'voice' | 'audio' | 'video' | 'document'; path: string }[]
+  /** The sender's display name, which the gateway writes as `[<name>] ` before a group message's marker. */
+  name?: string
 }
 
 /** The note the gateway writes before a message's marker for one saved file (measured, shortened). */
@@ -51,7 +53,8 @@ export function buildRequest(input: {
     ? `[Replying to${message.quote.ofAira ? ' your previous message' : ''}: "${message.quote.text.slice(0, 500)}"]\n\n`
     : ''
   const firstNote = firstMessage ? '\n\n[System note: this is the first message of the conversation.]' : ''
-  const newestUserContent = `${unansweredPrefix}${mediaNotes}${replyNote}${scopeMarker}\n${message.text}${firstNote}`
+  const namePrefix = message.name ? `[${message.name}] ` : ''
+  const newestUserContent = `${unansweredPrefix}${mediaNotes}${replyNote}${namePrefix}${scopeMarker}\n${message.text}${firstNote}`
 
   return {
     model: 'aira',

@@ -7,6 +7,7 @@ import { getChatState, setChatState } from '../../src/prompt/chat-state.js'
 import { type MoodJudge, createModelMoodJudge, detectMood, detectMoodByRules } from '../../src/prompt/mood.js'
 import { pick, seededRandom } from '../../src/prompt/random.js'
 import { FACE_LIMIT, LENGTH_CHARS, detectLengthBypass, drawShape, shapeText } from '../../src/prompt/shape.js'
+import { ensureSubject, setDisplayName } from '../../src/settings/chats.js'
 import type { TurnInput } from '../../src/turn/types.js'
 import { tmpStorage } from '../support/tmp.js'
 
@@ -418,6 +419,30 @@ describe('prompt builder', () => {
       expect(used.length).toBeGreaterThan(0)
       for (let i = 1; i < used.length; i++) expect(used[i]).not.toBe(used[i - 1])
     }
+  })
+
+  it('labels a group member by the display name the gateway gave, else by number', async () => {
+    const storage = tmpStorage()
+    ensureSubject(storage, 'wa-alice')
+    const aliceId = ensureSubject(storage, 'wa-alice')
+    setDisplayName(storage, 'wa-alice', 'Alice')
+    const builder = createPromptBuilder({
+      storage,
+      config: { prompt: { maxSystemTokens: 8000 }, judge: { mood: 'off', moodMinProbability: 0.3, timeoutMs: 1000 } },
+      harnessRules: 'Harness rules.',
+      newSeed: () => 1,
+      now: fixedNow
+    })
+    const built = await builder.build(
+      makeTurnInput({
+        chatType: 'group',
+        window: [
+          { role: 'user', senderId: aliceId, content: 'first', at: '2026-01-02T03:00:00.000Z' },
+          { role: 'user', senderId: 's_unknown', content: 'second', at: '2026-01-02T03:01:00.000Z' }
+        ]
+      })
+    )
+    expect(built.messages).toEqual([{ role: 'user', content: '[Alice] first\n\n[member 2] second' }])
   })
 
   it('labels group messages by first appearance, omits labels in dm, and joins consecutive user messages', async () => {

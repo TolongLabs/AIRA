@@ -89,6 +89,7 @@ export const SETTING_KEYS: Record<string, SettingDefinition> = {
   'features.lessons': { schema: z.boolean(), default: false },
   'features.reports': { schema: z.boolean(), default: true },
   'features.toolFooter': { schema: z.boolean(), default: true },
+  nameCall: { schema: z.boolean(), default: false },
   footerEmoji: {
     schema: z
       .string()

@@ -39,6 +39,8 @@ export type GatewayRequest =
       /** Earlier messages from the same sender that got no reply, as the gateway prepended them. */
       earlier: string
       quote?: Quote
+      /** The display name the gateway wrote before a group message's marker. */
+      senderName?: string
       attachments: Attachment[]
       stream: boolean
       includeUsage: boolean
@@ -157,6 +159,9 @@ function attachmentOf(note: string): Attachment | undefined {
   return undefined
 }
 
+/** A display name right before a marker. A note holds a colon or a quote mark; a name holds neither. */
+const SENDER_NAME = /\[([^\[\]\n:"]{1,40})\]\s*$/
+
 /** Splits the text before a marker into the previous message's text and the notes for the next message. */
 function splitNotes(segment: string): Notes {
   const opens = [...segment.matchAll(NOTE_OPEN)].map((match) => match.index ?? 0)
@@ -238,9 +243,15 @@ export function parseGatewayRequest(body: unknown): GatewayRequest {
 
   // Segment i is the text before marker i. Its notes belong to message i; its plain text ends message i - 1.
   const starts = markers.map((match) => match.index ?? 0)
+  // In a group, the gateway writes `[<display name>] ` right before a marker: the sender's name, not text.
+  const names: (string | undefined)[] = []
   const segments = starts.map((start, i) => {
     const from = i === 0 ? 0 : (starts[i - 1] ?? 0) + (markers[i - 1]?.[0].length ?? 0)
-    return splitNotes(content.slice(from, start))
+    let segment = content.slice(from, start)
+    const name = SENDER_NAME.exec(segment)
+    names.push(name?.[1]?.trim())
+    if (name) segment = segment.slice(0, name.index)
+    return splitNotes(segment)
   })
   const last = markers[markers.length - 1] as RegExpMatchArray
   const newest = segments[segments.length - 1] as Notes
@@ -261,6 +272,7 @@ export function parseGatewayRequest(body: unknown): GatewayRequest {
     text,
     earlier,
     ...(quote ? { quote } : {}),
+    ...(names[names.length - 1] ? { senderName: names[names.length - 1] } : {}),
     attachments: newest.attachments,
     stream,
     includeUsage

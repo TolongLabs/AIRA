@@ -175,3 +175,36 @@ export function linkIdentity(
     )
   })
 }
+
+/** Keeps the display name the gateway gave a sender, for names in the prompt and in mentions. */
+export function setDisplayName(storage: Storage, waId: string, name: string): void {
+  storage.tx((db) => {
+    db.prepare('UPDATE identity SET display_name = ? WHERE wa_id = ? AND display_name IS NOT ?').run(name, waId, name)
+  })
+}
+
+/** The display names of subjects, by subject id. */
+export function displayNames(storage: Storage, subjectIds: string[]): Map<string, string> {
+  if (subjectIds.length === 0) return new Map()
+  const rows = storage.read(
+    (db) =>
+      db
+        .prepare(
+          `SELECT subject_id, display_name FROM identity WHERE display_name IS NOT NULL
+           AND subject_id IN (${subjectIds.map(() => '?').join(',')})`
+        )
+        .all(...subjectIds) as { subject_id: string; display_name: string }[]
+  )
+  return new Map(rows.map((row) => [row.subject_id, row.display_name]))
+}
+
+/** The display name of a WhatsApp id written as a bare number in a mention, if the core has seen it. */
+export function displayNameOfNumber(storage: Storage, number: string): string | undefined {
+  return storage.read(
+    (db) =>
+      db
+        .prepare('SELECT display_name FROM identity WHERE display_name IS NOT NULL AND (wa_id = ? OR wa_id LIKE ?)')
+        .pluck()
+        .get(number, `${number}@%`) as string | undefined
+  )
+}

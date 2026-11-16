@@ -23,6 +23,8 @@ const languageTag = z.string().regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/)
 export const cardSchema = z.strictObject({
   id: z.string().regex(PACK_ID),
   displayName: nonEmpty,
+  /** Other names a member may call the character by in a group (docs/trd/system.md#gateway-contract). */
+  aliases: z.array(z.string().min(2).max(40)).optional(),
   languages: z.array(languageTag).min(1),
   coreIdentity: nonEmpty,
   speechRules: z.array(nonEmpty).min(1),

@@ -740,3 +740,51 @@ describe("the owner's gateway jobs", () => {
     expect(runner.inputs).toHaveLength(0)
   })
 })
+
+describe('names, mentions and name calls in a group', () => {
+  const SELF = '0000000@lid'
+  const named = (mid: string, text: string, sender: string, name: string): GatewayMessage => ({
+    ...msg(mid, text, sender),
+    name
+  })
+
+  it('writes a mention as @name, so no WhatsApp id reaches the model or the window', async () => {
+    const runner = scriptedRunner(() => 'ok')
+    const core = await startTestCore({
+      runner,
+      config: testConfig((config) => {
+        config.gateway.selfIds = [SELF]
+      })
+    })
+    core.activate(CHAT)
+    await core.gateway.send(named('m-1', 'hello all', '123456@lid', 'Alice'))
+    await core.gateway.send(named('m-2', '@0000000 ask @123456 and @1234567 about lunch', '1234567@lid', 'Bob'))
+    const sent = JSON.stringify(runner.inputs[1]?.messages)
+    expect(sent).toContain('@Example ask @Alice and @Bob about lunch')
+    expect(sent).not.toMatch(/\d{6,}/)
+    expect(rows(core.storage, "SELECT content FROM session_message WHERE role = 'user'")).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ content: expect.stringMatching(/\d{6,}/) })])
+    )
+  })
+
+  it('answers a message that only names the character when the chat allows name calls, and else stays silent', async () => {
+    const runner = scriptedRunner(() => 'here')
+    const core = await startTestCore({
+      runner,
+      config: testConfig((config) => {
+        config.gateway.selfIds = [SELF]
+      })
+    })
+    const chatId = core.activate(CHAT)
+    expect((await core.gateway.send(named('m-1', 'EXAMPLE, are you there?', '123456@lid', 'Alice'))).content).toBe(
+      'NO_REPLY'
+    )
+    expect(runner.inputs).toHaveLength(0)
+    expect((await core.gateway.send(named('m-2', '@0000000 are you there?', '123456@lid', 'Alice'))).content).toBe(
+      'here'
+    )
+    setSetting(core.storage, { level: 'chat', scope: chatId, key: 'nameCall', value: true, actor: 'test' })
+    expect((await core.gateway.send(named('m-3', 'example, you there?', '123456@lid', 'Alice'))).content).toBe('here')
+    expect(runner.inputs).toHaveLength(2)
+  })
+})
