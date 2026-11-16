@@ -145,6 +145,17 @@ keeping the originals for rollback.
 | `brain.bubbles` | `aira-bubbles`, `aira-bubble-interrupt` | Splits the content at the core's bubble breaks only, returns the typing pause per bubble, and keeps the "wait" or "stop" check |
 | `brain.failure` | `aira-failure-line`                     | Returns the unavailable line the core last wrote to `<hostDataDir>/gateway/unavailable.txt`, or a fixed neutral line           |
 
+- **Only these two files are replaced.** The other `brain` modules some patches import stay as they are. The patches
+  call `for_chat`, `typing_pause`, `is_interrupt` and `receipts_of` in `brain.bubbles`, and `for_failed_turn` and
+  `for_exception` in `brain.failure`. Each name keeps its signature.
+- **Bubbles do not depend on the chat.** After cutover the core answers every chat and splits every reply itself, so
+  `for_chat` reads no binding. A reply with no break line is one message.
+- **An interrupt drops the rest.** When a member writes only "wait" or "stop" while bubbles go out, the bubbles not
+  yet sent are dropped, receipt lines included. The turn record keeps every receipt.
+- **The failure line finds the data volume by `AIRA_HOST_DATA_DIR`** in the gateway's `.env`, set at cutover. Unset,
+  or with no readable line, the chat gets the fixed neutral line. Raw error text never reaches a chat.
+- The modules are Python's standard library only, for the gateway's Python 3.11. Their tests run in `bun run test`.
+
 Both versions were run on the staging gateway code with a fake bridge: three bubbles went out in order with typing
 pauses, and a refused connection produced the fixed line.
 
