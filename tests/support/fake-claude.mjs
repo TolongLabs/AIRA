@@ -41,6 +41,20 @@ if (prompt.includes('FAKE_RATE_LIMIT')) {
   process.exit(0)
 }
 
+// As measured with the real program on a spent subscription: an assistant line flagged rate_limit, a result whose
+// subtype says success but is_error is true, the HTTP status, and exit code 1.
+if (prompt.includes('FAKE_SESSION_LIMIT')) {
+  process.stdout.write(`${JSON.stringify({ type: 'system', subtype: 'init', model: 'fake-model' })}\n`)
+  process.stdout.write(`${JSON.stringify({ type: 'rate_limit_event' })}\n`)
+  process.stdout.write(
+    `${JSON.stringify({ type: 'assistant', error: 'rate_limit', message: { content: [{ type: 'text', text: 'limit' }] } })}\n`
+  )
+  process.stdout.write(
+    `${JSON.stringify({ type: 'result', subtype: 'success', is_error: true, api_error_status: 429, result: "You've hit your session limit · resets 8:30pm" })}\n`
+  )
+  process.exit(1)
+}
+
 if (prompt.includes('FAKE_LOGIN')) {
   process.stdout.write(
     `${JSON.stringify({ type: 'result', subtype: 'error', is_error: true, result: 'please log in' })}\n`
