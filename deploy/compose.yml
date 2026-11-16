@@ -1,7 +1,8 @@
 services:
   aira:
+    # The image: the release by default. Before the first release an install builds one locally and names it here.
     # The updater sets AIRA_VERSION to the release it deploys, or to the previous one when it rolls back.
-    image: ghcr.io/tolonglabs/aira:${AIRA_VERSION:-stable}
+    image: ${AIRA_IMAGE:-ghcr.io/tolonglabs/aira}:${AIRA_VERSION:-stable}
     restart: unless-stopped
     # Longer than shutdown.graceMs in config.yml, so running turns can finish.
     stop_grace_period: 30s
@@ -11,14 +12,17 @@ services:
     tmpfs:
       - /tmp
     ports:
-      - '127.0.0.1:9881:9881'
+      # The gateway endpoint, loopback only. 9881 after cutover; a spare port while the old core still answers.
+      - '127.0.0.1:${AIRA_PORT:-9881}:9881'
+      # The site API, on the private-network address only (docs/trd/site.md#serving-the-api).
+      - '${AIRA_SITE_BIND:-127.0.0.1}:${AIRA_SITE_PORT:-9890}:9890'
     volumes:
-      - aira-data:/data
+      # A host folder, so the gateway reads stickers and files at gateway.hostDataDir.
+      - ${AIRA_DATA_DIR:-./data}:/data
+      # The install's configuration, with gateway.hostDataDir set, over the image's own.
+      - ./config.yml:/app/config.yml:ro
     logging:
       driver: json-file
       options:
         max-size: '10m'
         max-file: '3'
-
-volumes:
-  aira-data:
