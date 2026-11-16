@@ -8,7 +8,7 @@ export interface MemoryPort {
   history(chatId: string, query: string, limit: number): { at: string; senderId?: string; text: string }[]
   /** Validates a note and asks the judge. It runs before the commit, outside any transaction. */
   checkNote(
-    input: { chatId: string; subjectId: string; text: string },
+    input: { chatId: string; subjectId: string; text: string; turnId: string },
     signal: AbortSignal
   ): Promise<{ ok: true } | { ok: false; reason: string }>
   /** Stores a note inside the caller's transaction. */

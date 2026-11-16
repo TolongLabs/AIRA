@@ -233,12 +233,25 @@ export function createSimulation(storage: Storage, seed: number): Simulation {
     async note(chat) {
       const member = pick(chat.members)
       const text = `remember the gate code word is ${value(chat)}`
+      // The note is checked against the member's own message in the turn that asked for it.
+      const turnId = `sim-note-${chat.chatId}-${chat.notes.length}`
+      storage.tx((db) => {
+        const at = new Date().toISOString()
+        db.prepare(
+          `INSERT INTO turn (turn_id, chat_id, sender_id, kind, state, stage, received_at)
+           VALUES (?, ?, ?, 'reply', 'running', 'model', ?)`
+        ).run(turnId, chat.chatId, member, at)
+        db.prepare(
+          `INSERT INTO session_message (chat_id, turn_id, role, sender_id, content, created_at)
+           VALUES (?, ?, 'user', ?, ?, ?)`
+        ).run(chat.chatId, turnId, member, text, at)
+      })
       const checked = await port.checkNote(
-        { chatId: chat.chatId, subjectId: member, text },
+        { chatId: chat.chatId, subjectId: member, text, turnId },
         new AbortController().signal
       )
       if (!checked.ok) throw new Error(`the note was refused: ${checked.reason}`)
-      storage.tx((db) => port.note(db, { chatId: chat.chatId, subjectId: member, text, turnId: 'sim-no-turn' }))
+      storage.tx((db) => port.note(db, { chatId: chat.chatId, subjectId: member, text, turnId }))
       chat.notes.push(text)
     }
   }
