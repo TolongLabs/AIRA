@@ -1,4 +1,5 @@
 import type { ModelMessage } from '../models/types.js'
+import { withQuote } from '../prompt/quote.js'
 import type { BuiltPrompt, PromptBuilder, ReplyCleaner, TurnInput } from './types.js'
 
 // The plainest implementation of two pipeline seams. Prompt Engine and Format replace them; tests and the
@@ -9,8 +10,9 @@ export function windowToMessages(input: TurnInput): ModelMessage[] {
   const messages: ModelMessage[] = []
   for (const message of input.window) {
     const last = messages[messages.length - 1]
-    if (message.role === 'user' && last?.role === 'user') last.content += `\n\n${message.content}`
-    else messages.push({ role: message.role, content: message.content })
+    const content = message.role === 'user' ? withQuote(message) : message.content
+    if (message.role === 'user' && last?.role === 'user') last.content += `\n\n${content}`
+    else messages.push({ role: message.role, content })
   }
   return messages
 }

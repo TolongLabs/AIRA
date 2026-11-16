@@ -34,6 +34,8 @@ export interface WindowMessage {
   /** The turn that answers a user message, or the turn that wrote a reply. */
   turnId?: string
   content: string
+  /** The message a user message quotes. It is untrusted and never part of the sender's own text. */
+  quote?: { text: string; ofAira: boolean }
   at: string
 }
 

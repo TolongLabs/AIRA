@@ -9,6 +9,8 @@ export interface GatewayMessage {
   sender: string
   mid: string
   text: string
+  /** The message this one quotes, written as the gateway writes it: a reply note before the marker, and `qid`. */
+  quote?: { text: string; id: string; ofAira?: boolean }
 }
 
 /** The request body for one message, exactly as the gateway builds it. Pure. */
@@ -20,9 +22,13 @@ export function buildRequest(input: {
 }): Record<string, unknown> {
   const { message, transcript, unanswered, firstMessage } = input
   const unansweredPrefix = unanswered.map((text) => `${text}\n\n`).join('')
-  const scopeMarker = `[HERMES-SCOPE v1 platform=whatsapp kind=${message.chat.kind} chat=${message.chat.waId} sender=${message.sender} mid=${message.mid}]`
+  const qid = message.quote ? ` qid=${message.quote.id}` : ''
+  const scopeMarker = `[HERMES-SCOPE v1 platform=whatsapp kind=${message.chat.kind} chat=${message.chat.waId} sender=${message.sender} mid=${message.mid}${qid}]`
+  const replyNote = message.quote
+    ? `[Replying to${message.quote.ofAira ? ' your previous message' : ''}: "${message.quote.text.slice(0, 500)}"]\n\n`
+    : ''
   const firstNote = firstMessage ? '\n\n[System note: this is the first message of the conversation.]' : ''
-  const newestUserContent = `${unansweredPrefix}${scopeMarker}\n${message.text}${firstNote}`
+  const newestUserContent = `${unansweredPrefix}${replyNote}${scopeMarker}\n${message.text}${firstNote}`
 
   return {
     model: 'aira',
