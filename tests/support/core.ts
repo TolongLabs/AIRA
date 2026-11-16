@@ -6,6 +6,7 @@ import { afterEach } from 'vitest'
 import { type PackSet, loadPacks } from '../../src/character/loader.js'
 import { parseConfig } from '../../src/config/loader.js'
 import type { Config } from '../../src/config/schema.js'
+import { writeScheduleFile } from '../../src/gateway/schedule.js'
 import { createGatewayServer } from '../../src/gateway/server.js'
 import { ModelError } from '../../src/models/types.js'
 import { type Logger, createLogger } from '../../src/records/logger.js'
@@ -139,6 +140,8 @@ export async function startTestCore(
     })
   }
   const redactor = createRedactor()
+  // As the service does: the wanted-jobs file at start-up and after each firing.
+  writeScheduleFile(storage, dataDir)
   const turns = createTurnService({
     storage,
     config,
@@ -153,6 +156,7 @@ export async function startTestCore(
       logger,
       send: (kind, detail) => alerts.push({ kind, detail })
     }),
+    onScheduleChange: () => void writeScheduleFile(storage, dataDir),
     ...options.deps
   })
   let ready = true

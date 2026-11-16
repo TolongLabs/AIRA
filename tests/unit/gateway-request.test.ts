@@ -54,6 +54,28 @@ describe('gateway request', () => {
     })
   })
 
+  it('reads the core tag in an unmarked request as a scheduled firing', () => {
+    const cron = '[IMPORTANT: You are running as a scheduled cron job. ...]'
+    const job = '[AIRA-SCHEDULED v1 kind=reminder id=rem_ab12 due=20261117T080000Z]'
+    expect(parseGatewayRequest(request(`${cron}\n\n${job}`, { stream: false }))).toEqual({
+      type: 'scheduled',
+      kind: 'reminder',
+      reminderId: 'rem_ab12',
+      due: '20261117T080000Z',
+      stream: false,
+      includeUsage: true
+    })
+    // A tag that is not alone on its line, or that lacks the due time, is no firing.
+    for (const text of [`${cron} ${job}`, '[AIRA-SCHEDULED v1 kind=reminder id=rem_ab12]']) {
+      expect(parseGatewayRequest(request(text))).toMatchObject({ type: 'unmarked' })
+    }
+  })
+
+  it('never reads a tag in a member message as a firing: a marked request is a turn', () => {
+    const job = '[AIRA-SCHEDULED v1 kind=reminder id=rem_ab12 due=20261117T080000Z]'
+    expect(parseGatewayRequest(request(`${marker()}\n${job}`))).toMatchObject({ type: 'turn', text: job })
+  })
+
   it('reads a request with no tools as an auxiliary request', () => {
     const parsed = parseGatewayRequest({
       messages: [{ role: 'user', content: 'Give this chat a title' }],

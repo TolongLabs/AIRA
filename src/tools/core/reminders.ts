@@ -2,11 +2,19 @@ import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 import type { Logger } from '../../records/logger.js'
 import { type Storage, isoNow } from '../../storage/database.js'
-import type { SchedulePort, ToolPorts } from '../ports.js'
+import type { ToolPorts } from '../ports.js'
 import type { ToolDefinition } from '../types.js'
 
-function formatScheduleText(input: { reminderId: string; ownerId: string; targetId: string; text: string }): string {
-  return `[AIRA-SCHEDULED v1 kind=reminder owner=${input.ownerId} target=${input.targetId} id=${input.reminderId}]\n${input.text}`
+/**
+ * Rewrites the wanted-jobs file after a committed change. A failure leaves the row as it is: the file is written
+ * again at the next change and at start-up.
+ */
+function syncSchedule(ports: ToolPorts, logger: Logger, turnId: string, reminderId: string): void {
+  try {
+    ports.schedule?.sync()
+  } catch (error) {
+    logger.warn('reminder_schedule_sync_failed', { turnId, reminderId, error })
+  }
 }
 
 const reminderSetSchema = z.strictObject({
@@ -33,7 +41,7 @@ interface ReminderRow {
   gateway_job_id: string | null
 }
 
-type CancelRow = Pick<ReminderRow, 'chat_id' | 'owner_id' | 'state' | 'gateway_job_id'>
+type CancelRow = Pick<ReminderRow, 'chat_id' | 'owner_id' | 'state'>
 
 export function reminderSetTool(
   storage: Storage,
@@ -88,35 +96,7 @@ export function reminderSetTool(
         }
       })
 
-      if (ports.schedule) {
-        try {
-          const jobId = await ports.schedule.create({
-            reminderId: data.reminderId,
-            chatWaId: context.chat.waId,
-            dueAt,
-            ...(args.repeat !== undefined ? { repeat: args.repeat } : {}),
-            text: formatScheduleText({
-              reminderId: data.reminderId,
-              ownerId: context.senderId,
-              targetId: context.senderId,
-              text: args.text
-            })
-          })
-          storage.tx((db) => {
-            db.prepare('UPDATE reminder SET gateway_job_id = ?, updated_at = ? WHERE reminder_id = ?').run(
-              jobId,
-              isoNow(context.now),
-              data.reminderId
-            )
-          })
-        } catch (err) {
-          logger.warn('reminder_schedule_create_failed', {
-            turnId: context.turnId,
-            reminderId: data.reminderId,
-            error: err
-          })
-        }
-      }
+      syncSchedule(ports, logger, context.turnId, data.reminderId)
 
       return { ok: true, data }
     }
@@ -182,9 +162,7 @@ export function reminderCancelTool(
       const row = storage.read(
         (db) =>
           db
-            .prepare(
-              'SELECT chat_id, owner_id, state, gateway_job_id FROM reminder WHERE reminder_id = ? AND chat_id = ?'
-            )
+            .prepare('SELECT chat_id, owner_id, state FROM reminder WHERE reminder_id = ? AND chat_id = ?')
             .get(args.reminderId, context.chat.chatId) as CancelRow | undefined
       )
 
@@ -215,70 +193,9 @@ export function reminderCancelTool(
         }
       })
 
-      if (row.gateway_job_id !== null && ports.schedule) {
-        try {
-          await ports.schedule.cancel(row.gateway_job_id)
-        } catch (err) {
-          logger.warn('reminder_schedule_cancel_failed', {
-            turnId: context.turnId,
-            reminderId: args.reminderId,
-            error: err
-          })
-        }
-      }
+      syncSchedule(ports, logger, context.turnId, args.reminderId)
 
       return { ok: true, data }
     }
   }
-}
-
-export async function reconcileReminders(
-  storage: Storage,
-  schedule: SchedulePort,
-  chatWaIdOf: (chatId: string) => string | undefined,
-  now: () => Date = () => new Date()
-): Promise<number> {
-  const existing = new Set(await schedule.list())
-  const rows = storage.read(
-    (db) =>
-      db
-        .prepare(
-          `SELECT reminder_id, chat_id, owner_id, target_id, due_at, repeat, text, gateway_job_id
-           FROM reminder
-           WHERE state = 'active'`
-        )
-        .all() as Omit<ReminderRow, 'state'>[]
-  )
-
-  let created = 0
-  for (const row of rows) {
-    if (row.gateway_job_id !== null && existing.has(row.gateway_job_id)) continue
-    const chatWaId = chatWaIdOf(row.chat_id)
-    if (!chatWaId) continue
-    try {
-      const jobId = await schedule.create({
-        reminderId: row.reminder_id,
-        chatWaId,
-        dueAt: row.due_at,
-        ...(row.repeat !== null ? { repeat: row.repeat } : {}),
-        text: formatScheduleText({
-          reminderId: row.reminder_id,
-          ownerId: row.owner_id,
-          targetId: row.target_id,
-          text: row.text
-        })
-      })
-      storage.tx((db) => {
-        db.prepare('UPDATE reminder SET gateway_job_id = ?, updated_at = ? WHERE reminder_id = ?').run(
-          jobId,
-          isoNow(now),
-          row.reminder_id
-        )
-      })
-      created++
-    } catch {
-      // One failed reminder does not stop the others.
-    }
-  }
-  return created
 }

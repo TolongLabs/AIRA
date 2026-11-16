@@ -8,7 +8,6 @@ import { resolveSettings, setSetting } from '../../src/settings/settings.js'
 import type { Storage } from '../../src/storage/database.js'
 import { openTurn, receiveInbound } from '../../src/storage/turns.js'
 import { registerCoreTools } from '../../src/tools/core/index.js'
-import { reconcileReminders } from '../../src/tools/core/reminders.js'
 import type { MemoryPort, SchedulePort } from '../../src/tools/ports.js'
 import { type ToolRegistry, createToolRegistry } from '../../src/tools/registry.js'
 import type { ToolDefinition } from '../../src/tools/types.js'
@@ -487,45 +486,24 @@ describe('faults of the old system', () => {
     expect(storage.read((db) => db.prepare('SELECT count(*) FROM file').pluck().get())).toBe(0)
   })
 
-  it('Reminders that are never written to the reminder store: row commits even when schedule rejects and reconciles later', async () => {
+  it('a reminder row commits even when writing the wanted-jobs file fails', async () => {
     const storage = tmpStorage()
     const registry = makeRegistry(storage)
-    let shouldFail = true
-    const createdJobs: string[] = []
     const schedule: SchedulePort = {
-      async create(job) {
-        if (shouldFail) throw new Error('gateway down')
-        const id = `job_${job.reminderId}`
-        createdJobs.push(id)
-        return id
-      },
-      async cancel() {},
-      async list() {
-        return createdJobs
+      sync() {
+        throw new Error('disk full')
       }
     }
     registerCoreTools(registry, { schedule, filesDir: tmpDir() })
     const context = makeContext(storage)
-
     const res = await registry.call('reminder_set', { text: 'call dentist', dueAt: '2030-05-01T09:00:00Z' }, context, {
       callId: 'c-rem-rec',
       source: 'model'
     })
     expect(res.ok).toBe(true)
-    const rowBefore = storage.read(
-      (db) => db.prepare('SELECT gateway_job_id FROM reminder').pluck().get() as string | null
+    expect(storage.read((db) => db.prepare("SELECT count(*) FROM reminder WHERE state = 'active'").pluck().get())).toBe(
+      1
     )
-    expect(rowBefore).toBeNull()
-
-    shouldFail = false
-    const reconciled = await reconcileReminders(storage, schedule, (chatId) =>
-      chatId === context.chat.chatId ? context.chat.waId : undefined
-    )
-    expect(reconciled).toBe(1)
-    const rowAfter = storage.read(
-      (db) => db.prepare('SELECT gateway_job_id FROM reminder').pluck().get() as string | null
-    )
-    expect(rowAfter).toMatch(/^job_rem_/)
   })
 })
 

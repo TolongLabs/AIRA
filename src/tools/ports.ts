@@ -38,10 +38,9 @@ export interface PostPort {
 }
 
 /** The gateway's schedule. The reminder tools are the only code that talks to it. */
+/** The gateway's schedule, as the core reaches it: by rewriting the wanted-jobs file after a change. */
 export interface SchedulePort {
-  create(job: { reminderId: string; chatWaId: string; dueAt: string; repeat?: string; text: string }): Promise<string>
-  cancel(jobId: string): Promise<void>
-  list(): Promise<string[]>
+  sync(): void
 }
 
 /** The lyrics provider of the lessons tools (docs/trd/tools.md#lessons-data-model). Its text is untrusted. */

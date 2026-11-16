@@ -13,6 +13,10 @@ export interface GatewayMessage {
   quote?: { text: string; id: string; ofAira?: boolean }
 }
 
+/** The block the gateway's schedule puts before a job's text (measured, shortened). */
+export const CRON_BLOCK =
+  '[IMPORTANT: You are running as a scheduled cron job. DELIVERY: Your final response will be automatically delivered to the user. SILENT: If there is genuinely nothing new to report, respond with exactly "[SILENT]" (nothing else) to suppress delivery.]'
+
 /** The request body for one message, exactly as the gateway builds it. Pure. */
 export function buildRequest(input: {
   message: GatewayMessage
@@ -165,6 +169,37 @@ export class FakeGateway {
 
   private unansweredKey(chatWaId: string, sender: string): string {
     return `${chatWaId}\0${sender}`
+  }
+
+  /**
+   * A job of the gateway's schedule coming due, as measured: tools, not streamed, no scope marker, and the gateway's
+   * cron block before the job's text.
+   */
+  async fire(jobText: string): Promise<Delivery> {
+    const body = {
+      model: 'aira',
+      messages: [
+        { role: 'system', content: "(the gateway's own prompt; the core ignores it)" },
+        { role: 'user', content: `${CRON_BLOCK}\n\n${jobText}` }
+      ],
+      tools: [{ type: 'function', function: { name: 'gateway_tool', parameters: { type: 'object', properties: {} } } }]
+    }
+    this.requests.push(body)
+    const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+    const content = response.status === 200 ? extractJsonContent(await response.json()) : ''
+    const { bubbles, media } = parseContent(content)
+    return {
+      status: response.status === 200 ? 'delivered' : 'failed',
+      attempts: 1,
+      httpStatus: response.status,
+      content,
+      bubbles,
+      media
+    }
   }
 
   async send(message: GatewayMessage): Promise<Delivery> {

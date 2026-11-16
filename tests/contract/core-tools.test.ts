@@ -69,7 +69,6 @@ function makeFakePorts() {
   const historyChats: string[] = []
   const forgetCalls: { chatId: string; itemId: string }[] = []
   const facts = new Map<string, { chatId: string; text: string }>()
-  const jobs = new Map<string, string>()
 
   const memory: MemoryPort = {
     recall(chatId, query) {
@@ -127,21 +126,14 @@ function makeFakePorts() {
     }
   }
 
+  const syncs = { count: 0 }
   const schedule: SchedulePort = {
-    async create(job) {
-      const id = `job_${job.reminderId}`
-      jobs.set(id, job.text)
-      return id
-    },
-    async cancel(jobId) {
-      jobs.delete(jobId)
-    },
-    async list() {
-      return [...jobs.keys()]
+    sync() {
+      syncs.count++
     }
   }
 
-  return { memory, search, page, post, schedule, recalledChats, historyChats, forgetCalls, facts, jobs }
+  return { memory, search, page, post, schedule, recalledChats, historyChats, forgetCalls, facts, syncs }
 }
 
 describe('core tools', () => {
@@ -328,9 +320,8 @@ describe('core tools', () => {
       receipt: { kind: 'reminder.created', state: { dueAt: '2026-11-17T08:00:00.000Z', repeat: 'daily' } }
     })
     const reminderId = setRes.ok ? (setRes.data as { reminderId: string }).reminderId : ''
-    expect(fakes.jobs.get(`job_${reminderId}`)).toContain(
-      '[AIRA-SCHEDULED v1 kind=reminder owner=owner-1 target=owner-1'
-    )
+    // The wanted-jobs file is written again after the commit.
+    expect(fakes.syncs.count).toBe(1)
 
     const list1 = await registry.call('reminder_list', {}, ctx1, { callId: 'c-list-1', source: 'command' })
     expect(list1).toEqual({
@@ -367,7 +358,7 @@ describe('core tools', () => {
       source: 'model'
     })
     expect(cancelOk).toMatchObject({ ok: true, receipt: { kind: 'reminder.cancelled', target: reminderId } })
-    expect(fakes.jobs.size).toBe(0)
+    expect(fakes.syncs.count).toBe(2)
     expect(
       storage.read((db) => db.prepare('SELECT state FROM reminder WHERE reminder_id = ?').pluck().get(reminderId))
     ).toBe('cancelled')
