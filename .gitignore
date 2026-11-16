@@ -102,3 +102,7 @@ graphify-out/*
 
 # Benchmark results (docs/trd/harness.md#benchmarks)
 bench-results/
+
+# Python bytecode from the gateway helper tests
+__pycache__/
+*.pyc
