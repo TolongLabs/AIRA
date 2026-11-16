@@ -89,7 +89,7 @@ assumes all three.
 | Inbound message | `inbound_message`                    | `received`, `answered`, `dropped`                           | Unanswered rows are handled as [Interrupted Turns](#interrupted-turns) |
 | Turn            | `turn`                               | `running`, `delivered`, `declined`, `failed`, `interrupted` | Every `running` row becomes `interrupted`, with a failure record       |
 | Background job  | `memory_job` and any later job table | `queued`, `leased`, `done`, `failed`                        | Every lease returns to `queued`: its owner died with the old process   |
-| Reminder        | `reminder`                           | `active`, `fired`, `cancelled`                              | Reconciled with the gateway's schedule: missing ones are recreated     |
+| Reminder        | `reminder`                           | `active`, `fired`, `cancelled`                              | The wanted-jobs file is rewritten; the host reconciler recreates jobs  |
 | Snapshot        | `backup_run`                         | `started`, `verified`, `failed`                             | A `started` row becomes `failed` and its file is removed               |
 
 - An inbound request is written to `inbound_message`, keyed by the chat and the gateway's message id, before any
