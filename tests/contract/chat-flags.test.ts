@@ -93,10 +93,10 @@ describe('chat flags file', () => {
       actor: 'test'
     })
 
-    const offChat = ensureChat(app.storage, { waId: '0000000001@g.us', type: 'group' })
+    const offChat = ensureChat(app.storage, { waId: '12345678901@g.us', type: 'group' })
     setChatStatus(app.storage, { chatId: offChat.chatId, status: 'active', actor: 'test' })
 
-    const pendingChat = ensureChat(app.storage, { waId: '0000000002@g.us', type: 'group' })
+    const pendingChat = ensureChat(app.storage, { waId: '123456789012@g.us', type: 'group' })
     setSetting(app.storage, {
       level: 'chat',
       scope: pendingChat.chatId,
