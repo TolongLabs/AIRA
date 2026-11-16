@@ -27,6 +27,7 @@
     "report": "tsx scripts/report.ts",
     "bench": "tsx scripts/bench.ts",
     "chat": "tsx scripts/chat.ts",
+    "sim": "tsx scripts/sim.ts",
     "pack:check": "tsx scripts/pack-check.ts",
     "export:memory": "tsx scripts/export-memory.ts",
     "migrate:memory": "tsx scripts/migrate-memory.ts",
