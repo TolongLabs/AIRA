@@ -161,11 +161,11 @@ folder>` runs the readers on a copy, never on the live folder, and prints counts
 - **What the readers read.** Measured on the production host's layout, 16 Nov 2026. A chat's folder is
   `<dm|group>/whatsapp/<chat>`, where `<chat>` is the WhatsApp id with `@` written as `.`:
 
-  | Old Store                                 | Becomes                                                                                                                                                                                        |
-  | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | `memories.jsonl`, the per-chat fact files | A `fact` per line. The subject is `about_id`, else the chat itself in a DM, else none. The old facts have no slot, so each is kept as a note of its person. A fact past its `until` is skipped |
-  | `lingo.json`, the per-chat state files    | A `lingo` per confirmed word: `key` is the word, `text` its meaning. An unconfirmed word is skipped                                                                                            |
-  | `brain.db`, the knowledge database        | Nothing. It is an index rebuilt from the files: its 125 memory rows are the 125 fact lines                                                                                                     |
+  | Old Store                                 | Becomes                                                                                                                                                                                                                                    |
+  | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+  | `memories.jsonl`, the per-chat fact files | A `fact` per line. The subject is `about_id` (bare digits read as a LID, Assumption A-9), else the chat itself in a DM, else none. The old facts have no slot, so each is kept as a note of its person. A fact past its `until` is skipped |
+  | `lingo.json`, the per-chat state files    | A `lingo` per confirmed word: `key` is the word, `text` its meaning. An unconfirmed word is skipped                                                                                                                                        |
+  | `brain.db`, the knowledge database        | Nothing. It is an index rebuilt from the files: its 125 memory rows are the 125 fact lines                                                                                                                                                 |
 
   Not read: the retired-fact and episode files, saved posts and transcripts (`sources/`, `transcripts/`), which
   are not memory about a person, and the shared library, which belongs to the lessons feature.
