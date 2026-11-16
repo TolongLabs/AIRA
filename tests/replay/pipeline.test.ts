@@ -111,7 +111,7 @@ describe('turn admission', () => {
   it('gives a pending chat no reply, with a failure record and one alert', async () => {
     const core = await startTestCore()
     for (const mid of ['m-1', 'm-2']) {
-      expect(await core.gateway.send(msg(mid, 'hello'))).toMatchObject({ status: 'delivered', content: '' })
+      expect(await core.gateway.send(msg(mid, 'hello'))).toMatchObject({ status: 'delivered', content: 'NO_REPLY' })
     }
     expect(rows(core.storage, 'SELECT state, outcome, failure_kind FROM turn')).toEqual([
       { state: 'failed', outcome: 'failed', failure_kind: 'binding_invalid' },
@@ -127,7 +127,7 @@ describe('turn admission', () => {
     const core = await startTestCore({ runner })
     const chatId = core.activate(CHAT)
     setSetting(core.storage, { level: 'chat', scope: chatId, key: 'character', value: 'no-such-pack', actor: 'test' })
-    expect(await core.gateway.send(msg('m-1', 'hello'))).toMatchObject({ content: '' })
+    expect(await core.gateway.send(msg('m-1', 'hello'))).toMatchObject({ content: 'NO_REPLY' })
     expect(runner.inputs).toHaveLength(0)
     expect(one(core.storage, 'SELECT failure_kind FROM turn')).toBe('binding_invalid')
     expect(core.alerts).toHaveLength(1)
@@ -137,7 +137,7 @@ describe('turn admission', () => {
     const runner = scriptedRunner(() => 'must not run')
     const core = await startTestCore({ runner, defaultCharacter: null })
     core.activate(CHAT)
-    expect(await core.gateway.send(msg('m-1', 'hello'))).toMatchObject({ content: '' })
+    expect(await core.gateway.send(msg('m-1', 'hello'))).toMatchObject({ content: 'NO_REPLY' })
     expect(runner.inputs).toHaveLength(0)
   })
 
@@ -146,7 +146,7 @@ describe('turn admission', () => {
     const broken = core.activate(CHAT)
     core.activate('test-chat-g2')
     setSetting(core.storage, { level: 'chat', scope: broken, key: 'character', value: 'no-such-pack', actor: 'test' })
-    expect((await core.gateway.send(msg('m-1', 'hello'))).content).toBe('')
+    expect((await core.gateway.send(msg('m-1', 'hello'))).content).toBe('NO_REPLY')
     expect((await core.gateway.send(msg('m-1', 'hello', ALICE, 'test-chat-g2'))).content).toBe('scripted reply 1')
   })
 
@@ -177,7 +177,7 @@ describe('turn admission', () => {
     const alice = one<string>(core.storage, 'SELECT sender_id FROM turn')
     setSetting(core.storage, { level: 'chat', scope: chatId, key: 'allowedSenders', value: [alice], actor: 'test' })
 
-    expect((await core.gateway.send(msg('m-2', 'hello', BOB))).content).toBe('')
+    expect((await core.gateway.send(msg('m-2', 'hello', BOB))).content).toBe('NO_REPLY')
     expect((await core.gateway.send(msg('m-3', 'hello again'))).content).toBe('ok')
     expect(rows(core.storage, 'SELECT state, outcome FROM turn ORDER BY received_at')).toEqual([
       { state: 'delivered', outcome: 'delivered' },
@@ -247,10 +247,10 @@ describe('batching', () => {
     ])
     expect(runner.inputs).toHaveLength(1)
     expect(second.content).toBe('saw: first half\n\nsecond half')
-    expect(first.content).toBe('')
+    expect(first.content).toBe('NO_REPLY')
     expect(one(core.storage, 'SELECT count(*) FROM turn')).toBe(1)
     // A repeat of the merged message returns nothing, so the reply goes out once.
-    expect((await core.gateway.send(msg('m-1', 'first half'))).content).toBe('')
+    expect((await core.gateway.send(msg('m-1', 'first half'))).content).toBe('NO_REPLY')
   })
 
   it('runs one turn per chat: a message that arrives while a turn runs joins the next turn', async () => {
@@ -276,7 +276,7 @@ describe('batching', () => {
       { role: 'user', content: 'two\n\nthree' }
     ])
     releases[1]?.('reply two and three')
-    expect([(await second).content, (await third).content].sort()).toEqual(['', 'reply two and three'])
+    expect([(await second).content, (await third).content].sort()).toEqual(['NO_REPLY', 'reply two and three'])
     expect(one(core.storage, 'SELECT count(*) FROM turn')).toBe(2)
   })
 
@@ -309,8 +309,8 @@ describe('mute and quiet hours', () => {
       value: { by: 's_someone', at: '2026-01-01T00:00:00.000Z' },
       actor: 'test'
     })
-    expect((await core.gateway.send(msg('m-1', proactive))).content).toBe('')
-    expect((await core.gateway.send(msg('m-2', reminder))).content).toBe('')
+    expect((await core.gateway.send(msg('m-1', proactive))).content).toBe('NO_REPLY')
+    expect((await core.gateway.send(msg('m-2', reminder))).content).toBe('NO_REPLY')
     expect(runner.inputs).toHaveLength(0)
     expect(rows(core.storage, 'SELECT kind, state, outcome, stage FROM turn')).toEqual([
       { kind: 'scheduled', state: 'declined', outcome: 'muted', stage: 'admit:muted' },
@@ -331,7 +331,7 @@ describe('mute and quiet hours', () => {
       actor: 'test'
     })
     if (new Date().toISOString().slice(11, 16) === '23:59') await new Promise((resolve) => setTimeout(resolve, 61_000))
-    expect((await core.gateway.send(msg('m-1', proactive))).content).toBe('')
+    expect((await core.gateway.send(msg('m-1', proactive))).content).toBe('NO_REPLY')
     expect(one(core.storage, 'SELECT stage FROM turn')).toBe('admit:quiet')
     expect((await core.gateway.send(msg('m-2', 'are you there?'))).content).toBe('a reply')
   }, 90_000)
@@ -356,7 +356,7 @@ describe('mute and quiet hours', () => {
       actor: 'test'
     })
     release('good morning')
-    expect((await sending).content).toBe('')
+    expect((await sending).content).toBe('NO_REPLY')
     expect(rows(core.storage, 'SELECT state, outcome FROM turn')).toEqual([{ state: 'declined', outcome: 'muted' }])
     expect(one(core.storage, "SELECT count(*) FROM session_message WHERE role = 'assistant'")).toBe(0)
   })
@@ -446,22 +446,24 @@ describe('the gateway endpoint', () => {
     expect(one(core.storage, 'SELECT count(*) FROM inbound_message')).toBe(0)
   })
 
-  it('refuses a turn request with no scope marker as a deployment fault', async () => {
+  it('answers a request with tools and no scope marker with NO_REPLY and a record, never a turn', async () => {
     const core = await startTestCore()
     const response = await fetch(`${core.baseUrl}/v1/chat/completions`, {
       method: 'POST',
       body: JSON.stringify({
         messages: [{ role: 'user', content: 'hello with no marker' }],
         tools: [{ type: 'function', function: { name: 'gateway_tool' } }],
-        stream: true
+        stream: false
       })
     })
-    expect(response.status).toBe(400)
-    expect(((await response.json()) as { error: { message: string } }).error.message).toMatch(/scope marker/)
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { choices: { message: { content: string } }[] }
+    expect(body.choices[0]?.message.content).toBe('NO_REPLY')
     expect(rows(core.storage, 'SELECT kind, stage FROM failure')).toEqual([
-      { kind: 'gateway_malformed', stage: 'receive' }
+      { kind: 'gateway_unmarked', stage: 'receive' }
     ])
     expect(one(core.storage, 'SELECT count(*) FROM turn')).toBe(0)
+    expect(one(core.storage, 'SELECT count(*) FROM inbound_message')).toBe(0)
   })
 
   it('refuses a body that is not JSON', async () => {

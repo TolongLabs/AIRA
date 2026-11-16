@@ -5,7 +5,7 @@ import { recordFailure } from '../records/turn-record.js'
 import type { Storage } from '../storage/database.js'
 import type { TurnService } from '../turn/pipeline.js'
 import { MalformedRequestError, parseGatewayRequest } from './request.js'
-import { openStream, writeReply } from './response.js'
+import { NO_REPLY, openStream, writeReply } from './response.js'
 
 // The OpenAI-compatible endpoint the gateway calls (docs/trd/system.md#gateway-contract).
 // A turn always gets status 200 with a deliverable reply. An error status is only for a request the core
@@ -85,6 +85,31 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
     if (parsed.type === 'auxiliary') {
       // A gateway chore: fixed text, no model call, no turn record.
       writeReply(response, { id: 'auxiliary', content: options.auxiliaryText ?? 'Chat' }, { ...parsed, now })
+      return
+    }
+
+    if (parsed.type === 'unmarked') {
+      // Tools but no marker: the gateway's own background work, or a scope stamp that is off. Nothing goes to a
+      // chat, and the record shows it.
+      log.error('gateway.unmarked', {})
+      try {
+        storage.tx((db) =>
+          recordFailure(
+            db,
+            {
+              stage: 'receive',
+              kind: 'gateway_unmarked',
+              error: new Error('a request with tools has no scope marker'),
+              handledBy: 'no_reply'
+            },
+            options.redactor,
+            now
+          )
+        )
+      } catch (storageError) {
+        log.error('gateway.unmarked_not_recorded', { error: storageError })
+      }
+      writeReply(response, { id: 'unmarked', content: NO_REPLY }, { ...parsed, now })
       return
     }
 
