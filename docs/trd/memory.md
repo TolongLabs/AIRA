@@ -188,13 +188,13 @@ model is specified. See [Tools](tools.md#lessons-and-library).
 
 ## Configuration
 
-| Key                         | Default | Effect                                   |
-| --------------------------- | ------- | ---------------------------------------- |
-| `memory.enabled`            | `on`    | Master switch for passive memory         |
-| `memory.episodeIdleMs`      | 180000  | Idle time that closes an episode         |
-| `memory.episodeMaxMessages` | 25      | Message count that closes an episode     |
-| `memory.recallTokenBudget`  | 1200    | Size of recalled memory in the prompt    |
-| `judge.model`               | empty   | The judge's model id. Empty: no judge    |
-| `judge.memoryAdmit`         | 0.5     | Admission threshold                      |
-| `judge.memoryVerify`        | 0.5     | Verification threshold                   |
-| `embeddings.provider`       | `off`   | Embedding backend for episodes and media |
+| Key                         | Default      | Effect                                   |
+| --------------------------- | ------------ | ---------------------------------------- |
+| `memory.enabled`            | `on`         | Master switch for passive memory         |
+| `memory.episodeIdleMs`      | 180000       | Idle time that closes an episode         |
+| `memory.episodeMaxMessages` | 25           | Message count that closes an episode     |
+| `memory.recallTokenBudget`  | 1200         | Size of recalled memory in the prompt    |
+| `judge.model`               | `jev-latest` | The judge's model id. Empty: no judge    |
+| `judge.memoryAdmit`         | 0.5          | Admission threshold                      |
+| `judge.memoryVerify`        | 0.5          | Verification threshold                   |
+| `embeddings.provider`       | `off`        | Embedding backend for episodes and media |
