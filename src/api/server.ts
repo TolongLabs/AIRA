@@ -4,11 +4,11 @@ import { type IncomingMessage, type Server, type ServerResponse, createServer } 
 import { extname, resolve, sep } from 'node:path'
 import type { Logger } from '../records/logger.js'
 import { type SiteApiDeps, dispatchGet, isKnownRoute } from './routes.js'
-import { type SiteWriteDeps, dispatchWrite, hostAllowed, isWriteRoute, originAllowed } from './writes.js'
+import { dispatchWrite, hostAllowed, isWriteRoute, originAllowed } from './writes.js'
 
 // The core's private HTTP API for the owner site (docs/trd/site.md#serving-the-api).
 
-export interface SiteApiServerOptions extends SiteWriteDeps {
+export interface SiteApiServerOptions extends SiteApiDeps {
   token: string
   logger: Logger
   /** `site.allowedOrigins` */
