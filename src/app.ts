@@ -443,6 +443,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     if (siteToken !== undefined && siteToken.length >= MIN_SITE_TOKEN_LENGTH) {
       siteServer = createSiteApiServer({
         token: siteToken,
+        allowedOrigins: config.site.allowedOrigins,
         storage,
         paths,
         version: options.version ?? '0.0.0',

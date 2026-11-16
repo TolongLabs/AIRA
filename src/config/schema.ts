@@ -171,7 +171,9 @@ export const configSchema = z.strictObject({
     enabled: onOff
   }),
   site: z.strictObject({
-    port: z.number().int().min(1).max(65535)
+    port: z.number().int().min(1).max(65535),
+    // Origins whose browser writes are accepted (docs/trd/site.md#write-routes).
+    allowedOrigins: z.array(z.url()).default([])
   })
 })
 
