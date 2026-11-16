@@ -166,6 +166,19 @@ are a later change to the pack contract.
   a minute. See [Scheduled Turns](system.md#scheduled-turns).
 - Media watching is not a tool. It runs at intake. See [Models](models.md#media-watching).
 
+### Search Provider
+
+`web_search` asks the backend named in `search.provider`. `off` leaves the tool unavailable, and it says so in
+character.
+
+- `exa`: one `POST https://api.exa.ai/search` per call, with `type: auto`, 5 results and highlights, and the key
+  `EXA_API_KEY` in the `x-api-key` header. Each result is its title, its URL and its first highlight as the snippet,
+  cut to 300 characters. Exa writes no answer of its own, so the model writes it from the snippets.
+- The provider gets 10 seconds; the tool's own time limit still applies. A failure is the tool's `error` result and
+  never shows the key or the provider's message.
+- With `exa` set and no key in the environment, start-up logs `search.off` and the tool stays unavailable. The rest
+  of the core is not affected.
+
 ### Lessons And Library
 
 Built after the core set, behind `features.lessons`. A chat with the switch off is offered none of these tools.
