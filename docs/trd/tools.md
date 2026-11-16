@@ -95,13 +95,21 @@ tool and says the rest in their own words.
 
 ### Detection
 
-| Rule         | Behaviour                                                                                  |
-| ------------ | ------------------------------------------------------------------------------------------ |
-| Position     | The command is the first word of the message. Case does not matter                         |
-| Count        | One command per message. A later `/word` is part of the text                               |
-| Unknown name | `/name` that matches no command the chat may use is ordinary text and goes to the model    |
-| Groups       | A registered command addresses AIRA by itself. No mention is needed                        |
-| Reply-to     | When the message replies to another, the quoted message is given to the command as context |
+| Rule         | Behaviour                                                                                                                                                                 |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Position     | A command is a `/name` token anywhere in the message: at the start, or after a space or a line break. Case does not matter. `and/or`, a path or a link is never a command |
+| Count        | Up to the chat's `commands.maxPerMessage` commands per message, 1 by default, at most 5. Later ones are ordinary text, and the turn record lists them                     |
+| Unknown name | `/name` that matches no command the chat may use is ordinary text and goes to the model                                                                                   |
+| Groups       | A message that starts with a registered command addresses AIRA by itself. A command later in a group message needs the message to address AIRA as usual                   |
+| Reply-to     | When the message replies to another, the quoted message is given to the commands as context                                                                               |
+
+- **One direct command alone** (the whole message is `/help`, `/reminders`, `/mute` or `/unmute`) is answered by code
+  with no model call, as before.
+- **Anything else with commands** is one model turn. Every named tool, direct or skill-style, is offered alone until it
+  has been called once; then the chat's other tools are offered as usual. The model writes one reply that covers them
+  all. Its text is the message with the command tokens kept, so the model sees where each one was asked for.
+- **`/help` is built per call** from the commands this chat may use right now: its feature switches, permissions and
+  `commands.maxPerMessage`. A change on the site shows in the next `/help`.
 
 ### Two Kinds
 

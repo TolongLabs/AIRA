@@ -5,22 +5,23 @@ one night.
 
 ## CI
 
-| Job       | Runs                                                            | Trigger                     |
-| --------- | --------------------------------------------------------------- | --------------------------- |
-| `check`   | Typecheck, lint, format, unit and contract tests                | Every push and pull request |
-| `harness` | Replay scenarios and the memory simulator, with zero live calls | Every push and pull request |
-| `scan`    | Secret scan and the privacy scan for ids, numbers and names     | Every push and pull request |
-| `site`    | Site typecheck and build                                        | Every push and pull request |
-| `release` | Version and changelog pull request from commit messages         | Push to `main`              |
-| `image`   | Build and publish the container image                           | A release tag               |
+| Job       | Runs                                                                                                   | Trigger                     |
+| --------- | ------------------------------------------------------------------------------------------------------ | --------------------------- |
+| `check`   | Typecheck, lint, format, unit, contract and replay tests                                               | Every push and pull request |
+| `scan`    | Secret scan and the privacy scan for ids, numbers and names                                            | Every push and pull request |
+| `site`    | Site typecheck and build                                                                               | Every push and pull request |
+| `image`   | Builds the release image. On a push to `main` it pushes it as `sha-<7>` and `edge`                     | Every push and pull request |
+| `deploy`  | Deploys the pushed image on the host, through the self-hosted runner                                   | Push to `main` only         |
+| `release` | Version and changelog pull request from commit messages                                                | Push to `main`              |
+| `promote` | When a release pull request merges, tags the image the host already runs `vX.Y.Z`, `vX.Y` and `stable` | A release commit            |
 
 ## Release Image
 
-- A release tag builds one image and publishes it to the repository's container registry with the version tag and
-  a moving `stable` tag.
-- Multi-stage build, non-root user, read-only root file system, one writable data volume.
-- The image holds the core, the built site, the example character pack and the prompts. Real character packs are
-  private and live on the data volume.
+- Every push to `main` builds one image and publishes it to `ghcr.io/tolonglabs/aira` as `sha-<first 7 of the commit>`
+  and `edge`. The package is public, so the host pulls without a token; the job checks an anonymous pull.
+- A release re-tags that same image; nothing is rebuilt.
+- Multi-stage build, non-root user, one writable data volume. The image holds the core, the built site, the example
+  character pack and the prompts. Real character packs are private and live on the data volume.
 - No secret and no chat data is in the image. Secrets come from the host's `.env`. Data lives on the volume.
 
 ## Host Layout
@@ -76,24 +77,24 @@ Run by the operator on the host, with each step that changes the host confirmed 
 6. Install the updater's units with `AIRA_COMPOSE_FILE` and `AIRA_CORE_URL` pointing at this install. Its timer is
    enabled once a release image exists in the registry.
 
-## Pull Deploy
+## Deploy
 
-A host timer runs the updater. No outside system connects to the host.
+A GitHub Actions runner on the host, labelled `aira-dev2`, takes the `deploy` job after `check`, `scan` and `image`
+pass on a push to `main`. Deploys run one at a time. Like rokabot's, every merge to `main` goes live.
 
-1. Read the newest release tag from the registry.
-2. If it equals the running version, stop.
-3. If a turn is in flight, wait up to `deploy.waitForIdleMs`.
-4. Take a verified snapshot of the database.
-5. Pull the image and start it. Start-up runs migrations inside a transaction.
-6. Poll the health endpoint until ready, up to `deploy.healthTimeoutMs`.
-7. Send one synthetic turn through the endpoint and check for a deliverable reply.
-8. On success: record the deploy and remove images older than the previous one.
-9. On failure: start the previous image, record the failure and alert the operator. No data is restored, because a
-   migration keeps the previous release working. See [Persistence](storage.md#migrations).
+1. If a turn is in flight, wait up to `deploy.waitForIdleMs`.
+2. Take a verified snapshot of the database.
+3. Pull `sha-<7>`, write `AIRA_VERSION=sha-<7>` and `AIRA_IMAGE` to the install's `.env`, and recreate the container.
+   Start-up runs migrations inside a transaction.
+4. Poll the health endpoint until ready, up to `deploy.healthTimeoutMs`, and send one synthetic turn.
+5. On success: keep the previous image for rollback and remove older ones, then post the result to the host's ntfy.
+6. On failure: start the previous image, post the failure, and fail the job. No data is restored, because a migration
+   keeps the previous release working. See [Persistence](storage.md#migrations).
 
-- A release marked `manual` in its notes is skipped by the timer and waits for the operator. Use it for a release
-  with a migration that cannot be reversed.
-- Image pruning runs on every deploy. The host's storage pool filled once from cache churn, and this prevents it.
+- **The repository is public.** The runner takes only the `deploy` job, which runs only on a push to `main`. Workflows
+  from forks and outside contributors need the owner's approval before they run, so no outside pull request can reach
+  the runner.
+- Steps 1, 2, 4 and 6 reuse the updater's operations in `scripts/updater`.
 
 ## Shadow Period
 
