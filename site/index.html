@@ -12,20 +12,19 @@
     <script>
       /* Pre-paint, so a dark-mode reader never gets a white flash. Migrates
          the two older storage keys on the way past. */
-      (function () {
-        var K = "tolongai-theme",
+      ;(function () {
+        var K = 'tolongai-theme',
           old =
-            localStorage.getItem("mirai-theme") ||
-            localStorage.getItem("memento-theme") ||
-            localStorage.getItem("brain-theme");
-        if (old && !localStorage.getItem(K)) localStorage.setItem(K, old);
-        localStorage.removeItem("mirai-theme");
-        localStorage.removeItem("memento-theme");
-        localStorage.removeItem("brain-theme");
-        var t = localStorage.getItem(K);
-        if (t === "light" || t === "dark")
-          document.documentElement.setAttribute("data-theme", t);
-      })();
+            localStorage.getItem('mirai-theme') ||
+            localStorage.getItem('memento-theme') ||
+            localStorage.getItem('brain-theme')
+        if (old && !localStorage.getItem(K)) localStorage.setItem(K, old)
+        localStorage.removeItem('mirai-theme')
+        localStorage.removeItem('memento-theme')
+        localStorage.removeItem('brain-theme')
+        var t = localStorage.getItem(K)
+        if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t)
+      })()
     </script>
   </head>
   <body>

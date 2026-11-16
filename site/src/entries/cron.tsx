@@ -1,10 +1,10 @@
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
-import "@/styles.css";
-import Page from "@/pages/cron";
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import '@/styles.css'
+import Page from '@/pages/cron'
 
-createRoot(document.getElementById("root")!).render(
+createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <Page />
-  </StrictMode>,
-);
+  </StrictMode>
+)

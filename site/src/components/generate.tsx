@@ -1,55 +1,55 @@
-import { useState } from "react";
-import { Sparkles, X } from "lucide-react";
-import { post } from "@/lib/api";
-import { toast } from "@/lib/hooks";
-import { Button, Input, Spinner } from "@/components/ui";
+import { useState } from 'react'
+import { Sparkles, X } from 'lucide-react'
+import { post } from '@/lib/api'
+import { toast } from '@/lib/hooks'
+import { Button, Input, Spinner } from '@/components/ui'
 
 /* Write-it-for-me. The user types the point of the thing in one line; the
    model writes the prose. It never writes over what is already there without
    asking — the draft lands in a preview and the user decides. */
 
-export type GenKind = "cron" | "soul" | "rules" | "note";
+export type GenKind = 'cron' | 'soul' | 'rules' | 'note'
 
 const PLACEHOLDER: Record<GenKind, string> = {
-  cron: "a warm nudge each morning to stretch before opening the laptop",
-  soul: "a calm, dry-humoured persona who is good at explaining things",
-  rules: "in this mode she answers in two sentences and never uses emoji",
-  note: "what I learned about the graph layout today",
-};
+  cron: 'a warm nudge each morning to stretch before opening the laptop',
+  soul: 'a calm, dry-humoured persona who is good at explaining things',
+  rules: 'in this mode she answers in two sentences and never uses emoji',
+  note: 'what I learned about the graph layout today'
+}
 
 export function GenerateButton({
   kind,
   context,
   onAccept,
-  label = "Write it for me",
+  label = 'Write it for me'
 }: {
-  kind: GenKind;
+  kind: GenKind
   /** Existing text, sent as reference-only so a rewrite keeps the thread. */
-  context?: string;
-  onAccept: (text: string) => void;
-  label?: string;
+  context?: string
+  onAccept: (text: string) => void
+  label?: string
 }) {
-  const [open, setOpen] = useState(false);
-  const [intent, setIntent] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [draft, setDraft] = useState<string | null>(null);
+  const [open, setOpen] = useState(false)
+  const [intent, setIntent] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [draft, setDraft] = useState<string | null>(null)
 
   async function run() {
-    const said = intent.trim();
-    if (!said) return;
-    setBusy(true);
-    setDraft(null);
+    const said = intent.trim()
+    if (!said) return
+    setBusy(true)
+    setDraft(null)
     try {
-      const r = await post<{ text: string }>("/api/generate", {
+      const r = await post<{ text: string }>('/api/generate', {
         kind,
         intent: said,
-        ...(context ? { context } : {}),
-      });
-      setDraft(r.text);
+        ...(context ? { context } : {})
+      })
+      setDraft(r.text)
     } catch (e) {
-      toast((e as Error).message, false);
+      toast((e as Error).message, false)
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
   }
 
@@ -59,7 +59,7 @@ export function GenerateButton({
         <Sparkles />
         {label}
       </Button>
-    );
+    )
   }
 
   return (
@@ -78,9 +78,7 @@ export function GenerateButton({
         </button>
       </div>
 
-      <p className="mt-1 mb-2 text-[0.85rem] text-muted">
-        Describe what it should do in one line.
-      </p>
+      <p className="mt-1 mb-2 text-[0.85rem] text-muted">Describe what it should do in one line.</p>
 
       <div className="flex flex-wrap gap-2">
         <Input
@@ -89,16 +87,16 @@ export function GenerateButton({
           placeholder={PLACEHOLDER[kind]}
           onChange={(e) => setIntent(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !busy) {
-              e.preventDefault();
-              void run();
+            if (e.key === 'Enter' && !busy) {
+              e.preventDefault()
+              void run()
             }
           }}
           className="flex-1 basis-64"
         />
         <Button variant="primary" type="button" disabled={busy} onClick={() => void run()}>
           {busy ? <Spinner /> : <Sparkles />}
-          {busy ? "Writing…" : "Write"}
+          {busy ? 'Writing…' : 'Write'}
         </Button>
       </div>
 
@@ -114,11 +112,11 @@ export function GenerateButton({
               size="sm"
               type="button"
               onClick={() => {
-                onAccept(draft);
-                setOpen(false);
-                setDraft(null);
-                setIntent("");
-                toast("dropped it in ✓");
+                onAccept(draft)
+                setOpen(false)
+                setDraft(null)
+                setIntent('')
+                toast('dropped it in ✓')
               }}
             >
               Use this
@@ -130,5 +128,5 @@ export function GenerateButton({
         </div>
       )}
     </div>
-  );
+  )
 }

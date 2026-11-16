@@ -1,30 +1,12 @@
-import { useMemo } from "react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-} from "recharts";
-import {
-  BookOpen,
-  Clock,
-  LineChart,
-  Music,
-  Network,
-  Play,
-  RotateCw,
-  Settings2,
-  Square,
-  Type,
-} from "lucide-react";
-import type { Dashboard } from "@/lib/api";
-import { post } from "@/lib/api";
-import { useApi, toast, Toaster, useThemeColors } from "@/lib/hooks";
-import { ago, num, until } from "@/lib/utils";
-import { Shell } from "@/components/shell";
-import type { HeroToken } from "@/components/shell";
+import { useMemo } from 'react'
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from 'recharts'
+import { BookOpen, Clock, LineChart, Music, Network, Play, RotateCw, Settings2, Square, Type } from 'lucide-react'
+import type { Dashboard } from '@/lib/api'
+import { post } from '@/lib/api'
+import { useApi, toast, Toaster, useThemeColors } from '@/lib/hooks'
+import { ago, num, until } from '@/lib/utils'
+import { Shell } from '@/components/shell'
+import type { HeroToken } from '@/components/shell'
 import {
   Badge,
   Button,
@@ -35,8 +17,8 @@ import {
   MetricCard,
   NextCard,
   Section,
-  Spinner,
-} from "@/components/ui";
+  Spinner
+} from '@/components/ui'
 
 /* Four questions this page answers, in order: what do I know, what is she
    holding for me, who is she talking to, and is anything on fire. Each gets
@@ -47,61 +29,58 @@ const BRAIN_TILES = [
   /* `note` is context, not ideas — an idea is filed as a project by
      mirror_idea, so the tile beside this one is the one that counts them. */
   {
-    label: "notes",
-    keys: ["note", "notes"],
-    color: "var(--mem)",
-    href: "/app/library.html#note",
+    label: 'notes',
+    keys: ['note', 'notes'],
+    color: 'var(--mem)',
+    href: '/app/library.html#note'
   },
   {
-    label: "projects",
-    keys: ["project", "projects"],
-    color: "var(--vocab)",
-    href: "/app/library.html#project",
+    label: 'projects',
+    keys: ['project', 'projects'],
+    color: 'var(--vocab)',
+    href: '/app/library.html#project'
   },
   {
-    label: "people",
-    keys: ["person", "people"],
-    color: "var(--artist)",
-    href: "/app/library.html#person",
+    label: 'people',
+    keys: ['person', 'people'],
+    color: 'var(--artist)',
+    href: '/app/library.html#person'
   },
   {
-    label: "topics",
-    keys: ["topic", "topics"],
-    color: "var(--gram)",
-    href: "/app/library.html#topic",
-  },
-] as const;
+    label: 'topics',
+    keys: ['topic', 'topics'],
+    color: 'var(--gram)',
+    href: '/app/library.html#topic'
+  }
+] as const
 
 const TYPE_COLOR: Record<string, string> = {
-  song: "var(--song)",
-  vocab: "var(--vocab)",
-  word: "var(--vocab)",
-  grammar: "var(--gram)",
-  artist: "var(--artist)",
-  project: "var(--vocab)",
-  person: "var(--artist)",
-  topic: "var(--gram)",
-};
+  song: 'var(--song)',
+  vocab: 'var(--vocab)',
+  word: 'var(--vocab)',
+  grammar: 'var(--gram)',
+  artist: 'var(--artist)',
+  project: 'var(--vocab)',
+  person: 'var(--artist)',
+  topic: 'var(--gram)'
+}
 
-function pick(
-  brain: Record<string, number> | undefined,
-  keys: readonly string[],
-) {
-  for (const k of keys) if (brain?.[k] != null) return brain[k];
-  return 0;
+function pick(brain: Record<string, number> | undefined, keys: readonly string[]) {
+  for (const k of keys) if (brain?.[k] != null) return brain[k]
+  return 0
 }
 
 function StatTiles({
   tiles,
-  brain,
+  brain
 }: {
   tiles: readonly {
-    label: string;
-    keys: readonly string[];
-    color: string;
-    href?: string;
-  }[];
-  brain?: Record<string, number>;
+    label: string
+    keys: readonly string[]
+    color: string
+    href?: string
+  }[]
+  brain?: Record<string, number>
 }) {
   return (
     <div className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 md:grid-cols-4 [&>*]:min-w-0">
@@ -114,14 +93,8 @@ function StatTiles({
           className="glass block rounded-card p-4 pt-3.5 text-ink no-underline
                      transition-opacity hover:opacity-80"
         >
-          <div
-            className="mb-2 h-1 w-9 rounded-full"
-            style={{ background: t.color }}
-          />
-          <div
-            className="tnum font-serif text-[2.4rem] leading-none tracking-[-0.02em]"
-            style={{ color: t.color }}
-          >
+          <div className="mb-2 h-1 w-9 rounded-full" style={{ background: t.color }} />
+          <div className="tnum font-serif text-[2.4rem] leading-none tracking-[-0.02em]" style={{ color: t.color }}>
             {num(pick(brain, t.keys))}
           </div>
           <div className="mt-1.5 font-mono text-[0.68rem] font-medium uppercase tracking-[0.1em] text-muted">
@@ -130,52 +103,32 @@ function StatTiles({
         </a>
       ))}
     </div>
-  );
+  )
 }
 
-function ServiceRow({
-  unit,
-  state,
-  onDone,
-}: {
-  unit: string;
-  state: string;
-  onDone: () => void;
-}) {
-  const on = state === "active";
-  const tone = on
-    ? "var(--up)"
-    : state === "failed"
-      ? "var(--down)"
-      : "var(--amber)";
+function ServiceRow({ unit, state, onDone }: { unit: string; state: string; onDone: () => void }) {
+  const on = state === 'active'
+  const tone = on ? 'var(--up)' : state === 'failed' ? 'var(--down)' : 'var(--amber)'
 
-  async function act(action: "start" | "stop" | "restart") {
+  async function act(action: 'start' | 'stop' | 'restart') {
     try {
-      await post("/api/services", { unit, action });
-      toast(`${unit} ${action} ✓`);
-      window.setTimeout(onDone, 900);
+      await post('/api/services', { unit, action })
+      toast(`${unit} ${action} ✓`)
+      window.setTimeout(onDone, 900)
     } catch (e) {
-      toast((e as Error).message, false);
+      toast((e as Error).message, false)
       // Rethrown so a confirm strip stays open on a failed stop.
-      throw e;
+      throw e
     }
   }
 
   return (
     <div className="flex flex-wrap items-center gap-3 border-t border-line-2 py-2.5 first:border-t-0 first:pt-0">
-      <span
-        className="size-2 shrink-0 rounded-full"
-        style={{ background: tone }}
-      />
+      <span className="size-2 shrink-0 rounded-full" style={{ background: tone }} />
       <span className="min-w-0 flex-1 truncate text-[0.95rem]">{unit}</span>
       <span className="text-[0.82rem] text-muted">{state}</span>
       <div className="flex gap-1">
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => void act("restart")}
-          title="restart"
-        >
+        <Button size="sm" variant="ghost" onClick={() => void act('restart')} title="restart">
           <RotateCw />
         </Button>
         {on ? (
@@ -188,34 +141,29 @@ function ServiceRow({
             icon={<Square />}
             question={`Stop ${unit}?`}
             warning="It stays down until you start it again."
-            onConfirm={() => act("stop")}
+            onConfirm={() => act('stop')}
           />
         ) : (
-          <Button
-            size="sm"
-            variant="ghost"
-            title="start"
-            onClick={() => void act("start")}
-          >
+          <Button size="sm" variant="ghost" title="start" onClick={() => void act('start')}>
             <Play />
           </Button>
         )}
       </div>
     </div>
-  );
+  )
 }
 
 export default function DashboardPage() {
-  const { data, error, loading, reload } = useApi<Dashboard>("/api/dashboard");
-  const cron = useApi<{ jobs: import("@/lib/api").CronJob[] }>("/api/cron");
+  const { data, error, loading, reload } = useApi<Dashboard>('/api/dashboard')
+  const cron = useApi<{ jobs: import('@/lib/api').CronJob[] }>('/api/cron')
 
   const activity = useMemo(() => {
-    const a = data?.activity ?? [];
+    const a = data?.activity ?? []
     return a.map((n, i) => ({
-      day: i === a.length - 1 ? "today" : `${a.length - 1 - i}d`,
-      filed: n,
-    }));
-  }, [data]);
+      day: i === a.length - 1 ? 'today' : `${a.length - 1 - i}d`,
+      filed: n
+    }))
+  }, [data])
 
   const upcoming = useMemo(() => {
     return (cron.data?.jobs ?? [])
@@ -223,20 +171,20 @@ export default function DashboardPage() {
       .map((j) => ({ ...j, ts: Date.parse(j.next_run_at!) / 1000 }))
       .filter((j) => !Number.isNaN(j.ts))
       .sort((a, b) => a.ts - b.ts)
-      .slice(0, 5);
-  }, [cron.data]);
+      .slice(0, 5)
+  }, [cron.data])
 
-  const filedTotal = (data?.activity ?? []).reduce((a, b) => a + b, 0);
+  const filedTotal = (data?.activity ?? []).reduce((a, b) => a + b, 0)
   const c = useThemeColors({
-    accent: "--accent",
-    line: "--line",
-    muted: "--muted",
-    card2: "--card-2",
-    lineStrong: "--line-strong",
-    ink: "--ink",
-  });
+    accent: '--accent',
+    line: '--line',
+    muted: '--muted',
+    card2: '--card-2',
+    lineStrong: '--line-strong',
+    ink: '--ink'
+  })
 
-  const next = upcoming[0];
+  const next = upcoming[0]
   /* The head. Every other page opens with a fact at display size and this one
      opened with the word "Dashboard" — a label for the page the reader is
      already on, in the most valuable band of the screen, under a wordmark that
@@ -246,44 +194,40 @@ export default function DashboardPage() {
      first and goes red when anything is down; the counts stay in the cards
      below, where four numbers belong. It says nothing about any one chat, so it
      reads the same on one group or fifty. */
-  const units = Object.entries(data?.services ?? {});
-  const down = units.filter(([, s]) => s !== "active").map(([u]) => u);
-  const chats = data?.chat_summaries?.length ?? 0;
+  const units = Object.entries(data?.services ?? {})
+  const down = units.filter(([, s]) => s !== 'active').map(([u]) => u)
+  const chats = data?.chat_summaries?.length ?? 0
   const hero: HeroToken[] = !data
-    ? [{ t: "Checking on her…" }]
+    ? [{ t: 'Checking on her…' }]
     : down.length
       ? [
-          { n: down.length, tone: "down" },
+          { n: down.length, tone: 'down' },
           {
-            t: down.length === 1 ? " service down: " : " services down: ",
-            tone: "down",
+            t: down.length === 1 ? ' service down: ' : ' services down: ',
+            tone: 'down'
           },
-          { n: down.join(", "), tone: "down" },
+          { n: down.join(', '), tone: 'down' }
         ]
       : [
           { n: units.length },
-          { t: " services up, " },
+          { t: ' services up, ' },
           { n: chats },
-          { t: chats === 1 ? " chat configured" : " chats configured" },
-        ];
+          { t: chats === 1 ? ' chat configured' : ' chats configured' }
+        ]
   /* The counts the metric row and the rail both read from. Kept as one object
      so the four cards and the "where to go next" details cannot disagree. */
   const lib = {
-    songs: pick(data?.brain, ["song", "songs"]),
-    words: pick(data?.brain, ["vocab", "word"]),
-    patterns: pick(data?.brain, ["grammar"]),
-    artists: pick(data?.brain, ["artist", "artists"]),
-  };
+    songs: pick(data?.brain, ['song', 'songs']),
+    words: pick(data?.brain, ['vocab', 'word']),
+    patterns: pick(data?.brain, ['grammar']),
+    artists: pick(data?.brain, ['artist', 'artists'])
+  }
 
   return (
     <Shell page="index" title="Dashboard" hero={hero}>
       <Toaster />
 
-      {error && (
-        <Card className="mb-6 border-down/40 p-4 text-down">
-          Could not reach the brain: {error}
-        </Card>
-      )}
+      {error && <Card className="mb-6 border-down/40 p-4 text-down">Could not reach the brain: {error}</Card>}
       {loading && !data && (
         <div className="flex items-center gap-2 text-muted">
           <Spinner /> loading…
@@ -337,18 +281,13 @@ export default function DashboardPage() {
                   title="Filed, last 14 days"
                   action={
                     <span className="text-[0.82rem] text-muted">
-                      {filedTotal
-                        ? `${num(filedTotal)} filed`
-                        : "a quiet fortnight"}
+                      {filedTotal ? `${num(filedTotal)} filed` : 'a quiet fortnight'}
                     </span>
                   }
                 />
                 <div className="mt-4 h-52 lg:h-full lg:min-h-52">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={activity}
-                      margin={{ top: 4, right: 4, bottom: 0, left: 4 }}
-                    >
+                    <BarChart data={activity} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
                       <CartesianGrid vertical={false} stroke={c.line} />
                       <XAxis
                         dataKey="day"
@@ -363,14 +302,10 @@ export default function DashboardPage() {
                           background: c.card2,
                           border: `1px solid ${c.lineStrong}`,
                           borderRadius: 10,
-                          color: c.ink,
+                          color: c.ink
                         }}
                       />
-                      <Bar
-                        dataKey="filed"
-                        fill={c.accent}
-                        radius={[4, 4, 0, 0]}
-                      />
+                      <Bar dataKey="filed" fill={c.accent} radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -381,10 +316,7 @@ export default function DashboardPage() {
             {/* Five equal rows at desktop width, so the rail ends exactly where
                 the chart does. As a plain flex column the tiles kept their
                 intrinsic height and left a ragged gap under the last one. */}
-            <nav
-              aria-label="Where to go next"
-              className="flex flex-col gap-3 lg:grid lg:grid-rows-5"
-            >
+            <nav aria-label="Where to go next" className="flex flex-col gap-3 lg:grid lg:grid-rows-5">
               <NextCard
                 label="Library"
                 detail={`${num(lib.words)} words · ${num(lib.artists)} artists`}
@@ -393,9 +325,7 @@ export default function DashboardPage() {
               />
               <NextCard
                 label="Cron"
-                detail={
-                  next ? `${next.name} ${until(next.ts)}` : "nothing scheduled"
-                }
+                detail={next ? `${next.name} ${until(next.ts)}` : 'nothing scheduled'}
                 href="/app/cron.html"
                 icon={Clock}
                 count={upcoming.length}
@@ -406,12 +336,7 @@ export default function DashboardPage() {
                 href="/app/markets.html"
                 icon={LineChart}
               />
-              <NextCard
-                label="Graph"
-                detail="every node and how it connects"
-                href="/app/graph.html"
-                icon={Network}
-              />
+              <NextCard label="Graph" detail="every node and how it connects" href="/app/graph.html" icon={Network} />
               <NextCard
                 label="Settings"
                 detail={`${(data.chat_summaries ?? []).length} chats configured`}
@@ -425,8 +350,7 @@ export default function DashboardPage() {
             <StatTiles tiles={BRAIN_TILES} brain={data.brain} />
             {!BRAIN_TILES.some((t) => pick(data.brain, t.keys) > 0) && (
               <p className="mt-3 mb-0 text-[0.9rem] text-muted">
-                All zeros so far — notes, projects and people are filed as chats
-                happen.
+                All zeros so far — notes, projects and people are filed as chats happen.
               </p>
             )}
           </Section>
@@ -442,10 +366,7 @@ export default function DashboardPage() {
               <CardHead
                 title="Newest in the library"
                 action={
-                  <a
-                    className="text-[0.85rem] text-muted no-underline hover:text-accent"
-                    href="/app/graph.html"
-                  >
+                  <a className="text-[0.85rem] text-muted no-underline hover:text-accent" href="/app/graph.html">
                     see how it connects →
                   </a>
                 }
@@ -458,7 +379,7 @@ export default function DashboardPage() {
                   >
                     <span
                       className="size-2 shrink-0 translate-y-[-2px] rounded-full"
-                      style={{ background: TYPE_COLOR[r.type] ?? "var(--mem)" }}
+                      style={{ background: TYPE_COLOR[r.type] ?? 'var(--mem)' }}
                     />
                     {r.url ? (
                       <a
@@ -468,24 +389,15 @@ export default function DashboardPage() {
                         {r.title}
                       </a>
                     ) : (
-                      <span className="min-w-0 max-w-full truncate font-medium">
-                        {r.title}
-                      </span>
+                      <span className="min-w-0 max-w-full truncate font-medium">{r.title}</span>
                     )}
                     <span className="shrink-0 font-mono text-[0.66rem] uppercase tracking-[0.08em] text-muted">
                       {r.type}
                     </span>
-                    {r.sub && (
-                      <span className="min-w-0 flex-1 truncate text-[0.88rem] text-read">
-                        {r.sub}
-                      </span>
-                    )}
+                    {r.sub && <span className="min-w-0 flex-1 truncate text-[0.88rem] text-read">{r.sub}</span>}
                     {r.links ? (
                       <span className="shrink-0 text-[0.8rem] text-muted">
-                        met in{" "}
-                        <span className="text-ink">
-                          {r.linked_to || "the library"}
-                        </span>
+                        met in <span className="text-ink">{r.linked_to || 'the library'}</span>
                         {r.links > 1 && ` +${r.links - 1}`}
                       </span>
                     ) : (
@@ -496,14 +408,10 @@ export default function DashboardPage() {
                         filed on its own
                       </span>
                     )}
-                    <span className="shrink-0 text-[0.78rem] text-faint">
-                      {ago(r.ts)}
-                    </span>
+                    <span className="shrink-0 text-[0.78rem] text-faint">{ago(r.ts)}</span>
                   </div>
                 ))}
-                {!(data.recent ?? []).length && (
-                  <Empty>Nothing filed yet.</Empty>
-                )}
+                {!(data.recent ?? []).length && <Empty>Nothing filed yet.</Empty>}
               </div>
             </Card>
           </Section>
@@ -511,10 +419,7 @@ export default function DashboardPage() {
           <Section
             title="Conversations"
             action={
-              <a
-                className="text-[0.85rem] text-muted no-underline hover:text-accent"
-                href="/app/settings.html"
-              >
+              <a className="text-[0.85rem] text-muted no-underline hover:text-accent" href="/app/settings.html">
                 configure →
               </a>
             }
@@ -529,30 +434,26 @@ export default function DashboardPage() {
                       className="flex flex-wrap items-center gap-2 border-t border-line-2 py-2.5 first:border-t-0 first:pt-0"
                     >
                       <b className="font-semibold">{c.name}</b>
-                      <Badge>{c.kind || "chat"}</Badge>
+                      <Badge>{c.kind || 'chat'}</Badge>
                       {/* A binding is a configuration, not a conversation. One
                           bound group had never been spoken in and still sat
                           here looking like a chat with history. */}
                       {c.last_seen == null && (
-                        <span className="text-[0.78rem] text-faint">
-                          configured · nothing said yet
-                        </span>
+                        <span className="text-[0.78rem] text-faint">configured · nothing said yet</span>
                       )}
                       <span className="ml-auto text-[0.82rem] text-muted">
                         {[
                           `${c.personality} · ${c.mode}`,
-                          c.agent === "none" ? "no computer" : null,
-                          c.proactive ? "talks first" : null,
-                          c.last_seen ? ago(c.last_seen) : null,
+                          c.agent === 'none' ? 'no computer' : null,
+                          c.proactive ? 'talks first' : null,
+                          c.last_seen ? ago(c.last_seen) : null
                         ]
                           .filter(Boolean)
-                          .join(" · ")}
+                          .join(' · ')}
                       </span>
                     </div>
                   ))}
-                  {!(data.chat_summaries ?? []).length && (
-                    <Empty>No chats configured yet — start in Settings.</Empty>
-                  )}
+                  {!(data.chat_summaries ?? []).length && <Empty>No chats configured yet — start in Settings.</Empty>}
                 </div>
               </Card>
 
@@ -560,10 +461,7 @@ export default function DashboardPage() {
                 <CardHead
                   title="Upcoming"
                   action={
-                    <a
-                      className="text-[0.82rem] text-muted no-underline hover:text-accent"
-                      href="/app/cron.html"
-                    >
+                    <a className="text-[0.82rem] text-muted no-underline hover:text-accent" href="/app/cron.html">
                       cron →
                     </a>
                   }
@@ -574,12 +472,8 @@ export default function DashboardPage() {
                       key={j.job_id}
                       className="flex items-center gap-3 border-t border-line-2 py-2.5 first:border-t-0 first:pt-0"
                     >
-                      <span className="min-w-0 flex-1 truncate">
-                        {j.name || j.job_id}
-                      </span>
-                      <span className="shrink-0 text-[0.82rem] text-muted">
-                        {until(j.ts)}
-                      </span>
+                      <span className="min-w-0 flex-1 truncate">{j.name || j.job_id}</span>
+                      <span className="shrink-0 text-[0.82rem] text-muted">{until(j.ts)}</span>
                     </div>
                   ))}
                   {!upcoming.length && <Empty>Nothing scheduled.</Empty>}
@@ -591,17 +485,12 @@ export default function DashboardPage() {
           <Section title="System">
             <Card className="p-5">
               {Object.entries(data.services ?? {}).map(([unit, state]) => (
-                <ServiceRow
-                  key={unit}
-                  unit={unit}
-                  state={state}
-                  onDone={reload}
-                />
+                <ServiceRow key={unit} unit={unit} state={state} onDone={reload} />
               ))}
             </Card>
           </Section>
         </>
       )}
     </Shell>
-  );
+  )
 }

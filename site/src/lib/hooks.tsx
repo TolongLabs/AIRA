@@ -1,38 +1,38 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { get } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { get } from '@/lib/api'
+import { cn } from '@/lib/utils'
 
 /* ── data ─────────────────────────────────────────────────────────────── */
 
 export interface Async<T> {
-  data: T | null;
-  error: string | null;
-  loading: boolean;
-  reload: () => void;
+  data: T | null
+  error: string | null
+  loading: boolean
+  reload: () => void
 }
 
 /** GET a JSON endpoint, with the failure surfaced instead of swallowed. */
 export function useApi<T>(path: string | null): Async<T> {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [nonce, setNonce] = useState(0);
+  const [data, setData] = useState<T | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [nonce, setNonce] = useState(0)
 
   useEffect(() => {
-    if (!path) return;
-    let live = true;
-    setLoading(true);
+    if (!path) return
+    let live = true
+    setLoading(true)
     get<T>(path)
       .then((d) => live && (setData(d), setError(null)))
       .catch((e: Error) => live && setError(e.message))
-      .finally(() => live && setLoading(false));
+      .finally(() => live && setLoading(false))
     return () => {
-      live = false;
-    };
-  }, [path, nonce]);
+      live = false
+    }
+  }, [path, nonce])
 
-  const reload = useCallback(() => setNonce((n) => n + 1), []);
-  return { data, error, loading, reload };
+  const reload = useCallback(() => setNonce((n) => n + 1), [])
+  return { data, error, loading, reload }
 }
 
 /* ── theme colours, resolved ──────────────────────────────────────────────
@@ -41,70 +41,64 @@ export function useApi<T>(path: string | null): Async<T> {
    recharts applies fill and stroke — so the bars rendered invisible. Read the
    computed value once and re-read whenever the theme flips. */
 
-export function useThemeColors<K extends string>(
-  names: Record<K, string>,
-): Record<K, string> {
+export function useThemeColors<K extends string>(names: Record<K, string>): Record<K, string> {
   const read = useCallback(() => {
-    const cs = getComputedStyle(document.documentElement);
-    const out = {} as Record<K, string>;
-    for (const key of Object.keys(names) as K[])
-      out[key] = cs.getPropertyValue(names[key]).trim();
-    return out;
+    const cs = getComputedStyle(document.documentElement)
+    const out = {} as Record<K, string>
+    for (const key of Object.keys(names) as K[]) out[key] = cs.getPropertyValue(names[key]).trim()
+    return out
     // names is a literal at every call site; re-reading on identity churn
     // would loop forever, so it is deliberately not a dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [])
 
-  const [colors, setColors] = useState(read);
+  const [colors, setColors] = useState(read)
 
   useEffect(() => {
-    const apply = () => setColors(read());
-    const mo = new MutationObserver(apply);
+    const apply = () => setColors(read())
+    const mo = new MutationObserver(apply)
     mo.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["data-theme"],
-    });
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    mq.addEventListener("change", apply);
+      attributeFilter: ['data-theme']
+    })
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    mq.addEventListener('change', apply)
     return () => {
-      mo.disconnect();
-      mq.removeEventListener("change", apply);
-    };
-  }, [read]);
+      mo.disconnect()
+      mq.removeEventListener('change', apply)
+    }
+  }, [read])
 
-  return colors;
+  return colors
 }
 
 /* ── toasts ───────────────────────────────────────────────────────────── */
 
-type Toast = { id: number; text: string; ok: boolean };
-let push: ((t: Toast) => void) | null = null;
-let nextId = 1;
+type Toast = { id: number; text: string; ok: boolean }
+let push: ((t: Toast) => void) | null = null
+let nextId = 1
 
 /** Fire-and-forget feedback. Mount <Toaster/> once per page. */
 export function toast(text: string, ok = true) {
-  push?.({ id: nextId++, text, ok });
+  push?.({ id: nextId++, text, ok })
 }
 
 export function Toaster() {
-  const [items, setItems] = useState<Toast[]>([]);
-  const timers = useRef<Map<number, number>>(new Map());
+  const [items, setItems] = useState<Toast[]>([])
+  const timers = useRef<Map<number, number>>(new Map())
 
   useEffect(() => {
     push = (t) => {
-      setItems((xs) => [...xs, t]);
-      const handle = window.setTimeout(
-        () => setItems((xs) => xs.filter((x) => x.id !== t.id)),
-        t.ok ? 2200 : 5000,
-      );
-      timers.current.set(t.id, handle);
-    };
-    const pending = timers.current;
+      setItems((xs) => [...xs, t])
+      const handle = window.setTimeout(() => setItems((xs) => xs.filter((x) => x.id !== t.id)), t.ok ? 2200 : 5000)
+      timers.current.set(t.id, handle)
+    }
+    const pending = timers.current
     return () => {
-      push = null;
-      pending.forEach((h) => window.clearTimeout(h));
-    };
-  }, []);
+      push = null
+      pending.forEach((h) => window.clearTimeout(h))
+    }
+  }, [])
 
   return (
     <div
@@ -115,28 +109,26 @@ export function Toaster() {
         <div
           key={t.id}
           className={cn(
-            "rounded-full border px-5 py-2.5 text-[0.9rem] font-medium shadow-float",
-            t.ok
-              ? "border-line-strong bg-card-2 text-ink"
-              : "border-down/40 bg-card-2 text-down",
+            'rounded-full border px-5 py-2.5 text-[0.9rem] font-medium shadow-float',
+            t.ok ? 'border-line-strong bg-card-2 text-ink' : 'border-down/40 bg-card-2 text-down'
           )}
         >
           {t.text}
         </div>
       ))}
     </div>
-  );
+  )
 }
 
 /* ── misc ─────────────────────────────────────────────────────────────── */
 
 /** Two-step destructive confirm, inline — never a native confirm() dialog. */
 export function useArmed(ms = 3000) {
-  const [armed, setArmed] = useState(false);
+  const [armed, setArmed] = useState(false)
   useEffect(() => {
-    if (!armed) return;
-    const h = window.setTimeout(() => setArmed(false), ms);
-    return () => window.clearTimeout(h);
-  }, [armed, ms]);
-  return [armed, setArmed] as const;
+    if (!armed) return
+    const h = window.setTimeout(() => setArmed(false), ms)
+    return () => window.clearTimeout(h)
+  }, [armed, ms])
+  return [armed, setArmed] as const
 }
