@@ -6,6 +6,9 @@ import type { ServerResponse } from 'node:http'
 /** A line holding only this character separates two bubbles. */
 export const BUBBLE_BREAK = String.fromCodePoint(0x2063)
 
+/** The content that makes the gateway send nothing. Empty content would make it retry, then send a notice. */
+export const NO_REPLY = 'NO_REPLY'
+
 export interface ReplyBody {
   /** Used as the completion id. */
   id: string
@@ -14,6 +17,9 @@ export interface ReplyBody {
 }
 
 const MODEL_NAME = 'aira'
+
+/** The content the gateway receives: never empty. */
+const deliverable = (content: string): string => (content.trim() === '' ? NO_REPLY : content)
 
 function usageOf(reply: ReplyBody) {
   const prompt = reply.usage?.inputTokens ?? 0
@@ -31,7 +37,7 @@ export function sseEvents(reply: ReplyBody, options: { includeUsage: boolean; cr
   }
   const chunk = (delta: Record<string, unknown>, finish: string | null) =>
     `data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta, finish_reason: finish }] })}`
-  const events = [chunk({ role: 'assistant', content: reply.content }, null), chunk({}, 'stop')]
+  const events = [chunk({ role: 'assistant', content: deliverable(reply.content) }, null), chunk({}, 'stop')]
   if (options.includeUsage) events.push(`data: ${JSON.stringify({ ...base, choices: [], usage: usageOf(reply) })}`)
   events.push('data: [DONE]')
   return events
@@ -43,7 +49,7 @@ export function jsonBody(reply: ReplyBody, created: number): Record<string, unkn
     object: 'chat.completion',
     created,
     model: MODEL_NAME,
-    choices: [{ index: 0, message: { role: 'assistant', content: reply.content }, finish_reason: 'stop' }],
+    choices: [{ index: 0, message: { role: 'assistant', content: deliverable(reply.content) }, finish_reason: 'stop' }],
     usage: usageOf(reply)
   }
 }

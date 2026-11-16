@@ -30,6 +30,7 @@ describe('gateway request', () => {
       marker: { platform: 'whatsapp', kind: 'group', chat: 'test-chat-g1', sender: 'test-member-alice', mid: 'm-1' },
       text: 'what is the plan?',
       earlier: '',
+      attachments: [],
       stream: true,
       includeUsage: true
     })
@@ -45,17 +46,85 @@ describe('gateway request', () => {
     expect(parseGatewayRequest(request(content))).toMatchObject({ text: 'hello', earlier: '' })
   })
 
-  it('refuses a turn request with no marker as a deployment fault', () => {
-    expect(() => parseGatewayRequest(request('hello with no marker'))).toThrow(MalformedRequestError)
-    expect(() => parseGatewayRequest(request('hello with no marker'))).toThrow(/WHATSAPP_SCOPE_STAMP/)
+  it('reads a request with tools and no marker as unmarked, never as a turn', () => {
+    expect(parseGatewayRequest(request('Review the conversation above and update the skill library.'))).toEqual({
+      type: 'unmarked',
+      stream: true,
+      includeUsage: true
+    })
   })
 
-  it('reads a request with no tools and no marker as an auxiliary request', () => {
+  it('reads a request with no tools as an auxiliary request', () => {
     const parsed = parseGatewayRequest({
       messages: [{ role: 'user', content: 'Give this chat a title' }],
       stream: false
     })
     expect(parsed).toEqual({ type: 'auxiliary', stream: false, includeUsage: false })
+  })
+
+  it('reads a title or summary request as auxiliary even though it quotes markers', () => {
+    const transcript = `User: ${marker()}\nwhat is the plan?\n\nAssistant: a reply`
+    expect(parseGatewayRequest(request(transcript, { tools: undefined, stream: false }))).toMatchObject({
+      type: 'auxiliary'
+    })
+  })
+
+  it('takes a quote note out of the text and keeps it with the marker qid', () => {
+    const fields = 'platform=whatsapp kind=dm chat=test-chat-d1 sender=test-member-bob mid=m-2 qid=q-1'
+    const parsed = parseGatewayRequest(request(`[Replying to: "the quoted words"]\n\n${marker(fields)}\nand this?`))
+    expect(parsed).toMatchObject({
+      text: 'and this?',
+      earlier: '',
+      quote: { text: 'the quoted words', id: 'q-1', ofAira: false },
+      attachments: []
+    })
+  })
+
+  it('marks a quote of a message AIRA sent', () => {
+    const content = `[Replying to your previous message: "an earlier reply"]\n\n${marker()}\nwhy?`
+    expect(parseGatewayRequest(request(content))).toMatchObject({
+      text: 'why?',
+      quote: { text: 'an earlier reply', ofAira: true }
+    })
+  })
+
+  it('keeps an earlier unanswered message apart from the newest message notes', () => {
+    const older = marker('platform=whatsapp kind=group chat=test-chat-g1 sender=test-member-alice mid=m-0')
+    const content = `${older}\nmessage that failed\n\n[Replying to: "quoted"]\n\n${marker()}\nnewest`
+    expect(parseGatewayRequest(request(content))).toMatchObject({
+      text: 'newest',
+      earlier: 'message that failed',
+      quote: { text: 'quoted' }
+    })
+  })
+
+  it('reads the host path of each attachment note and drops the gateway description', () => {
+    const notes = [
+      "[The user sent an image~ Here's what I can see:\nChat]\n[If you need a closer look, use vision_analyze with image_url: /cache/images/img_a1.png ~]",
+      "[The user sent an image but I couldn't quite see it this time (>_<) You can try looking at it yourself with vision_analyze using image_url: /cache/images/img_b2.jpg]",
+      '[The user sent a voice message: /cache/audio/aud_c3.ogg (duration: 0:04)]',
+      "[The user sent a document: 'notes.pdf'. It is saved at: /cache/documents/doc_d4_notes.pdf. Its text is not inlined here.]",
+      "[The user sent a video attachment: 'clip.mp4'. It is saved at: /cache/videos/vid_e5_clip.mp4. Its content is not inlined here.]"
+    ].join('\n\n')
+    expect(parseGatewayRequest(request(`${notes}\n\n${marker()}\nlook`))).toMatchObject({
+      text: 'look',
+      earlier: '',
+      attachments: [
+        { kind: 'image', path: '/cache/images/img_a1.png' },
+        { kind: 'image', path: '/cache/images/img_b2.jpg' },
+        { kind: 'voice', path: '/cache/audio/aud_c3.ogg' },
+        { kind: 'document', path: '/cache/documents/doc_d4_notes.pdf' },
+        { kind: 'video', path: '/cache/videos/vid_e5_clip.mp4' }
+      ]
+    })
+  })
+
+  it('reads a transcribed voice note as the message text when the message has none', () => {
+    const content = `[Replying to: "earlier words"]\n\n"see you at six"\n\n${marker()}\n`
+    expect(parseGatewayRequest(request(content))).toMatchObject({
+      text: 'see you at six',
+      quote: { text: 'earlier words' }
+    })
   })
 
   it('refuses a marker with a missing field or an unknown kind', () => {
@@ -103,6 +172,11 @@ describe('gateway response', () => {
     expect(JSON.parse((events[2] ?? '').slice(6))).toMatchObject({ choices: [], usage: { total_tokens: 0 } })
     expect(events[3]).toBe('data: [DONE]')
     expect(sseEvents({ id: 't-1', content: '' }, { includeUsage: false, created: 1 })).toHaveLength(3)
+  })
+
+  it('writes NO_REPLY instead of empty content, so the gateway sends nothing', () => {
+    expect(jsonBody({ id: 't', content: '' }, 0)).toMatchObject({ choices: [{ message: { content: 'NO_REPLY' } }] })
+    expect(sseEvents({ id: 't', content: '  ' }, { includeUsage: false, created: 0 })[0]).toContain('"NO_REPLY"')
   })
 
   it('writes a plain completion for a request that did not ask for a stream', () => {

@@ -69,7 +69,8 @@ Each request is one of four kinds, decided in this order (measured on the stagin
 
   A voice note the gateway transcribed arrives as one quoted line, `"<transcript>"`, before a marker followed by no
   text. That line is the message text. The image description the gateway writes is the core's own auxiliary answer,
-  so the core ignores it. Media is read by the core at intake. See [Models](models.md#media-watching).
+  so the core ignores it. Media is read by the core at intake, and only from a path under the gateway's media cache
+  folders: a note is text, and an earlier message's text could imitate one. See [Models](models.md#media-watching).
 
 - **Auxiliary requests.** The gateway also calls the same endpoint for its own chores: a session title, a context
   summary, a picture description. Such a request has no `tools`. Its text can hold markers, because a title or a

@@ -17,6 +17,7 @@ export const FAILURE_KINDS = [
   'config_invalid',
   'binding_invalid',
   'gateway_malformed',
+  'gateway_unmarked',
   'turn_interrupted',
   'storage_error',
   'storage_low_space',
