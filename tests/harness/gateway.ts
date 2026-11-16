@@ -116,6 +116,15 @@ export interface Delivery {
   content: string
   bubbles: string[]
   media: string[]
+  /** The turn that answered, read from the completion id. Absent when no turn ran. */
+  turnId?: string
+}
+
+/** The turn id inside a completion id (`chatcmpl-<turn id>`). The core writes `none` when no turn ran. */
+function turnIdOf(completionId: unknown): string | undefined {
+  if (typeof completionId !== 'string' || !completionId.startsWith('chatcmpl-')) return undefined
+  const id = completionId.slice('chatcmpl-'.length)
+  return id === '' || id === 'none' ? undefined : id
 }
 
 function delay(ms: number): Promise<void> {
@@ -128,13 +137,14 @@ function extractJsonContent(json: unknown): string {
   return typeof content === 'string' ? content : ''
 }
 
-async function readSseContent(body: ReadableStream<Uint8Array> | null): Promise<string> {
+async function readSseContent(body: ReadableStream<Uint8Array> | null): Promise<{ content: string; id?: unknown }> {
   if (!body) throw new Error('response body is null')
   const reader = body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
   let sawDone = false
   const parts: string[] = []
+  let completionId: unknown
 
   const processLine = (rawLine: string) => {
     const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
@@ -144,7 +154,8 @@ async function readSseContent(body: ReadableStream<Uint8Array> | null): Promise<
       sawDone = true
       return
     }
-    const chunk = JSON.parse(payload) as { choices?: { delta?: { content?: unknown } }[] }
+    const chunk = JSON.parse(payload) as { id?: unknown; choices?: { delta?: { content?: unknown } }[] }
+    completionId ??= chunk?.id
     const delta = chunk?.choices?.[0]?.delta?.content
     if (typeof delta === 'string') parts.push(delta)
   }
@@ -168,7 +179,7 @@ async function readSseContent(body: ReadableStream<Uint8Array> | null): Promise<
   }
 
   if (!sawDone) throw new Error('stream ended before data: [DONE]')
-  return parts.join('')
+  return { content: parts.join(''), id: completionId }
 }
 
 export class FakeGateway {
@@ -267,9 +278,17 @@ export class FakeGateway {
         }
 
         const contentType = response.headers.get('content-type') ?? ''
-        const content = contentType.includes('application/json')
-          ? extractJsonContent(await response.json())
-          : await readSseContent(response.body)
+        let content: string
+        let completionId: unknown
+        if (contentType.includes('application/json')) {
+          const json = await response.json()
+          content = extractJsonContent(json)
+          completionId = (json as { id?: unknown })?.id
+        } else {
+          const read = await readSseContent(response.body)
+          content = read.content
+          completionId = read.id
+        }
 
         transcript.push({ role: 'user', content: newestUserContent })
         transcript.push({ role: 'assistant', content })
@@ -277,13 +296,15 @@ export class FakeGateway {
         this.unanswered.delete(uKey)
 
         const { bubbles, media } = parseContent(content)
+        const turnId = turnIdOf(completionId)
         return {
           status: 'delivered',
           attempts: attempt,
           httpStatus: 200,
           content,
           bubbles,
-          media
+          media,
+          ...(turnId !== undefined ? { turnId } : {})
         }
       } catch {
         // Retryable network or truncated-stream failure
