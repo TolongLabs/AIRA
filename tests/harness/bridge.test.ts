@@ -228,6 +228,61 @@ describe('FakeBridge', () => {
     expect(messages[0]?.body).toBe('via control route')
   })
 
+  it('lists the recorded calls over HTTP from a cursor, without recording the read itself', async () => {
+    const { bridge, baseUrl } = await startBridge()
+    const post = (route: string, body: unknown) =>
+      fetch(`${baseUrl}${route}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+    await post('/typing', { chatId: 'test-chat-one' })
+    await post('/send', { chatId: 'test-chat-one', message: 'one' })
+    await post('/send', { chatId: 'test-chat-one', message: 'two', replyTo: 'sim-1' })
+
+    const all = (await (await fetch(`${baseUrl}/control/calls`)).json()) as {
+      calls: { seq: number; route: string; payload: unknown; messageId?: string }[]
+      last: number
+    }
+    expect(all.last).toBe(3)
+    expect(all.calls.map((call) => call.route)).toEqual(['/typing', '/send', '/send'])
+    // The id the bridge answered with is recorded on the call, so a reader can tell which message a reply names.
+    expect(all.calls.map((call) => call.messageId)).toEqual([undefined, 'out-1', 'out-2'])
+    expect(all.calls[2]?.payload).toEqual({ chatId: 'test-chat-one', message: 'two', replyTo: 'sim-1' })
+
+    const after = (await (await fetch(`${baseUrl}/control/calls?after=2`)).json()) as typeof all
+    expect(after.calls.map((call) => call.seq)).toEqual([3])
+    expect(after.last).toBe(3)
+
+    // Reading the list leaves no trace in it.
+    expect(bridge.calls()).toHaveLength(3)
+  })
+
+  it('serves a recorded file by the number of the call, and images under their own type only', async () => {
+    const { bridge, baseUrl } = await startBridge()
+    const form = new FormData()
+    form.set('chatId', 'test-chat-one')
+    form.set('file', new File([Buffer.from('webp-bytes')], 'calm.webp', { type: 'image/webp' }))
+    await fetch(`${baseUrl}/send-media`, { method: 'POST', body: form })
+    const note = new FormData()
+    note.set('chatId', 'test-chat-one')
+    note.set('file', new File([Buffer.from('<script>x</script>')], 'note.html', { type: 'text/html' }))
+    await fetch(`${baseUrl}/send-media`, { method: 'POST', body: note })
+
+    const [sticker, page] = bridge.callsTo('/send-media')
+    const image = await fetch(`${baseUrl}/control/file/${sticker?.seq}`)
+    expect(image.status).toBe(200)
+    expect(image.headers.get('content-type')).toBe('image/webp')
+    expect(Buffer.from(await image.arrayBuffer()).toString()).toBe('webp-bytes')
+
+    const other = await fetch(`${baseUrl}/control/file/${page?.seq}`)
+    expect(other.headers.get('content-type')).toBe('application/octet-stream')
+    expect(other.headers.get('x-content-type-options')).toBe('nosniff')
+
+    expect((await fetch(`${baseUrl}/control/file/999`)).status).toBe(404)
+    expect((await fetch(`${baseUrl}/control/file/abc`)).status).toBe(404)
+  })
+
   it('copies sent media into filesDir for both JSON filePath and multipart uploads', async () => {
     const filesDir = tmpDir()
     const sourceDir = tmpDir()
