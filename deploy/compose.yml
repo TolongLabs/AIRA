@@ -21,6 +21,11 @@ services:
       - ${AIRA_DATA_DIR:-./data}:/data
       # The install's configuration, with gateway.hostDataDir set, over the image's own.
       - ./config.yml:/app/config.yml:ro
+      # The gateway's media folders, read-only, for media watching (docs/trd/models.md#media-watching). They are the
+      # host's ~/.hermes/cache and ~/.hermes/audio_cache, as absolute paths. Unset, an empty folder is mounted and
+      # the core refuses every media path. The mount points must match `media.gatewayDirs` in config.yml.
+      - ${AIRA_GATEWAY_CACHE:-./unset}:/gateway/cache:ro
+      - ${AIRA_GATEWAY_AUDIO_CACHE:-./unset}:/gateway/audio_cache:ro
     logging:
       driver: json-file
       options:

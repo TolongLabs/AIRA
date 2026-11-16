@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { join } from 'node:path'
@@ -11,6 +12,9 @@ import { createReplyCleaner } from './format/clean.js'
 import { writeScheduleFile } from './gateway/schedule.js'
 import { createGatewayServer } from './gateway/server.js'
 import { createSystemOneClient, createSystemOneMemoryJudge, createSystemOneMoodJudge } from './judge/systemone.js'
+import { type MediaWatcher, createGeminiWatcher } from './media/gemini-watcher.js'
+import { DEFAULT_MEDIA_LIMITS } from './media/limits.js'
+import { createTurnMedia } from './media/turn-media.js'
 import { createMemoryPort } from './memory/port.js'
 import { presentLabels, recallForTurn } from './memory/recall.js'
 import type { MemoryJudge } from './memory/types.js'
@@ -81,6 +85,8 @@ export interface AppOptions {
   judge?: MoodJudge
   /** The memory judge. Absent means the hosted judge when it is configured, else none: memory admits nothing. */
   memoryJudge?: MemoryJudge
+  /** The media model. Absent means the configured model when its key is set, else media is off. */
+  mediaWatcher?: MediaWatcher
   ports?: Partial<Omit<ToolPorts, 'filesDir'>>
   /** The folder of the packs that ship with the release. */
   repositoryCharactersDir?: string
@@ -321,6 +327,18 @@ export async function createApp(options: AppOptions): Promise<App> {
       { storage, hostDataDir, now }
     )
 
+    // Media watching (docs/trd/models.md#media-watching). With no model or no key, media is off: files get a note.
+    const mediaModel = config.media.watcher.model
+    const mediaKey = env['MEDIA_WATCHER_API_KEY']
+    const mediaWatcher =
+      options.mediaWatcher ??
+      (mediaModel !== null && mediaKey ? createGeminiWatcher({ apiKey: mediaKey, model: mediaModel }) : undefined)
+    if (!mediaWatcher) logger.warn('media.off', { reason: mediaModel === null ? 'no_model' : 'no_key' })
+    else if (config.media.gatewayDirs.length === 0) logger.warn('media.no_gateway_dirs', {})
+    for (const dir of config.media.gatewayDirs) {
+      if (!existsSync(dir.container)) logger.warn('media.dir_missing', { container: dir.container })
+    }
+
     const turns = createTurnService({
       storage,
       config,
@@ -333,6 +351,14 @@ export async function createApp(options: AppOptions): Promise<App> {
       alerter,
       tools: registry,
       commands: createCommandRouter(registry, { timeZone: config.format.timeZone }),
+      media: createTurnMedia({
+        ...(mediaWatcher ? { watcher: mediaWatcher } : {}),
+        model: mediaModel ?? '',
+        limits: { ...DEFAULT_MEDIA_LIMITS, maxVideoSeconds: config.media.maxVideoSeconds },
+        gatewayDirs: config.media.gatewayDirs,
+        timeoutMs: config.media.timeoutMs,
+        now
+      }),
       hooks: { spendAllows: () => spendState(storage, config.llm.monthlyBudgetUsd, now).repliesAllowed },
       onScheduleChange: () => {
         try {
@@ -472,10 +498,7 @@ export async function createApp(options: AppOptions): Promise<App> {
             breakerOpen: subscription ? (fallbackBreaker?.isOpen('main') ?? false) : breaker.isOpen('fallback')
           },
           judge: { configured: Boolean(moodJudge || memoryJudge), breakerOpen: false },
-          media: {
-            configured: config.media.watcher.model !== null && Boolean(env['MEDIA_WATCHER_API_KEY']),
-            breakerOpen: false
-          }
+          media: { configured: Boolean(mediaWatcher), breakerOpen: false }
         }),
         logger,
         now

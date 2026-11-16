@@ -1,0 +1,308 @@
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import type { App } from '../../src/app.js'
+import type { MediaWatcher } from '../../src/media/gemini-watcher.js'
+import { ModelError, type ModelRequest } from '../../src/models/types.js'
+import type { GatewayMessage } from '../harness/gateway.js'
+import { lastTurn, msg, queueModel, startApp } from '../support/app.js'
+import { tmpDir } from '../support/tmp.js'
+
+// Media watching through the whole service (docs/trd/models.md#media-watching): the gateway names a saved file in a
+// note, the core reads it through its mount, the media model describes it, and the description reaches the main
+// model in prompt block 4. The media model is a fake: no network call is made. Host paths and ids are invented.
+
+const HOST_CACHE = '/home/user/.hermes/cache'
+const UNREADABLE_LINE = 'I could not read that file. Could you send it again or describe it?'
+
+function gatewayFolder() {
+  const cache = join(tmpDir('aira-gateway-'), 'cache')
+  mkdirSync(join(cache, 'images'), { recursive: true })
+  mkdirSync(join(cache, 'audio'), { recursive: true })
+  writeFileSync(join(cache, 'images', 'img_a1b2.jpg'), 'jpeg-bytes')
+  writeFileSync(join(cache, 'audio', 'aud_c3.ogg'), 'ogg-bytes')
+  return cache
+}
+
+type Seen = { contentType: string; size: number }
+function fakeWatcher(
+  answer: (seen: Seen, call: number) => { description: string; transcript?: string } | ModelError
+): MediaWatcher & { seen: Seen[] } {
+  const seen: Seen[] = []
+  return {
+    seen,
+    async watch(file) {
+      const entry = { contentType: file.contentType, size: file.data.byteLength }
+      seen.push(entry)
+      const result = answer(entry, seen.length)
+      if (result instanceof ModelError) throw result
+      return {
+        reading: result,
+        usage: { inputTokens: 300, outputTokens: 20, cachedTokens: 0 },
+        costUsd: 0,
+        model: 'fake-media-model'
+      }
+    }
+  }
+}
+
+const rows = <T>(app: App, sql: string, ...args: unknown[]) =>
+  app.storage.read((db) => db.prepare(sql).all(...args) as T[])
+
+const contextOf = (request: ModelRequest | undefined) =>
+  request?.system.find((block) => block.name === 'context')?.text ?? ''
+const withMedia = (mid: string, text: string, media: GatewayMessage['media']): GatewayMessage => ({
+  ...msg(mid, text),
+  media
+})
+
+async function start(
+  options: {
+    watcher?: MediaWatcher
+    answers?: Parameters<typeof queueModel>[0]
+    gatewayDirs?: boolean
+    env?: NodeJS.ProcessEnv
+  } = {}
+) {
+  const cache = gatewayFolder()
+  const model = queueModel(options.answers ?? [{ text: 'Example: Nice one!' }])
+  const started = await startApp(model, {
+    ...(options.watcher ? { mediaWatcher: options.watcher } : {}),
+    ...(options.env ? { env: options.env } : {}),
+    config: (config) => {
+      if (options.gatewayDirs !== false) config.media.gatewayDirs = [{ host: HOST_CACHE, container: cache }]
+      config.turn.batchMs = 250
+    }
+  })
+  return { ...started, model, cache }
+}
+
+describe('a photo, a voice note and a document', () => {
+  it('reaches the main model as a labelled description in block 4, and is recorded', async () => {
+    const watcher = fakeWatcher(() => ({ description: 'A red bicycle against a brick wall.' }))
+    const { app, gateway, model, chatId } = await start({ watcher })
+
+    const delivery = await gateway.send(
+      withMedia('m-1', 'what do you think?', [{ kind: 'image', path: `${HOST_CACHE}/images/img_a1b2.jpg` }])
+    )
+
+    expect(delivery.content).toBe('Nice one!')
+    expect(watcher.seen).toEqual([{ contentType: 'image/jpeg', size: 'jpeg-bytes'.length }])
+    const context = contextOf(model.requests[0])
+    expect(context).toContain('<media untrusted="true">\n- image: A red bicycle against a brick wall.\n</media>')
+    expect(context).not.toContain('<media-unreadable>')
+    // The file itself and its path never reach the model.
+    expect(JSON.stringify(model.requests[0])).not.toContain('img_a1b2')
+    expect(JSON.stringify(model.requests[0])).not.toContain('jpeg-bytes')
+    expect(model.requests[0]?.messages).toEqual([{ role: 'user', content: '[member 1] what do you think?' }])
+
+    expect(lastTurn(app)).toMatchObject({ chat_id: chatId, state: 'delivered', outcome: 'delivered' })
+    expect(lastTurn(app)['failure_kind']).toBeNull()
+    expect(rows(app, "SELECT role, model, input_tokens, failure_kind FROM model_call WHERE role = 'media'")).toEqual([
+      { role: 'media', model: 'fake-media-model', input_tokens: 300, failure_kind: null }
+    ])
+    expect(rows(app, 'SELECT * FROM failure')).toEqual([])
+  })
+
+  it('answers a photo sent with no caption: the model sees a message with no text and the description', async () => {
+    const watcher = fakeWatcher(() => ({ description: 'A cat on a windowsill.' }))
+    const { gateway, model } = await start({ watcher })
+
+    const delivery = await gateway.send(
+      withMedia('m-1', '', [{ kind: 'image', path: `${HOST_CACHE}/images/img_a1b2.jpg` }])
+    )
+
+    expect(delivery.content).toBe('Nice one!')
+    expect(model.requests[0]?.messages).toEqual([{ role: 'user', content: '[member 1] (no text, only a file)' }])
+    expect(contextOf(model.requests[0])).toContain('- image: A cat on a windowsill.')
+  })
+
+  it('carries the transcript of a voice note', async () => {
+    const watcher = fakeWatcher(() => ({
+      description: 'A person speaking in a quiet room.',
+      transcript: 'Can you pick up some milk on the way home?'
+    }))
+    const { gateway, model } = await start({ watcher })
+
+    await gateway.send(withMedia('m-1', 'hear this', [{ kind: 'voice', path: `${HOST_CACHE}/audio/aud_c3.ogg` }]))
+
+    expect(watcher.seen[0]?.contentType).toBe('audio/ogg')
+    expect(contextOf(model.requests[0])).toContain(
+      '- audio: A person speaking in a quiet room.\n  transcript: Can you pick up some milk on the way home?'
+    )
+  })
+
+  it('reads the files of every message a turn answers, so a photo and its caption sent apart both count', async () => {
+    const watcher = fakeWatcher(() => ({ description: 'A red bicycle against a brick wall.' }))
+    const { gateway, model } = await start({ watcher })
+
+    const [photo, caption] = await Promise.all([
+      gateway.send(withMedia('m-1', '', [{ kind: 'image', path: `${HOST_CACHE}/images/img_a1b2.jpg` }])),
+      new Promise((resolve) => setTimeout(resolve, 30)).then(() => gateway.send(msg('m-2', 'is this bike ok?')))
+    ])
+
+    expect(model.requests).toHaveLength(1)
+    expect(watcher.seen).toHaveLength(1)
+    expect(contextOf(model.requests[0])).toContain('- image: A red bicycle against a brick wall.')
+    expect(photo.content).toBe('NO_REPLY')
+    expect(caption.content).toBe('Nice one!')
+  })
+})
+
+describe('the configured media model', () => {
+  it('is called with the key from the environment and the file, and its answer reaches the main model', async () => {
+    const calls: { url: string; key: string | undefined; mime: string; data: string }[] = []
+    const guarded = globalThis.fetch
+    const gemini = JSON.stringify({
+      candidates: [{ content: { parts: [{ text: '{"description": "A red bicycle against a brick wall."}' }] } }],
+      usageMetadata: { promptTokenCount: 310, candidatesTokenCount: 18 }
+    })
+    globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const url = String(input instanceof Request ? input.url : input)
+      if (!url.startsWith('https://generativelanguage.googleapis.com/')) return guarded(input, init)
+      const body = JSON.parse(String(init?.body)) as {
+        contents: { parts: { inline_data?: { mime_type: string; data: string } }[] }[]
+      }
+      const part = body.contents[0]?.parts[0]?.inline_data
+      calls.push({
+        url,
+        key: (init?.headers as Record<string, string>)['x-goog-api-key'],
+        mime: part?.mime_type ?? '',
+        data: part?.data ?? ''
+      })
+      return new Response(gemini, { status: 200 })
+    }) as typeof fetch
+    // The service takes the global fetch when it starts, so the stub is in place first.
+    const { gateway, model, app } = await start({ env: { MEDIA_WATCHER_API_KEY: 'test-media-key-000' } })
+
+    await gateway.send(withMedia('m-1', 'look', [{ kind: 'image', path: `${HOST_CACHE}/images/img_a1b2.jpg` }]))
+
+    expect(calls).toEqual([
+      {
+        url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
+        key: 'test-media-key-000',
+        mime: 'image/jpeg',
+        data: Buffer.from('jpeg-bytes').toString('base64')
+      }
+    ])
+    expect(contextOf(model.requests[0])).toContain('- image: A red bicycle against a brick wall.')
+    expect(rows(app, "SELECT model, input_tokens FROM model_call WHERE role = 'media'")).toEqual([
+      { model: 'gemini-3.5-flash-lite', input_tokens: 310 }
+    ])
+  })
+})
+
+describe('a file that cannot be read', () => {
+  it('reaches the model as a note with the pack line, when the media model fails, and the turn still answers', async () => {
+    const watcher = fakeWatcher(() => new ModelError('rate_limit', 'free tier limit'))
+    const { app, gateway, model } = await start({ watcher })
+
+    const delivery = await gateway.send(
+      withMedia('m-1', 'look', [{ kind: 'image', path: `${HOST_CACHE}/images/img_a1b2.jpg` }])
+    )
+
+    expect(delivery.content).toBe('Nice one!')
+    const context = contextOf(model.requests[0])
+    expect(context).toContain(
+      `<media-unreadable>\n- image: could not be read (the read failed)\nTell the sender so in your own voice, in the sense of: "${UNREADABLE_LINE}"\n</media-unreadable>`
+    )
+    expect(context).not.toContain('<media untrusted')
+    expect(lastTurn(app)).toMatchObject({ state: 'delivered', outcome: 'delivered' })
+    expect(rows(app, "SELECT failure_kind FROM model_call WHERE role = 'media'")).toEqual([
+      { failure_kind: 'rate_limit' }
+    ])
+    expect(rows(app, 'SELECT stage, kind, handled_by, message FROM failure')).toEqual([
+      expect.objectContaining({ stage: 'media', kind: 'media_unreadable', handled_by: 'line:unreadableMedia' })
+    ])
+  })
+
+  it('refuses a path outside the gateway folders without calling the media model, and keeps the path from the model', async () => {
+    const watcher = fakeWatcher(() => ({ description: 'must not be read' }))
+    const { app, gateway, model } = await start({ watcher })
+
+    const delivery = await gateway.send(
+      withMedia('m-1', 'look', [
+        { kind: 'image', path: '/home/user/.ssh/id_ed25519.jpg' },
+        { kind: 'image', path: `${HOST_CACHE}/images/../../.env.jpg` }
+      ])
+    )
+
+    expect(delivery.content).toBe('Nice one!')
+    expect(watcher.seen).toEqual([])
+    const context = contextOf(model.requests[0])
+    expect(context).toContain('- image: could not be read (not available to read)')
+    expect(JSON.stringify(model.requests[0])).not.toContain('id_ed25519')
+    expect(rows(app, "SELECT * FROM model_call WHERE role = 'media'")).toEqual([])
+    expect(rows(app, 'SELECT kind FROM failure')).toEqual([{ kind: 'media_unreadable' }, { kind: 'media_unreadable' }])
+  })
+
+  it('reads one file and notes another in the same message', async () => {
+    const watcher = fakeWatcher(() => ({ description: 'A red bicycle against a brick wall.' }))
+    const { gateway, model } = await start({ watcher })
+
+    await gateway.send(
+      withMedia('m-1', 'two things', [
+        { kind: 'image', path: `${HOST_CACHE}/images/img_a1b2.jpg` },
+        { kind: 'document', path: `${HOST_CACHE}/documents/gone.pdf` }
+      ])
+    )
+
+    const context = contextOf(model.requests[0])
+    expect(context).toContain('- image: A red bicycle against a brick wall.')
+    expect(context).toContain('- document: could not be read (file not found)')
+    expect(watcher.seen).toHaveLength(1)
+  })
+
+  it('alerts the operator when the media key is refused', async () => {
+    const watcher = fakeWatcher(() => new ModelError('auth', 'HTTP 403'))
+    const { gateway, logs } = await start({ watcher })
+
+    await gateway.send(withMedia('m-1', 'look', [{ kind: 'image', path: `${HOST_CACHE}/images/img_a1b2.jpg` }]))
+
+    expect(logs.filter((line) => line['event'] === 'alert')).toEqual([
+      expect.objectContaining({ kind: 'model_auth', role: 'media' })
+    ])
+  })
+})
+
+describe('a direct command', () => {
+  it('reads no file: no model runs, so no description is needed', async () => {
+    const watcher = fakeWatcher(() => ({ description: 'must not be read' }))
+    const { gateway, model } = await start({ watcher })
+
+    const delivery = await gateway.send(
+      withMedia('m-1', '/help', [{ kind: 'image', path: `${HOST_CACHE}/images/img_a1b2.jpg` }])
+    )
+
+    expect(delivery.content).toContain('/help')
+    expect(watcher.seen).toEqual([])
+    expect(model.requests).toEqual([])
+  })
+})
+
+describe('media is off', () => {
+  it('still answers, tells the model the file was not read, and logs media.off once at start-up', async () => {
+    const { app, gateway, model, logs } = await start({ gatewayDirs: false })
+
+    const delivery = await gateway.send(
+      withMedia('m-1', 'look', [{ kind: 'image', path: `${HOST_CACHE}/images/img_a1b2.jpg` }])
+    )
+
+    expect(delivery.content).toBe('Nice one!')
+    expect(logs.filter((line) => line['event'] === 'media.off')).toEqual([
+      expect.objectContaining({ reason: 'no_key' })
+    ])
+    expect(contextOf(model.requests[0])).toContain('- image: could not be read (media reading is off)')
+    expect(lastTurn(app)).toMatchObject({ state: 'delivered' })
+    expect(rows(app, "SELECT * FROM model_call WHERE role = 'media'")).toEqual([])
+    expect(rows(app, 'SELECT kind FROM failure')).toEqual([{ kind: 'media_unreadable' }])
+  })
+
+  it('answers a message with no files exactly as before: no media text in block 4', async () => {
+    const { gateway, model } = await start()
+
+    expect((await gateway.send(msg('m-1', 'just text'))).content).toBe('Nice one!')
+
+    expect(contextOf(model.requests[0])).not.toContain('media')
+  })
+})
