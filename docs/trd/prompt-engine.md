@@ -18,7 +18,7 @@ Real character packs are private. They never enter the repository, the release i
 
 | File        | Holds                                                                                                          | Required |
 | ----------- | -------------------------------------------------------------------------------------------------------------- | -------- |
-| `card.yml`  | Id, display name, languages, core identity, speech rules, default reply length, tool footer                    | Yes      |
+| `card.yml`  | Id, display name, aliases, languages, core identity, speech rules, default reply length, tool footer           | Yes      |
 | `moods.yml` | The mood list: key, detection rules, tone guidance, openers, endings, faces, beats; face groups and beat lines | Yes      |
 | `lines.yml` | Fixed lines for errors, limits, refusals, busy, unreadable media and unavailable                               | Yes      |
 | `stickers/` | Expression images per mood, already converted to WhatsApp sticker format                                       | No       |

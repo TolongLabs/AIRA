@@ -56,6 +56,18 @@ Each request is one of four kinds, decided in this order (measured on the stagin
   earlier message from the same sender that got no reply.
 - **Gateway notes are removed.** On a chat's first message the gateway appends a `[System note: ...]` block to the
   user text. The core strips every such block before the text enters a turn.
+- **A group message names its sender before the marker.** Measured on the live gateway, 17 Nov 2026: a group
+  message reads `[<display name>] [HERMES-SCOPE ...]` and then its text. The bracket right before a marker is the
+  sender's display name, not text. The core stores it on the sender's identity, so the model can call members by
+  name; identity still comes from the marker alone.
+- **Mentions are WhatsApp ids.** WhatsApp writes `@<number>` in the text for a mention. Before the text enters a
+  turn, the core writes `@<display name>` for a known member, the bound character's name for an id listed in
+  `gateway.selfIds`, and `@member` for any other number, so no WhatsApp id reaches the model or a reply.
+- **Name call.** At cutover the gateway's `mention_patterns` lists every character's name, whole word and in any
+  case, so a group message that names the character reaches the core. When such a message is neither a mention of
+  `gateway.selfIds` nor a reply to the bot, and the chat is not set to free response, the core answers only if the
+  chat's `nameCall` setting is on, and else returns `NO_REPLY`. The names are the bound card's display name and its
+  `aliases`. Typo matches are not used: they would wake on ordinary words and other people's names.
 - **Quotes and media are notes before the marker.** The gateway writes what it knows about a message as bracketed
   notes just before that message's marker. The core takes them out of the message text and keeps what they carry:
 
