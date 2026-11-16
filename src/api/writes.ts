@@ -30,9 +30,10 @@ export function hostAllowed(host: string | undefined): boolean {
   return /^(localhost|\d{1,3}(\.\d{1,3}){3}|\[[0-9a-fA-F:]+\]):\d{1,5}$/.test(host)
 }
 
-/** A request with `Origin` is accepted only from a listed origin. A request from a server sends none. */
-export function originAllowed(origin: string | undefined, allowed: readonly string[]): boolean {
+/** A request with `Origin` is accepted from the API's own origin or a listed one. A request from a server sends none. */
+export function originAllowed(origin: string | undefined, allowed: readonly string[], host?: string): boolean {
   if (origin === undefined) return true
+  if (host !== undefined && origin === `http://${host}`) return true
   return allowed.some((entry) => new URL(entry).origin === origin)
 }
 

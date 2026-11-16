@@ -70,6 +70,8 @@ export interface AppOptions {
   /** Where secrets are read from, by name. */
   env: NodeJS.ProcessEnv
   version?: string
+  /** The built site, served under /app/ on the site API's port. */
+  siteDir?: string
   logger?: Logger
   /** Model clients to use instead of the configured endpoints: recordings, fakes. */
   clients?: { main?: ModelClient; fallback?: ModelClient }
@@ -445,6 +447,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         token: siteToken,
         allowedOrigins: config.site.allowedOrigins,
         characters: () => new Set(packs().packs.keys()),
+        ...(options.siteDir ? { siteDir: options.siteDir } : {}),
         storage,
         paths,
         version: options.version ?? '0.0.0',

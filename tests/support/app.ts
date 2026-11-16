@@ -58,6 +58,7 @@ export async function startApp(
     ports?: Partial<Omit<ToolPorts, 'filesDir'>>
     memoryJudge?: MemoryJudge
     env?: NodeJS.ProcessEnv
+    siteDir?: string
   } = {}
 ) {
   const dataDir = options.dataDir ?? tmpDir('aira-app-')
@@ -86,6 +87,7 @@ export async function startApp(
   const app = await createApp({
     config,
     env: options.env ?? {},
+    ...(options.siteDir ? { siteDir: options.siteDir } : {}),
     clients: { ...(main ? { main } : {}), fallback: options.fallback },
     ports: options.ports,
     memoryJudge: options.memoryJudge,

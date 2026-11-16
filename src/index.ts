@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createApp } from './app.js'
 import { loadConfig, requireDeployable } from './config/loader.js'
@@ -14,7 +16,13 @@ export async function main(): Promise<void> {
   try {
     const config = loadConfig(process.env['AIRA_CONFIG'] ?? 'config.yml')
     requireDeployable(config)
-    const app = await createApp({ config, env: process.env, version: VERSION })
+    const siteDir = resolve('site/dist')
+    const app = await createApp({
+      config,
+      env: process.env,
+      version: VERSION,
+      ...(existsSync(siteDir) ? { siteDir } : {})
+    })
     const address = await app.listen(PORT, '0.0.0.0')
     boot.info('core.ready', { version: VERSION, port: address.port })
     const siteAddress = await app.listenSite(config.site.port, '0.0.0.0')
