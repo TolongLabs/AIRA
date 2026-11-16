@@ -83,7 +83,7 @@ describe('the whole service', () => {
     ])
     const { app, gateway, chatId } = await start(model)
     const delivery = await gateway.send(msg('m-1', 'please stop the proactive messages'))
-    expect(delivery.content).toBe('Okay, I will stay quiet until you unmute me.\n\n🛠️ ᶜʰᵃⁿᵍᵉᵈ ᵐᵘᵗᵉ')
+    expect(delivery.content).toBe('Okay, I will stay quiet until you unmute me.\n\n_🛠️ changed mute_')
 
     const read = <T>(sql: string, ...args: unknown[]) => app.storage.read((db) => db.prepare(sql).get(...args) as T)
     const receipt = read<{ receipt_id: string; kind: string; target: string }>(
@@ -180,7 +180,7 @@ describe('the whole service', () => {
     ])
     const { app, gateway, dataDir } = await start(model)
     const delivery = await gateway.send(msg('m-1', '/report weekly notes'))
-    expect(delivery.bubbles).toEqual(['Here is the report.\n\n🛠️ ʷʳᵒᵗᵉ ᵃ ʳᵉᵖᵒʳᵗ'])
+    expect(delivery.bubbles).toEqual(['Here is the report.\n\n_🛠️ wrote a report_'])
     expect(delivery.media).toHaveLength(1)
     expect(delivery.media[0]).toMatch(/^\/host\/aira-data\/files\/[0-9a-f]{2}\/[0-9a-f]{64}\.md$/)
     // The same file exists on the data volume, where the gateway reads it through the host path.
