@@ -156,8 +156,22 @@ The existing memory is migrated, never wiped (PRD FR-31).
 
 - **Two stages.** A reader per old store writes a legacy export: `.ndjson` files, one remembered thing per line,
   with `kind` (`fact`, `note` or `lingo`), the WhatsApp ids `chat` and `subject`, `key`, `text` and `updatedAt`.
-  The import works on that export alone. The readers for the three old stores are written against the live
-  stores, which only the production host holds.
+  The import works on that export alone. `bun run export:memory --from <copy of the old brain folder> --out <private
+folder>` runs the readers on a copy, never on the live folder, and prints counts only.
+- **What the readers read.** Measured on the production host's layout, 16 Nov 2026. A chat's folder is
+  `<dm|group>/whatsapp/<chat>`, where `<chat>` is the WhatsApp id with `@` written as `.`:
+
+  | Old Store                                 | Becomes                                                                                                                                                                                        |
+  | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `memories.jsonl`, the per-chat fact files | A `fact` per line. The subject is `about_id`, else the chat itself in a DM, else none. The old facts have no slot, so each is kept as a note of its person. A fact past its `until` is skipped |
+  | `lingo.json`, the per-chat state files    | A `lingo` per confirmed word: `key` is the word, `text` its meaning. An unconfirmed word is skipped                                                                                            |
+  | `brain.db`, the knowledge database        | Nothing. It is an index rebuilt from the files: its 125 memory rows are the 125 fact lines                                                                                                     |
+
+  Not read: the retired-fact and episode files, saved posts and transcripts (`sources/`, `transcripts/`), which
+  are not memory about a person, and the shared library, which belongs to the lessons feature.
+
+- **The chats come first.** A fact's chat must be in the new database, or it is `unassigned`. The settings and
+  binding migration, which creates the chats, runs before the memory import.
 - **Never guessed.** A line with no chat, or a chat the new database does not hold, is `unassigned` and is never
   imported. A text over the value limit is rejected, not cut. A line with an unknown field is rejected.
 - **Merged.** The newest version of a slot stays active and the older ones are kept as `superseded`. The same text
