@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 5
     steps:
       # A PR opened with GITHUB_TOKEN never triggers CI; the fallback keeps forks without the secret from failing.
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           config-file: release-please-config.json
