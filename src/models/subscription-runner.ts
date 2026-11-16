@@ -23,6 +23,8 @@ interface RunnerResultLine {
   type: 'result'
   subtype?: string
   is_error?: boolean
+  /** The HTTP status of a failed model call, when the program reports one. */
+  api_error_status?: unknown
   result?: unknown
   total_cost_usd?: unknown
   usage?: {
@@ -62,8 +64,19 @@ export function renderSystem(system: PromptBlock[], toolNames: string[]): string
     .join('\n')
 }
 
+/** A failed run's kind: by the HTTP status first, then the program's own error flag, then the text. */
+function classifyFailure(result: RunnerResultLine, assistantError: string | undefined): ModelFailureKind {
+  const status = typeof result.api_error_status === 'number' ? result.api_error_status : undefined
+  if (status === 429 || status === 529) return 'rate_limit'
+  if (status === 401 || status === 403) return 'auth'
+  if (assistantError === 'rate_limit') return 'rate_limit'
+  if (assistantError === 'authentication_failed') return 'auth'
+  return classifyErrorText(typeof result.result === 'string' ? result.result : '')
+}
+
 function classifyErrorText(text: string): ModelFailureKind {
-  if (/rate limit|usage limit|limit reached|overloaded/i.test(text)) return 'rate_limit'
+  // "You've hit your session limit" is the real program's text for a spent subscription (measured on the host).
+  if (/rate limit|usage limit|session limit|limit reached|overloaded/i.test(text)) return 'rate_limit'
   if (/log ?in|auth|credential|expired/i.test(text)) return 'auth'
   return 'malformed'
 }
@@ -158,6 +171,7 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
         } else {
           let lastResult: RunnerResultLine | undefined
           let runnerError: string | undefined
+          let assistantError: string | undefined
           for (const line of rawText.split('\n')) {
             const trimmed = line.trim()
             if (trimmed === '') continue
@@ -177,16 +191,19 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
               initModel = parsed['model']
             } else if (parsed['type'] === 'result') {
               lastResult = parsed as unknown as RunnerResultLine
+            } else if (parsed['type'] === 'assistant' && typeof parsed['error'] === 'string') {
+              assistantError = parsed['error']
             }
           }
 
-          if (runnerError !== undefined) {
+          // A failed result says why the run failed. The program then exits with an error, so the runner's exit line
+          // is only the cause when no failed result came.
+          if (lastResult && (lastResult.is_error === true || lastResult.subtype !== 'success')) {
+            failure = new ModelError(classifyFailure(lastResult, assistantError), 'subscription run failed')
+          } else if (runnerError !== undefined) {
             failure = new ModelError('transient', `subscription runner error: ${runnerError}`)
           } else if (!lastResult) {
             failure = new ModelError('malformed', 'subscription runner returned no result')
-          } else if (lastResult.is_error === true || lastResult.subtype !== 'success') {
-            const resultText = typeof lastResult.result === 'string' ? lastResult.result : ''
-            failure = new ModelError(classifyErrorText(resultText), 'subscription run failed')
           } else if (typeof lastResult.result !== 'string' || lastResult.result === '') {
             failure = new ModelError('malformed', 'subscription runner returned an empty result')
           } else {

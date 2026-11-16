@@ -520,6 +520,30 @@ describe('the subscription transport', () => {
   })
 
   describe('failures and redaction', () => {
+    it('reads a spent subscription as a rate limit, as the real program reports it', async () => {
+      const { server, url } = await startToolServer()
+      const breaker = createBreaker({ breakerMs: 60_000 })
+      const runner = createSubscriptionRunner({
+        subscription: { runnerUrl, model: 'sub-m', toolServerUrl: url },
+        runnerToken: RUNNER_TOKEN,
+        toolServer: server,
+        breaker,
+        fallback: makeFallback('from-fallback'),
+        logger: createLogger({ level: 'error', module: 'sub-test' })
+      })
+      const result = await runner.run({
+        system: [{ name: 'core', text: 'sys' }],
+        messages: [{ role: 'user', content: 'FAKE_SESSION_LIMIT' }],
+        tools: [],
+        context: makeContext('turn-sl-1'),
+        signal: new AbortController().signal
+      })
+      expect(result.role).toBe('fallback')
+      expect(result.text).toBe('from-fallback')
+      expect(result.calls[0]?.failureKind).toBe('rate_limit')
+      expect(breaker.isOpen('main')).toBe(true)
+    })
+
     it('opens the breaker on FAKE_RATE_LIMIT, uses fallback, and skips the service on the next turn', async () => {
       const { server, url } = await startToolServer()
       const breaker = createBreaker({ breakerMs: 60_000 })
