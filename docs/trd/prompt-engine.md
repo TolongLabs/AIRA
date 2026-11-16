@@ -106,8 +106,8 @@ record.
 6. Check for leaked prompt text against the fixed blocks. A hit replaces the reply with the pack's fallback line.
 7. Render for WhatsApp.
 8. Split into bubbles.
-9. Capitalise the first letter of each bubble. The step skips a bubble that starts with code, a link, a command or
-   a mention, and a first word that already holds a capital, such as `iPhone`. Leading markup, quote marks and emoji
+9. Capitalise the first letter of each bubble and each paragraph. The step skips a bubble that starts with code, a link, a command or
+   a mention or a list, and a first word that already holds a capital, such as `iPhone`. Leading markup, quote marks and emoji
    are passed over. This holds for every pack, whatever its speech rules say.
 10. Add the tool footer, below.
 
