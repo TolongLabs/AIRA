@@ -107,19 +107,41 @@ Each request is one of four kinds, decided in this order (measured on the stagin
 
 ### Scheduled Turns
 
-Reminders and proactive messages are jobs the core gives to the gateway's schedule. When a job is due, the gateway
-calls the same endpoint. Measured with a one-time job, 16 Nov 2026:
+Reminders are jobs the gateway's schedule fires. The core never calls the gateway to make one: it writes the jobs
+it wants to a file, and a host reconciler makes the gateway's schedule match.
+
+- **The core writes the wanted jobs.** At start-up and after every reminder change, the core writes its active
+  reminders to `gateway/schedule.json` on the data volume, atomically: per reminder its id, the chat's WhatsApp id and
+  its next due time. The reminder's text is never in the file or in a gateway job.
+- **The reconciler makes them so.** `deploy/gateway/schedule.py` runs every minute on the host, in the gateway's own
+  environment, and changes jobs only through the gateway's `cron.jobs` functions and their lock. Each wanted reminder
+  is one one-time job named `aira:<reminder>:<due>`, whose text is the tag
+  `[AIRA-SCHEDULED v1 kind=reminder id=<reminder> due=<due>]`, with the due time in UTC as `YYYYMMDDTHHMMSSZ`. It creates the missing ones and removes `aira:` jobs no longer
+  wanted. A missing or unreadable file changes nothing. A due time already past is scheduled one minute ahead.
+- **A set or cancel takes effect within a minute.** A job that still fires after a cancel finds its reminder
+  cancelled and sends nothing.
+
+When a job is due, the gateway calls the same endpoint. Measured with a one-time job, 16 Nov 2026:
 
 - The request has `tools`, is not streamed, and carries **no scope marker**: the scope stamp runs only on incoming
   WhatsApp messages.
 - The newest user content is the gateway's `[IMPORTANT: You are running as a scheduled cron job. ...]` block, a blank
   line, then the job's text unchanged.
-- The job's text starts with the core's tag, `[AIRA-SCHEDULED v1 kind=<reminder|proactive|routine> ... id=<job>]`.
-  The core finds the tag after the gateway's block. Identity comes from the core's own row for that job id, never
-  from the request: a tag that names no known job is an unmarked request.
 - The gateway delivers the reply to the job's chat. `NO_REPLY` or `[SILENT]` sends nothing.
 - The gateway wraps a delivered reply in a "Cronjob Response" header and footer unless `cron.wrap_response` is
   `false`. It is `false` on the live gateway. Cutover checks it.
+
+The core then does this:
+
+- **Only an unmarked request can be scheduled.** The tag is honoured only in a request with tools and no scope
+  marker, which only the gateway's schedule sends. A member who types a tag sends an ordinary message.
+- **Identity comes from the reminder row.** The tag names a reminder and the firing's due time, nothing else. The
+  chat, the owner and the target come from the core's row. A tag whose reminder is not `active`, or whose due time is
+  not the row's, is an unmarked request: a job left over from a cancel or an earlier time sends nothing.
+- **A firing is used up once.** The transaction that stores the firing as an inbound message, keyed by reminder and
+  due time, also marks a one-time reminder `fired` or moves a repeating one to its next due time. A repeated request
+  is answered from that row. A turn that fails is not tried again: a late reminder would come out of order.
+- The scheduled turn's user message is written by code from the row: the tag, then the reminder's text.
 - The core applies mute and quiet rules to a scheduled turn like any other turn. See [Reliability](reliability.md).
 
 ### When the Core Is Slow or Down

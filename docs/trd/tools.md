@@ -161,10 +161,9 @@ are a later change to the pack contract.
 
 - `/read` routes by the address: a social post goes to `read_post`, anything else to `read_page`.
 - `make_report` writes the document. Sending it to the chat is a separate delivery step with its own receipt.
-- The existing gateway schedule stores and fires reminders. `reminder_set` and `reminder_cancel` are the only code
-  that talks to it, and each writes the `reminder` row in the same step. The row commits first, because a
-  transaction cannot span a call to the gateway. The call to the schedule follows. If it fails, the row stays and
-  the start-up reconciliation in [Persistence](storage.md#everything-in-flight-is-a-row) creates the missing job.
+- The gateway's schedule fires reminders. `reminder_set` and `reminder_cancel` change the `reminder` row in one
+  transaction and then rewrite the core's wanted-jobs file. A host reconciler makes the gateway's jobs match it within
+  a minute. See [Scheduled Turns](system.md#scheduled-turns).
 - Media watching is not a tool. It runs at intake. See [Models](models.md#media-watching).
 
 ### Lessons And Library
