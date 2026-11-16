@@ -33,12 +33,27 @@ export function createMemoryPort(options: MemoryPortOptions): MemoryPort {
       if (!options.judge) {
         return { ok: false, reason: 'judge_unavailable' }
       }
+      // The note must be what the member said in this turn, so the excerpt is the member's own messages.
+      const own = options.storage.read(
+        (db) =>
+          db
+            .prepare(
+              `SELECT content FROM session_message
+               WHERE chat_id = ? AND turn_id = ? AND role = 'user' AND sender_id = ? ORDER BY id`
+            )
+            .pluck()
+            .all(input.chatId, input.turnId, input.subjectId) as string[]
+      )
+      if (own.length === 0) {
+        return { ok: false, reason: 'not_supported' }
+      }
+      const episode = own.join('\n')
 
       const combined = AbortSignal.any([signal, AbortSignal.timeout(options.timeoutMs)])
       let probability: number
       try {
         probability = await options.judge.verify(
-          { operation: 'add a note the member asked to keep', quote: text, episode: text },
+          { operation: `keep this note about the member who wrote it: "${text}"`, quote: episode, episode },
           combined
         )
       } catch {

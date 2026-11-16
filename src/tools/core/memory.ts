@@ -68,7 +68,7 @@ export function noteTool(ports: ToolPorts): ToolDefinition<z.infer<typeof noteSc
         return { ok: false, kind: 'unavailable', reason: 'memory is not set up' }
       }
       const checked = await memory.checkNote(
-        { chatId: context.chat.chatId, subjectId: context.senderId, text: args.text },
+        { chatId: context.chat.chatId, subjectId: context.senderId, text: args.text, turnId: context.turnId },
         context.signal
       )
       if (!checked.ok) {

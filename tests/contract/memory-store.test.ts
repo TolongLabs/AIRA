@@ -591,19 +591,34 @@ describe('memory store', () => {
     const ac = new AbortController()
 
     const noJudge = createMemoryPort({ storage, verifyThreshold: 0.5, timeoutMs: 50 })
-    expect(await noJudge.checkNote({ chatId: chat.chatId, subjectId: 's1', text: '   ' }, ac.signal)).toEqual({
+    expect(
+      await noJudge.checkNote({ chatId: chat.chatId, subjectId: 's1', turnId: 't_note', text: '   ' }, ac.signal)
+    ).toEqual({
       ok: false,
       reason: 'invalid_text'
     })
     expect(
       await noJudge.checkNote(
-        { chatId: chat.chatId, subjectId: 's1', text: 'x'.repeat(MAX_VALUE_CHARS + 1) },
+        { chatId: chat.chatId, subjectId: 's1', turnId: 't_note', text: 'x'.repeat(MAX_VALUE_CHARS + 1) },
         ac.signal
       )
     ).toEqual({ ok: false, reason: 'invalid_text' })
-    expect(await noJudge.checkNote({ chatId: chat.chatId, subjectId: 's1', text: 'likes tea' }, ac.signal)).toEqual({
+    expect(
+      await noJudge.checkNote({ chatId: chat.chatId, subjectId: 's1', turnId: 't_note', text: 'likes tea' }, ac.signal)
+    ).toEqual({
       ok: false,
       reason: 'judge_unavailable'
+    })
+
+    storage.tx((db) => {
+      db.prepare(
+        `INSERT INTO turn (turn_id, chat_id, sender_id, kind, state, stage, received_at)
+         VALUES ('t_note', ?, 's1', 'reply', 'running', 'model', '2026-11-17T00:00:00.000Z')`
+      ).run(chat.chatId)
+      db.prepare(
+        `INSERT INTO session_message (chat_id, turn_id, role, sender_id, content, created_at)
+         VALUES (?, 't_note', 'user', 's1', '/remember I like green tea', '2026-11-17T00:00:00.000Z')`
+      ).run(chat.chatId)
     })
 
     const rejectingJudge: MemoryJudge = {
@@ -613,7 +628,9 @@ describe('memory store', () => {
       }
     }
     const portErr = createMemoryPort({ storage, judge: rejectingJudge, verifyThreshold: 0.5, timeoutMs: 50 })
-    expect(await portErr.checkNote({ chatId: chat.chatId, subjectId: 's1', text: 'likes tea' }, ac.signal)).toEqual({
+    expect(
+      await portErr.checkNote({ chatId: chat.chatId, subjectId: 's1', turnId: 't_note', text: 'likes tea' }, ac.signal)
+    ).toEqual({
       ok: false,
       reason: 'judge_unavailable'
     })
@@ -626,23 +643,48 @@ describe('memory store', () => {
         })
     }
     const portTimeout = createMemoryPort({ storage, judge: hangingJudge, verifyThreshold: 0.5, timeoutMs: 20 })
-    expect(await portTimeout.checkNote({ chatId: chat.chatId, subjectId: 's1', text: 'likes tea' }, ac.signal)).toEqual(
-      {
-        ok: false,
-        reason: 'judge_unavailable'
-      }
-    )
+    expect(
+      await portTimeout.checkNote(
+        { chatId: chat.chatId, subjectId: 's1', turnId: 't_note', text: 'likes tea' },
+        ac.signal
+      )
+    ).toEqual({
+      ok: false,
+      reason: 'judge_unavailable'
+    })
 
+    // The excerpt the judge reads is the member's own messages in the turn. With none, no note is stored.
+    let seen: { quote: string; episode: string; operation: string } | undefined
     let score = 0.4
-    const judge: MemoryJudge = { admit: async () => 1, verify: async () => score }
+    const judge: MemoryJudge = {
+      admit: async () => 1,
+      verify: async (input) => {
+        seen = input
+        return score
+      }
+    }
+    const portNone = createMemoryPort({ storage, judge, verifyThreshold: 0.5, timeoutMs: 50 })
+    expect(
+      await portNone.checkNote({ chatId: chat.chatId, subjectId: 's1', turnId: 't_none', text: 'likes tea' }, ac.signal)
+    ).toEqual({
+      ok: false,
+      reason: 'not_supported'
+    })
+    expect(seen).toBeUndefined()
     const port = createMemoryPort({ storage, judge, verifyThreshold: 0.5, timeoutMs: 50 })
-    expect(await port.checkNote({ chatId: chat.chatId, subjectId: 's1', text: 'likes tea' }, ac.signal)).toEqual({
+    expect(
+      await port.checkNote({ chatId: chat.chatId, subjectId: 's1', turnId: 't_note', text: 'likes tea' }, ac.signal)
+    ).toEqual({
       ok: false,
       reason: 'not_supported'
     })
     score = 0.8
-    expect(await port.checkNote({ chatId: chat.chatId, subjectId: 's1', text: 'likes tea' }, ac.signal)).toEqual({
+    expect(
+      await port.checkNote({ chatId: chat.chatId, subjectId: 's1', turnId: 't_note', text: 'likes tea' }, ac.signal)
+    ).toEqual({
       ok: true
     })
+    expect(seen?.episode).toBe('/remember I like green tea')
+    expect(seen?.operation).toContain('likes tea')
   })
 })
