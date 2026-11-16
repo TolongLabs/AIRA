@@ -84,7 +84,8 @@ Steps 4, 7 and 9 are code. Steps 5, 6 and 8 are model judgements with code decid
 ## Explicit Memory
 
 The `note` tool writes one fact through steps 7 to 10, skipping admission. The judge verifies it before the tool
-commits. Its key is `note.` plus a random id. The message that asked for the note is marked so that extraction
+commits, against the member's own messages in this turn: the excerpt is those messages, and the operation names the
+note's text. A turn with no message from that member stores no note. Its key is `note.` plus a random id. The message that asked for the note is marked so that extraction
 does not store it a second time.
 
 The `forget` tool marks one fact `forgotten`. It changes one fact per call, and only a call that names the fact by
