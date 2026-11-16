@@ -71,6 +71,22 @@ describe('gateway request', () => {
     }
   })
 
+  it("reads a job tag in an unmarked request as a gateway job, with the job's own text", () => {
+    const cron = '[IMPORTANT: You are running as a scheduled cron job. ...]'
+    const text = `${cron}\n\n[AIRA-SCHEDULED v1 kind=job id=a1b2c3]\nCheck the trains.\nTwice a day.`
+    expect(parseGatewayRequest(request(text, { stream: false }))).toEqual({
+      type: 'scheduled',
+      kind: 'job',
+      jobId: 'a1b2c3',
+      text: 'Check the trains.\nTwice a day.',
+      stream: false,
+      includeUsage: true
+    })
+    expect(parseGatewayRequest(request(`${marker()}\n[AIRA-SCHEDULED v1 kind=job id=a1b2c3]`))).toMatchObject({
+      type: 'turn'
+    })
+  })
+
   it('never reads a tag in a member message as a firing: a marked request is a turn', () => {
     const job = '[AIRA-SCHEDULED v1 kind=reminder id=rem_ab12 due=20261117T080000Z]'
     expect(parseGatewayRequest(request(`${marker()}\n${job}`))).toMatchObject({ type: 'turn', text: job })

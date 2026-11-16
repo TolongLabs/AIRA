@@ -56,7 +56,7 @@ describe('config.yml', () => {
   it('refuses to deploy while gateway.hostDataDir is empty', () => {
     const config = parseConfig(source)
     expect(() => requireDeployable(config)).toThrow(/gateway\.hostDataDir/)
-    const placed = { ...config, gateway: { hostDataDir: '/srv/aira-data' } }
+    const placed = { ...config, gateway: { ...config.gateway, hostDataDir: '/srv/aira-data' } }
     // config.yml carries the launch models, so a placed install is deployable.
     expect(() => requireDeployable(placed)).not.toThrow()
     const unset = { ...config.llm.main, provider: '' }

@@ -666,3 +666,54 @@ describe('the gateway endpoint', () => {
     expect(one(core.storage, "SELECT count(*) FROM session_message WHERE role = 'user'")).toBe(2)
   })
 })
+
+describe("the owner's gateway jobs", () => {
+  const JOB = 'a1b2c3'
+  const tagged = (text: string, id = JOB) => `[AIRA-SCHEDULED v1 kind=job id=${id}]\n${text}`
+  const withJob = () =>
+    testConfig((config) => {
+      config.gateway.jobs = [{ id: JOB, chat: CHAT }]
+    })
+
+  it('runs a listed job as a routine turn in its chat, once per firing', async () => {
+    const runner = scriptedRunner((input) => `done: ${userText(input)}`)
+    const core = await startTestCore({ runner, config: withJob() })
+    core.activate(CHAT)
+    const first = await core.gateway.fire(tagged('Check the trains for the family.'))
+    expect(first.content).toContain('Check the trains for the family.')
+    expect(runner.inputs).toHaveLength(1)
+    // The gateway repeats a firing it did not hear back from: the stored reply answers it, no second turn.
+    const repeat = await core.gateway.fire(tagged('Check the trains for the family.'))
+    expect(repeat.content).toBe(first.content)
+    expect(runner.inputs).toHaveLength(1)
+    expect(rows(core.storage, 'SELECT kind, outcome FROM turn')).toEqual([{ kind: 'scheduled', outcome: 'delivered' }])
+    // The instruction is the schedule's, not a member's.
+    expect(rows(core.storage, "SELECT sender_id FROM session_message WHERE role = 'user'")).toEqual([
+      { sender_id: 'routine' }
+    ])
+  })
+
+  it('sends nothing for a job that is not listed, or whose chat is off', async () => {
+    const runner = scriptedRunner(() => 'must not run')
+    const core = await startTestCore({ runner, config: withJob() })
+    expect((await core.gateway.fire(tagged('Check the trains.'))).content).toBe('NO_REPLY')
+    core.activate(CHAT)
+    expect((await core.gateway.fire(tagged('Check the trains.', 'zz9'))).content).toBe('NO_REPLY')
+    expect(runner.inputs).toHaveLength(0)
+  })
+
+  it('holds a job back in a muted chat', async () => {
+    const runner = scriptedRunner(() => 'must not run')
+    const core = await startTestCore({ runner, config: withJob() })
+    const chatId = core.activate(CHAT)
+    setSetting(core.storage, {
+      level: 'chat',
+      scope: chatId,
+      key: 'muted',
+      value: { by: 's_someone', at: '2026-01-01T00:00:00.000Z' },
+      actor: 'test'
+    })
+    expect((await core.gateway.fire(tagged('Check the trains.'))).content).toBe('NO_REPLY')
+    expect(runner.inputs).toHaveLength(0)
+  })
+})
