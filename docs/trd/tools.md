@@ -133,8 +133,13 @@ tool and says the rest in their own words.
 
 A character pack has no template for a command answer yet, so code writes the answer of a direct command from the
 tool's result in plain words: a list for `/help`, `/list` and `/reminders`, one fixed sentence for `/mute` and
-`/unmute`. The answer still passes the cleaning chain and the bubble splitter. Pack templates for these answers
-are a later change to the pack contract.
+`/unmute`. The answer still passes the cleaning chain and the bubble splitter.
+
+- `/help` lists each command with its one-line description. `/list` names the tools and features switched on, in
+  words, not tool ids. `/reminders` lists each reminder's text and due time, shown in `format.timeZone` (default
+  `Asia/Kuala_Lumpur`) as a weekday, date and time, with the repeat when there is one. No internal id is shown.
+- An answer never shows a raw field name, an internal id or a UTC timestamp. Pack templates for these answers
+  are a later change to the pack contract.
 
 ## Tool Set
 

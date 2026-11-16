@@ -142,13 +142,14 @@ The core decides the bubbles. The gateway only delivers them.
 
 ## Configuration
 
-| Key                        | Default | Effect                                     |
-| -------------------------- | ------- | ------------------------------------------ |
-| `prompt.maxSystemTokens`   | 8000    | Ceiling enforced by the size test          |
-| `judge.mood`               | `on`    | Allows the judge to override the rule mood |
-| `judge.moodMinProbability` | 0.3     | Threshold for the override                 |
-| `format.bubbleMaxChars`    | 700     | Split point for bubbles                    |
-| `format.maxBubbles`        | 3       | Most bubbles in one reply                  |
-| `format.leakCheck`         | `on`    | Step 6 of the cleaning chain               |
+| Key                        | Default             | Effect                                                                                       |
+| -------------------------- | ------------------- | -------------------------------------------------------------------------------------------- |
+| `prompt.maxSystemTokens`   | 8000                | Ceiling enforced by the size test                                                            |
+| `judge.mood`               | `on`                | Allows the judge to override the rule mood                                                   |
+| `judge.moodMinProbability` | 0.3                 | Threshold for the override                                                                   |
+| `format.bubbleMaxChars`    | 700                 | Split point for bubbles                                                                      |
+| `format.maxBubbles`        | 3                   | Most bubbles in one reply                                                                    |
+| `format.leakCheck`         | `on`                | Step 6 of the cleaning chain                                                                 |
+| `format.timeZone`          | `Asia/Kuala_Lumpur` | The time zone code uses when it writes a time in a reply, such as a due time in `/reminders` |
 
 Per-chat switches for expressions and length are settings, not configuration. See [Data](data.md).
