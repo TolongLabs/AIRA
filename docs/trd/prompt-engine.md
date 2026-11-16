@@ -16,12 +16,12 @@ Packs are read from two places. A pack on the data volume wins over one in the r
 
 Real character packs are private. They never enter the repository, the release image, test fixtures or recordings.
 
-| File        | Holds                                                                            | Required |
-| ----------- | -------------------------------------------------------------------------------- | -------- |
-| `card.yml`  | Id, display name, languages, core identity, speech rules, default reply length   | Yes      |
-| `moods.yml` | The mood list: key, detection rules, tone guidance, openers, endings, faces      | Yes      |
-| `lines.yml` | Fixed lines for errors, limits, refusals, busy, unreadable media and unavailable | Yes      |
-| `stickers/` | Expression images per mood, already converted to WhatsApp sticker format         | No       |
+| File        | Holds                                                                                       | Required |
+| ----------- | ------------------------------------------------------------------------------------------- | -------- |
+| `card.yml`  | Id, display name, languages, core identity, speech rules, default reply length, tool footer | Yes      |
+| `moods.yml` | The mood list: key, detection rules, tone guidance, openers, endings, faces                 | Yes      |
+| `lines.yml` | Fixed lines for errors, limits, refusals, busy, unreadable media and unavailable            | Yes      |
+| `stickers/` | Expression images per mood, already converted to WhatsApp sticker format                    | No       |
 
 - A pack that fails validation is not loaded. A chat bound to it stops with an operator alert. It never falls back to
   another character (PRD FR-9).
@@ -77,9 +77,19 @@ Code draws the shape after the mood is known. The model receives it as block 6.
 | Ending  | The mood's ending set                                               |
 | Faces   | The mood's face set, with a per-reply limit                         |
 
-**Length bypass.** The default length is lifted only when code detects one of: an explicit request for detail or a
-format, a turn that used a research tool, or a command whose output is a list. The bypass and its reason are written
-to the turn record.
+**Lengths.** The limits count characters, not words: `short` 280, `default` 600, `long` 1,400. The pack's
+`defaultReplyLength` picks one.
+
+**Length bypass.** Code lifts the default length only in these cases. The bypass and its reason are written to the
+turn record.
+
+| Case                                                                                  | Detected                             | Limit               |
+| ------------------------------------------------------------------------------------- | ------------------------------------ | ------------------- |
+| An explicit request for detail or a form: table, steps, list, code, detail            | In the newest message, at build      | None                |
+| A research answer: the turn ran `web_search`, `read_page` or `read_post` successfully | From the turn's tool calls, at clean | `long`, 1,400 chars |
+| A command whose output is a list                                                      | From the command, at clean           | None                |
+
+With no limit, the bubble rules below still cap the reply at `format.maxBubbles` bubbles.
 
 Randomness uses a seeded generator. The seed is stored in the turn record so a replay draws the same shape.
 
@@ -95,9 +105,30 @@ record.
 5. Repair list formatting.
 6. Check for leaked prompt text against the fixed blocks. A hit replaces the reply with the pack's fallback line.
 7. Render for WhatsApp.
+8. Split into bubbles.
+9. Capitalise the first letter of each bubble. The step skips a bubble that starts with code, a link, a command or
+   a mention, and a first word that already holds a capital, such as `iPhone`. Leading markup, quote marks and emoji
+   are passed over. This holds for every pack, whatever its speech rules say.
+10. Add the tool footer, below.
 
 The chain never rewrites meaning. It removes, trims and re-marks. A reply it cannot repair is replaced by a pack
 line, and the failure is recorded.
+
+## Tool Footer
+
+A reply from a turn that ran a tool ends with one footer line saying what was done, in the way rokabot does on
+Discord. WhatsApp has no subscript, so the footer is an italic line.
+
+- It lists each tool that ran with outcome `ok`, once, in call order, as `_<icon> <label> · <label> +N_`. At most 2
+  labels show; `+N` counts the rest. A turn with no such call has no footer.
+- It sits in the last bubble, after a blank line, and counts toward neither the length limit nor the bubble cap.
+- Labels come from the card's `toolFooter.labels`, keyed by tool name. A tool the card does not name uses its plain
+  default label from code, such as `searched the web`. Plain labels hold no persona text. The icon is
+  `toolFooter.icon`, `🛠️` by default.
+- A direct command answer, which runs no model, has no footer.
+- The stored reply keeps the footer, so a repeated request returns the same message. When the window is replayed to
+  the model, code removes the footer line, bubble breaks and `MEDIA:` lines from assistant rows, so the model never
+  sees them and never imitates them.
 
 ## WhatsApp Renderer
 
