@@ -16,12 +16,12 @@ Packs are read from two places. A pack on the data volume wins over one in the r
 
 Real character packs are private. They never enter the repository, the release image, test fixtures or recordings.
 
-| File        | Holds                                                                                       | Required |
-| ----------- | ------------------------------------------------------------------------------------------- | -------- |
-| `card.yml`  | Id, display name, languages, core identity, speech rules, default reply length, tool footer | Yes      |
-| `moods.yml` | The mood list: key, detection rules, tone guidance, openers, endings, faces                 | Yes      |
-| `lines.yml` | Fixed lines for errors, limits, refusals, busy, unreadable media and unavailable            | Yes      |
-| `stickers/` | Expression images per mood, already converted to WhatsApp sticker format                    | No       |
+| File        | Holds                                                                                                          | Required |
+| ----------- | -------------------------------------------------------------------------------------------------------------- | -------- |
+| `card.yml`  | Id, display name, languages, core identity, speech rules, default reply length, tool footer                    | Yes      |
+| `moods.yml` | The mood list: key, detection rules, tone guidance, openers, endings, faces, beats; face groups and beat lines | Yes      |
+| `lines.yml` | Fixed lines for errors, limits, refusals, busy, unreadable media and unavailable                               | Yes      |
+| `stickers/` | Expression images per mood, already converted to WhatsApp sticker format                                       | No       |
 
 - A pack that fails validation is not loaded. A chat bound to it stops with an operator alert. It never falls back to
   another character (PRD FR-9).
@@ -70,12 +70,13 @@ Mood state is keyed by chat and character. AIRA's own replies are excluded from 
 
 Code draws the shape after the mood is known. The model receives it as block 6.
 
-| Element | Drawn From                                                                      |
-| ------- | ------------------------------------------------------------------------------- |
-| Length  | The pack's default, unless a bypass applies                                     |
-| Opener  | The mood's opener set, for about 1 reply in 3, never the one this chat saw last |
-| Ending  | The mood's ending set, for about 1 reply in 4, never the one this chat saw last |
-| Faces   | The mood's face set, with a per-reply limit                                     |
+| Element | Drawn From                                                                       |
+| ------- | -------------------------------------------------------------------------------- |
+| Length  | The pack's default, unless a bypass applies                                      |
+| Opener  | The mood's opener set, for about 1 reply in 3, never the one this chat saw last  |
+| Ending  | The mood's ending set, for about 1 reply in 4, never the one this chat saw last  |
+| Faces   | 4 distinct faces from the mood's faces and face groups, offered fresh each reply |
+| Beats   | Each beat the mood lists, drawn at its odds; a drawn beat adds its line          |
 
 **Lengths.** The limits count characters, not words: `short` 280, `default` 600, `long` 1,400. The pack's
 `defaultReplyLength` picks one.
@@ -93,6 +94,17 @@ With no limit, the bubble rules below still cap the reply at `format.maxBubbles`
 
 Randomness uses a seeded generator. The seed is stored in the turn record so a replay draws the same shape.
 
+**Faces.** A pack may group its kaomoji by feeling in `faceGroups`, and a mood names the groups it draws from in
+`faceGroups` beside its own `faces`. Code offers 4 distinct faces from that pool each reply, so the faces keep
+changing; the model may use one, or two when flustered or excited, and none in a sincere moment. Every face is
+wrapped in round brackets, holds at most 20 characters inside them, and has no two ASCII letters or digits in a
+row, so code can tell a face from a bracketed word. The validator checks each face.
+
+**Beats.** A pack lists `beats`, each a name and one line of guidance, such as a roleplay action in italics or a
+dramatic overreaction. A mood gives each beat it allows odds between 0 and 1. Code rolls each beat once per reply
+with the turn's seed, and a drawn beat adds its line to block 6. Leaving beats to the prompt alone made a model
+use them rarely (rokabot measured 8 to 11 per cent of replies on Haiku).
+
 ## Cleaning Chain
 
 Every reply passes through the same steps, in this order. Each step that changes the text is logged in the turn
@@ -103,13 +115,15 @@ record.
 3. Apply an explicit format request, if code detected one. It wins over the shape.
 4. Enforce the reply shape's length. A bypass skips this step.
 5. Repair list formatting.
-6. Check for leaked prompt text against the fixed blocks. A hit replaces the reply with the pack's fallback line.
-7. Render for WhatsApp.
-8. Split into bubbles.
-9. Capitalise the first letter of each bubble and each paragraph. The step skips a bubble that starts with code, a link, a command or
-   a mention or a list, and a first word that already holds a capital, such as `iPhone`. Leading markup, quote marks and emoji
-   are passed over. This holds for every pack, whatever its speech rules say.
-10. Add the tool footer, below.
+6. Guard faces: inside a face, `*`, `_`, `~` and `` ` `` become their full-width forms (`＊ ＿ ～ ｀`), so
+   WhatsApp and the gateway's Markdown conversion never read them as formatting. WhatsApp has no escape character.
+7. Check for leaked prompt text against the fixed blocks. A hit replaces the reply with the pack's fallback line.
+8. Render for WhatsApp.
+9. Split into bubbles.
+10. Capitalise the first letter of each bubble and each paragraph. The step skips a bubble that starts with code, a link, a command or
+    a mention or a list, and a first word that already holds a capital, such as `iPhone`. Leading markup, quote marks and emoji
+    are passed over. This holds for every pack, whatever its speech rules say.
+11. Add the tool footer, below.
 
 The chain never rewrites meaning. It removes, trims and re-marks. A reply it cannot repair is replaced by a pack
 line, and the failure is recorded.
