@@ -49,4 +49,3 @@ Tone for this message: Keep a calm, clear and helpful tone.
 Reply shape for this message:
 Keep the reply under 280 characters.
 Open in the spirit of: "Here is what I found:"
-Close in the spirit of: "Let me know if you need more detail."

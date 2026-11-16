@@ -246,16 +246,18 @@ describe('reply shape and length bypass', () => {
     }
   })
 
-  it('may repeat the opener when the mood has only one opener', () => {
+  it('never repeats the last opener, even when the mood has only one', () => {
     const singlePack = makePackWithFaces([], 'Only opener.')
-    const shape = drawShape({
-      pack: singlePack,
-      mood: 'neutral',
-      replyLength: 'default',
-      lastOpener: 'Only opener.',
-      seed: 1
-    })
-    expect(shape.opener).toBe('Only opener.')
+    for (let seed = 1; seed <= 50; seed++) {
+      const shape = drawShape({
+        pack: singlePack,
+        mood: 'neutral',
+        replyLength: 'default',
+        lastOpener: 'Only opener.',
+        seed
+      })
+      expect(shape.opener).toBeUndefined()
+    }
   })
 
   it('draws at most FACE_LIMIT distinct faces', () => {
@@ -282,14 +284,24 @@ describe('reply shape and length bypass', () => {
 
   it('shapeText includes header, length, opener, ending and faces lines', () => {
     const facePack = makePackWithFaces([':)', ':D'])
-    const shape = drawShape({ pack: facePack, mood: 'neutral', replyLength: 'short', seed: 4 })
-    const text = shapeText(shape)
-    const lines = text.split('\n')
+    const shapes = Array.from({ length: 200 }, (_, i) =>
+      drawShape({ pack: facePack, mood: 'neutral', replyLength: 'short', seed: i + 1 })
+    )
+    const both = shapes.find((shape) => shape.opener !== undefined && shape.ending !== undefined)
+    expect(both).toBeDefined()
+    const lines = shapeText(both!).split('\n')
     expect(lines[0]).toBe('Reply shape for this message:')
     expect(lines[1]).toBe(`Keep the reply under ${LENGTH_CHARS.short} characters.`)
     expect(lines.some((l) => l.startsWith('Open in the spirit of: '))).toBe(true)
     expect(lines.some((l) => l.startsWith('Close in the spirit of: '))).toBe(true)
     expect(lines.some((l) => l.startsWith('You may use at most 2 of these faces: '))).toBe(true)
+    // Openers and endings are drawn only for some replies.
+    const openers = shapes.filter((shape) => shape.opener !== undefined).length
+    const endings = shapes.filter((shape) => shape.ending !== undefined).length
+    expect(openers).toBeGreaterThan(40)
+    expect(openers).toBeLessThan(100)
+    expect(endings).toBeGreaterThan(25)
+    expect(endings).toBeLessThan(80)
   })
 
   it('detectLengthBypass detects format, research, command_list, and none', () => {
@@ -371,24 +383,24 @@ describe('prompt builder', () => {
     })
   })
 
-  it('does not repeat the opener on the second build for the same chat', async () => {
+  it('never gives a chat the same opener or ending twice in a row', async () => {
     const storage = tmpStorage()
+    let seed = 0
     const builder = createPromptBuilder({
       storage,
       config: { prompt: { maxSystemTokens: 8000 }, judge: { mood: 'off', moodMinProbability: 0.3, timeoutMs: 1000 } },
       harnessRules: 'Harness rules.',
-      newSeed: () => 1,
+      newSeed: () => ++seed,
       now: fixedNow
     })
-
     const input = makeTurnInput({})
-    const first = await builder.build(input)
-    const second = await builder.build(input)
-    const firstOpener = (first.shape as { opener?: string }).opener
-    const secondOpener = (second.shape as { opener?: string }).opener
-    expect(firstOpener).toBeDefined()
-    expect(secondOpener).toBeDefined()
-    expect(secondOpener).not.toBe(firstOpener)
+    const drawn: { opener?: string; ending?: string }[] = []
+    for (let i = 0; i < 40; i++) drawn.push((await builder.build(input)).shape as { opener?: string; ending?: string })
+    for (const key of ['opener', 'ending'] as const) {
+      const used = drawn.map((shape) => shape[key]).filter((value) => value !== undefined)
+      expect(used.length).toBeGreaterThan(0)
+      for (let i = 1; i < used.length; i++) expect(used[i]).not.toBe(used[i - 1])
+    }
   })
 
   it('labels group messages by first appearance, omits labels in dm, and joins consecutive user messages', async () => {
