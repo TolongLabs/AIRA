@@ -38,7 +38,19 @@ export const configSchema = z.strictObject({
   format: z.strictObject({
     bubbleMaxChars: count,
     maxBubbles: count,
-    leakCheck: onOff
+    leakCheck: onOff,
+    // The time zone code writes times in (docs/trd/prompt-engine.md#configuration).
+    timeZone: z
+      .string()
+      .refine((zone) => {
+        try {
+          new Intl.DateTimeFormat('en', { timeZone: zone })
+          return true
+        } catch {
+          return false
+        }
+      }, 'must be an IANA time zone')
+      .default('Asia/Kuala_Lumpur')
   }),
   tools: z.strictObject({
     maxCallsPerTurn: count,

@@ -332,7 +332,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       cleaner,
       alerter,
       tools: registry,
-      commands: createCommandRouter(registry),
+      commands: createCommandRouter(registry, { timeZone: config.format.timeZone }),
       hooks: { spendAllows: () => spendState(storage, config.llm.monthlyBudgetUsd, now).repliesAllowed },
       onScheduleChange: () => {
         try {
