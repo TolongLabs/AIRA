@@ -201,11 +201,16 @@ media folders.
 6. **Into the prompt.** The descriptions enter prompt block 4 as one labelled, untrusted block, clipped to a fixed
    budget so that media cannot push the prompt over its ceiling. The main model never receives the file.
    See [Prompt Engine](prompt-engine.md#prompt-blocks).
-7. **Failure.** A file that is refused, over a limit, of an unsupported type, unread because media is off, or whose
+7. **Links.** The first link in the turn's messages to a YouTube video or a supported social post is opened at
+   intake, at most one per turn, when `features.media` (YouTube) or `features.social` (posts) is on. A YouTube video
+   goes to the media model as its own URL, with no download: Gemini reads YouTube natively (measured: a 3-minute video
+   in 5 s, about 19,000 tokens). A post's video is fetched under the same size limits as a file. The result enters
+   block 4 like a file's description, and a failure follows rule 8. Ported from rokabot's media and social readers.
+8. **Failure.** A file that is refused, over a limit, of an unsupported type, unread because media is off, or whose
    read fails or times out, does not end the turn. Block 4 gets a short note naming the kind of file and why, and the
    pack's `unreadableMedia` line. The model tells the sender in its own voice, so the reply can also answer the
    files that were read and the text that came with them. The note never carries the path.
-8. **Record.** Every request to the media model is one `model_call` row with role `media`, with its tokens and its
+9. **Record.** Every request to the media model is one `model_call` row with role `media`, with its tokens and its
    failure kind when it failed. Every unreadable file is one `failure` row with kind `media_unreadable`, stage
    `media`, handled by `line:unreadableMedia`, and a message with the kind of file and the reason, never the path.
    The turn itself stays `delivered`. An `auth` failure of the media role also alerts the operator.
