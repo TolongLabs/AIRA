@@ -85,6 +85,7 @@ that makes a new decision.
 
 ## Deployment
 
-| Date       | Decision                                                                               | Why                                                                         |
-| ---------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| 2026-11-15 | A tagged release builds one container image. The host pulls and deploys it on a timer. | Updates cannot be forgotten, and no outside system holds a key to the host. |
+| Date       | Decision                                                                                                                                                                 | Why                                                                                                                                    |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-11-15 | A tagged release builds one container image. The host pulls and deploys it on a timer.                                                                                   | Updates cannot be forgotten, and no outside system holds a key to the host.                                                            |
+| 2026-11-16 | An install is one folder: compose file, `.env`, a host `config.yml` mounted read-only, and a bind-mounted data folder. The ports and image are compose values in `.env`. | The gateway must read the core's files at one host path, which a named volume hides. One folder backs up, moves and rolls back as one. |
