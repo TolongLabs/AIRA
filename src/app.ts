@@ -9,6 +9,7 @@ import { ConfigError } from './config/loader.js'
 import type { Config } from './config/schema.js'
 import { withAttachments } from './format/attachments.js'
 import { createReplyCleaner } from './format/clean.js'
+import { writeChatFlags } from './gateway/chat-flags.js'
 import { writeScheduleFile } from './gateway/schedule.js'
 import { createGatewayServer } from './gateway/server.js'
 import { createSystemOneClient, createSystemOneMemoryJudge, createSystemOneMoodJudge } from './judge/systemone.js'
@@ -271,6 +272,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     // written at start-up, which is the reminders' start-up reconciliation, and after every change.
     const schedule = { sync: () => void writeScheduleFile(storage, paths.root, now) }
     logger.info('schedule.written', { reminders: writeScheduleFile(storage, paths.root, now) })
+    writeChatFlags(storage, paths.root)
     const registry = createToolRegistry({ storage, config, logger, redactor, now })
     const exaKey = env['EXA_API_KEY']
     let search = options.ports?.search
@@ -510,7 +512,8 @@ export async function createApp(options: AppOptions): Promise<App> {
           media: { configured: Boolean(mediaWatcher), breakerOpen: false }
         }),
         logger,
-        now
+        now,
+        onWrite: () => void writeChatFlags(storage, paths.root)
       })
     } else {
       logger.warn('site_api.no_token', { reason: siteToken ? 'too_short' : 'unset' })
