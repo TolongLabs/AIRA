@@ -173,7 +173,13 @@ tool's result in plain words: a list for `/help`, `/list` and `/reminders`, one 
 | `help`            | Lists the commands this chat may use       | explicit | `/help`            | Direct      | none                 |
 | `list`            | Lists the tools and features switched on   | explicit | `/list`            | Direct      | none                 |
 
-- `/read` routes by the address: a social post goes to `read_post`, anything else to `read_page`.
+- `/read` routes by the address: a social post or a YouTube video goes to `read_post`, anything else to `read_page`.
+- `read_page` reads through Exa's contents endpoint, with a live crawl when Exa has no copy, so a page that refuses
+  plain fetches (such as openai.com, measured 403) still reads. A plain fetch is the fallback when Exa is off or fails.
+  The text is clipped to `search.pageMaxChars` and labelled untrusted.
+- `read_post` is ported from rokabot's social reader: X, Threads, Bluesky, Instagram, TikTok, Reddit, Bilibili and
+  YouTube, with the post's text, author, most-liked replies where the site gives them, and its picture or video. A
+  YouTube video, or a post's video, is watched by the media model as in [Models](models.md#media-watching).
 - `make_report` writes the document. Sending it to the chat is a separate delivery step with its own receipt.
 - The gateway's schedule fires reminders. `reminder_set` and `reminder_cancel` change the `reminder` row in one
   transaction and then rewrite the core's wanted-jobs file. A host reconciler makes the gateway's jobs match it within

@@ -66,8 +66,13 @@ Each request is one of four kinds, decided in this order (measured on the stagin
 - **Name call.** At cutover the gateway's `mention_patterns` lists every character's name, whole word and in any
   case, so a group message that names the character reaches the core. When such a message is neither a mention of
   `gateway.selfIds` nor a reply to the bot, and the chat is not set to free response, the core answers only if the
-  chat's `nameCall` setting is on, and else returns `NO_REPLY`. The names are the bound card's display name and its
-  `aliases`. Typo matches are not used: they would wake on ordinary words and other people's names.
+  chat's `nameCall` setting is on and the text holds one of the chat's names, and else returns `NO_REPLY`. The names
+  are the chat's `nameCall.names` when set, else the bound card's display name and its `aliases` (`AIRA` for the
+  default pack). A name matches as a whole word in any case, so `aira`, `Aira` and `AIRA` all match and `airasia`
+  does not. Typo matches are not used: they would wake on ordinary words and other people's names.
+- **The gateway wakes on the chat's names.** The core writes each name-call chat's names into `chats.json` (see Chat
+  Flags File). The patch `name-call-from-core` makes the gateway's group check also wake on those names for that
+  chat. The global `mention_patterns` stay as they are; the core still decides.
 - **Quotes and media are notes before the marker.** The gateway writes what it knows about a message as bracketed
   notes just before that message's marker. The core takes them out of the message text and keeps what they carry:
 
@@ -198,12 +203,15 @@ The gateway still owns two per-chat behaviours: voice notes and passive emoji re
 and declares them in `<hostDataDir>/gateway/chats.json`, which the gateway reads:
 
 ```json
-{ "version": 1, "chats": { "<whatsapp chat id>": { "voice": "all", "reactions": true } } }
+{ "version": 1, "chats": { "<whatsapp chat id>": { "voice": "all", "reactions": true, "names": ["Taiga"] } } }
 ```
 
 - The core writes the file at start-up and after every change to a chat's status, its `features.voice` or its
-  `reactions` setting, through a temporary file and a rename. A chat that is not active, or has both off, is left out.
+  `reactions` setting, through a temporary file and a rename. A chat that is not active, or has nothing on, is left
+  out.
 - `voice` is `all` when `features.voice` is on, else the chat is absent and gets no voice note.
+- `names` is present for a group with `nameCall` on: the chat's resolved names, as in Name call above. The file is
+  also written after a change to `nameCall`, `nameCall.names` or `character`.
 - The gateway reads the file again when its modification time changes, so a change on the site applies to the next
   reply without a restart. A missing or unreadable file means no voice and no reactions anywhere.
 - The same write refreshes `<hostDataDir>/gateway/unavailable.txt` when the global default character changes.
