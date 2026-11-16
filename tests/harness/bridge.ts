@@ -9,6 +9,8 @@ export interface RecordedCall {
   route: string
   payload: unknown
   file?: { name: string; contentType: string; bytes: number; path: string }
+  /** The id the bridge gave a sent message. Only `/send` and `/send-media` have one. */
+  messageId?: string
 }
 
 export interface InboundMessage {
@@ -49,6 +51,9 @@ export interface FakeBridge {
   /** Forgets the recorded calls and the queued messages. */
   reset(): void
 }
+
+/** Image types the control file route serves under their own type. Any other file is served as plain bytes. */
+const IMAGE_TYPES = new Set(['image/webp', 'image/png', 'image/jpeg', 'image/gif'])
 
 interface QueuedInboundMessage {
   id: string
@@ -210,7 +215,30 @@ export function createFakeBridge(options: FakeBridgeOptions): FakeBridge {
 
   async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const method = (req.method ?? 'GET').toUpperCase()
-    const route = new URL(req.url ?? '/', 'http://127.0.0.1').pathname
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1')
+    const route = url.pathname
+
+    // The control reads (docs/trd/harness.md#fake-bridge) belong to the maintainer, not to the gateway: they are not
+    // recorded, so a preview that polls them never shows up in the calls it is drawing.
+    if (method === 'GET' && route === '/control/calls') {
+      const after = Number(url.searchParams.get('after') ?? '0')
+      const since = Number.isFinite(after) ? after : 0
+      sendJson(res, 200, { calls: recorded.filter((call) => call.seq > since), last: nextSeq })
+      return
+    }
+    if (method === 'GET' && route.startsWith('/control/file/')) {
+      const wanted = Number(route.slice('/control/file/'.length))
+      const file = recorded.find((call) => call.seq === wanted)?.file
+      if (!file) {
+        sendJson(res, 404, { error: 'no such file' })
+        return
+      }
+      const type = IMAGE_TYPES.has(file.contentType) ? file.contentType : 'application/octet-stream'
+      res.writeHead(200, { 'content-type': type, 'x-content-type-options': 'nosniff' })
+      res.end(readFileSync(file.path))
+      return
+    }
+
     const seq = ++nextSeq
     const at = now().toISOString()
     const rawBuffer = await readBody(req)
@@ -237,13 +265,16 @@ export function createFakeBridge(options: FakeBridgeOptions): FakeBridge {
       }
     }
 
+    const sendsMessage = method === 'POST' && (route === '/send' || route === '/send-media')
+    const messageId = sendsMessage ? `out-${++outSeq}` : undefined
     const call: RecordedCall = {
       seq,
       at,
       method,
       route,
       payload,
-      ...(file ? { file } : {})
+      ...(file ? { file } : {}),
+      ...(messageId !== undefined ? { messageId } : {})
     }
     recorded.push(call)
 
@@ -257,7 +288,7 @@ export function createFakeBridge(options: FakeBridgeOptions): FakeBridge {
       return
     }
     if (method === 'POST' && route === '/send') {
-      sendJson(res, 200, { success: true, messageId: `out-${++outSeq}` })
+      sendJson(res, 200, { success: true, messageId })
       return
     }
     if (method === 'POST' && route === '/edit') {
@@ -265,7 +296,7 @@ export function createFakeBridge(options: FakeBridgeOptions): FakeBridge {
       return
     }
     if (method === 'POST' && route === '/send-media') {
-      sendJson(res, 200, { success: true, messageId: `out-${++outSeq}` })
+      sendJson(res, 200, { success: true, messageId })
       return
     }
     if (method === 'POST' && (route === '/react' || route === '/typing' || route === '/read')) {
