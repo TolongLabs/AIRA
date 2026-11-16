@@ -4,7 +4,7 @@ prompt:
 
 # Owned by docs/trd/prompt-engine.md and docs/trd/memory.md
 judge:
-  model: '' # The judge's versioned model id. Empty: no judge, so memory admits nothing
+  model: 'jev-latest' # TypeSafe's Jev, release of 22 Oct 2026. Empty: no judge, so memory admits nothing
   mood: 'on' # Allows the judge to override the rule mood
   moodMinProbability: 0.3 # Threshold for the override
   memoryAdmit: 0.5 # Admission threshold
