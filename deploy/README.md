@@ -15,12 +15,12 @@ Container and Compose files for running AIRA on a host.
 
 ## Files In This Folder
 
-| File          | Purpose                                                                                                       |
-| ------------- | ------------------------------------------------------------------------------------------------------------- |
-| `Dockerfile`  | Multi-stage Node 24 image running as non-root user `node`                                                     |
-| `compose.yml` | Single-service Compose definition bound to loopback 9881                                                      |
-| `host/`       | The systemd service and timer that run the updater                                                            |
-| `gateway/`    | AIRA's gateway helper modules (`brain/`) and its gateway patch script (`patches.py`), with their Python tests |
+| File          | Purpose                                                                                                                                                |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Dockerfile`  | Multi-stage Node 24 image running as non-root user `node`                                                                                              |
+| `compose.yml` | Single-service Compose definition bound to loopback 9881                                                                                               |
+| `host/`       | The systemd units that run the updater, and the user units that run the schedule reconciler every minute                                               |
+| `gateway/`    | AIRA's gateway helper modules (`brain/`), its gateway patch script (`patches.py`) and the schedule reconciler (`schedule.py`), with their Python tests |
 
 ## The Updater
 

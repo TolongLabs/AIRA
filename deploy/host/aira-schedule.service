@@ -1,0 +1,14 @@
+# Makes the gateway's schedule match the reminders the core wants (docs/trd/system.md#scheduled-turns).
+# A user unit, like the gateway's own: it runs as the owner, in the gateway's environment, and changes jobs only
+# through the gateway's cron.jobs functions and their lock.
+#
+# /etc/aira/schedule.env holds three names: HERMES_HOME, HERMES_AGENT (the gateway tree) and AIRA_HOST_DATA_DIR.
+
+[Unit]
+Description=AIRA schedule reconciler
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/aira/schedule.env
+ExecStart=/bin/sh -c 'exec "$HERMES_AGENT/venv/bin/python" /opt/aira/gateway/schedule.py --hermes-agent "$HERMES_AGENT"'
+NoNewPrivileges=true
