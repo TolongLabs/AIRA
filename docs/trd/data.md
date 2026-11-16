@@ -63,31 +63,33 @@ The primary key is `(level, scope, key)`. Deleting a row at a level restores inh
 
 ### Setting Keys
 
-| Key                   | Type                                                          | Default (Global)       |
-| --------------------- | ------------------------------------------------------------- | ---------------------- |
-| `character`           | Character pack id                                             | Set at install         |
-| `language`            | `auto` or a language code                                     | `auto`                 |
-| `freeResponse`        | Boolean                                                       | `false`                |
-| `allowedSenders`      | List of subject ids, or `all`                                 | `all`                  |
-| `model`               | Role override, or `inherit`                                   | `inherit`              |
-| `replyLength`         | `short`, `default`, `long`                                    | `default`              |
-| `expressions`         | Boolean                                                       | `true`                 |
-| `quietHours`          | Start, end and time zone                                      | Unset                  |
-| `muted`               | Boolean, with who and when                                    | `false`                |
-| `features.proactive`  | Boolean                                                       | `false`                |
-| `features.reminders`  | Boolean                                                       | `true`                 |
-| `features.search`     | Boolean                                                       | `true`                 |
-| `features.social`     | Boolean                                                       | `true`                 |
-| `features.photos`     | Boolean                                                       | `true`                 |
-| `features.media`      | Boolean                                                       | `true`                 |
-| `features.voice`      | Boolean                                                       | `false`                |
-| `features.lessons`    | Boolean                                                       | `false`                |
-| `features.reports`    | Boolean                                                       | `true`                 |
-| `features.owner`      | Boolean: the owner's market and coding-session tools          | `false`                |
-| `features.toolFooter` | Boolean                                                       | `true`                 |
-| `nameCall`            | Boolean: answer a group message that only names the character | `false`                |
-| `footerEmoji`         | One emoji, at most 8 characters                               | unset: the card's icon |
-| `mcp.<server id>`     | Boolean                                                       | `false`                |
+| Key                      | Type                                                          | Default (Global)       |
+| ------------------------ | ------------------------------------------------------------- | ---------------------- |
+| `character`              | Character pack id                                             | Set at install         |
+| `language`               | `auto` or a language code                                     | `auto`                 |
+| `freeResponse`           | Boolean                                                       | `false`                |
+| `allowedSenders`         | List of subject ids, or `all`                                 | `all`                  |
+| `model`                  | Role override, or `inherit`                                   | `inherit`              |
+| `replyLength`            | `short`, `default`, `long`                                    | `default`              |
+| `expressions`            | Boolean                                                       | `true`                 |
+| `quietHours`             | Start, end and time zone                                      | Unset                  |
+| `muted`                  | Boolean, with who and when                                    | `false`                |
+| `features.proactive`     | Boolean                                                       | `false`                |
+| `features.reminders`     | Boolean                                                       | `true`                 |
+| `features.search`        | Boolean                                                       | `true`                 |
+| `features.social`        | Boolean                                                       | `true`                 |
+| `features.photos`        | Boolean                                                       | `true`                 |
+| `features.media`         | Boolean                                                       | `true`                 |
+| `features.voice`         | Boolean                                                       | `false`                |
+| `features.lessons`       | Boolean                                                       | `false`                |
+| `features.reports`       | Boolean                                                       | `true`                 |
+| `features.owner`         | Boolean: the owner's market and coding-session tools          | `false`                |
+| `features.toolFooter`    | Boolean                                                       | `true`                 |
+| `nameCall`               | Boolean: answer a group message that only names the character | `false`                |
+| `reactions`              | Boolean: passive emoji reactions to members' messages         | `false`                |
+| `commands.maxPerMessage` | Integer 1 to 5: commands run from one message                 | `1`                    |
+| `footerEmoji`            | One emoji, at most 8 characters                               | unset: the card's icon |
+| `mcp.<server id>`        | Boolean                                                       | `false`                |
 
 Each optional chat feature is one `features.*` key. A tool or behaviour names the key that enables it.
 
