@@ -116,19 +116,24 @@ line, and the failure is recorded.
 
 ## Tool Footer
 
-A reply from a turn that ran a tool ends with one footer line saying what was done, in the way rokabot does on
-Discord. WhatsApp has no subscript, so the footer is an italic line.
+A reply from a turn that ran a tool ends with a footer, in the way rokabot does on Discord: one line saying what was
+done and, for research, one line naming the sources. WhatsApp has no small text, so the labels are written in Unicode
+superscript letters.
 
-- It lists each tool that ran with outcome `ok`, once, in call order, as `_<icon> <label> · <label> +N_`. At most 2
-  labels show; `+N` counts the rest. A turn with no such call has no footer.
-- It sits in the last bubble, after a blank line, and counts toward neither the length limit nor the bubble cap.
-- Labels come from the card's `toolFooter.labels`, keyed by tool name. A tool the card does not name uses its plain
-  default label from code, such as `searched the web`. Plain labels hold no persona text. The icon is
-  `toolFooter.icon`, `🛠️` by default.
-- A direct command answer, which runs no model, has no footer.
+- The first line lists each tool that ran with outcome `ok`, once, in call order: `<emoji> <label> · <label> +N`. At
+  most 2 labels show; `+N` counts the rest. Labels are lower-cased and written in superscript (`ˢᵉᵃʳᶜʰᵉᵈ ᵗʰᵉ ʷᵉᵇ`);
+  `q`, which has no superscript form, stays as it is.
+- The second line, `🔗 <domain> · <domain>`, names up to 3 sites the turn read or found: pages read first, then search
+  results in rank order, one per site, `www.` removed. Domains stay in normal characters so WhatsApp makes them
+  tappable. WhatsApp has no link text, so a tap opens the site, not the page.
+- The footer sits after a blank line at the end of the reply and counts toward neither the length limit nor the
+  bubble cap. A turn with no `ok` tool call has no footer. A direct command answer, which runs no model, has none.
+- Labels come from the card's `toolFooter.labels`, keyed by tool name, else a plain default from code. Plain labels
+  hold no persona text.
+- The emoji is the chat's `footerEmoji` setting, else the card's `toolFooter.icon`, else `🛠️`. The chat setting
+  `features.toolFooter` switches the footer off, both lines.
 - The stored reply keeps the footer, so a repeated request returns the same message. When the window is replayed to
-  the model, code removes the footer line, bubble breaks and `MEDIA:` lines from assistant rows, so the model never
-  sees them and never imitates them.
+  the model, code removes both footer lines, bubble breaks and `MEDIA:` lines from assistant rows.
 
 ## WhatsApp Renderer
 
@@ -156,7 +161,8 @@ runs the renderer's output through a copy of the gateway's conversion and checks
 The core decides the bubbles. The gateway only delivers them.
 
 - A reply longer than `format.bubbleMaxChars` is split at a paragraph, else a sentence, else a word. A code block or
-  a list item is never cut. A reply is at most `format.maxBubbles` bubbles.
+  a list item is never cut. A reply is at most `format.maxBubbles` bubbles. The launch value is 1: one text message
+  and at most one sticker per reply, because members of the old bot complained about several messages per reply.
 - Between two bubbles the core writes a bubble break: a line holding only the character U+2063.
 - The gateway's bubble patch sends each bubble as its own message, with a typing pause before every bubble after the
   first. Only the first bubble quotes the user's message. Measured on the staging gateway code, 16 Nov 2026.
@@ -186,8 +192,8 @@ The core decides the bubbles. The gateway only delivers them.
 | `prompt.maxSystemTokens`   | 8000                | Ceiling enforced by the size test                                                                                                                             |
 | `judge.mood`               | `on`                | Allows the judge to override the rule mood                                                                                                                    |
 | `judge.moodMinProbability` | 0.3                 | Threshold for the override                                                                                                                                    |
-| `format.bubbleMaxChars`    | 700                 | Split point for bubbles                                                                                                                                       |
-| `format.maxBubbles`        | 3                   | Most bubbles in one reply                                                                                                                                     |
+| `format.bubbleMaxChars`    | 3800                | Split point for bubbles                                                                                                                                       |
+| `format.maxBubbles`        | 1                   | Most bubbles in one reply                                                                                                                                     |
 | `format.leakCheck`         | `on`                | Step 6 of the cleaning chain                                                                                                                                  |
 | `format.timeZone`          | `Asia/Kuala_Lumpur` | The time zone code uses when it writes a time in a reply, such as a due time in `/reminders`, and the local time with its offset that block 4 gives the model |
 
