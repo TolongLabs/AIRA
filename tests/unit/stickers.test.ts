@@ -284,3 +284,36 @@ describe('withStickers', () => {
     expect(otherChar.stickerId).toBe('a.webp')
   })
 })
+
+describe('loadPack face groups and beats', () => {
+  const withMoods = (edit: (moods: string) => string): string => {
+    const dir = join(tmpDir(), 'example')
+    cpSync('characters/example', dir, { recursive: true })
+    const moodsPath = join(dir, 'moods.yml')
+    writeFileSync(moodsPath, edit(readFileSync(moodsPath, 'utf8')))
+    return dir
+  }
+  const header = 'faceGroups:\n  happy: ["(≧▽≦)", "(＾▽＾)"]\nbeats:\n  - name: drama\n    line: "- Overreact once."\n'
+
+  it('adds a mood face groups to its faces, without repeats, and attaches its beats with their odds', () => {
+    const dir = withMoods(
+      (moods) =>
+        header +
+        moods.replace('    stickers: []', '    faceGroups: [happy]\n    beats: { drama: 0.25 }\n    stickers: []')
+    )
+    const mood = loadPack(dir, 'data').moods.get('neutral')!
+    expect(mood.faces).toEqual(expect.arrayContaining(['(≧▽≦)', '(＾▽＾)']))
+    expect(new Set(mood.faces).size).toBe(mood.faces.length)
+    expect(mood.beats).toEqual([{ name: 'drama', line: '- Overreact once.', odds: 0.25 }])
+  })
+
+  it('refuses an unknown face group, an unknown beat and a bracketed word as a face', () => {
+    const dir = withMoods(
+      (moods) =>
+        header + moods.replace('    stickers: []', '    faceGroups: [sad]\n    beats: { flirt: 0.5 }\n    stickers: []')
+    )
+    expect(() => loadPack(dir, 'data')).toThrow(/unknown face group "sad"[\s\S]*unknown beat "flirt"/)
+    const bad = withMoods((moods) => moods.replace(/faces: \[[^\]]*\]/, 'faces: ["(hello)"]'))
+    expect(() => loadPack(bad, 'data')).toThrow(PackError)
+  })
+})

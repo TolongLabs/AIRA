@@ -357,7 +357,35 @@ function extractWords(text: string): string[] {
   return text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []
 }
 
-/** Step 6: Check for leaked prompt text against the fixed blocks (12+ consecutive words). */
+const FULL_WIDTH: Readonly<Record<string, string>> = { '*': '＊', _: '＿', '~': '～', '`': '｀' }
+
+/**
+ * Step 6: inside a kaomoji, markdown characters become their full-width forms, so neither WhatsApp nor the
+ * gateway's Markdown conversion reads them as formatting. WhatsApp has no escape character. Code is left alone.
+ */
+export function guardFaces(text: string): string {
+  const guard = (prose: string) =>
+    prose
+      .replace(/\([^()\n]{1,20}\)/g, (face) =>
+        /[A-Za-z0-9]{2}/.test(face.slice(1, -1)) ? face : face.replace(/[*_~`]/g, (ch) => FULL_WIDTH[ch]!)
+      )
+      // The shrug's arms sit outside its brackets.
+      .replace(/¯\\_\(/g, '¯\\＿(')
+      .replace(/\)_\/¯/g, ')＿/¯')
+  // A face's backtick becomes ｀ first, so it cannot pair with a real code span; then code is set aside.
+  const faceTicks = (prose: string) =>
+    prose.replace(/\(([^()\n`]{0,12})`([^()\n`]{0,12})\)/g, (face, before: string, after: string) =>
+      /[A-Za-z0-9]{2}/.test(before + after) ? face : `(${before}｀${after})`
+    )
+  const outside = (value: string, pattern: RegExp, transform: (prose: string) => string) =>
+    value
+      .split(pattern)
+      .map((part, i) => (i % 2 === 1 ? part : transform(part)))
+      .join('')
+  return outside(text, /(```[\s\S]*?```)/, (prose) => outside(faceTicks(prose), /(`[^`\n]+`)/, guard))
+}
+
+/** Step 7: Check for leaked prompt text against the fixed blocks (12+ consecutive words). */
 export function leaksPrompt(text: string, fixedBlocks: string[]): boolean {
   const replyWords = extractWords(text)
   if (replyWords.length < 12) return false
@@ -418,6 +446,12 @@ export function cleanReply(text: string, options: CleanOptions): CleanedReply {
     if (afterLists !== current) {
       steps.push('lists')
       current = afterLists
+    }
+
+    const afterFaces = guardFaces(current)
+    if (afterFaces !== current) {
+      steps.push('faces')
+      current = afterFaces
     }
 
     let replacedBy: LineKind | undefined

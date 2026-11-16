@@ -36,17 +36,34 @@ export const cardSchema = z.strictObject({
     .optional()
 })
 
+/**
+ * A kaomoji: one round-bracketed group of at most 20 characters with no two ASCII letters or digits in a row, so
+ * code can tell it from a bracketed word, and at most 4 characters outside it (docs/trd/prompt-engine.md#reply-shape).
+ */
+export function isFace(text: string): boolean {
+  const match = /^([^()]{0,4})\(([^()\n]{1,20})\)([^()]{0,4})$/u.exec(text)
+  return match !== null && !/[A-Za-z0-9]{2}/.test(match[2]!)
+}
+const face = z.string().refine(isFace, { message: 'must be one kaomoji in round brackets (see prompt-engine.md)' })
+const GROUP_KEY = /^[a-z][a-z0-9_]{0,31}$/
+
 const moodSchema = z.strictObject({
   patterns: z.array(z.string().min(1).max(200)),
   tone: nonEmpty,
   openers: z.array(nonEmpty),
   endings: z.array(nonEmpty),
-  faces: z.array(nonEmpty),
+  faces: z.array(face),
+  /** Face groups this mood draws from, beside its own faces. */
+  faceGroups: z.array(z.string().regex(GROUP_KEY)).optional(),
+  /** Odds of each beat per reply, by beat name. */
+  beats: z.record(z.string().regex(GROUP_KEY), z.number().min(0).max(1)).optional(),
   stickers: z.array(z.string().regex(STICKER_FILE))
 })
 
 export const moodsSchema = z.strictObject({
   default: z.string().regex(MOOD_KEY),
+  faceGroups: z.record(z.string().regex(GROUP_KEY), z.array(face).min(1)).optional(),
+  beats: z.array(z.strictObject({ name: z.string().regex(GROUP_KEY), line: z.string().min(1).max(300) })).optional(),
   moods: z.record(z.string().regex(MOOD_KEY), moodSchema).refine((m) => Object.keys(m).length >= 1, {
     message: 'must contain at least one mood'
   })
