@@ -70,12 +70,12 @@ Mood state is keyed by chat and character. AIRA's own replies are excluded from 
 
 Code draws the shape after the mood is known. The model receives it as block 6.
 
-| Element | Drawn From                                                          |
-| ------- | ------------------------------------------------------------------- |
-| Length  | The pack's default, unless a bypass applies                         |
-| Opener  | The mood's opener set, not repeating the last one used in this chat |
-| Ending  | The mood's ending set                                               |
-| Faces   | The mood's face set, with a per-reply limit                         |
+| Element | Drawn From                                                                      |
+| ------- | ------------------------------------------------------------------------------- |
+| Length  | The pack's default, unless a bypass applies                                     |
+| Opener  | The mood's opener set, for about 1 reply in 3, never the one this chat saw last |
+| Ending  | The mood's ending set, for about 1 reply in 4, never the one this chat saw last |
+| Faces   | The mood's face set, with a per-reply limit                                     |
 
 **Lengths.** The limits count characters, not words: `short` 280, `default` 600, `long` 1,400. The pack's
 `defaultReplyLength` picks one.
