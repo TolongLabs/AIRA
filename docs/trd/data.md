@@ -102,6 +102,22 @@ The one-time migration reads the old binding file, per-chat state files and memo
 above. Old values that have no new key are listed in the migration report, not dropped silently. Memory migration is
 specified in [Memory](memory.md#migration).
 
-## Backups
+`bun run migrate:settings --from <private copy> --character <old personality>=<pack id> ...` is the dry run: it
+prints the plan as counts and reasons, and writes nothing. Adding `--confirm` applies it in one transaction, with the
+core stopped. A second real run changes nothing. It runs before the memory import, because that import needs the
+chats. The copy holds the old `bindings.yaml` and the brain folder's `language.json`, `lessons.json`, `faces.json`
+and `quiet.json`. Measured on the production host's layout, 16 Nov 2026:
 
-Snapshots, the off-host copy and restores are specified in [Persistence](storage.md#snapshots-and-the-off-host-copy).
+| Old Value                                                                                   | New                                                                                                              |
+| ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| A binding's `match` (platform `whatsapp`, kind, chat)                                       | The chat row, set `active`                                                                                       |
+| `defaults.personality`, a binding's `personality`                                           | `character` at the global or chat level, through the `--character` map. An unmapped name is reported and not set |
+| A binding's `permissions.photos`                                                            | `features.photos` at the chat level                                                                              |
+| `language.json`, by chat                                                                    | `language` at the chat level, when it is `auto` or a language code                                               |
+| `lessons.json`, by chat                                                                     | `features.lessons` at the chat level                                                                             |
+| `quiet.json`, a mute until a time, by chat                                                  | `muted` at the chat level when the time has not passed or the mute has no end; else skipped                      |
+| `mode`, `permissions.agent`, `permissions.autofetch`, `models`, `faces.json` tones, `owner` | No new key: reported                                                                                             |
+
+- Character pack ids are private, so the map is given on the command line and never stored in the repository.
+- A chat in a state file with no binding is created too: the old core answered it with the defaults.
+- A value a key's schema refuses is reported and not set. The run never guesses.
