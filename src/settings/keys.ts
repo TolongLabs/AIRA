@@ -90,6 +90,8 @@ export const SETTING_KEYS: Record<string, SettingDefinition> = {
   'features.reports': { schema: z.boolean(), default: true },
   'features.toolFooter': { schema: z.boolean(), default: true },
   nameCall: { schema: z.boolean(), default: false },
+  reactions: { schema: z.boolean(), default: false },
+  'commands.maxPerMessage': { schema: z.number().int().min(1).max(5), default: 1 },
   'features.owner': { schema: z.boolean(), default: false },
   footerEmoji: {
     schema: z
