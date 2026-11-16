@@ -3,6 +3,7 @@ import type { PackSet } from '../character/loader.js'
 import type { LineKind } from '../character/schema.js'
 import type { Config } from '../config/schema.js'
 import type { GatewayRequest } from '../gateway/request.js'
+import { compactDue } from '../gateway/schedule.js'
 import { ModelError } from '../models/types.js'
 import type { FailureKind } from '../records/kinds.js'
 import type { Logger } from '../records/logger.js'
@@ -16,9 +17,9 @@ import {
   saveDiagnostics,
   updateTurnRecord
 } from '../records/turn-record.js'
-import { type Chat, ensureChat, ensureSubject } from '../settings/chats.js'
+import { type Chat, ensureChat, ensureSubject, getChat } from '../settings/chats.js'
 import { type Resolved, resolveSettings } from '../settings/settings.js'
-import type { Storage } from '../storage/database.js'
+import { type Db, type Storage, isoNow } from '../storage/database.js'
 import { advanceTurn, closeTurn, openTurn, receiveInbound } from '../storage/turns.js'
 import type { Alerter } from './alerts.js'
 import { type DeliveryKind, type DeliverySettings, mayDeliver } from './deliver.js'
@@ -43,6 +44,7 @@ import { claimPending, pendingOf, readWindow, storeUserMessage, unansweredTexts 
 // Every path ends with a closed turn record and a reply the gateway can deliver, which may be empty.
 
 type TurnRequest = Extract<GatewayRequest, { type: 'turn' }>
+type ScheduledRequest = Extract<GatewayRequest, { type: 'scheduled' }>
 
 export interface TurnReply {
   /** The content for the gateway. Empty means: send nothing. */
@@ -53,6 +55,8 @@ export interface TurnReply {
 }
 
 export interface TurnServiceDeps {
+  /** Called after a firing changed a reminder, so the wanted-jobs file is written again. */
+  onScheduleChange?: () => void
   storage: Storage
   config: Pick<Config, 'turn' | 'llm' | 'records'>
   logger: Logger
@@ -74,6 +78,8 @@ export interface TurnServiceDeps {
 
 export interface TurnService {
   handle(request: TurnRequest): Promise<TurnReply>
+  /** A firing of the gateway's schedule. Null when its reminder is not active or not due at that time. */
+  handleScheduled(request: ScheduledRequest): Promise<TurnReply | null>
   /** Stops waiting for more messages, then waits for running turns to finish, up to graceMs. */
   drain(graceMs: number): Promise<void>
   /** How many chats have a turn running or waiting. */
@@ -106,15 +112,38 @@ interface Outcome {
   diagnostics?: { request: string; reply?: string }
 }
 
-/** A text the core itself wrote into a scheduled job, so the turn it starts is known to be scheduled. */
-const SCHEDULED_TAG =
-  /^\[AIRA-SCHEDULED v1 kind=(reminder|proactive|routine)(?: owner=(\S+))?(?: target=(\S+))?[^\]]*\]/
+interface ReminderOfFiring {
+  reminder_id: string
+  chat_id: string
+  owner_id: string
+  target_id: string
+  text: string
+}
 
-export function parseScheduledTag(text: string): DeliveryKind | undefined {
-  const match = SCHEDULED_TAG.exec(text.trimStart())
-  if (!match) return undefined
-  if (match[1] === 'reminder') return { kind: 'reminder', owner: match[2] ?? '', target: match[3] ?? '-' }
-  return { kind: match[1] as 'proactive' | 'routine' }
+/** A firing whose reminder is no longer active, or is due at another time. Nothing of it is stored. */
+class NotDue extends Error {}
+
+const REPEAT_STEP: Record<string, (date: Date) => void> = {
+  daily: (date) => date.setUTCDate(date.getUTCDate() + 1),
+  weekly: (date) => date.setUTCDate(date.getUTCDate() + 7),
+  // The same day next month, or that month's last day: 31 January moves to 28 February, not to 3 March.
+  monthly: (date) => {
+    const day = date.getUTCDate()
+    date.setUTCDate(1)
+    date.setUTCMonth(date.getUTCMonth() + 1)
+    const last = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate()
+    date.setUTCDate(Math.min(day, last))
+  }
+}
+
+/** The next due time of a repeating reminder after `now`. Missed times are skipped, not sent late. */
+export function nextDue(dueAt: string, repeat: string, now: Date): string {
+  const step = REPEAT_STEP[repeat]
+  if (!step) throw new Error(`unknown repeat rule "${repeat}"`)
+  const next = new Date(dueAt)
+  do step(next)
+  while (next.getTime() <= now.getTime())
+  return next.toISOString()
 }
 
 const LINE_FOR: Record<string, LineKind> = { refusal: 'refusal', malformed: 'fallback', budget: 'limit' }
@@ -464,35 +493,42 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     const senderId = ensureSubject(storage, request.marker.sender, now)
     const key = { chatId: chat.chatId, mid: request.marker.mid, senderId }
 
-    for (let round = 0; round < 3; round++) {
-      const status = receiveInbound(
-        storage,
+    return admit(chat, key, undefined, (db) => {
+      // The window is the durable input of a turn. Earlier text the gateway resent is stored only if the
+      // core does not hold it already.
+      if (request.earlier !== '') {
+        const held = unansweredTexts(db, chat.chatId).join('\n\n')
+        if (!held.includes(request.earlier)) {
+          storeUserMessage(db, { chatId: chat.chatId, senderId, content: request.earlier }, now)
+        }
+      }
+      storeUserMessage(
+        db,
         {
-          ...key,
-          onNew: (db) => {
-            // The window is the durable input of a turn. Earlier text the gateway resent is stored only if the
-            // core does not hold it already.
-            if (request.earlier !== '') {
-              const held = unansweredTexts(db, chat.chatId).join('\n\n')
-              if (!held.includes(request.earlier)) {
-                storeUserMessage(db, { chatId: chat.chatId, senderId, content: request.earlier }, now)
-              }
-            }
-            storeUserMessage(
-              db,
-              {
-                chatId: chat.chatId,
-                senderId,
-                content: request.text,
-                mid: request.marker.mid,
-                ...(request.quote ? { quote: request.quote } : {})
-              },
-              now
-            )
-          }
+          chatId: chat.chatId,
+          senderId,
+          content: request.text,
+          mid: request.marker.mid,
+          ...(request.quote ? { quote: request.quote } : {})
         },
         now
       )
+    })
+  }
+
+  /**
+   * Writes the inbound row, or settles a request seen before: its stored reply, or the turn it waits for. A new
+   * request runs `onNew` in the same transaction, then joins the chat's queue.
+   */
+  async function admit(
+    chat: Chat,
+    key: { chatId: string; mid: string; senderId: string },
+    scheduled: DeliveryKind | undefined,
+    onNew: (db: Db) => void,
+    afterNew?: () => void
+  ): Promise<TurnReply> {
+    for (let round = 0; round < 3; round++) {
+      const status = receiveInbound(storage, { ...key, onNew }, now)
       if (status.status === 'answered') return { content: status.reply, turnId: status.turnId, replayed: true }
       if (status.status === 'dropped') return { content: '', replayed: true }
       if (status.status === 'running') {
@@ -502,13 +538,64 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         await current
         continue
       }
-      return enqueue(chat, { mid: key.mid, senderId, scheduled: parseScheduledTag(request.text) })
+      afterNew?.()
+      return enqueue(chat, { mid: key.mid, senderId: key.senderId, ...(scheduled ? { scheduled } : {}) })
     }
     throw new Error('a repeated message did not settle')
   }
 
+  async function handleScheduled(request: ScheduledRequest): Promise<TurnReply | null> {
+    // Identity comes from the core's own reminder row. The request names a reminder and a due time, nothing else.
+    const row = storage.read(
+      (db) =>
+        db
+          .prepare('SELECT reminder_id, chat_id, owner_id, target_id, text FROM reminder WHERE reminder_id = ?')
+          .get(request.reminderId) as ReminderOfFiring | undefined
+    )
+    const chat = row ? getChat(storage, row.chat_id) : undefined
+    if (!row || !chat) return null
+    const mid = `sched-${row.reminder_id}-${request.due}`
+    const tag = `[AIRA-SCHEDULED v1 kind=reminder owner=${row.owner_id} target=${row.target_id} id=${row.reminder_id}]`
+    try {
+      return await admit(
+        chat,
+        { chatId: chat.chatId, mid, senderId: row.owner_id },
+        { kind: 'reminder', owner: row.owner_id, target: row.target_id },
+        (db) => {
+          // The firing is used up in the transaction that stores it: a repeat of this request is answered from it.
+          const current = db
+            .prepare("SELECT due_at, repeat FROM reminder WHERE reminder_id = ? AND chat_id = ? AND state = 'active'")
+            .get(row.reminder_id, chat.chatId) as { due_at: string; repeat: string | null } | undefined
+          if (!current || compactDue(current.due_at) !== request.due) throw new NotDue()
+          if (current.repeat) {
+            db.prepare('UPDATE reminder SET due_at = ?, updated_at = ? WHERE reminder_id = ?').run(
+              nextDue(current.due_at, current.repeat, now()),
+              isoNow(now),
+              row.reminder_id
+            )
+          } else {
+            db.prepare("UPDATE reminder SET state = 'fired', updated_at = ? WHERE reminder_id = ?").run(
+              isoNow(now),
+              row.reminder_id
+            )
+          }
+          storeUserMessage(
+            db,
+            { chatId: chat.chatId, senderId: row.owner_id, content: `${tag}\n${row.text}`, mid },
+            now
+          )
+        },
+        () => deps.onScheduleChange?.()
+      )
+    } catch (error) {
+      if (error instanceof NotDue) return null
+      throw error
+    }
+  }
+
   return {
     handle,
+    handleScheduled,
     active: () => queues.size,
     drain: async (graceMs) => {
       draining = true

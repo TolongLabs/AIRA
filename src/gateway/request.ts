@@ -47,6 +47,8 @@ export type GatewayRequest =
   | { type: 'auxiliary'; stream: boolean; includeUsage: boolean }
   /** Tools but no scope marker: the gateway's own background work, or a scope stamp that is off. */
   | { type: 'unmarked'; stream: boolean; includeUsage: boolean }
+  /** A job of the gateway's schedule that the core declared. Only the reminder row says whose it is. */
+  | { type: 'scheduled'; kind: 'reminder'; reminderId: string; due: string; stream: boolean; includeUsage: boolean }
 
 /** A request the core cannot accept. It is a deployment fault and the only case that gets an error status. */
 export class MalformedRequestError extends Error {
@@ -57,6 +59,8 @@ export class MalformedRequestError extends Error {
 const MARKER = /\[HERMES-SCOPE v1\b([^\]\n]*)\]/g
 const SYSTEM_NOTE = /\[System note:[^\]]*\]/g
 const FIELD = /^[A-Za-z0-9@._:+-]+$/
+/** The core's tag, written by the core into a gateway job (docs/trd/system.md#scheduled-turns). */
+const SCHEDULED_TAG = /^\[AIRA-SCHEDULED v1 kind=reminder id=([A-Za-z0-9_-]{1,64}) due=(\d{8}T\d{6}Z)\]$/m
 /** The start of a note the gateway writes before a message's marker. */
 const NOTE_OPEN =
   /^\[(?:Replying to(?: your previous message)?: "|The user sent |User sent |If you need a closer look, use vision_analyze)/gm
@@ -198,7 +202,14 @@ export function parseGatewayRequest(body: unknown): GatewayRequest {
   ) as { content?: unknown } | undefined
   const content = textOf(newestUser?.content)
   const markers = [...content.matchAll(MARKER)]
-  if (markers.length === 0) return { type: 'unmarked', stream, includeUsage }
+  if (markers.length === 0) {
+    // Only a request with no marker can be scheduled: a member's message always carries one.
+    const tag = SCHEDULED_TAG.exec(content)
+    if (tag?.[1] && tag[2]) {
+      return { type: 'scheduled', kind: 'reminder', reminderId: tag[1], due: tag[2], stream, includeUsage }
+    }
+    return { type: 'unmarked', stream, includeUsage }
+  }
 
   // The gateway writes one marker per message. Message text is the user's, so it can hold a forged one. Every
   // marker must name the same chat and sender, or the request is refused: a forged marker can then change nothing

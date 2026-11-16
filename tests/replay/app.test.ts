@@ -189,6 +189,13 @@ describe('the whole service', () => {
     expect(JSON.parse(turn(app)['attachments'] as string)).toEqual(delivery.media)
   })
 
+  it('writes the wanted-jobs file for the gateway schedule at start-up', async () => {
+    const dataDir = tmpDir('aira-app-')
+    await start(queueModel([]), { dataDir })
+    const body = JSON.parse(readFileSync(join(dataDir, 'gateway', 'schedule.json'), 'utf8'))
+    expect(body).toMatchObject({ version: 1, reminders: [] })
+  })
+
   it('follows a reply with one sticker for its mood, never the same one twice in a row, and none when switched off', async () => {
     const dataDir = tmpDir('aira-app-')
     addPack(dataDir, 'second')

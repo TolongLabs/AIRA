@@ -7,6 +7,7 @@ import { ConfigError } from './config/loader.js'
 import type { Config } from './config/schema.js'
 import { withAttachments } from './format/attachments.js'
 import { createReplyCleaner } from './format/clean.js'
+import { writeScheduleFile } from './gateway/schedule.js'
 import { createGatewayServer } from './gateway/server.js'
 import { createSystemOneClient, createSystemOneMemoryJudge, createSystemOneMoodJudge } from './judge/systemone.js'
 import { createMemoryPort } from './memory/port.js'
@@ -233,6 +234,10 @@ export async function createApp(options: AppOptions): Promise<App> {
     const memoryJudge = options.memoryJudge ?? (hosted ? createSystemOneMemoryJudge(hosted) : undefined)
 
     // Tools: one registry. The prompt text about tools and the cleaner's name list come from it.
+    // The gateway's schedule fires reminders from the wanted-jobs file (docs/trd/system.md#scheduled-turns). It is
+    // written at start-up, which is the reminders' start-up reconciliation, and after every change.
+    const schedule = { sync: () => void writeScheduleFile(storage, paths.root, now) }
+    logger.info('schedule.written', { reminders: writeScheduleFile(storage, paths.root, now) })
     const registry = createToolRegistry({ storage, config, logger, redactor, now })
     registerCoreTools(registry, {
       memory: createMemoryPort({
@@ -243,6 +248,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       }),
       // The page reader is built in: it refuses private addresses, also after a redirect.
       page: createFetchPagePort(),
+      schedule,
       ...options.ports,
       filesDir: paths.files
     })
@@ -293,6 +299,13 @@ export async function createApp(options: AppOptions): Promise<App> {
       tools: registry,
       commands: createCommandRouter(registry),
       hooks: { spendAllows: () => spendState(storage, config.llm.monthlyBudgetUsd, now).repliesAllowed },
+      onScheduleChange: () => {
+        try {
+          schedule.sync()
+        } catch (error) {
+          logger.warn('schedule.write_failed', { error })
+        }
+      },
       now
     })
 

@@ -58,6 +58,28 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
   const now = options.now ?? (() => new Date())
   const log = logger.child({ module: 'gateway' })
 
+  /** Nothing goes to a chat, and the record shows it: the gateway's own work, or a scope stamp that is off. */
+  function answerUnmarked(
+    response: ServerResponse,
+    parsed: { stream: boolean; includeUsage: boolean },
+    reason: string
+  ): void {
+    log.error('gateway.unmarked', { reason })
+    try {
+      storage.tx((db) =>
+        recordFailure(
+          db,
+          { stage: 'receive', kind: 'gateway_unmarked', error: new Error(reason), handledBy: 'no_reply' },
+          options.redactor,
+          now
+        )
+      )
+    } catch (storageError) {
+      log.error('gateway.unmarked_not_recorded', { error: storageError })
+    }
+    writeReply(response, { id: 'unmarked', content: NO_REPLY }, { ...parsed, now })
+  }
+
   async function completions(request: IncomingMessage, response: ServerResponse): Promise<void> {
     let parsed: ReturnType<typeof parseGatewayRequest>
     try {
@@ -89,27 +111,24 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
     }
 
     if (parsed.type === 'unmarked') {
-      // Tools but no marker: the gateway's own background work, or a scope stamp that is off. Nothing goes to a
-      // chat, and the record shows it.
-      log.error('gateway.unmarked', {})
+      answerUnmarked(response, parsed, 'a request with tools has no scope marker')
+      return
+    }
+
+    if (parsed.type === 'scheduled') {
+      // A firing of the gateway's schedule: not streamed, and answered in one body.
       try {
-        storage.tx((db) =>
-          recordFailure(
-            db,
-            {
-              stage: 'receive',
-              kind: 'gateway_unmarked',
-              error: new Error('a request with tools has no scope marker'),
-              handledBy: 'no_reply'
-            },
-            options.redactor,
-            now
-          )
-        )
-      } catch (storageError) {
-        log.error('gateway.unmarked_not_recorded', { error: storageError })
+        const reply = await turns.handleScheduled(parsed)
+        if (reply === null) {
+          answerUnmarked(response, parsed, 'a scheduled tag names no reminder due at that time')
+          return
+        }
+        writeReply(response, { id: reply.turnId ?? 'none', content: reply.content }, { ...parsed, now })
+        options.afterTurn?.()
+      } catch (error) {
+        log.error('gateway.turn_failed', { error })
+        json(response, 500, { error: { message: 'the turn could not be handled', type: 'server_error' } })
       }
-      writeReply(response, { id: 'unmarked', content: NO_REPLY }, { ...parsed, now })
       return
     }
 
