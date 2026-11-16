@@ -16,7 +16,8 @@ async function startBridge(options: Partial<FakeBridgeOptions> = {}): Promise<{ 
   const bridge = createFakeBridge({
     filesDir: options.filesDir ?? tmpDir(),
     ...(options.chats ? { chats: options.chats } : {}),
-    ...(options.now ? { now: options.now } : {})
+    ...(options.now ? { now: options.now } : {}),
+    ...(options.mediaRoots ? { mediaRoots: options.mediaRoots } : {})
   })
   activeBridges.push(bridge)
   const baseUrl = await bridge.start(0)
@@ -290,7 +291,7 @@ describe('FakeBridge', () => {
     const sourceBytes = Buffer.from('RIFF-fake-webp-bytes')
     writeFileSync(sourcePath, sourceBytes)
 
-    const { bridge, baseUrl } = await startBridge({ filesDir })
+    const { bridge, baseUrl } = await startBridge({ filesDir, mediaRoots: [sourceDir] })
 
     const jsonRes = await fetch(`${baseUrl}/send-media`, {
       method: 'POST',
@@ -408,7 +409,7 @@ describe('bridge scenario support', () => {
     const stickerPath = join(mediaDir, 'wave.webp')
     writeFileSync(stickerPath, Buffer.from('webp'))
 
-    const { bridge, baseUrl } = await startBridge()
+    const { bridge, baseUrl } = await startBridge({ mediaRoots: [mediaDir] })
 
     await fetch(`${baseUrl}/send`, {
       method: 'POST',
@@ -459,5 +460,35 @@ describe('bridge scenario support', () => {
     expect(checkStep(textOnly, { sticker: true })).toHaveLength(1)
     expect(checkStep(stickerBeforeText, { sticker: true })).toHaveLength(1)
     expect(checkStep(withSticker, { sticker: false })).toHaveLength(1)
+  })
+})
+
+describe('fake bridge access rules', () => {
+  it('never reads a sent file outside its media roots, and refuses a Host that is a name', async () => {
+    const allowed = tmpDir()
+    const outside = tmpDir()
+    writeFileSync(join(outside, 'secret.env'), 'KEY=value')
+    const { bridge, baseUrl } = await startBridge({ mediaRoots: [allowed] })
+    const res = await fetch(`${baseUrl}/send-media`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chatId: 'test-chat-1', filePath: join(outside, 'secret.env'), mediaType: 'document' })
+    })
+    expect(res.status).toBe(200)
+    expect(bridge.calls().at(-1)?.file).toBeUndefined()
+    const { request } = await import('node:http')
+    const { port } = new URL(baseUrl)
+    const status = await new Promise<number>((resolve, reject) => {
+      const req = request(
+        { host: '127.0.0.1', port, path: '/control/calls', headers: { host: `evil.example:${port}` } },
+        (r) => {
+          r.resume()
+          resolve(r.statusCode ?? 0)
+        }
+      )
+      req.on('error', reject)
+      req.end()
+    })
+    expect(status).toBe(403)
   })
 })

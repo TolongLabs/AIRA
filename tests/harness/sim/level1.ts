@@ -137,7 +137,15 @@ export async function startLevel1(options: Level1Options): Promise<Level1> {
       if (id !== undefined) {
         setSetting(app.storage, { level: 'chat', scope: core.chatId, key: 'character', value: id, actor: 'sim' })
       } else {
-        const bound = settingsOf(core)['character']?.value
+        // The global binding only: a type-level value could bind the DM and the group to different characters.
+        const global = app.storage.read(
+          (db) =>
+            db
+              .prepare("SELECT value FROM setting WHERE level = 'global' AND scope = '' AND key = 'character'")
+              .pluck()
+              .get() as string | undefined
+        )
+        const bound = global === undefined ? undefined : (JSON.parse(global) as unknown)
         id = typeof bound === 'string' ? bound : 'example'
         if (typeof bound !== 'string') {
           setSetting(app.storage, { level: 'chat', scope: core.chatId, key: 'character', value: id, actor: 'sim' })
