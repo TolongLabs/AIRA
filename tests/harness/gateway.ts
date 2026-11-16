@@ -11,6 +11,24 @@ export interface GatewayMessage {
   text: string
   /** The message this one quotes, written as the gateway writes it: a reply note before the marker, and `qid`. */
   quote?: { text: string; id: string; ofAira?: boolean }
+  /** Files the gateway saved for this message, written as the gateway writes its notes before the marker. */
+  media?: { kind: 'image' | 'voice' | 'audio' | 'video' | 'document'; path: string }[]
+}
+
+/** The note the gateway writes before a message's marker for one saved file (measured, shortened). */
+export function mediaNote(media: NonNullable<GatewayMessage['media']>[number]): string {
+  switch (media.kind) {
+    case 'image':
+      return `[The user sent an image~ Here's what I can see:\nA picture]\n[If you need a closer look, use vision_analyze with image_url: ${media.path} ~]`
+    case 'voice':
+      return `[The user sent a voice message: ${media.path} (duration: 0:04)]`
+    case 'audio':
+      return `[The user sent an audio file: 'clip.mp3'. It is saved at: ${media.path}. Its content is not inlined here.]`
+    case 'video':
+      return `[The user sent a video attachment: 'clip.mp4'. It is saved at: ${media.path}. Its content is not inlined here.]`
+    case 'document':
+      return `[The user sent a document: 'notes.pdf'. It is saved at: ${media.path}. Its text is not inlined here.]`
+  }
 }
 
 /** The block the gateway's schedule puts before a job's text (measured, shortened). */
@@ -28,11 +46,12 @@ export function buildRequest(input: {
   const unansweredPrefix = unanswered.map((text) => `${text}\n\n`).join('')
   const qid = message.quote ? ` qid=${message.quote.id}` : ''
   const scopeMarker = `[HERMES-SCOPE v1 platform=whatsapp kind=${message.chat.kind} chat=${message.chat.waId} sender=${message.sender} mid=${message.mid}${qid}]`
+  const mediaNotes = (message.media ?? []).map((media) => `${mediaNote(media)}\n\n`).join('')
   const replyNote = message.quote
     ? `[Replying to${message.quote.ofAira ? ' your previous message' : ''}: "${message.quote.text.slice(0, 500)}"]\n\n`
     : ''
   const firstNote = firstMessage ? '\n\n[System note: this is the first message of the conversation.]' : ''
-  const newestUserContent = `${unansweredPrefix}${replyNote}${scopeMarker}\n${message.text}${firstNote}`
+  const newestUserContent = `${unansweredPrefix}${mediaNotes}${replyNote}${scopeMarker}\n${message.text}${firstNote}`
 
   return {
     model: 'aira',

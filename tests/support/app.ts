@@ -2,6 +2,7 @@ import type { AddressInfo } from 'node:net'
 import { afterEach } from 'vitest'
 import { type App, createApp } from '../../src/app.js'
 import type { Config } from '../../src/config/schema.js'
+import type { MediaWatcher } from '../../src/media/gemini-watcher.js'
 import type { MemoryJudge } from '../../src/memory/types.js'
 import { type ModelClient, ModelError, type ModelRequest, type ModelResponse } from '../../src/models/types.js'
 import { createLogger } from '../../src/records/logger.js'
@@ -57,6 +58,7 @@ export async function startApp(
     character?: string
     ports?: Partial<Omit<ToolPorts, 'filesDir'>>
     memoryJudge?: MemoryJudge
+    mediaWatcher?: MediaWatcher
     env?: NodeJS.ProcessEnv
     siteDir?: string
   } = {}
@@ -91,6 +93,7 @@ export async function startApp(
     clients: { ...(main ? { main } : {}), fallback: options.fallback },
     ports: options.ports,
     memoryJudge: options.memoryJudge,
+    mediaWatcher: options.mediaWatcher,
     logger: createLogger({ level: 'debug', module: 'core', sink: (line) => logs.push(JSON.parse(line)) })
   })
   apps.push(app)
