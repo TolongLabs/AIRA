@@ -29,7 +29,7 @@ describe('direct command answers', () => {
       'reminder_list',
       ok({
         reminders: [
-          { reminderId: 'rem_5efd685dc13e', dueAt: '2026-11-20T10:00:00.000Z', text: 'Buy cake', mine: true },
+          { reminderId: 'rem_5efd685dc13e', dueAt: '2026-11-20T10:00:00.000Z', text: 'Buy cake.', mine: true },
           {
             reminderId: 'rem_x',
             dueAt: '2026-11-18T01:00:00.000Z',
