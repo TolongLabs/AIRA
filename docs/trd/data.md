@@ -83,6 +83,7 @@ The primary key is `(level, scope, key)`. Deleting a row at a level restores inh
 | `features.voice`      | Boolean                                                       | `false`                |
 | `features.lessons`    | Boolean                                                       | `false`                |
 | `features.reports`    | Boolean                                                       | `true`                 |
+| `features.owner`      | Boolean: the owner's market and coding-session tools          | `false`                |
 | `features.toolFooter` | Boolean                                                       | `true`                 |
 | `nameCall`            | Boolean: answer a group message that only names the character | `false`                |
 | `footerEmoji`         | One emoji, at most 8 characters                               | unset: the card's icon |
