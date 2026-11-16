@@ -29,8 +29,8 @@ export function librarySearchTool(storage: Storage): ToolDefinition<z.infer<type
     mode: 'implicit',
     mutates: false,
     feature: 'features.lessons',
-    handler(args, context) {
-      const results = searchLibrary(storage, context.chat.chatId, args.query, SEARCH_LIMIT)
+    handler(args) {
+      const results = searchLibrary(storage, args.query, SEARCH_LIMIT)
       return { ok: true, data: { results } }
     }
   }
@@ -39,14 +39,15 @@ export function librarySearchTool(storage: Storage): ToolDefinition<z.infer<type
 export function libraryWriteTool(): ToolDefinition<z.infer<typeof libraryWriteSchema>> {
   return {
     name: 'library_write',
-    description: 'Files one library node.',
+    description:
+      'Files one library node. The library is shared by every chat with lessons on: write study notes only, never anything about a member.',
     schema: libraryWriteSchema,
     mode: 'implicit',
     mutates: true,
     feature: 'features.lessons',
     handler(args, context) {
       const { data } = context.commit((db) => {
-        const res = writeNode(db, context.chat.chatId, { title: args.title, body: args.body }, context.now)
+        const res = writeNode(db, { title: args.title, body: args.body }, context.now)
         return {
           data: res,
           receipt: {
@@ -69,10 +70,10 @@ export function libraryOpenTool(storage: Storage): ToolDefinition<z.infer<typeof
     mode: 'implicit',
     mutates: false,
     feature: 'features.lessons',
-    handler(args, context) {
-      const node = openNode(storage, context.chat.chatId, args.title)
+    handler(args) {
+      const node = openNode(storage, args.title)
       if (!node) {
-        return { ok: false, kind: 'refused', reason: 'no such note in this chat' }
+        return { ok: false, kind: 'refused', reason: 'no such note in the library' }
       }
       return { ok: true, data: node }
     }
@@ -87,8 +88,8 @@ export function libraryGapsTool(storage: Storage): ToolDefinition<z.infer<typeof
     mode: 'implicit',
     mutates: false,
     feature: 'features.lessons',
-    handler(_args, context) {
-      const gaps = libraryGaps(storage, context.chat.chatId, GAPS_LIMIT)
+    handler() {
+      const gaps = libraryGaps(storage, GAPS_LIMIT)
       return { ok: true, data: gaps }
     }
   }

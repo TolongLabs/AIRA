@@ -178,7 +178,7 @@ describe('lessons commands', () => {
           {
             id: 'c1',
             name: 'song_save',
-            args: { title: 'Morning Rain', lines: [{ text: 'rain on the tin roof', meaning: 'it rains' }] }
+            args: { title: 'Morning Rain', lines: [{ text: 'rain on the tin roof', meanings: { en: 'it rains' } }] }
           }
         ]
       },

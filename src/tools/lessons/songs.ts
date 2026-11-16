@@ -31,7 +31,7 @@ const songSaveSchema = z.strictObject({
       z.strictObject({
         text: z.string().trim().min(1).max(500),
         reading: z.string().trim().max(500).optional(),
-        meaning: z.string().trim().max(500).optional()
+        meanings: z.record(z.string().trim().min(2).max(16), z.string().trim().min(1).max(500)).optional()
       })
     )
     .min(1)
@@ -151,9 +151,11 @@ export function songGetTool(storage: Storage): ToolDefinition<z.infer<typeof son
       usage: '/song <title>'
     },
     handler(args, context) {
-      const song = getSong(storage, context.chat.chatId, args.title, args.artist)
+      const rawLang = context.settings['language']?.value
+      const preferredLanguage = typeof rawLang === 'string' && rawLang !== 'auto' ? rawLang : undefined
+      const song = getSong(storage, args.title, args.artist, preferredLanguage)
       if (song === undefined) {
-        return { ok: false, kind: 'refused', reason: 'no such song in this chat' }
+        return { ok: false, kind: 'refused', reason: 'no such song in the library' }
       }
       if (song === 'ambiguous') {
         return { ok: false, kind: 'invalid', reason: 'more than one song has that title: give the artist' }
@@ -166,7 +168,8 @@ export function songGetTool(storage: Storage): ToolDefinition<z.infer<typeof son
 export function songSaveTool(storage: Storage): ToolDefinition<z.infer<typeof songSaveSchema>> {
   return {
     name: 'song_save',
-    description: 'Files one worked song as study notes.',
+    description:
+      'Files one worked song as study notes. The library is shared by every chat with lessons on: write study notes only, never anything about a member.',
     schema: songSaveSchema,
     mode: 'implicit',
     mutates: true,
@@ -184,7 +187,6 @@ export function songSaveTool(storage: Storage): ToolDefinition<z.infer<typeof so
       const { data } = context.commit((db) => {
         const saved = saveSong(
           db,
-          context.chat.chatId,
           {
             title: args.title,
             artist: args.artist ?? '',
@@ -193,7 +195,7 @@ export function songSaveTool(storage: Storage): ToolDefinition<z.infer<typeof so
             lines: args.lines.map((line) => ({
               text: line.text,
               reading: line.reading ?? '',
-              meaning: line.meaning ?? ''
+              meanings: line.meanings ?? {}
             })),
             words: (args.words ?? []).map((w) => ({
               kind: w.kind ?? 'word',
