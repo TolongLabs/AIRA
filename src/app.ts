@@ -15,6 +15,7 @@ import { createMemoryPort } from './memory/port.js'
 import { presentLabels, recallForTurn } from './memory/recall.js'
 import type { MemoryJudge } from './memory/types.js'
 import { type MemoryWorker, createMemoryWorker } from './memory/worker.js'
+import { createAnthropicClient } from './models/anthropic-client.js'
 import { createApiRunner } from './models/api-runner.js'
 import { type Breaker, createBreaker } from './models/breaker.js'
 import { createOpenAiClient } from './models/openai-client.js'
@@ -112,11 +113,15 @@ function modelClient(
 ): ModelClient | undefined {
   if (override) return override
   if (target.model === '' || target.baseUrl === '') return undefined
-  if (target.provider !== 'openai-compatible') {
-    throw new ConfigError(`llm.${role}.provider is "${target.provider}": only "openai-compatible" is built`)
+  if (target.provider !== 'anthropic' && target.provider !== 'openai-compatible') {
+    throw new ConfigError(`llm.${role}.provider is "${target.provider}": use "anthropic" or "openai-compatible"`)
   }
-  if (key === undefined || key === '') throw new ConfigError(`the key for llm.${role} is not set in the environment`)
-  return createOpenAiClient({ baseUrl: target.baseUrl, apiKey: key, prices: target })
+  // A role with no key is switched off (docs/trd/models.md#roles). The caller decides whether that stops start-up.
+  if (key === undefined || key === '') return undefined
+  if (target.provider === 'anthropic') {
+    return createAnthropicClient({ baseUrl: target.baseUrl, apiKey: key, effort: target.effort, prices: target })
+  }
+  return createOpenAiClient({ baseUrl: target.baseUrl, apiKey: key, effort: target.effort, prices: target })
 }
 
 export async function createApp(options: AppOptions): Promise<App> {
@@ -166,13 +171,21 @@ export async function createApp(options: AppOptions): Promise<App> {
     // Models: one loop, one tool set. A fallback changes the model and nothing else.
     const subscription = config.llm.transport === 'subscription'
     const main = modelClient(config.llm.main, env['LLM_API_KEY'], 'main', options.clients?.main)
-    if (!main && !subscription) throw new ConfigError('llm.main.model and llm.main.baseUrl must be set')
+    if (!main && !subscription) {
+      throw new ConfigError('llm.main needs a model, a baseUrl and LLM_API_KEY in the environment')
+    }
     const fallback = modelClient(
       config.llm.fallback,
       env['LLM_FALLBACK_API_KEY'],
       'fallback',
       options.clients?.fallback
     )
+    for (const [role, client] of [
+      ['main', main],
+      ['fallback', fallback]
+    ] as const) {
+      if (!client && config.llm[role].model !== '') logger.warn('model_role.off', { role, reason: 'no_key' })
+    }
     const breaker = createBreaker({
       breakerMs: config.llm.breakerMs,
       now,
@@ -218,6 +231,8 @@ export async function createApp(options: AppOptions): Promise<App> {
       fallbackBreaker = fallbackTarget ? createBreaker({ breakerMs: config.llm.breakerMs, now }) : undefined
       runner = createSubscriptionRunner({
         subscription: config.llm.subscription,
+        model: config.llm.main.model,
+        effort: config.llm.main.effort,
         runnerToken,
         toolServer,
         breaker,

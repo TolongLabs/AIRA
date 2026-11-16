@@ -57,14 +57,10 @@ describe('config.yml', () => {
     const config = parseConfig(source)
     expect(() => requireDeployable(config)).toThrow(/gateway\.hostDataDir/)
     const placed = { ...config, gateway: { hostDataDir: '/srv/aira-data' } }
-    expect(() => requireDeployable(placed)).toThrow(/llm\.main\.provider/)
-    const main = {
-      ...config.llm.main,
-      provider: 'openai-compatible',
-      model: 'a-model',
-      baseUrl: 'https://provider.example/v1'
-    }
-    expect(() => requireDeployable({ ...placed, llm: { ...config.llm, main } })).not.toThrow()
+    // config.yml carries the launch models, so a placed install is deployable.
+    expect(() => requireDeployable(placed)).not.toThrow()
+    const unset = { ...config.llm.main, provider: '' }
+    expect(() => requireDeployable({ ...placed, llm: { ...config.llm, main: unset } })).toThrow(/llm\.main\.provider/)
   })
 })
 

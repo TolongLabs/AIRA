@@ -18,8 +18,23 @@ export interface ToolCallRequest {
 /** One message of the conversation window, or a step of the loop in progress. */
 export type ModelMessage =
   | { role: 'user'; content: string }
-  | { role: 'assistant'; content: string; toolCalls?: ToolCallRequest[] }
+  | { role: 'assistant'; content: string; toolCalls?: ToolCallRequest[]; replay?: TurnState }
   | { role: 'tool'; toolCallId: string; name: string; content: string }
+
+/**
+ * A provider's state that must come back with the next request of the same loop: Claude's thinking blocks, or an
+ * OpenAI-compatible server's reasoning text (docs/trd/models.md#turn-state-of-a-provider). Kept for the turn only.
+ * A client sends back only state of its own provider.
+ */
+export type TurnState = AnthropicTurnState | OpenAiTurnState
+export interface AnthropicTurnState {
+  provider: 'anthropic'
+  blocks: unknown[]
+}
+export interface OpenAiTurnState {
+  provider: 'openai-compatible'
+  reasoningContent: string
+}
 
 export interface ToolSchema {
   name: string
@@ -52,6 +67,8 @@ export interface ModelResponse {
   costUsd: number
   /** The model id the provider reports. */
   model: string
+  /** State to send back with this step when the loop continues. */
+  replay?: TurnState
 }
 
 /** The failure kinds of docs/trd/models.md#failure-kinds. */

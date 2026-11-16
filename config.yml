@@ -48,18 +48,20 @@ embeddings:
 # Owned by docs/trd/models.md
 llm:
   transport: 'api' # Selects the runner
-  main:
-    provider: '' # Main model provider
-    model: '' # Main model id
-    baseUrl: '' # Main model endpoint URL
-    usdPerMTokIn: 0 # Price of input tokens, used when the provider reports no cost
-    usdPerMTokOut: 0 # Price of output tokens
-    usdPerMTokCached: 0 # Price of cached input tokens
+  main: # Both transports run this model at this effort (docs/trd/models.md#providers-and-effort)
+    provider: 'anthropic' # anthropic: Claude's native Messages API. Or openai-compatible
+    model: 'claude-haiku-5-5' # Launch model until the benchmark in #28
+    baseUrl: 'https://api.anthropic.com' # Main model endpoint URL
+    effort: 'medium' # low, medium, high, xhigh or max. Empty: the model's default
+    usdPerMTokIn: 0.1 # Price of input tokens, used when the provider reports no cost
+    usdPerMTokOut: 0.5 # Price of output tokens
+    usdPerMTokCached: 0.01 # Price of cached input tokens
   fallback:
-    provider: '' # Fallback model provider
-    model: '' # Fallback model id
-    baseUrl: '' # Fallback model endpoint URL
-    usdPerMTokIn: 0 # Price of input tokens, used when the provider reports no cost
+    provider: 'openai-compatible' # Fallback model provider
+    model: 'deepseek-ai/DeepSeek-V4.1-Flash-1017' # On ModelScope, about one credit per call
+    baseUrl: 'https://api-inference.modelscope.ai/v1' # The key works on the .ai endpoint only
+    effort: 'high' # Sent as reasoning_effort: none (thinking off), low, high or max
+    usdPerMTokIn: 0 # Paid in ModelScope credit, not dollars, so not in the spend cap
     usdPerMTokOut: 0 # Price of output tokens
     usdPerMTokCached: 0 # Price of cached input tokens
   turnDeadlineMs: 45000 # Hard limit for one turn's model work
@@ -68,7 +70,6 @@ llm:
   monthlyBudgetUsd: 50 # Spend cap for paid roles
   subscription: # Used only when transport is 'subscription'
     runnerUrl: 'http://127.0.0.1:9882' # The host runner service
-    model: '' # Model alias for the program. Empty: the program's default
     toolServerPort: 9883 # Port of the core's tool server for the program
     toolServerUrl: 'http://127.0.0.1:9883' # Where the program reaches that tool server
 

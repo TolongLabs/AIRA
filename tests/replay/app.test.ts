@@ -366,7 +366,7 @@ describe('the whole service', () => {
       model: 'm',
       baseUrl: 'https://main.invalid/v1'
     }
-    await expect(createApp({ config, env: {}, logger: quiet })).rejects.toThrow(/key for llm\.main/)
+    await expect(createApp({ config, env: {}, logger: quiet })).rejects.toThrow(/LLM_API_KEY/)
     // The subscription transport needs no main model behind a key, but it needs the host runner's secret.
     config.llm.transport = 'subscription'
     config.llm.main = { ...config.llm.main, provider: '', model: '', baseUrl: '' }

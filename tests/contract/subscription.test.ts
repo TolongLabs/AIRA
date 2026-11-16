@@ -389,6 +389,19 @@ describe('the subscription transport', () => {
         })
       })
       expect(nonLoopback.status).toBe(400)
+
+      const badEffort = await fetch(`${runnerUrl}/run`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${RUNNER_TOKEN}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          system: 'sys',
+          prompt: 'hi',
+          effort: 'ultra',
+          tools: { url: 'http://127.0.0.1:9883', token: 'ab'.repeat(16) },
+          timeoutMs: 2000
+        })
+      })
+      expect(badEffort.status).toBe(400)
     })
 
     it('answers 413 for a body larger than 2 MB', async () => {
@@ -417,6 +430,7 @@ describe('the subscription transport', () => {
           system: systemMarker,
           prompt: 'hello',
           model: 'custom-sub-model',
+          effort: 'high',
           tools: { url, token: session.token },
           timeoutMs: 3000
         })
@@ -448,7 +462,7 @@ describe('the subscription transport', () => {
       expect(seen.args).toContain('--strict-mcp-config')
       expect(seen.args).toContain('--allowedTools')
       expect(seen.args).toContain('mcp__aira')
-      expect(seen.args.slice(-2)).toEqual(['--model', 'custom-sub-model'])
+      expect(seen.args.slice(-4)).toEqual(['--model', 'custom-sub-model', '--effort', 'high'])
       const sysFileIdx = seen.args.indexOf('--system-prompt-file')
       expect(sysFileIdx).toBeGreaterThan(-1)
       expect(seen.args[sysFileIdx + 1]?.startsWith(seen.cwd)).toBe(true)
@@ -488,7 +502,9 @@ describe('the subscription transport', () => {
       const searchLog: { args: unknown; callId: string }[] = []
       const noteLog: { args: unknown; callId: string }[] = []
       const runner = createSubscriptionRunner({
-        subscription: { runnerUrl, model: '', toolServerUrl: url },
+        subscription: { runnerUrl, toolServerUrl: url },
+        model: '',
+        effort: '',
         runnerToken: RUNNER_TOKEN,
         toolServer: server,
         breaker: createBreaker({ breakerMs: 60_000 }),
@@ -524,7 +540,9 @@ describe('the subscription transport', () => {
       const { server, url } = await startToolServer()
       const breaker = createBreaker({ breakerMs: 60_000 })
       const runner = createSubscriptionRunner({
-        subscription: { runnerUrl, model: 'sub-m', toolServerUrl: url },
+        subscription: { runnerUrl, toolServerUrl: url },
+        model: 'sub-m',
+        effort: '',
         runnerToken: RUNNER_TOKEN,
         toolServer: server,
         breaker,
@@ -549,7 +567,9 @@ describe('the subscription transport', () => {
       const breaker = createBreaker({ breakerMs: 60_000 })
       const fallback = makeFallback('from-fallback')
       const runner = createSubscriptionRunner({
-        subscription: { runnerUrl, model: 'sub-m', toolServerUrl: url },
+        subscription: { runnerUrl, toolServerUrl: url },
+        model: 'sub-m',
+        effort: '',
         runnerToken: RUNNER_TOKEN,
         toolServer: server,
         breaker,
@@ -588,7 +608,9 @@ describe('the subscription transport', () => {
       const breaker = createBreaker({ breakerMs: 60_000 })
       const onAuthFailure = vi.fn()
       const runner = createSubscriptionRunner({
-        subscription: { runnerUrl, model: '', toolServerUrl: url },
+        subscription: { runnerUrl, toolServerUrl: url },
+        model: '',
+        effort: '',
         runnerToken: RUNNER_TOKEN,
         toolServer: server,
         breaker,
@@ -618,7 +640,9 @@ describe('the subscription transport', () => {
       const { server, url } = await startToolServer()
       const fallback = makeFallback('ok-fallback')
       const withFallback = createSubscriptionRunner({
-        subscription: { runnerUrl, model: '', toolServerUrl: url },
+        subscription: { runnerUrl, toolServerUrl: url },
+        model: '',
+        effort: '',
         runnerToken: RUNNER_TOKEN,
         toolServer: server,
         breaker: createBreaker({ breakerMs: 60_000 }),
@@ -637,7 +661,9 @@ describe('the subscription transport', () => {
       expect(res.calls[0]?.failureKind).toBe(expectedKind)
 
       const withoutFallback = createSubscriptionRunner({
-        subscription: { runnerUrl, model: '', toolServerUrl: url },
+        subscription: { runnerUrl, toolServerUrl: url },
+        model: '',
+        effort: '',
         runnerToken: RUNNER_TOKEN,
         toolServer: server,
         breaker: createBreaker({ breakerMs: 60_000 }),
@@ -657,7 +683,9 @@ describe('the subscription transport', () => {
     it('kills FAKE_HANG after a short deadline, returns transient, and logs run ended', async () => {
       const { server, url } = await startToolServer()
       const runner = createSubscriptionRunner({
-        subscription: { runnerUrl, model: '', toolServerUrl: url },
+        subscription: { runnerUrl, toolServerUrl: url },
+        model: '',
+        effort: '',
         runnerToken: RUNNER_TOKEN,
         toolServer: server,
         breaker: createBreaker({ breakerMs: 60_000 }),
@@ -684,7 +712,9 @@ describe('the subscription transport', () => {
       const openSpy = vi.spyOn(server, 'open')
       const fallback = makeFallback('closed-port-fallback')
       const runner = createSubscriptionRunner({
-        subscription: { runnerUrl: `http://127.0.0.1:${closedPort}`, model: '', toolServerUrl: url },
+        subscription: { runnerUrl: `http://127.0.0.1:${closedPort}`, toolServerUrl: url },
+        model: '',
+        effort: '',
         runnerToken: RUNNER_TOKEN,
         toolServer: server,
         breaker: createBreaker({ breakerMs: 60_000 }),
@@ -717,7 +747,9 @@ describe('the subscription transport', () => {
       const promptMarker = 'MARKER_PROMPT_9911'
       const systemMarker = 'MARKER_SYSTEM_8822'
       const runner = createSubscriptionRunner({
-        subscription: { runnerUrl, model: '', toolServerUrl: url },
+        subscription: { runnerUrl, toolServerUrl: url },
+        model: '',
+        effort: '',
         runnerToken: RUNNER_TOKEN,
         toolServer: server,
         breaker: createBreaker({ breakerMs: 60_000 }),
