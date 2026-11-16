@@ -7,18 +7,23 @@ const wallClock: Clock = () => new Date()
 
 export type WordKind = 'word' | 'pattern'
 
+export interface MeaningEntry {
+  language: string
+  meaning: string
+}
+
 export interface SongLine {
   position: number
   text: string
   reading: string
-  meaning: string
+  meanings: Record<string, string>
 }
 
 export interface SongWord {
   kind: WordKind
   word: string
   reading: string
-  meaning: string
+  meanings: MeaningEntry[]
   lines: number[]
 }
 
@@ -45,25 +50,36 @@ function songKeyOf(title: string, artist: string): string {
   return `${keyOf(title)}\n${keyOf(artist)}`
 }
 
+function sortMeanings(items: MeaningEntry[], preferredLanguage?: string): MeaningEntry[] {
+  return [...items].sort((a, b) => {
+    if (preferredLanguage !== undefined) {
+      if (a.language === preferredLanguage && b.language !== preferredLanguage) return -1
+      if (b.language === preferredLanguage && a.language !== preferredLanguage) return 1
+    }
+    return a.language < b.language ? -1 : a.language > b.language ? 1 : 0
+  })
+}
+
+function parseForms(raw: string): string[] {
+  const parsed: unknown = JSON.parse(raw)
+  return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : []
+}
+
 export function saveSong(
   db: Db,
-  chatId: string,
   song: {
     title: string
     artist: string
     language: string
     source: string
-    lines: { text: string; reading: string; meaning: string }[]
+    lines: { text: string; reading: string; meanings: Record<string, string> }[]
     words: { kind: WordKind; word: string; reading: string; lines: number[] }[]
   },
   now: Clock = wallClock
 ): { songId: string; replaced: boolean; words: number } {
   const sKey = songKeyOf(song.title, song.artist)
   const at = isoNow(now)
-  const existingId = db
-    .prepare('SELECT id FROM lesson_song WHERE chat_id = ? AND song_key = ?')
-    .pluck()
-    .get(chatId, sKey) as string | undefined
+  const existingId = db.prepare('SELECT id FROM lesson_song WHERE song_key = ?').pluck().get(sKey) as string | undefined
 
   let songId: string
   let replaced: boolean
@@ -73,59 +89,65 @@ export function saveSong(
     db.prepare(
       `UPDATE lesson_song
        SET title = ?, artist = ?, language = ?, source = ?, updated_at = ?
-       WHERE id = ? AND chat_id = ?`
-    ).run(song.title, song.artist, song.language, song.source, at, songId, chatId)
-    db.prepare('DELETE FROM lesson_song_line WHERE song_id = ? AND chat_id = ?').run(songId, chatId)
-    db.prepare('DELETE FROM lesson_word_seen WHERE song_id = ? AND chat_id = ?').run(songId, chatId)
+       WHERE id = ?`
+    ).run(song.title, song.artist, song.language, song.source, at, songId)
+    db.prepare('DELETE FROM lesson_song_line WHERE song_id = ?').run(songId)
+    db.prepare('DELETE FROM lesson_word_seen WHERE song_id = ?').run(songId)
   } else {
     songId = newId('song_')
     replaced = false
     db.prepare(
-      `INSERT INTO lesson_song (id, chat_id, title, artist, song_key, language, source, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(songId, chatId, song.title, song.artist, sKey, song.language, song.source, at, at)
+      `INSERT INTO lesson_song (id, title, artist, song_key, language, source, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(songId, song.title, song.artist, sKey, song.language, song.source, at, at)
   }
 
   const insertLine = db.prepare(
-    `INSERT INTO lesson_song_line (song_id, chat_id, position, text, reading, meaning)
-     VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO lesson_song_line (song_id, position, text, reading)
+     VALUES (?, ?, ?, ?)`
+  )
+  const insertLineMeaning = db.prepare(
+    `INSERT INTO lesson_song_line_meaning (song_id, position, language, meaning)
+     VALUES (?, ?, ?, ?)`
   )
   for (let i = 0; i < song.lines.length; i++) {
     const line = song.lines[i]
     if (!line) continue
-    insertLine.run(songId, chatId, i + 1, line.text, line.reading, line.meaning)
+    const position = i + 1
+    insertLine.run(songId, position, line.text, line.reading)
+    for (const [language, meaning] of Object.entries(line.meanings)) {
+      insertLineMeaning.run(songId, position, language, meaning)
+    }
   }
 
-  const findWord = db.prepare('SELECT id, reading FROM lesson_word WHERE chat_id = ? AND kind = ? AND word_key = ?')
-  const fillWordReading = db.prepare('UPDATE lesson_word SET reading = ?, updated_at = ? WHERE id = ? AND chat_id = ?')
+  const findWord = db.prepare('SELECT id, reading FROM lesson_word WHERE kind = ? AND word_key = ?')
+  const fillWordReading = db.prepare('UPDATE lesson_word SET reading = ?, updated_at = ? WHERE id = ?')
   const insertWord = db.prepare(
-    `INSERT INTO lesson_word (id, chat_id, kind, word, word_key, reading, meaning, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, '', ?, ?)`
+    `INSERT INTO lesson_word (id, kind, word, word_key, reading, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   )
-  const insertSeen = db.prepare(
-    'INSERT OR IGNORE INTO lesson_word_seen (word_id, chat_id, song_id, position) VALUES (?, ?, ?, ?)'
-  )
+  const insertSeen = db.prepare('INSERT OR IGNORE INTO lesson_word_seen (word_id, song_id, position) VALUES (?, ?, ?)')
 
   const maxLine = song.lines.length
   const wordIds = new Set<string>()
   for (const entry of song.words) {
     const wKey = keyOf(entry.word)
-    const found = findWord.get(chatId, entry.kind, wKey) as { id: string; reading: string } | undefined
+    const found = findWord.get(entry.kind, wKey) as { id: string; reading: string } | undefined
     let wordId: string
     if (found) {
       wordId = found.id
       if (found.reading === '' && entry.reading !== '') {
-        fillWordReading.run(entry.reading, at, wordId, chatId)
+        fillWordReading.run(entry.reading, at, wordId)
       }
     } else {
       wordId = newId('word_')
-      insertWord.run(wordId, chatId, entry.kind, entry.word, wKey, entry.reading, at, at)
+      insertWord.run(wordId, entry.kind, entry.word, wKey, entry.reading, at, at)
     }
     wordIds.add(wordId)
 
     for (const pos of entry.lines) {
       if (!Number.isInteger(pos) || pos < 1 || pos > maxLine) continue
-      insertSeen.run(wordId, chatId, songId, pos)
+      insertSeen.run(wordId, songId, pos)
     }
   }
 
@@ -134,25 +156,29 @@ export function saveSong(
 
 export function getSong(
   storage: Storage,
-  chatId: string,
   title: string,
-  artist?: string
+  artist?: string,
+  preferredLanguage?: string
 ): Song | undefined | 'ambiguous' {
   const tKey = keyOf(title)
   const rows = storage.read((db) => {
     if (artist !== undefined) {
       const sKey = songKeyOf(title, artist)
-      return db
-        .prepare('SELECT id, title, artist, language, source FROM lesson_song WHERE chat_id = ? AND song_key = ?')
-        .all(chatId, sKey) as { id: string; title: string; artist: string; language: string; source: string }[]
+      return db.prepare('SELECT id, title, artist, language, source FROM lesson_song WHERE song_key = ?').all(sKey) as {
+        id: string
+        title: string
+        artist: string
+        language: string
+        source: string
+      }[]
     }
     return db
       .prepare(
         `SELECT id, title, artist, language, source
          FROM lesson_song
-         WHERE chat_id = ? AND substr(song_key, 1, instr(song_key, char(10)) - 1) = ?`
+         WHERE substr(song_key, 1, instr(song_key, char(10)) - 1) = ?`
       )
-      .all(chatId, tKey) as { id: string; title: string; artist: string; language: string; source: string }[]
+      .all(tKey) as { id: string; title: string; artist: string; language: string; source: string }[]
   })
 
   if (rows.length === 0) return undefined
@@ -161,41 +187,81 @@ export function getSong(
   if (!songRow) return undefined
 
   return storage.read((db) => {
-    const lines = db
+    const rawLines = db
       .prepare(
-        `SELECT position, text, reading, meaning
+        `SELECT position, text, reading
          FROM lesson_song_line
-         WHERE song_id = ? AND chat_id = ?
+         WHERE song_id = ?
          ORDER BY position ASC`
       )
-      .all(songRow.id, chatId) as SongLine[]
+      .all(songRow.id) as { position: number; text: string; reading: string }[]
+
+    const lineMeaningRows = db
+      .prepare(
+        `SELECT position, language, meaning
+         FROM lesson_song_line_meaning
+         WHERE song_id = ?
+         ORDER BY position ASC, language ASC`
+      )
+      .all(songRow.id) as { position: number; language: string; meaning: string }[]
+
+    const lineMeaningsByPos = new Map<number, MeaningEntry[]>()
+    for (const row of lineMeaningRows) {
+      let list = lineMeaningsByPos.get(row.position)
+      if (!list) {
+        list = []
+        lineMeaningsByPos.set(row.position, list)
+      }
+      list.push({ language: row.language, meaning: row.meaning })
+    }
+
+    const lines: SongLine[] = rawLines.map((line) => {
+      const meanings: Record<string, string> = {}
+      const sorted = sortMeanings(lineMeaningsByPos.get(line.position) ?? [], preferredLanguage)
+      for (const entry of sorted) {
+        meanings[entry.language] = entry.meaning
+      }
+      return {
+        position: line.position,
+        text: line.text,
+        reading: line.reading,
+        meanings
+      }
+    })
 
     const seenRows = db
       .prepare(
-        `SELECT w.id, w.kind, w.word, w.reading, w.meaning, s.position
+        `SELECT w.id, w.kind, w.word, w.reading, s.position
          FROM lesson_word_seen s
-         JOIN lesson_word w ON w.id = s.word_id AND w.chat_id = s.chat_id
-         WHERE s.song_id = ? AND s.chat_id = ? AND w.chat_id = ?
+         JOIN lesson_word w ON w.id = s.word_id
+         WHERE s.song_id = ?
          ORDER BY w.word_key ASC, w.kind ASC, s.position ASC`
       )
-      .all(songRow.id, chatId, chatId) as {
+      .all(songRow.id) as {
       id: string
       kind: WordKind
       word: string
       reading: string
-      meaning: string
       position: number
     }[]
+
+    const wordMeaningStmt = db.prepare(
+      `SELECT language, meaning
+       FROM lesson_word_meaning
+       WHERE word_id = ?
+       ORDER BY language ASC`
+    )
 
     const wordsById = new Map<string, SongWord>()
     for (const row of seenRows) {
       let item = wordsById.get(row.id)
       if (!item) {
+        const wordMeanings = wordMeaningStmt.all(row.id) as MeaningEntry[]
         item = {
           kind: row.kind,
           word: row.word,
           reading: row.reading,
-          meaning: row.meaning,
+          meanings: sortMeanings(wordMeanings, preferredLanguage),
           lines: []
         }
         wordsById.set(row.id, item)
@@ -217,42 +283,68 @@ export function getSong(
 
 export function lookupWord(
   storage: Storage,
-  chatId: string,
-  word: string
+  word: string,
+  preferredLanguage?: string
 ): {
-  word: string
+  id: string
   kind: WordKind
+  word: string
   reading: string
-  meaning: string
+  level: string
+  pos: string
+  forms: string[]
+  example: string
+  meanings: MeaningEntry[]
   seen: { songTitle: string; artist: string; position: number; line: string }[]
 }[] {
   const wKey = keyOf(word)
   return storage.read((db) => {
     const wordRows = db
       .prepare(
-        `SELECT id, kind, word, reading, meaning
+        `SELECT id, kind, word, reading, level, pos, forms, example
          FROM lesson_word
-         WHERE chat_id = ? AND word_key = ?
+         WHERE word_key = ?
          ORDER BY kind ASC`
       )
-      .all(chatId, wKey) as { id: string; kind: WordKind; word: string; reading: string; meaning: string }[]
+      .all(wKey) as {
+      id: string
+      kind: WordKind
+      word: string
+      reading: string
+      level: string
+      pos: string
+      forms: string
+      example: string
+    }[]
+
+    const meaningStmt = db.prepare(
+      `SELECT language, meaning
+       FROM lesson_word_meaning
+       WHERE word_id = ?
+       ORDER BY language ASC`
+    )
 
     const seenStmt = db.prepare(
       `SELECT song.title AS songTitle, song.artist, seen.position, line.text AS line
        FROM lesson_word_seen seen
-       JOIN lesson_song song ON song.id = seen.song_id AND song.chat_id = seen.chat_id
+       JOIN lesson_song song ON song.id = seen.song_id
        JOIN lesson_song_line line
-         ON line.song_id = seen.song_id AND line.chat_id = seen.chat_id AND line.position = seen.position
-       WHERE seen.word_id = ? AND seen.chat_id = ? AND song.chat_id = ? AND line.chat_id = ?
+         ON line.song_id = seen.song_id AND line.position = seen.position
+       WHERE seen.word_id = ?
        ORDER BY song.title ASC, seen.position ASC`
     )
 
     return wordRows.map((row) => ({
-      word: row.word,
+      id: row.id,
       kind: row.kind,
+      word: row.word,
       reading: row.reading,
-      meaning: row.meaning,
-      seen: seenStmt.all(row.id, chatId, chatId, chatId) as {
+      level: row.level,
+      pos: row.pos,
+      forms: parseForms(row.forms),
+      example: row.example,
+      meanings: sortMeanings(meaningStmt.all(row.id) as MeaningEntry[], preferredLanguage),
+      seen: seenStmt.all(row.id) as {
         songTitle: string
         artist: string
         position: number
@@ -264,42 +356,42 @@ export function lookupWord(
 
 export function setGloss(
   db: Db,
-  chatId: string,
-  input: { kind: WordKind; word: string; reading?: string; meaning: string },
+  input: { kind: WordKind; word: string; language: string; meaning: string; reading?: string },
   now: Clock = wallClock
 ): { wordId: string; created: boolean } {
   const wKey = keyOf(input.word)
   const at = isoNow(now)
-  const existing = db
-    .prepare('SELECT id FROM lesson_word WHERE chat_id = ? AND kind = ? AND word_key = ?')
-    .get(chatId, input.kind, wKey) as { id: string } | undefined
+  const wordSql = 'SELECT id FROM lesson_word WHERE kind = ? AND word_key = ?'
+  const existing = db.prepare(wordSql).get(input.kind, wKey) as { id: string } | undefined
 
+  let wordId: string
+  let created: boolean
   if (existing) {
+    wordId = existing.id
+    created = false
     if (input.reading !== undefined) {
-      db.prepare('UPDATE lesson_word SET meaning = ?, reading = ?, updated_at = ? WHERE id = ? AND chat_id = ?').run(
-        input.meaning,
-        input.reading,
-        at,
-        existing.id,
-        chatId
-      )
+      db.prepare('UPDATE lesson_word SET reading = ?, updated_at = ? WHERE id = ?').run(input.reading, at, wordId)
     } else {
-      db.prepare('UPDATE lesson_word SET meaning = ?, updated_at = ? WHERE id = ? AND chat_id = ?').run(
-        input.meaning,
-        at,
-        existing.id,
-        chatId
-      )
+      db.prepare('UPDATE lesson_word SET updated_at = ? WHERE id = ?').run(at, wordId)
     }
-    return { wordId: existing.id, created: false }
+  } else {
+    wordId = newId('word_')
+    created = true
+    db.prepare(
+      `INSERT INTO lesson_word (id, kind, word, word_key, reading, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(wordId, input.kind, input.word, wKey, input.reading ?? '', at, at)
   }
 
-  const wordId = newId('word_')
   db.prepare(
-    `INSERT INTO lesson_word (id, chat_id, kind, word, word_key, reading, meaning, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(wordId, chatId, input.kind, input.word, wKey, input.reading ?? '', input.meaning, at, at)
-  return { wordId, created: true }
+    `INSERT INTO lesson_word_meaning (word_id, language, meaning, updated_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT (word_id, language) DO UPDATE SET
+       meaning = excluded.meaning,
+       updated_at = excluded.updated_at`
+  ).run(wordId, input.language, input.meaning, at)
+
+  return { wordId, created }
 }
 
 function extractLinks(body: string, selfKey: string): { title: string; key: string }[] {
@@ -319,7 +411,6 @@ function extractLinks(body: string, selfKey: string): { title: string; key: stri
 
 export function writeNode(
   db: Db,
-  chatId: string,
   input: { title: string; body: string },
   now: Clock = wallClock
 ): { nodeId: string; replaced: boolean; links: string[] } {
@@ -327,81 +418,70 @@ export function writeNode(
   const at = isoNow(now)
   const links = extractLinks(input.body, tKey)
 
-  const existingId = db
-    .prepare('SELECT id FROM library_node WHERE chat_id = ? AND title_key = ?')
-    .pluck()
-    .get(chatId, tKey) as string | undefined
+  const nodeSql = 'SELECT id FROM library_node WHERE title_key = ?'
+  const existingId = db.prepare(nodeSql).pluck().get(tKey) as string | undefined
 
   let nodeId: string
   let replaced: boolean
   if (existingId !== undefined) {
     nodeId = existingId
     replaced = true
-    db.prepare('UPDATE library_node SET title = ?, body = ?, updated_at = ? WHERE id = ? AND chat_id = ?').run(
+    db.prepare('UPDATE library_node SET title = ?, body = ?, updated_at = ? WHERE id = ?').run(
       input.title,
       input.body,
       at,
-      nodeId,
-      chatId
+      nodeId
     )
-    db.prepare('DELETE FROM library_link WHERE node_id = ? AND chat_id = ?').run(nodeId, chatId)
+    db.prepare('DELETE FROM library_link WHERE node_id = ?').run(nodeId)
   } else {
     nodeId = newId('node_')
     replaced = false
     db.prepare(
-      `INSERT INTO library_node (id, chat_id, title, title_key, body, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).run(nodeId, chatId, input.title, tKey, input.body, at, at)
+      `INSERT INTO library_node (id, title, title_key, body, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(nodeId, input.title, tKey, input.body, at, at)
   }
 
-  const insertLink = db.prepare(
-    'INSERT INTO library_link (node_id, chat_id, target_title, target_key) VALUES (?, ?, ?, ?)'
-  )
+  const insertLink = db.prepare('INSERT INTO library_link (node_id, target_title, target_key) VALUES (?, ?, ?)')
   for (const link of links) {
-    insertLink.run(nodeId, chatId, link.title, link.key)
+    insertLink.run(nodeId, link.title, link.key)
   }
 
-  db.prepare('DELETE FROM library_fts WHERE node_id = ? AND chat_id = ?').run(nodeId, chatId)
-  db.prepare('INSERT INTO library_fts (node_id, chat_id, text) VALUES (?, ?, ?)').run(
-    nodeId,
-    chatId,
-    `${input.title} ${input.body}`
-  )
+  db.prepare('DELETE FROM library_fts WHERE node_id = ?').run(nodeId)
+  db.prepare('INSERT INTO library_fts (node_id, text) VALUES (?, ?)').run(nodeId, `${input.title} ${input.body}`)
 
   return { nodeId, replaced, links: links.map((l) => l.title) }
 }
 
 export function openNode(
   storage: Storage,
-  chatId: string,
   title: string
 ): { title: string; body: string; links: { title: string; exists: boolean }[]; linkedFrom: string[] } | undefined {
   const tKey = keyOf(title)
   return storage.read((db) => {
-    const node = db
-      .prepare('SELECT id, title, body FROM library_node WHERE chat_id = ? AND title_key = ?')
-      .get(chatId, tKey) as { id: string; title: string; body: string } | undefined
+    const nodeSql = 'SELECT id, title, body FROM library_node WHERE title_key = ?'
+    const node = db.prepare(nodeSql).get(tKey) as { id: string; title: string; body: string } | undefined
     if (!node) return undefined
 
     const linkRows = db
       .prepare(
         `SELECT l.target_title AS title, CASE WHEN target.id IS NOT NULL THEN 1 ELSE 0 END AS exists_flag
          FROM library_link l
-         LEFT JOIN library_node target ON target.chat_id = l.chat_id AND target.title_key = l.target_key
-         WHERE l.node_id = ? AND l.chat_id = ?
+         LEFT JOIN library_node target ON target.title_key = l.target_key
+         WHERE l.node_id = ?
          ORDER BY l.target_key ASC`
       )
-      .all(node.id, chatId) as { title: string; exists_flag: number }[]
+      .all(node.id) as { title: string; exists_flag: number }[]
 
     const backlinkRows = db
       .prepare(
         `SELECT n.title
          FROM library_link l
-         JOIN library_node n ON n.id = l.node_id AND n.chat_id = l.chat_id
-         WHERE l.chat_id = ? AND l.target_key = ? AND n.chat_id = ?
+         JOIN library_node n ON n.id = l.node_id
+         WHERE l.target_key = ?
          ORDER BY n.title_key ASC`
       )
-      .all(chatId, tKey, chatId) as { title: string }[]
+      .all(tKey) as { title: string }[]
 
     return {
       title: node.title,
@@ -414,7 +494,6 @@ export function openNode(
 
 export function searchLibrary(
   storage: Storage,
-  chatId: string,
   query: string,
   limit: number
 ): { title: string; excerpt: string; via?: string }[] {
@@ -427,16 +506,12 @@ export function searchLibrary(
       .prepare(
         `SELECT library_node.id, library_node.title, library_node.body
          FROM library_fts
-         JOIN library_node
-           ON library_node.id = library_fts.node_id
-          AND library_node.chat_id = library_fts.chat_id
+         JOIN library_node ON library_node.id = library_fts.node_id
          WHERE library_fts MATCH ?
-           AND library_fts.chat_id = ?
-           AND library_node.chat_id = ?
          ORDER BY bm25(library_fts)
          LIMIT ?`
       )
-      .all(fts, chatId, chatId, limit) as { id: string; title: string; body: string }[]
+      .all(fts, limit) as { id: string; title: string; body: string }[]
 
     const results: { title: string; excerpt: string; via?: string }[] = []
     const seenIds = new Set<string>()
@@ -449,14 +524,12 @@ export function searchLibrary(
       const linkedStmt = db.prepare(
         `SELECT target.id, target.title, target.body
          FROM library_link l
-         JOIN library_node target
-           ON target.chat_id = l.chat_id
-          AND target.title_key = l.target_key
-         WHERE l.node_id = ? AND l.chat_id = ? AND target.chat_id = ?
+         JOIN library_node target ON target.title_key = l.target_key
+         WHERE l.node_id = ?
          ORDER BY target.title_key ASC`
       )
       for (const match of matches) {
-        const linked = linkedStmt.all(match.id, chatId, chatId) as { id: string; title: string; body: string }[]
+        const linked = linkedStmt.all(match.id) as { id: string; title: string; body: string }[]
         for (const row of linked) {
           if (seenIds.has(row.id)) continue
           seenIds.add(row.id)
@@ -473,7 +546,6 @@ export function searchLibrary(
 
 export function libraryGaps(
   storage: Storage,
-  chatId: string,
   limit: number
 ): {
   missingNotes: { title: string; linkedFrom: string[] }[]
@@ -487,12 +559,12 @@ export function libraryGaps(
       .prepare(
         `SELECT l.target_title, l.target_key, n.title AS source_title
          FROM library_link l
-         JOIN library_node n ON n.id = l.node_id AND n.chat_id = l.chat_id
-         LEFT JOIN library_node target ON target.chat_id = l.chat_id AND target.title_key = l.target_key
-         WHERE l.chat_id = ? AND n.chat_id = ? AND target.id IS NULL
+         JOIN library_node n ON n.id = l.node_id
+         LEFT JOIN library_node target ON target.title_key = l.target_key
+         WHERE target.id IS NULL
          ORDER BY l.target_key ASC, n.title_key ASC`
       )
-      .all(chatId, chatId) as { target_title: string; target_key: string; source_title: string }[]
+      .all() as { target_title: string; target_key: string; source_title: string }[]
 
     const missingMap = new Map<string, { title: string; linkedFrom: string[] }>()
     for (const row of missingRows) {
@@ -507,13 +579,14 @@ export function libraryGaps(
 
     const wordsWithoutMeaning = db
       .prepare(
-        `SELECT kind, word
-         FROM lesson_word
-         WHERE chat_id = ? AND meaning = ''
-         ORDER BY word_key ASC, kind ASC
+        `SELECT w.kind, w.word
+         FROM lesson_word w
+         LEFT JOIN lesson_word_meaning m ON m.word_id = w.id
+         WHERE m.word_id IS NULL
+         ORDER BY w.word_key ASC, w.kind ASC
          LIMIT ?`
       )
-      .all(chatId, limit) as { kind: WordKind; word: string }[]
+      .all(limit) as { kind: WordKind; word: string }[]
 
     return {
       missingNotes: [...missingMap.values()],

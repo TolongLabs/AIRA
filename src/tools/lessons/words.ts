@@ -9,6 +9,7 @@ const vocabLookupSchema = z.strictObject({
 
 const glossSetSchema = z.strictObject({
   word: z.string().trim().min(1).max(120),
+  language: z.string().trim().min(2).max(16),
   meaning: z.string().trim().min(1).max(500),
   reading: z.string().trim().max(200).optional(),
   kind: z.enum(['word', 'pattern']).optional()
@@ -28,9 +29,11 @@ export function vocabLookupTool(storage: Storage): ToolDefinition<z.infer<typeof
       usage: '/word <word or pattern>'
     },
     handler(args, context) {
-      const entries = lookupWord(storage, context.chat.chatId, args.word)
+      const rawLang = context.settings['language']?.value
+      const preferredLanguage = typeof rawLang === 'string' && rawLang !== 'auto' ? rawLang : undefined
+      const entries = lookupWord(storage, args.word, preferredLanguage)
       if (entries.length === 0) {
-        return { ok: false, kind: 'refused', reason: "that word is not in this chat's vocabulary" }
+        return { ok: false, kind: 'refused', reason: 'that word is not in the vocabulary' }
       }
       return { ok: true, data: { entries } }
     }
@@ -40,7 +43,8 @@ export function vocabLookupTool(storage: Storage): ToolDefinition<z.infer<typeof
 export function glossSetTool(): ToolDefinition<z.infer<typeof glossSetSchema>> {
   return {
     name: 'gloss_set',
-    description: 'Fills in what one word or pattern means.',
+    description:
+      'Fills in what one word or pattern means in one language. The library is shared by every chat with lessons on: write study notes only, never anything about a member.',
     schema: glossSetSchema,
     mode: 'implicit',
     mutates: true,
@@ -49,12 +53,12 @@ export function glossSetTool(): ToolDefinition<z.infer<typeof glossSetSchema>> {
       const { data } = context.commit((db) => {
         const res = setGloss(
           db,
-          context.chat.chatId,
           {
             kind: args.kind ?? 'word',
             word: args.word,
-            ...(args.reading !== undefined ? { reading: args.reading } : {}),
-            meaning: args.meaning
+            language: args.language,
+            meaning: args.meaning,
+            ...(args.reading !== undefined ? { reading: args.reading } : {})
           },
           context.now
         )

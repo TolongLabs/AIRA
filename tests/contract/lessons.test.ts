@@ -32,7 +32,9 @@ function setup(ports: Partial<ToolPorts> = {}, options: { now?: () => Date } = {
   registerCoreTools(registry, { ...ports, filesDir })
   registerLessonTools(registry, { ...ports, filesDir })
 
-  const makeCtx = (overrides: { waId?: string; senderId?: string; lessons?: boolean } = {}): TurnContext => {
+  const makeCtx = (
+    overrides: { waId?: string; senderId?: string; lessons?: boolean; language?: string } = {}
+  ): TurnContext => {
     seq++
     const chat = ensureChat(storage, { waId: overrides.waId ?? `fake-lessons-chat-${seq}`, type: 'group' })
     setChatStatus(storage, { chatId: chat.chatId, status: 'active', actor: 'test' })
@@ -42,6 +44,15 @@ function setup(ports: Partial<ToolPorts> = {}, options: { now?: () => Date } = {
         scope: chat.chatId,
         key: 'features.lessons',
         value: overrides.lessons,
+        actor: 'test'
+      })
+    }
+    if (overrides.language !== undefined) {
+      setSetting(storage, {
+        level: 'chat',
+        scope: chat.chatId,
+        key: 'language',
+        value: overrides.language,
         actor: 'test'
       })
     }
@@ -69,7 +80,9 @@ function tableCounts(storage: Storage): Record<string, number> {
   const tables = [
     'lesson_song',
     'lesson_song_line',
+    'lesson_song_line_meaning',
     'lesson_word',
+    'lesson_word_meaning',
     'lesson_word_seen',
     'lesson_lyrics_candidate',
     'library_node',
@@ -83,21 +96,6 @@ function tableCounts(storage: Storage): Record<string, number> {
     }
     return counts
   })
-}
-
-function snapshotChat(storage: Storage, chatId: string) {
-  return storage.read((db) => ({
-    songs: db.prepare('SELECT * FROM lesson_song WHERE chat_id = ? ORDER BY id').all(chatId),
-    lines: db.prepare('SELECT * FROM lesson_song_line WHERE chat_id = ? ORDER BY song_id, position').all(chatId),
-    words: db.prepare('SELECT * FROM lesson_word WHERE chat_id = ? ORDER BY id').all(chatId),
-    seen: db
-      .prepare('SELECT * FROM lesson_word_seen WHERE chat_id = ? ORDER BY word_id, song_id, position')
-      .all(chatId),
-    candidates: db.prepare('SELECT * FROM lesson_lyrics_candidate WHERE chat_id = ? ORDER BY id').all(chatId),
-    nodes: db.prepare('SELECT * FROM library_node WHERE chat_id = ? ORDER BY id').all(chatId),
-    links: db.prepare('SELECT * FROM library_link WHERE chat_id = ? ORDER BY node_id, target_key').all(chatId),
-    fts: db.prepare('SELECT * FROM library_fts WHERE chat_id = ? ORDER BY node_id').all(chatId)
-  }))
 }
 
 function walkTs(dir: string): string[] {
@@ -156,8 +154,16 @@ describe('lessons and library tools', () => {
         artist: 'Ikimono',
         language: 'ja',
         lines: [
-          { text: 'Habataitara modoranai', reading: 'はばたいたら もどらない', meaning: 'If I spread my wings' },
-          { text: 'Mezashita no wa aoi sora', reading: 'めざしたのは あおい そら', meaning: 'Aimed for the blue sky' }
+          {
+            text: 'Habataitara modoranai',
+            reading: 'はばたいたら もどらない',
+            meanings: { en: 'If I spread my wings', zh: '如果展翅高飞' }
+          },
+          {
+            text: 'Mezashita no wa aoi sora',
+            reading: 'めざしたのは あおい そら',
+            meanings: { en: 'Aimed for the blue sky', zh: '目标是蔚蓝的天空' }
+          }
         ],
         words: [
           { kind: 'word', word: 'aoi', reading: 'あおい', lines: [2] },
@@ -183,20 +189,33 @@ describe('lessons and library tools', () => {
         title: 'Blue Bird',
         artist: 'Ikimono',
         lines: [
-          { position: 1, text: 'Habataitara modoranai' },
-          { position: 2, text: 'Mezashita no wa aoi sora' }
+          {
+            position: 1,
+            text: 'Habataitara modoranai',
+            meanings: { en: 'If I spread my wings', zh: '如果展翅高飞' }
+          },
+          {
+            position: 2,
+            text: 'Mezashita no wa aoi sora',
+            meanings: { en: 'Aimed for the blue sky', zh: '目标是蔚蓝的天空' }
+          }
         ],
         words: [
-          { kind: 'pattern', word: '-tara', meaning: '', lines: [1] },
-          { kind: 'word', word: 'aoi', reading: 'あおい', meaning: '', lines: [2] }
+          { kind: 'pattern', word: '-tara', meanings: [], lines: [1] },
+          { kind: 'word', word: 'aoi', reading: 'あおい', meanings: [], lines: [2] }
         ]
       }
     })
 
-    const glossed = await registry.call('gloss_set', { word: 'aoi', meaning: 'blue', reading: 'あおい' }, ctx, {
-      callId: 'c-gloss-1',
-      source: 'model'
-    })
+    const glossed = await registry.call(
+      'gloss_set',
+      { word: 'aoi', language: 'en', meaning: 'blue', reading: 'あおい' },
+      ctx,
+      {
+        callId: 'c-gloss-1',
+        source: 'model'
+      }
+    )
     expect(glossed).toMatchObject({
       ok: true,
       data: { created: false },
@@ -207,7 +226,7 @@ describe('lessons and library tools', () => {
       callId: 'c-vocab-1',
       source: 'command'
     })
-    expect(looked).toEqual({
+    expect(looked).toMatchObject({
       ok: true,
       data: {
         entries: [
@@ -215,7 +234,11 @@ describe('lessons and library tools', () => {
             word: 'aoi',
             kind: 'word',
             reading: 'あおい',
-            meaning: 'blue',
+            level: '',
+            pos: '',
+            forms: [],
+            example: '',
+            meanings: [{ language: 'en', meaning: 'blue' }],
             seen: [{ songTitle: 'Blue Bird', artist: 'Ikimono', position: 2, line: 'Mezashita no wa aoi sora' }]
           }
         ]
@@ -239,7 +262,7 @@ describe('lessons and library tools', () => {
       { callId: 'c-s1', source: 'model' }
     )
 
-    await registry.call('gloss_set', { word: 'haru', meaning: 'spring' }, ctx, {
+    await registry.call('gloss_set', { word: 'haru', language: 'en', meaning: 'spring' }, ctx, {
       callId: 'c-g1',
       source: 'model'
     })
@@ -267,7 +290,7 @@ describe('lessons and library tools', () => {
     })
     expect(looked).toMatchObject({
       ok: true,
-      data: { entries: [{ word: 'haru', meaning: 'spring', reading: 'はる' }] }
+      data: { entries: [{ word: 'haru', meanings: [{ language: 'en', meaning: 'spring' }], reading: 'はる' }] }
     })
 
     // Same callId twice returns stored result and writes nothing again
@@ -551,7 +574,7 @@ describe('lessons and library tools', () => {
       callId: 'c-fill-note',
       source: 'model'
     })
-    await registry.call('gloss_set', { word: 'unexplained', meaning: 'now glossed' }, ctx, {
+    await registry.call('gloss_set', { word: 'unexplained', language: 'en', meaning: 'now glossed' }, ctx, {
       callId: 'c-fill-word',
       source: 'model'
     })
@@ -563,96 +586,120 @@ describe('lessons and library tools', () => {
     })
   })
 
-  it('isolates all songs, words, candidates and library notes between chats', async () => {
-    const { storage, registry, makeCtx } = setup()
-    const ctxA = makeCtx({ lessons: true })
-    const ctxB = makeCtx({ lessons: true })
+  it('shares songs, words and library notes across chats with lessons on, and orders meanings by chat language', async () => {
+    const { registry, makeCtx } = setup()
+    const ctxA = makeCtx({ lessons: true, language: 'en' })
+    const ctxB = makeCtx({ lessons: true, language: 'zh' })
 
     await registry.call(
       'song_save',
       {
-        title: 'Shared Title',
-        artist: 'Artist A',
-        lines: [{ text: 'Line alphaonly' }],
-        words: [{ word: 'alphaonly', lines: [1] }]
+        title: 'Yozora',
+        artist: 'Band X',
+        lines: [{ text: 'Yozora wo miageru', meanings: { en: 'Look up at the night sky', zh: '仰望夜空' } }],
+        words: [{ word: 'yozora', reading: 'よぞら', lines: [1] }]
       },
       ctxA,
-      { callId: 'c-iso-sa', source: 'model' }
+      { callId: 'c-sh-s1', source: 'model' }
     )
-    await registry.call(
-      'song_save',
-      {
-        title: 'Shared Title',
-        artist: 'Artist B',
-        lines: [{ text: 'Line betaonly' }],
-        words: [{ word: 'betaonly', lines: [1] }]
-      },
-      ctxB,
-      { callId: 'c-iso-sb', source: 'model' }
-    )
-
-    await registry.call('library_write', { title: 'Shared Note', body: 'Body alphaonly [[GapA]]' }, ctxA, {
-      callId: 'c-iso-na',
+    await registry.call('gloss_set', { word: 'yozora', language: 'en', meaning: 'night sky' }, ctxA, {
+      callId: 'c-sh-g1',
       source: 'model'
     })
-    await registry.call('library_write', { title: 'Shared Note', body: 'Body betaonly [[GapB]]' }, ctxB, {
-      callId: 'c-iso-nb',
+    await registry.call('gloss_set', { word: 'yozora', language: 'zh', meaning: '夜空' }, ctxA, {
+      callId: 'c-sh-g2',
       source: 'model'
     })
-
-    const outA = JSON.stringify([
-      await registry.call('song_get', { title: 'Shared Title' }, ctxA, { callId: 'c-iso-ga', source: 'model' }),
-      await registry.call('vocab_lookup', { word: 'betaonly' }, ctxA, { callId: 'c-iso-va', source: 'model' }),
-      await registry.call('library_open', { title: 'Shared Note' }, ctxA, { callId: 'c-iso-oa', source: 'model' }),
-      await registry.call('library_search', { query: 'betaonly' }, ctxA, { callId: 'c-iso-fa', source: 'model' }),
-      await registry.call('library_gaps', {}, ctxA, { callId: 'c-iso-xa', source: 'model' })
-    ])
-    expect(outA).not.toContain('betaonly')
-    expect(outA).not.toContain('GapB')
-
-    const outB = JSON.stringify([
-      await registry.call('song_get', { title: 'Shared Title' }, ctxB, { callId: 'c-iso-gb', source: 'model' }),
-      await registry.call('vocab_lookup', { word: 'alphaonly' }, ctxB, { callId: 'c-iso-vb', source: 'model' }),
-      await registry.call('library_open', { title: 'Shared Note' }, ctxB, { callId: 'c-iso-ob', source: 'model' }),
-      await registry.call('library_search', { query: 'alphaonly' }, ctxB, { callId: 'c-iso-fb', source: 'model' }),
-      await registry.call('library_gaps', {}, ctxB, { callId: 'c-iso-xb', source: 'model' })
-    ])
-    expect(outB).not.toContain('alphaonly')
-    expect(outB).not.toContain('GapA')
-
-    const bBefore = snapshotChat(storage, ctxB.chat.chatId)
     await registry.call(
-      'song_save',
-      { title: 'Shared Title', artist: 'Artist A', lines: [{ text: 'Changed' }] },
+      'library_write',
+      { title: 'Night Vocabulary', body: 'Words for the night sky, such as yozora.' },
       ctxA,
-      {
-        callId: 'c-iso-wa1',
-        source: 'model'
+      { callId: 'c-sh-n1', source: 'model' }
+    )
+
+    const songB = await registry.call('song_get', { title: 'Yozora' }, ctxB, { callId: 'c-sh-sg', source: 'model' })
+    expect(songB).toMatchObject({
+      ok: true,
+      data: {
+        title: 'Yozora',
+        lines: [{ meanings: { en: 'Look up at the night sky', zh: '仰望夜空' } }],
+        words: [
+          {
+            word: 'yozora',
+            meanings: [
+              { language: 'zh', meaning: '夜空' },
+              { language: 'en', meaning: 'night sky' }
+            ]
+          }
+        ]
       }
-    )
-    await registry.call('gloss_set', { word: 'betaonly', meaning: 'hacked' }, ctxA, {
-      callId: 'c-iso-wa2',
+    })
+    if (songB.ok) {
+      const lineMeanings = (songB.data as { lines: { meanings: Record<string, string> }[] }).lines[0]?.meanings
+      expect(Object.keys(lineMeanings ?? {})).toEqual(['zh', 'en'])
+    }
+
+    const vocabB = await registry.call('vocab_lookup', { word: 'yozora' }, ctxB, { callId: 'c-sh-vl', source: 'model' })
+    expect(vocabB).toMatchObject({
+      ok: true,
+      data: {
+        entries: [
+          {
+            word: 'yozora',
+            meanings: [
+              { language: 'zh', meaning: '夜空' },
+              { language: 'en', meaning: 'night sky' }
+            ]
+          }
+        ]
+      }
+    })
+
+    const searchB = await registry.call('library_search', { query: 'yozora' }, ctxB, {
+      callId: 'c-sh-ls',
       source: 'model'
     })
-    await registry.call('library_write', { title: 'Shared Note', body: 'Updated A' }, ctxA, {
-      callId: 'c-iso-wa3',
+    expect(searchB).toMatchObject({
+      ok: true,
+      data: { results: [{ title: 'Night Vocabulary' }] }
+    })
+
+    const openB = await registry.call('library_open', { title: 'Night Vocabulary' }, ctxB, {
+      callId: 'c-sh-lo',
       source: 'model'
     })
-    expect(snapshotChat(storage, ctxB.chat.chatId)).toEqual(bBefore)
+    expect(openB).toMatchObject({
+      ok: true,
+      data: { title: 'Night Vocabulary', body: 'Words for the night sky, such as yozora.' }
+    })
   })
 
-  it('SQL gate: lessons tables appear only in src/tools/lessons and src/storage, and every SQL statement filters by chat_id', () => {
-    const tables = [
+  it('states in mutating tool descriptions that the library is shared and holds study notes only', () => {
+    const { registry, makeCtx } = setup()
+    const ctx = makeCtx({ lessons: true })
+    const offered = new Map(registry.offered(ctx).map((t) => [t.schema.name, t.schema.description]))
+    for (const name of ['song_save', 'library_write', 'gloss_set']) {
+      const desc = offered.get(name) ?? ''
+      expect(desc).toContain('shared by every chat with lessons on')
+      expect(desc).toContain('study notes only, never anything about a member')
+    }
+  })
+
+  it('SQL gate: lessons tables appear only in src/tools/lessons and src/storage, candidate SQL filters by chat_id, and shared tables do not', () => {
+    const sharedTables = [
       'lesson_song',
       'lesson_song_line',
+      'lesson_song_line_meaning',
       'lesson_word',
+      'lesson_word_meaning',
       'lesson_word_seen',
-      'lesson_lyrics_candidate',
       'library_node',
       'library_link',
       'library_fts'
     ]
-    const tableRe = new RegExp(`\\b(${tables.join('|')})\\b`)
+    const allTables = [...sharedTables, 'lesson_lyrics_candidate']
+    const sharedRe = new RegExp(`\\b(${sharedTables.join('|')})\\b`)
+    const candidateRe = /\blesson_lyrics_candidate\b/
     const sqlVerbRe = /\b(SELECT|UPDATE|DELETE|INSERT)\b/i
 
     for (const file of walkTs('src')) {
@@ -662,7 +709,7 @@ describe('lessons and library tools', () => {
       const inStorage = normalized.startsWith('src/storage/')
 
       if (!inLessons && !inStorage) {
-        for (const table of tables) {
+        for (const table of allTables) {
           expect(content, `${file} references ${table}`).not.toMatch(new RegExp(`\\b${table}\\b`))
         }
         continue
@@ -680,8 +727,12 @@ describe('lessons and library tools', () => {
             token === ts.SyntaxKind.TemplateTail
           ) {
             const literal = scanner.getTokenValue()
-            if (tableRe.test(literal) && sqlVerbRe.test(literal)) {
-              expect(literal, `${file}: missing chat_id in SQL: ${literal}`).toContain('chat_id')
+            if (sqlVerbRe.test(literal)) {
+              if (candidateRe.test(literal)) {
+                expect(literal, `${file}: candidate SQL must filter by chat_id: ${literal}`).toContain('chat_id')
+              } else if (sharedRe.test(literal)) {
+                expect(literal, `${file}: shared SQL must not filter by chat_id: ${literal}`).not.toContain('chat_id')
+              }
             }
           }
           token = scanner.scan()
