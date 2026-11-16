@@ -50,7 +50,8 @@ The system prompt is assembled in a fixed order. Blocks 1 to 3 are stable per ch
   second line when there is speech. Line breaks and `<media` tags are stripped from the text. The whole block is
   clipped to 4,500 characters, shared evenly between the files, so media cannot push the prompt over its ceiling.
   A file that could not be read adds a short `<media-unreadable>` note with its kind, the reason, and the pack's
-  `unreadableMedia` line. The model says that line in its own voice. See
+  `unreadableMedia` line. The model says that line in its own voice. A message that holds only a file has no text,
+  and a model API refuses an empty message, so the model sees `(no text, only a file)` in its place. See
   [Models](models.md#media-watching).
 - The whole prompt stays under the ceiling in `config.yml` (`prompt.maxSystemTokens`, default 8,000). A test builds
   the prompt for every pack and fails above it.
