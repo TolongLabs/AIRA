@@ -142,6 +142,10 @@ answers the same routes, so the gateway cannot tell the difference.
 - Inbound messages are injected through a control route that exists only on the fake bridge: a sender, a chat, text,
   an optional quoted message, an optional mention and an optional media file.
 - Every recorded call keeps its time, route and full payload. Scenario expectations assert on these records.
+- Two more control routes let a preview read the records over HTTP: `GET /control/calls?after=<n>` lists the calls
+  after number `n`, and `GET /control/file/<n>` returns the file that call `n` sent. Neither is recorded. Each
+  `/send` and `/send-media` call also keeps the message id the bridge answered with, so a reply that names a message
+  can be matched to it.
 - The route list above is read from the pinned bridge's source and the local patches. It is checked against that
   source whenever the gateway version changes.
 - The fake bridge binds to loopback and never contacts WhatsApp.
@@ -177,8 +181,18 @@ rewrites the user's service unit.
 
 ### Commands
 
-- `bun run sim` starts the fake bridge, the core and the chat preview together.
-- `bun run sim --gateway` also starts a staging gateway pointed at the fake bridge, for level 2.
+- `bun run sim` is level 1. It starts the core in this process and the chat preview on `127.0.0.1:9900`, with two
+  chats, one DM and one group, bound to one character. Messages reach the core in the gateway's request shape, so the
+  core runs as in production. It needs the same model key as `bun run chat`, read from the environment or `.env`.
+- `bun run sim --gateway` is level 2. It starts no core. It starts the fake bridge on `127.0.0.1:3000`, which a staging
+  gateway uses as its bridge, and the preview draws the calls that gateway makes to it. `--bridge <url>` uses a fake
+  bridge that already runs. The preview reads the bridge's recorded calls over `GET /control/calls`, which the bridge
+  does not record, and sends messages through `POST /control/inject`.
+- Flags: `--port` (preview port), `--character` (default: the data folder's global binding, else `example`), `--data`
+  (the data folder, whose `characters/` folder holds private packs; default a scratch folder removed on exit),
+  `--bridge-port`, `--dm-id` and `--group-id` (level 2).
+- The preview serves a sticker only as a `.webp` from a pack's `stickers/` folder, under the data folder or the
+  repository. It binds to loopback and answers only requests that name its own address.
 
 ## Shadow Mode
 
