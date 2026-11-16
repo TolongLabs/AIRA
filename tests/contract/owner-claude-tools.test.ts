@@ -30,7 +30,7 @@ function setup(options: { projectsDir?: string; routesFile?: string; now?: () =>
     registry.register(tool as ToolDefinition<unknown>)
   }
 
-  const makeCtx = (waId = '1234560001@s.whatsapp.net'): TurnContext => {
+  const makeCtx = (waId = '0000000000@s.whatsapp.net'): TurnContext => {
     seq += 1
     const chat = ensureChat(storage, { waId, type: 'dm' })
     setChatStatus(storage, { chatId: chat.chatId, status: 'active', actor: 'test' })
@@ -224,7 +224,7 @@ describe('session_notices', () => {
       routes: [
         {
           machine: 'box-alpha',
-          target: '1234560001@s.whatsapp.net',
+          target: '0000000000@s.whatsapp.net',
           enabled: true,
           mode: 'full',
           when: 'session_end',
@@ -233,14 +233,14 @@ describe('session_notices', () => {
         },
         {
           machine: 'box-beta',
-          target: '1234560001@s.whatsapp.net',
+          target: '0000000000@s.whatsapp.net',
           enabled: true,
           mode: 'summary',
           when: 'every_turn'
         },
         {
           machine: 'box-alpha',
-          target: '9999990002@s.whatsapp.net',
+          target: '00000000000@s.whatsapp.net',
           enabled: true,
           mode: 'summary',
           note: 'other-chat'
@@ -250,7 +250,7 @@ describe('session_notices', () => {
     writeFileSync(routesFile, JSON.stringify(initialRoutes, null, 2), 'utf8')
 
     const { storage, registry, makeCtx } = setup({ routesFile })
-    const ctx = makeCtx('1234560001@s.whatsapp.net')
+    const ctx = makeCtx('0000000000@s.whatsapp.net')
 
     // status
     const statusRun = await runOn(registry, ctx, {
@@ -328,13 +328,13 @@ describe('session_notices', () => {
     writeFileSync(
       routesFile,
       JSON.stringify({
-        routes: [{ machine: 'box-alpha', target: '1234560001@s.whatsapp.net', enabled: true }]
+        routes: [{ machine: 'box-alpha', target: '0000000000@s.whatsapp.net', enabled: true }]
       }),
       'utf8'
     )
 
     const { storage, registry, makeCtx } = setup({ routesFile })
-    const ctx = makeCtx('1234560001@s.whatsapp.net')
+    const ctx = makeCtx('0000000000@s.whatsapp.net')
 
     chmodSync(dir, 0o555)
     try {
