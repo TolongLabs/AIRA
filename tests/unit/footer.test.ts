@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { isFace } from '../../src/character/schema.js'
 import { type CleanOptions, cleanReply, guardFaces } from '../../src/format/clean.js'
-import { buildFooter, capitaliseBubble, forReplay, superscript } from '../../src/format/footer.js'
+import { buildFooter, capitaliseBubble, forReplay } from '../../src/format/footer.js'
 import { BUBBLE_BREAK } from '../../src/gateway/response.js'
 
 const base: CleanOptions = {
@@ -17,17 +17,17 @@ const base: CleanOptions = {
 }
 
 describe('buildFooter', () => {
-  it('lists tools once, in call order, in small text, with at most two labels and a count', () => {
+  it('lists tools once, in call order, in italics, with at most two labels and a count', () => {
     expect(buildFooter([])).toBeUndefined()
-    expect(buildFooter(['web_search'])).toBe('🛠️ ˢᵉᵃʳᶜʰᵉᵈ ᵗʰᵉ ʷᵉᵇ')
+    expect(buildFooter(['web_search'])).toBe('_🛠️ searched the web_')
     expect(buildFooter(['web_search', 'web_search', 'read_page', 'note', 'recall'])).toBe(
-      '🛠️ ˢᵉᵃʳᶜʰᵉᵈ ᵗʰᵉ ʷᵉᵇ · ʳᵉᵃᵈ ᵃ ᵖᵃᵍᵉ ⁺²'
+      '_🛠️ searched the web · read a page +2_'
     )
   })
 
   it('takes labels from the card, the emoji from the chat before the card, and adds up to three domains', () => {
     const card = { icon: '🧪', labels: { web_search: 'Ran a Web Search' } }
-    expect(buildFooter(['web_search'], card)).toBe('🧪 ʳᵃⁿ ᵃ ʷᵉᵇ ˢᵉᵃʳᶜʰ')
+    expect(buildFooter(['web_search'], card)).toBe('_🧪 ran a web search_')
     expect(
       buildFooter(['web_search', 'song_find'], card, {
         emoji: '🔬',
@@ -40,11 +40,7 @@ describe('buildFooter', () => {
           'https://fourth.example/y'
         ]
       })
-    ).toBe('🔬 ʳᵃⁿ ᵃ ʷᵉᵇ ˢᵉᵃʳᶜʰ · ᵘˢᵉᵈ ˢᵒⁿᵍ ᶠⁱⁿᵈ\n🔗 dosm.gov.my · en.wikipedia.org · reuters.com')
-  })
-
-  it('keeps q, which has no small form', () => {
-    expect(superscript('quick 42')).toBe('qᵘⁱᶜᵏ ⁴²')
+    ).toBe('_🔬 ran a web search · used song find_\n_🔗 dosm.gov.my · en.wikipedia.org · reuters.com_')
   })
 })
 
@@ -71,7 +67,7 @@ describe('cleanReply footer, capitals and bypasses', () => {
       bubbleMaxChars: 20,
       toolsOk: ['web_search']
     })
-    expect(result.content).toBe(`First part of it\n${BUBBLE_BREAK}\nSecond part of it\n\n🛠️ ˢᵉᵃʳᶜʰᵉᵈ ᵗʰᵉ ʷᵉᵇ`)
+    expect(result.content).toBe(`First part of it\n${BUBBLE_BREAK}\nSecond part of it\n\n_🛠️ searched the web_`)
     expect(result.bubbleCount).toBe(2)
     expect(result.steps).toEqual(expect.arrayContaining(['capitals', 'footer']))
   })
@@ -96,7 +92,7 @@ describe('cleanReply footer, capitals and bypasses', () => {
         footerEmoji: '🔬',
         sources: ['https://www.dosm.gov.my/x']
       }).content
-    ).toBe('Found it\n\n🔬 ˢᵉᵃʳᶜʰᵉᵈ ᵗʰᵉ ʷᵉᵇ\n🔗 dosm.gov.my')
+    ).toBe('Found it\n\n_🔬 searched the web_\n_🔗 dosm.gov.my_')
   })
 
   it('lifts a research answer to 1,400 characters, not to no limit', () => {
@@ -125,15 +121,15 @@ describe('capitals inside one bubble', () => {
 
 describe('forReplay', () => {
   it('removes bubble breaks, media lines and both footer lines, and keeps the text', () => {
-    const stored = `Hi\n${BUBBLE_BREAK}\nMore\n\n🧪 ˢᵉᵃʳᶜʰᵉᵈ ᵗʰᵉ ʷᵉᵇ ⁺¹\n🔗 dosm.gov.my · reuters.com\nMEDIA:/data/stickers/a.webp`
+    const stored = `Hi\n${BUBBLE_BREAK}\nMore\n\n_🧪 searched the web +1_\n_🔗 dosm.gov.my · reuters.com_\nMEDIA:/data/stickers/a.webp`
     expect(forReplay(stored)).toBe('Hi\nMore')
-    expect(forReplay('Text\n\n🛠️ ᶜʰᵉᶜᵏᵉᵈ ʳᵉᵐⁱⁿᵈᵉʳˢ')).toBe('Text')
+    expect(forReplay('Text\n\n_🛠️ checked reminders_')).toBe('Text')
     expect(forReplay('Ends in _italic_')).toBe('Ends in _italic_')
     expect(forReplay('Line one\n😊 see you')).toBe('Line one\n😊 see you')
   })
 
   it('keeps a reply that is only small text', () => {
-    expect(forReplay('🛠️ ʰⁱ')).toBe('🛠️ ʰⁱ')
+    expect(forReplay('_🛠️ hi_')).toBe('_🛠️ hi_')
   })
 })
 

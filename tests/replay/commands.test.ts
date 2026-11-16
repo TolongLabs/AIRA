@@ -56,7 +56,7 @@ describe('skill-style commands', () => {
     ])
     const { app, gateway } = await startApp(model)
     const delivery = await gateway.send(msg('m-1', '/remind i have a mtg ltr at 6pm, ping me by then'))
-    expect(delivery.content).toBe('Okay, I will remind you about the meeting.\n\n🛠️ ˢᵉᵗ ᵃ ʳᵉᵐⁱⁿᵈᵉʳ')
+    expect(delivery.content).toBe('Okay, I will remind you about the meeting.\n\n_🛠️ set a reminder_')
     // Until the named tool has been called, it is the only tool the model is offered.
     expect(names(model.requests[0])).toEqual(['reminder_set'])
     expect(names(model.requests[1]).length).toBeGreaterThan(1)
@@ -118,7 +118,7 @@ describe('skill-style commands', () => {
     )
 
     expect((await gateway.send(msg('m-3', '/cancel the first one'))).content).toBe(
-      'Cancelled the first one.\n\n🛠️ ᶜʰᵉᶜᵏᵉᵈ ʳᵉᵐⁱⁿᵈᵉʳˢ · ᶜᵃⁿᶜᵉˡˡᵉᵈ ᵃ ʳᵉᵐⁱⁿᵈᵉʳ'
+      'Cancelled the first one.\n\n_🛠️ checked reminders · cancelled a reminder_'
     )
     const asked = model.requests[4]
     expect(names(asked)).toEqual(['reminder_cancel'])
@@ -198,7 +198,7 @@ describe('lessons commands', () => {
     expect(names(model.requests[1])).toContain('song_save')
     expect(rows(app, 'SELECT kind FROM receipt')).toEqual([{ kind: 'lesson.song_saved' }])
 
-    expect((await gateway.send(msg('m-3', '/song morning rain'))).content).toBe('Here it is.\n\n🛠️ ᵒᵖᵉⁿᵉᵈ ᵃ ˢᵒⁿᵍ')
+    expect((await gateway.send(msg('m-3', '/song morning rain'))).content).toBe('Here it is.\n\n_🛠️ opened a song_')
     expect(names(model.requests[3])).toEqual(['song_get'])
     expect(model.requests[4]?.messages.at(-1)?.content).toContain('rain on the tin roof')
     expect(lastTurn(app)).toMatchObject({ kind: 'command', state: 'delivered' })

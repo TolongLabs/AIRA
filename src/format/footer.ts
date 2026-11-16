@@ -49,16 +49,6 @@ function plainLabel(tool: string): string {
   return DEFAULT_TOOL_LABELS[tool] ?? `used ${tool.replace(/_/g, ' ')}`
 }
 
-const SUPER: Readonly<Record<string, string>> = Object.fromEntries(
-  [...'abcdefghijklmnoprstuvwxyz0123456789'].map((ch, i) => [ch, [...'ᵃᵇᶜᵈᵉᶠᵍʰⁱʲᵏˡᵐⁿᵒᵖʳˢᵗᵘᵛʷˣʸᶻ⁰¹²³⁴⁵⁶⁷⁸⁹'][i]!])
-)
-const SUPER_CHARS = new Set(Object.values(SUPER))
-
-/** Small text for WhatsApp: lower case in Unicode superscript. `q` has no superscript form and stays. */
-export function superscript(text: string): string {
-  return [...text.toLowerCase()].map((ch) => SUPER[ch] ?? ch).join('')
-}
-
 /** The site a URL is on, without `www.`, or undefined for anything that is not an http(s) URL. */
 export function domainOf(url: string): string | undefined {
   try {
@@ -89,17 +79,15 @@ export function buildFooter(
   const visible = labels.slice(0, MAX_LABELS).join(' · ')
   const hidden = labels.length - MAX_LABELS
   const emoji = options.emoji ?? card?.icon ?? DEFAULT_FOOTER_ICON
-  const lines = [`${emoji} ${superscript(visible)}${hidden > 0 ? ` ⁺${superscript(String(hidden))}` : ''}`]
+  const lines = [`_${emoji} ${visible.toLowerCase()}${hidden > 0 ? ` +${hidden}` : ''}_`]
   const domains = [...new Set((options.sources ?? []).map(domainOf).filter((d): d is string => d !== undefined))]
-  if (domains.length > 0) lines.push(`${SOURCES_MARK} ${domains.slice(0, MAX_SOURCES).join(' · ')}`)
+  if (domains.length > 0) lines.push(`_${SOURCES_MARK} ${domains.slice(0, MAX_SOURCES).join(' · ')}_`)
   return lines.join('\n')
 }
 
-/** True for a footer label line: one leading mark, then only small text, separators and spaces. */
-function isLabelLine(line: string): boolean {
-  const rest = line.trim().split(' ').slice(1).join(' ')
-  if (rest === '') return false
-  return [...rest].some((ch) => SUPER_CHARS.has(ch)) && !/[A-Za-pr-z0-9]/.test(rest)
+/** True for a footer line: italic, opening with one emoji. Plain italic text is never taken for one. */
+function isFooterLine(line: string): boolean {
+  return /^_\p{Extended_Pictographic}\uFE0F? [^_\n]+_$/u.test(line.trim())
 }
 
 const SKIP_START = /^(?:```|`|https?:\/\/|www\.|\/[a-z]|@)/i
@@ -136,9 +124,9 @@ export function forReplay(content: string): string {
     while (lines.length > 0 && lines[lines.length - 1]!.trim() === '') lines.pop()
   }
   trimEnd()
-  if (lines[lines.length - 1]?.startsWith(`${SOURCES_MARK} `)) lines.pop()
+  if (lines[lines.length - 1]?.startsWith(`_${SOURCES_MARK} `)) lines.pop()
   trimEnd()
-  if (lines.length > 1 && isLabelLine(lines[lines.length - 1]!)) lines.pop()
+  if (lines.length > 1 && isFooterLine(lines[lines.length - 1]!)) lines.pop()
   trimEnd()
   return lines.join('\n')
 }
