@@ -19,15 +19,55 @@ character.
 ```yaml
 llm:
   transport: api # api | subscription
-  main: { provider: anthropic, model: <model id>, baseUrl: <url> }
-  fallback: { provider: openai-compatible, model: <model id>, baseUrl: <url> }
+  main: { provider: anthropic, model: claude-haiku-5-5, effort: medium, baseUrl: 'https://api.anthropic.com' }
+  fallback:
+    provider: openai-compatible
+    model: deepseek-ai/DeepSeek-V4.1-Flash-1017
+    effort: high
+    baseUrl: 'https://api-inference.modelscope.ai/v1'
   turnDeadlineMs: 45000
   monthlyBudgetUsd: 50
 ```
 
-- `api` calls an OpenAI-compatible or native endpoint with a key.
+- `api` calls the role's endpoint with its key: `LLM_API_KEY` for `main`, `LLM_FALLBACK_API_KEY` for `fallback`.
 - `subscription` runs the `claude` program on the owner's login through the host runner service.
+- Both transports run the main role on the same `llm.main.model` at the same `llm.main.effort`. Only the way the
+  model is reached differs.
 - The launch default is the faster transport in the benchmark (**Spike S-4**). Until then it is `api`.
+- The launch models above hold until the benchmark (#28) compares latency and output. Claude Sonnet 5.5 is the
+  candidate for a later main model.
+
+## Providers And Effort
+
+A role's `provider` decides the request shape. Both providers serve both roles.
+
+| Provider            | Endpoint                            | Effort Sent As                                          | Prompt Caching                      |
+| ------------------- | ----------------------------------- | ------------------------------------------------------- | ----------------------------------- |
+| `anthropic`         | Claude's native `POST /v1/messages` | `thinking: {type: adaptive}` and `output_config.effort` | The stable prompt blocks and tools  |
+| `openai-compatible` | `POST <baseUrl>/chat/completions`   | `reasoning_effort`                                      | Whatever the server does on its own |
+
+- `effort` is optional. Empty sends nothing, and the model's own default applies. The accepted values belong to
+  the model: Claude takes `low`, `medium`, `high`, `xhigh` and `max`. DeepSeek V4.1 Flash takes `none` (thinking
+  off), `low`, `high` and `max`, and maps the other names onto those. Start-up refuses an `anthropic` effort
+  outside Claude's list. An OpenAI-compatible server checks its own: ModelScope answers an unknown value with 400.
+- Claude is never reached through its OpenAI-compatible layer. Measured on 16 Nov 2026: that layer accepts any
+  effort, including an invalid one, and ignores it, and it has no prompt caching. The native endpoint rejects an
+  invalid effort, and the same question took 147 output tokens at `low` and 482 at `max`.
+- The `anthropic` provider sends no sampling parameter. Claude 5 models refuse a non-default `temperature`. A
+  response schema is sent as `output_config.format`.
+- The subscription runner passes `llm.main.effort` to the program as `--effort`, and `medium` when it is empty,
+  which is Claude Haiku 5.5's own default.
+
+### Turn State Of A Provider
+
+A thinking model returns state that must come back with the next request of the same loop: Claude's thinking
+blocks, and an OpenAI-compatible server's `reasoning_content`. Claude refuses tool results without the thinking
+that asked for them, and DeepSeek's own API does the same without `reasoning_content`.
+
+- The client returns that state with the response. The API runner keeps it for the turn, keyed by the tool calls it
+  came with, and the client sends it back with that assistant step.
+- It never outlives the turn and is never stored. The window holds text only, so a later turn starts without it.
+- A fallback starts its own loop, so one provider's state never reaches another.
 
 ## Turn Runner Interface
 
@@ -80,7 +120,8 @@ token. The service answers with the program's output lines as they arrive, one J
 | ----------- | ------------------------------------------------------------------------------ |
 | `system`    | The prompt blocks joined in order, passed as the program's whole system prompt |
 | `prompt`    | The conversation, as text. See below                                           |
-| `model`     | `llm.subscription.model`, or absent for the program's default                  |
+| `model`     | `llm.main.model`                                                               |
+| `effort`    | `llm.main.effort`, or `medium` when it is empty                                |
 | `tools`     | The address of the core's tool server for this turn, and this turn's token     |
 | `timeoutMs` | The time left before the turn deadline. The service stops the program after it |
 
@@ -152,6 +193,10 @@ before relying on the cap. At 80% of `llm.monthlyBudgetUsd`, background work (me
 extraction, the mood judge) stops. At 100%, replies stop with the pack's limit line. The subscription transport
 records estimated cost for comparison and does not count against the cap.
 
+Claude's API reports no cost, so `main` carries Claude Haiku 5.5's prices: 0.10 in, 0.50 out and 0.01 for a cache
+read, per million tokens, for prompts up to 100,000 tokens. The ModelScope fallback is paid in its own daily
+credit, about one per call, not in dollars, so its prices are 0 and it does not count against the cap.
+
 ## Configuration
 
 | Key                                                            | Default                 | Effect                                                             |
@@ -162,8 +207,10 @@ records estimated cost for comparison and does not count against the cap.
 | `llm.breakerMs`                                                | 600000                  | How long a breaker stays open                                      |
 | `llm.monthlyBudgetUsd`                                         | 50                      | Spend cap for paid roles                                           |
 | `llm.subscription.runnerUrl`                                   | `http://127.0.0.1:9882` | The host runner service                                            |
-| `llm.subscription.model`                                       | empty                   | Model alias for the program                                        |
 | `llm.subscription.toolServerPort`, `toolServerUrl`             | 9883                    | The core's tool server for the program                             |
-| `llm.<role>.usdPerMTokIn`, `usdPerMTokOut`, `usdPerMTokCached` | 0                       | Prices for `main` and `fallback`, in US dollars per million tokens |
+| `llm.<role>.provider`                                          | see above               | `anthropic` or `openai-compatible`, for `main` and `fallback`      |
+| `llm.<role>.model`, `baseUrl`                                  | see above               | The model id and its endpoint                                      |
+| `llm.<role>.effort`                                            | `medium`, `high`        | Effort for `main` and `fallback`. Empty: the model's default       |
+| `llm.<role>.usdPerMTokIn`, `usdPerMTokOut`, `usdPerMTokCached` | see `config.yml`        | Prices for `main` and `fallback`, in US dollars per million tokens |
 | `media.watcher.model`                                          | unset                   | The media model                                                    |
 | `media.maxVideoSeconds`                                        | 180                     | Longest video that is watched                                      |
