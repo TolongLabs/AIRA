@@ -60,8 +60,8 @@ class ChatFlagsTest(unittest.TestCase):
             self.assertTrue(chatflags.reactions_on(CHAT_A))
             self.assertEqual(chatflags.voice_mode(CHAT_B), "off")
             self.assertFalse(chatflags.reactions_on(CHAT_B))
-            self.assertEqual(chatflags.voice_mode("0000000001@g.us"), "off")
-            self.assertFalse(chatflags.reactions_on("0000000001@g.us"))
+            self.assertEqual(chatflags.voice_mode("12345678901@g.us"), "off")
+            self.assertFalse(chatflags.reactions_on("12345678901@g.us"))
 
     def test_reloads_when_mtime_changes_and_resets_when_removed(self):
         self.write_flags({CHAT_A: {"voice": "off", "reactions": False}}, mtime_ns=1_000_000_000)
