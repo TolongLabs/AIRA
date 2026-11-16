@@ -12,6 +12,7 @@ const CHARACTER_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/
 const LANGUAGE_CODE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/
 const HH_MM = /^([01]\d|2[0-3]):[0-5]\d$/
 const MCP_KEY = /^mcp\.[a-z0-9][a-z0-9_-]{0,31}$/
+const NAME_CALL_NAME = /^[\p{L}\p{N} ]{2,24}$/u
 
 function isValidTimeZone(timeZone: string): boolean {
   try {
@@ -90,6 +91,18 @@ export const SETTING_KEYS: Record<string, SettingDefinition> = {
   'features.reports': { schema: z.boolean(), default: true },
   'features.toolFooter': { schema: z.boolean(), default: true },
   nameCall: { schema: z.boolean(), default: false },
+  'nameCall.names': {
+    schema: z
+      .array(
+        z
+          .string()
+          .refine((value) => value === value.trim(), 'must not have leading or trailing spaces')
+          .regex(NAME_CALL_NAME, 'must be 2 to 24 letters, digits or spaces')
+      )
+      .min(1)
+      .max(5)
+      .refine((names) => new Set(names.map((name) => name.toLowerCase())).size === names.length, 'names must be unique')
+  },
   reactions: { schema: z.boolean(), default: false },
   'commands.maxPerMessage': { schema: z.number().int().min(1).max(5), default: 1 },
   'features.owner': { schema: z.boolean(), default: false },

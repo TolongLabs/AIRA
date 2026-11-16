@@ -352,6 +352,40 @@ describe('site API settings write', () => {
       'not_found'
     ])
   })
+
+  it('accepts valid nameCall.names and rejects invalid values', async () => {
+    const { siteUrl, chatId } = await startWithSite()
+    const ok = await writeSetting(siteUrl, {
+      level: 'chat',
+      scope: chatId,
+      key: 'nameCall.names',
+      value: ['Taiga', 'Ah Boy', 'Café', '小明', 'A1']
+    })
+    expect(ok.status).toBe(200)
+
+    const cleared = await writeSetting(siteUrl, { level: 'chat', scope: chatId, key: 'nameCall.names', value: null })
+    expect(cleared.status).toBe(200)
+
+    const invalid = [
+      [],
+      ['One', 'Two', 'Three', 'Four', 'Five', 'Six'],
+      ['A'],
+      ['a'.repeat(25)],
+      ['  '],
+      [' Taiga'],
+      ['Taiga '],
+      ['Taiga!'],
+      ['Taiga_1'],
+      ['Taiga', 'taiga'],
+      'Taiga',
+      [123]
+    ]
+    for (const value of invalid) {
+      const res = await writeSetting(siteUrl, { level: 'chat', scope: chatId, key: 'nameCall.names', value })
+      expect(res.status, JSON.stringify(value)).toBe(400)
+      expect(await res.json()).toEqual({ error: 'invalid_setting' })
+    }
+  })
 })
 
 describe('serving the site', () => {

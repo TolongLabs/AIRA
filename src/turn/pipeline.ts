@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { Pack, PackSet } from '../character/loader.js'
+import type { PackSet } from '../character/loader.js'
 import type { LineKind } from '../character/schema.js'
 import type { Config } from '../config/schema.js'
 import type { Attachment, GatewayRequest } from '../gateway/request.js'
@@ -32,6 +32,7 @@ import { type Db, type Storage, isoNow } from '../storage/database.js'
 import { advanceTurn, closeTurn, openTurn, receiveInbound } from '../storage/turns.js'
 import type { Alerter } from './alerts.js'
 import { type DeliveryKind, type DeliverySettings, mayDeliver } from './deliver.js'
+import { matchesName, resolveNames } from './name-call.js'
 import type {
   BuiltPrompt,
   CommandRouter,
@@ -541,16 +542,6 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     })
   }
 
-  /** True when the text names the character by its display name or an alias, whole word, in any case. */
-  function namesCharacter(text: string, pack: Pack): boolean {
-    const names = [pack.card.displayName, ...(pack.card.aliases ?? [])]
-    return names.some((name) =>
-      new RegExp(`(^|[^\\p{L}\\p{N}])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\p{L}\\p{N}])`, 'iu').test(
-        text
-      )
-    )
-  }
-
   async function handle(incoming: TurnRequest): Promise<TurnReply> {
     let request = incoming
     // Identity comes from code: the scope marker's ids are mapped to internal ids here, once.
@@ -581,13 +572,17 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       !mentionsSelf &&
       !request.quote?.ofAira &&
       settings['freeResponse']?.value !== true &&
-      settings['nameCall']?.value !== true &&
       !COMMAND_TEXT.test(text) &&
-      pack !== undefined &&
-      namesCharacter(text, pack)
+      pack !== undefined
     ) {
-      logger.info('turn.name_call_off', { chatId: chat.chatId })
-      return { content: 'NO_REPLY', replayed: true }
+      const resolvedNames = resolveNames(settings, pack)
+      const packNames = [pack.card.displayName, ...(pack.card.aliases ?? [])]
+      const calledByName = matchesName(text, resolvedNames) || matchesName(text, packNames)
+      const nameCallAllowed = settings['nameCall']?.value === true && matchesName(text, resolvedNames)
+      if (calledByName && !nameCallAllowed) {
+        logger.info('turn.name_call_off', { chatId: chat.chatId })
+        return { content: 'NO_REPLY', replayed: true }
+      }
     }
 
     return admit(

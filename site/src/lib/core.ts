@@ -28,6 +28,7 @@ export interface CoreChat {
 export interface CoreCharacter {
   id: string
   displayName: string
+  aliases?: string[]
   source: 'repository' | 'data'
   languages: string[]
 }
