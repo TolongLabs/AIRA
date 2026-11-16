@@ -12,8 +12,8 @@ judge:
 
 # Owned by docs/trd/prompt-engine.md
 format:
-  bubbleMaxChars: 700 # Split point for bubbles
-  maxBubbles: 3 # Most bubbles in one reply
+  bubbleMaxChars: 3800 # Split point for bubbles; leaves the footer room under 4,096
+  maxBubbles: 1 # One text message per reply
   leakCheck: 'on' # Step 6 of the cleaning chain
   timeZone: 'Asia/Kuala_Lumpur' # Time zone of times code writes in a reply, such as /reminders
 

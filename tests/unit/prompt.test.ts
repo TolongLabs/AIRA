@@ -421,7 +421,7 @@ describe('prompt builder', () => {
           { role: 'user', senderId: 's_bob', content: 'second', at: '2026-01-02T03:01:00.000Z' },
           {
             role: 'assistant',
-            content: 'reply\n\u2063\nmore\n\n_🛠️ searched the web_\nMEDIA:/data/stickers/a.webp',
+            content: 'reply\n\u2063\nmore\n\n🛠️ ˢᵉᵃʳᶜʰᵉᵈ ᵗʰᵉ ʷᵉᵇ\nMEDIA:/data/stickers/a.webp',
             at: '2026-01-02T03:02:00.000Z'
           },
           { role: 'user', senderId: 's_alice', content: 'third', at: '2026-01-02T03:03:00.000Z' }

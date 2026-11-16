@@ -49,18 +49,57 @@ function plainLabel(tool: string): string {
   return DEFAULT_TOOL_LABELS[tool] ?? `used ${tool.replace(/_/g, ' ')}`
 }
 
-/** The footer line for the tools that ran with outcome `ok`, or undefined when none did. */
+const SUPER: Readonly<Record<string, string>> = Object.fromEntries(
+  [...'abcdefghijklmnoprstuvwxyz0123456789'].map((ch, i) => [ch, [...'ᵃᵇᶜᵈᵉᶠᵍʰⁱʲᵏˡᵐⁿᵒᵖʳˢᵗᵘᵛʷˣʸᶻ⁰¹²³⁴⁵⁶⁷⁸⁹'][i]!])
+)
+const SUPER_CHARS = new Set(Object.values(SUPER))
+
+/** Small text for WhatsApp: lower case in Unicode superscript. `q` has no superscript form and stays. */
+export function superscript(text: string): string {
+  return [...text.toLowerCase()].map((ch) => SUPER[ch] ?? ch).join('')
+}
+
+/** The site a URL is on, without `www.`, or undefined for anything that is not an http(s) URL. */
+export function domainOf(url: string): string | undefined {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined
+    return parsed.hostname.replace(/^www\./, '')
+  } catch {
+    return undefined
+  }
+}
+
+const MAX_SOURCES = 3
+export const SOURCES_MARK = '🔗'
+
+/**
+ * The footer for the tools that ran with outcome `ok`, or undefined when none did: a line of labels in small text
+ * and, when the turn read or found pages, a line of up to three source domains in normal text, so they stay
+ * tappable.
+ */
 export function buildFooter(
   toolsOk: readonly string[],
-  card?: { icon?: string; labels?: Record<string, string> }
+  card?: { icon?: string; labels?: Record<string, string> },
+  options: { emoji?: string; sources?: readonly string[] } = {}
 ): string | undefined {
   const tools = [...new Set(toolsOk)]
   if (tools.length === 0) return undefined
   const labels = tools.map((tool) => card?.labels?.[tool] ?? plainLabel(tool))
   const visible = labels.slice(0, MAX_LABELS).join(' · ')
   const hidden = labels.length - MAX_LABELS
-  const icon = card?.icon ?? DEFAULT_FOOTER_ICON
-  return `_${icon} ${visible}${hidden > 0 ? ` +${hidden}` : ''}_`
+  const emoji = options.emoji ?? card?.icon ?? DEFAULT_FOOTER_ICON
+  const lines = [`${emoji} ${superscript(visible)}${hidden > 0 ? ` ⁺${superscript(String(hidden))}` : ''}`]
+  const domains = [...new Set((options.sources ?? []).map(domainOf).filter((d): d is string => d !== undefined))]
+  if (domains.length > 0) lines.push(`${SOURCES_MARK} ${domains.slice(0, MAX_SOURCES).join(' · ')}`)
+  return lines.join('\n')
+}
+
+/** True for a footer label line: one leading mark, then only small text, separators and spaces. */
+function isLabelLine(line: string): boolean {
+  const rest = line.trim().split(' ').slice(1).join(' ')
+  if (rest === '') return false
+  return [...rest].some((ch) => SUPER_CHARS.has(ch)) && !/[A-Za-pr-z0-9]/.test(rest)
 }
 
 const SKIP_START = /^(?:```|`|https?:\/\/|www\.|\/[a-z]|@)/i
@@ -88,16 +127,18 @@ export function capitaliseParagraphs(text: string): string {
 }
 
 /**
- * The text of a stored reply as the model should see it on replay: no bubble breaks, no `MEDIA:` lines, and no
- * footer line. `icon` is the bound card's footer icon.
+ * The text of a stored reply as the model should see it on replay: no bubble breaks, no `MEDIA:` lines and no
+ * footer lines.
  */
-export function forReplay(content: string, icon: string = DEFAULT_FOOTER_ICON): string {
+export function forReplay(content: string): string {
   const lines = content.split('\n').filter((line) => line.trim() !== BUBBLE_BREAK && !line.startsWith('MEDIA:'))
-  while (lines.length > 0 && lines[lines.length - 1]!.trim() === '') lines.pop()
-  const last = lines[lines.length - 1]?.trim()
-  if (last?.startsWith(`_${icon} `) && last.endsWith('_')) {
-    lines.pop()
+  const trimEnd = () => {
     while (lines.length > 0 && lines[lines.length - 1]!.trim() === '') lines.pop()
   }
+  trimEnd()
+  if (lines[lines.length - 1]?.startsWith(`${SOURCES_MARK} `)) lines.pop()
+  trimEnd()
+  if (lines.length > 1 && isLabelLine(lines[lines.length - 1]!)) lines.pop()
+  trimEnd()
   return lines.join('\n')
 }

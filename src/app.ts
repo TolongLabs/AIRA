@@ -325,7 +325,8 @@ export async function createApp(options: AppOptions): Promise<App> {
         createReplyCleaner(
           config,
           () => registry.toolNames(),
-          (turnId) => okToolsOfTurn(storage, turnId)
+          (turnId) => okToolsOfTurn(storage, turnId),
+          (turnId) => registry.takeSources(turnId)
         ),
         { storage, hostDataDir }
       ),
