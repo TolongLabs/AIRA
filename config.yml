@@ -77,7 +77,11 @@ llm:
 # Owned by docs/trd/models.md
 media:
   watcher:
-    model: null # The media model
+    model: 'gemini-3.5-flash-lite' # The media model, on Google AI Studio's free tier. Key: MEDIA_WATCHER_API_KEY
+  # The gateway's media folders: `host` is the path in the gateway's notes, `container` is where compose mounts it
+  # read-only. Empty here: the host's config.yml lists ~/.hermes/cache and ~/.hermes/audio_cache (docs/trd/deployment.md).
+  gatewayDirs: []
+  timeoutMs: 30000 # One media read, within two thirds of the time left in the turn deadline
   maxVideoSeconds: 180 # Longest video that is watched
 
 # Owned by docs/trd/reliability.md

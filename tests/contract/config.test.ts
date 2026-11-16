@@ -64,6 +64,36 @@ describe('config.yml', () => {
   })
 })
 
+describe('media in config.yml', () => {
+  it('names the media model and keeps the gateway folders empty in the repository', () => {
+    const config = parseConfig(source)
+    expect(config.media.watcher.model).toBe('gemini-3.5-flash-lite')
+    expect(config.media.gatewayDirs).toEqual([])
+  })
+
+  it('reads the gateway folder pairs of a host', () => {
+    const pairs = `  gatewayDirs:
+    - { host: /home/user/.hermes/cache, container: /gateway/cache }
+    - { host: /home/user/.hermes/audio_cache, container: /gateway/audio_cache }
+`
+    const config = parseConfig(source.replace(/ {2}gatewayDirs: \[\]\n/, pairs))
+    expect(config.media.gatewayDirs).toEqual([
+      { host: '/home/user/.hermes/cache', container: '/gateway/cache' },
+      { host: '/home/user/.hermes/audio_cache', container: '/gateway/audio_cache' }
+    ])
+  })
+
+  it('refuses a pair that is relative, the root, holds .. or has an unknown key', () => {
+    const pair = (value: string) => source.replace(/ {2}gatewayDirs: \[\]\n/, `  gatewayDirs:\n    - ${value}\n`)
+    expect(() => parseConfig(pair('{ host: cache, container: /gateway/cache }'))).toThrow(/gatewayDirs/)
+    expect(() => parseConfig(pair('{ host: /, container: /gateway/cache }'))).toThrow(/gatewayDirs/)
+    expect(() => parseConfig(pair('{ host: /home/user/../etc, container: /gateway/cache }'))).toThrow(/gatewayDirs/)
+    expect(() => parseConfig(pair('{ host: /home/user/.hermes/cache, container: /gateway/cache, rw: true }'))).toThrow(
+      /gatewayDirs/
+    )
+  })
+})
+
 describe('deploy/compose.yml', () => {
   it('gives the container a stop grace period longer than shutdown.graceMs', () => {
     const compose = parse(readFileSync('deploy/compose.yml', 'utf8')) as {
