@@ -36,6 +36,9 @@ One row in `turn`, opened at step 1 and closed at step 8.
 | `job_run`        | Scheduled or background run   | Job kind, chat, started, ended, outcome                                     |
 | `setting_change` | Change to a setting or pack   | Who, when, level, key, old and new value                                    |
 
+A file the core could not read is a handled failure: one `failure` row of kind `media_unreadable`, stage `media`, and one
+`model_call` row of role `media` for each request to the media model. See [Models](models.md#media-watching).
+
 A `failure` row is written for handled failures too. A retry that succeeds still leaves the failed attempt on record.
 
 ## Failure Kinds

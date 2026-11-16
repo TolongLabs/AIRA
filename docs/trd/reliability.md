@@ -39,12 +39,12 @@ within `turn.batchMs` of each other, before a turn starts, form one turn. A phot
 
 ## Deadlines
 
-| Limit                    | Default | Applies To                       |
-| ------------------------ | ------- | -------------------------------- |
-| `llm.turnDeadlineMs`     | 45000   | All model work in one turn       |
-| `tools.defaultTimeoutMs` | 15000   | One tool call                    |
-| `judge.timeoutMs`        | 1500    | One judge call on the reply path |
-| `media.timeoutMs`        | 30000   | One media read                   |
+| Limit                    | Default | Applies To                                                               |
+| ------------------------ | ------- | ------------------------------------------------------------------------ |
+| `llm.turnDeadlineMs`     | 45000   | All model work in one turn                                               |
+| `tools.defaultTimeoutMs` | 15000   | One tool call                                                            |
+| `judge.timeoutMs`        | 1500    | One judge call on the reply path                                         |
+| `media.timeoutMs`        | 30000   | One media read, at most two thirds of the time left in the turn deadline |
 
 When the turn deadline passes, the runner is cancelled and the turn ends with the pack's slow line. Nothing waits
 without a limit.
