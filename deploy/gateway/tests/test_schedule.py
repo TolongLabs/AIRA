@@ -19,7 +19,7 @@ spec.loader.exec_module(schedule)
 NOW = datetime(2026, 11, 16, 12, 0, tzinfo=timezone.utc)
 
 
-def entry(rid="rem_a", chat="60100000001@s.whatsapp.net", due="2026-11-17T08:00:00.000Z"):
+def entry(rid="rem_a", chat="test-chat-d1@s.whatsapp.net", due="2026-11-17T08:00:00.000Z"):
     stamp = schedule.compact(datetime.fromisoformat(due.replace("Z", "+00:00")))
     return {"id": rid, "chat": chat, "due": due, "name": f"aira:{rid}:{stamp}",
             "text": f"[AIRA-SCHEDULED v1 kind=reminder id={rid} due={stamp}]"}
@@ -68,7 +68,7 @@ class ReconcileTest(unittest.TestCase):
         self.assertEqual(job["prompt"], "[AIRA-SCHEDULED v1 kind=reminder id=rem_a due=20261117T080000Z]")
         self.assertEqual(job["schedule"], "2026-11-17T08:00:00+00:00")
         self.assertEqual((job["repeat"], job["deliver"]), (1, "origin"))
-        self.assertEqual(job["origin"]["chat_id"], "60100000001@s.whatsapp.net")
+        self.assertEqual(job["origin"]["chat_id"], "test-chat-d1@s.whatsapp.net")
         again = fake.run(wanted)
         self.assertEqual((again["created"], again["removed"], again["kept"]), ([], [], ["aira:rem_a:20261117T080000Z"]))
         self.assertEqual([job["name"] for job in fake.jobs], ["news digest", "aira:rem_a:20261117T080000Z"])
