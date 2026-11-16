@@ -110,7 +110,7 @@ and `quiet.json`. Measured on the production host's layout, 16 Nov 2026:
 
 | Old Value                                                                                   | New                                                                                                              |
 | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| A binding's `match` (platform `whatsapp`, kind, chat)                                       | The chat row, set `active`                                                                                       |
+| A binding's `match` (platform `whatsapp`, kind, chat)                                       | The chat row, set `active`. A chat written as a phone number is reported (Assumption A-10)                       |
 | `defaults.personality`, a binding's `personality`                                           | `character` at the global or chat level, through the `--character` map. An unmapped name is reported and not set |
 | A binding's `permissions.photos`                                                            | `features.photos` at the chat level                                                                              |
 | `language.json`, by chat                                                                    | `language` at the chat level, when it is `auto` or a language code                                               |
