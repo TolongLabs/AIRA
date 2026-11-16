@@ -17,7 +17,7 @@ import {
   saveDiagnostics,
   updateTurnRecord
 } from '../records/turn-record.js'
-import { type Chat, ensureChat, ensureSubject, getChat } from '../settings/chats.js'
+import { type Chat, ensureChat, ensureSubject, getChat, getChatByWaId } from '../settings/chats.js'
 import { type Resolved, resolveSettings } from '../settings/settings.js'
 import { type Db, type Storage, isoNow } from '../storage/database.js'
 import { advanceTurn, closeTurn, openTurn, receiveInbound } from '../storage/turns.js'
@@ -46,6 +46,10 @@ import { claimPending, pendingOf, readWindow, storeUserMessage, unansweredTexts 
 type TurnRequest = Extract<GatewayRequest, { type: 'turn' }>
 type ScheduledRequest = Extract<GatewayRequest, { type: 'scheduled' }>
 
+/** The sender of a gateway job's instruction in the window. Not a member: memory never quotes it. */
+const ROUTINE_SENDER = 'routine'
+const JOB_WINDOW_MS = 10 * 60_000
+
 export interface TurnReply {
   /** The content for the gateway. Empty means: send nothing. */
   content: string
@@ -58,7 +62,7 @@ export interface TurnServiceDeps {
   /** Called after a firing changed a reminder, so the wanted-jobs file is written again. */
   onScheduleChange?: () => void
   storage: Storage
-  config: Pick<Config, 'turn' | 'llm' | 'records'>
+  config: Pick<Config, 'turn' | 'llm' | 'records'> & { gateway?: Pick<Config['gateway'], 'jobs'> }
   logger: Logger
   redactor: Redactor
   /** The loaded packs. A function, so a saved pack applies to the next turn. */
@@ -544,7 +548,26 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     throw new Error('a repeated message did not settle')
   }
 
+  /** An owner's gateway job, run as a routine turn in the chat the host's list names. */
+  async function handleJob(request: Extract<ScheduledRequest, { kind: 'job' }>): Promise<TurnReply | null> {
+    const listed = deps.config.gateway?.jobs.find((job) => job.id === request.jobId)
+    const chat = listed ? getChatByWaId(storage, listed.chat) : undefined
+    if (!chat || chat.status !== 'active' || request.text === '') return null
+    // One firing per 10-minute window: the gateway's repeats of a firing are answered from the stored reply.
+    const window = Math.floor(now().getTime() / JOB_WINDOW_MS)
+    const mid = `job-${request.jobId}-${window}`
+    const tag = `[AIRA-SCHEDULED v1 kind=job id=${request.jobId}]`
+    return await admit(chat, { chatId: chat.chatId, mid, senderId: ROUTINE_SENDER }, { kind: 'routine' }, (db) => {
+      storeUserMessage(
+        db,
+        { chatId: chat.chatId, senderId: ROUTINE_SENDER, content: `${tag}\n${request.text}`, mid },
+        now
+      )
+    })
+  }
+
   async function handleScheduled(request: ScheduledRequest): Promise<TurnReply | null> {
+    if (request.kind === 'job') return handleJob(request)
     // Identity comes from the core's own reminder row. The request names a reminder and a due time, nothing else.
     const row = storage.read(
       (db) =>

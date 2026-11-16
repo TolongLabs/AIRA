@@ -120,7 +120,13 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
       try {
         const reply = await turns.handleScheduled(parsed)
         if (reply === null) {
-          answerUnmarked(response, parsed, 'a scheduled tag names no reminder due at that time')
+          answerUnmarked(
+            response,
+            parsed,
+            parsed.kind === 'job'
+              ? 'a job tag names no listed job of an active chat'
+              : 'a scheduled tag names no reminder due at that time'
+          )
           return
         }
         writeReply(response, { id: reply.turnId ?? 'none', content: reply.content }, { ...parsed, now })

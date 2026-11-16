@@ -149,7 +149,11 @@ export const configSchema = z.strictObject({
   }),
   gateway: z.strictObject({
     // The data volume's path on the host. Empty in the repository; requireDeployable refuses an empty value.
-    hostDataDir: z.string()
+    hostDataDir: z.string(),
+    // The owner's gateway jobs the core runs, each with its chat (docs/trd/system.md#gateway-jobs). Host only.
+    jobs: z
+      .array(z.strictObject({ id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), chat: z.string().min(1) }))
+      .default([])
   }),
   storage: z
     .strictObject({
