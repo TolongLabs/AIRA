@@ -2,7 +2,7 @@
 """AIRA's own patches to the pinned gateway (docs/trd/system.md#gateway-patches).
 
 The gateway's older patches are applied by the reapply script that lives with the old core. This script holds the
-patches AIRA owns: the new `sticker-media-type`, the four edits that had no entry anywhere, and two removals. Run it
+patches AIRA owns: the new `sticker-media-type` and `reply-to-bot-ids`, the four edits that had no entry anywhere, and two removals. Run it
 after the old script, on the same tree:
 
     deploy/gateway/patches.py --hermes-agent ~/.hermes-staging/hermes-agent --check
@@ -43,6 +43,18 @@ assert seen == [("sticker", None), ("image", "words"), ("image", "words")], seen
 '''
 
 
+REPLY_TEST = '''from gateway.platforms.whatsapp_common import WhatsAppBehaviorMixin as M
+m = object.__new__(M)
+bots = ["1234:12@s.whatsapp.net", "9876:3@lid"]
+assert m._message_is_reply_to_bot({"quotedParticipant": "9876@lid", "botIds": bots})
+assert m._message_is_reply_to_bot({"quotedParticipant": "1234@s.whatsapp.net", "botIds": bots})
+assert m._message_is_reply_to_bot({"quotedParticipant": "9876:3@lid", "botIds": bots})
+assert not m._message_is_reply_to_bot({"quotedParticipant": "5555@lid", "botIds": bots})
+assert not m._message_is_reply_to_bot({"quotedParticipant": "", "botIds": bots})
+assert not m._message_is_reply_to_bot({"quotedParticipant": "9876@lid", "botIds": []})
+'''
+
+
 def patches() -> list[dict]:
     """Every patch, in the order it is applied. Paths are relative to the gateway tree."""
     py = ["{python}", "-m", "py_compile", "{target}"]
@@ -68,6 +80,31 @@ def patches() -> list[dict]:
             "tests": [["{python}", "-c", STICKER_TEST]],
             "cwd": ".",
             "why": "a pack sticker reached the chat as a photo, not as a sticker",
+        },
+        {
+            "name": "reply-to-bot-ids",
+            "target": "gateway/platforms/whatsapp_common.py",
+            "present": "[aira] reply-to-bot-ids",
+            "edits": (('''        quoted_participant = self._normalize_whatsapp_id(data.get("quotedParticipant"))
+        if not quoted_participant:
+            return False
+        return quoted_participant in self._bot_ids_from_message(data)
+''',
+                       '''        quoted_participant = self._normalize_whatsapp_id(data.get("quotedParticipant"))
+        if not quoted_participant:
+            return False
+        # [aira] reply-to-bot-ids: the bridge keeps a device suffix on the bot's own ids, which normalising turns
+        # into 1234@12@lid, while a quote names the bot as 1234@lid. Compare the user part only, as the mention
+        # check does, so a reply to the bot in a group reaches the bot.
+        def _bare(value):
+            return str(value).split("@", 1)[0].split(":", 1)[0]
+
+        return _bare(quoted_participant) in {_bare(b) for b in self._bot_ids_from_message(data) if b}
+'''),),
+            "syntax": py,
+            "tests": [["{python}", "-c", REPLY_TEST]],
+            "cwd": ".",
+            "why": "a reply to the bot in a group was not seen as addressed to it, so the bot never answered",
         },
         {
             "name": "aira-edit-jitter",
