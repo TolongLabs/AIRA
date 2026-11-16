@@ -10,6 +10,8 @@ import {
 export interface OpenAiClientOptions {
   baseUrl: string
   apiKey: string
+  /** Sent as `reasoning_effort` when not empty (docs/trd/models.md#providers-and-effort). */
+  effort?: string
   /** US dollars per million tokens, used when the response reports no cost. */
   prices: { usdPerMTokIn: number; usdPerMTokOut: number; usdPerMTokCached: number }
   /** Replaces global fetch in tests. */
@@ -22,6 +24,7 @@ type ChatMessage =
   | {
       role: 'assistant'
       content: string
+      reasoning_content?: string
       tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[]
     }
   | { role: 'tool'; tool_call_id: string; content: string }
@@ -40,7 +43,7 @@ function isAbortError(err: unknown, signal?: AbortSignal): boolean {
 }
 
 /** The request body for one ModelRequest. Pure. */
-export function toChatCompletionsBody(request: ModelRequest): Record<string, unknown> {
+export function toChatCompletionsBody(request: ModelRequest, effort = ''): Record<string, unknown> {
   const messages: ChatMessage[] = []
   if (request.system.length > 0) {
     messages.push({
@@ -53,6 +56,8 @@ export function toChatCompletionsBody(request: ModelRequest): Record<string, unk
       messages.push({ role: 'user', content: msg.content })
     } else if (msg.role === 'assistant') {
       const entry: ChatMessage = { role: 'assistant', content: msg.content }
+      // The server's reasoning goes back with its own step. Another provider's state is dropped.
+      if (msg.replay?.provider === 'openai-compatible') entry.reasoning_content = msg.replay.reasoningContent
       if (msg.toolCalls && msg.toolCalls.length > 0) {
         entry.tool_calls = msg.toolCalls.map((tc) => ({
           id: tc.id,
@@ -80,6 +85,7 @@ export function toChatCompletionsBody(request: ModelRequest): Record<string, unk
       }
     }))
   }
+  if (effort !== '') body.reasoning_effort = effort
   for (const [key, value] of Object.entries(request.params)) {
     body[key] = value
   }
@@ -166,12 +172,14 @@ export function fromChatCompletionsBody(body: unknown, prices: OpenAiClientOptio
           outputTokens * prices.usdPerMTokOut) /
         1_000_000
 
+  const reasoningContent = typeof message.reasoning_content === 'string' ? message.reasoning_content : ''
   return {
     text,
     toolCalls,
     usage: { inputTokens, outputTokens, cachedTokens },
     costUsd,
-    model: typeof body.model === 'string' ? body.model : ''
+    model: typeof body.model === 'string' ? body.model : '',
+    ...(reasoningContent === '' ? {} : { replay: { provider: 'openai-compatible', reasoningContent } })
   }
 }
 
@@ -214,7 +222,7 @@ export function createOpenAiClient(options: OpenAiClientOptions): ModelClient {
             'content-type': 'application/json',
             authorization: `Bearer ${options.apiKey}`
           },
-          body: JSON.stringify(toChatCompletionsBody(request)),
+          body: JSON.stringify(toChatCompletionsBody(request, options.effort)),
           signal
         })
       } catch (err) {

@@ -58,7 +58,6 @@ const subscription = (runnerUrl: string, toolPort: number) => (config: Config) =
   config.llm.main = { ...config.llm.main, provider: '', model: '', baseUrl: '' }
   config.llm.subscription = {
     runnerUrl,
-    model: '',
     toolServerPort: toolPort,
     toolServerUrl: `http://127.0.0.1:${toolPort}`
   }

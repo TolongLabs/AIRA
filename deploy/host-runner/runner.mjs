@@ -78,10 +78,14 @@ function readBody(req) {
   })
 }
 
+// The program's effort levels (docs/trd/models.md#run-request).
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
+
 function isValidRequest(body) {
   if (body === null || typeof body !== 'object' || Array.isArray(body)) return false
   if (typeof body.system !== 'string' || typeof body.prompt !== 'string') return false
   if (body.model !== undefined && typeof body.model !== 'string') return false
+  if (body.effort !== undefined && !EFFORTS.includes(body.effort)) return false
   if (body.tools === null || typeof body.tools !== 'object' || Array.isArray(body.tools)) return false
   if (typeof body.tools.url !== 'string' || !LOOPBACK_URL_RE.test(body.tools.url)) return false
   if (typeof body.tools.token !== 'string' || !HEX_TOKEN_RE.test(body.tools.token)) return false
@@ -168,6 +172,7 @@ async function handleRun(req, res) {
   if (body.model !== undefined && body.model !== '') {
     args.push('--model', body.model)
   }
+  if (body.effort !== undefined) args.push('--effort', body.effort)
 
   res.writeHead(200, { 'content-type': 'application/x-ndjson' })
 

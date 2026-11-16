@@ -8,10 +8,14 @@ const ms = z.number().int().positive()
 const count = z.number().int().positive()
 
 const price = z.number().nonnegative().default(0)
+/** Claude's effort levels, for the `anthropic` provider and the subscription program (docs/trd/models.md). */
+export const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
 const modelTarget = z.strictObject({
   provider: z.string(),
   model: z.string(),
   baseUrl: z.string(),
+  // Sent per provider (docs/trd/models.md#providers-and-effort). Empty: the model's own default.
+  effort: z.string().default(''),
   // US dollars per million tokens. Used for the spend cap when the provider's response reports no cost.
   usdPerMTokIn: price,
   usdPerMTokOut: price,
@@ -74,32 +78,45 @@ export const configSchema = z.strictObject({
   embeddings: z.strictObject({
     provider: z.string().min(1)
   }),
-  llm: z.strictObject({
-    transport: z.enum(['api', 'subscription']),
-    main: modelTarget,
-    fallback: modelTarget,
-    turnDeadlineMs: ms,
-    maxRetries: z.number().int().min(0),
-    breakerMs: ms,
-    monthlyBudgetUsd: z.number().nonnegative(),
-    // Used only when transport is `subscription` (docs/trd/models.md#host-runner-service).
-    subscription: z
-      .strictObject({
-        // The host runner service. Loopback only.
-        runnerUrl: z.string().regex(/^http:\/\/(127\.0\.0\.1|localhost|host\.docker\.internal):\d+$/),
-        // The model alias given to the program. Empty means the program's own default.
-        model: z.string(),
-        // The port of the core's tool server for the program, and the address the program reaches it at.
-        toolServerPort: z.number().int().min(1024).max(65535),
-        toolServerUrl: z.string().regex(/^http:\/\/(127\.0\.0\.1|localhost):\d+$/)
-      })
-      .default({
-        runnerUrl: 'http://127.0.0.1:9882',
-        model: '',
-        toolServerPort: 9883,
-        toolServerUrl: 'http://127.0.0.1:9883'
-      })
-  }),
+  llm: z
+    .strictObject({
+      transport: z.enum(['api', 'subscription']),
+      main: modelTarget,
+      fallback: modelTarget,
+      turnDeadlineMs: ms,
+      maxRetries: z.number().int().min(0),
+      breakerMs: ms,
+      monthlyBudgetUsd: z.number().nonnegative(),
+      // Used only when transport is `subscription` (docs/trd/models.md#host-runner-service).
+      subscription: z
+        .strictObject({
+          // The host runner service. Loopback only.
+          runnerUrl: z.string().regex(/^http:\/\/(127\.0\.0\.1|localhost|host\.docker\.internal):\d+$/),
+          // The port of the core's tool server for the program, and the address the program reaches it at.
+          toolServerPort: z.number().int().min(1024).max(65535),
+          toolServerUrl: z.string().regex(/^http:\/\/(127\.0\.0\.1|localhost):\d+$/)
+        })
+        .default({
+          runnerUrl: 'http://127.0.0.1:9882',
+          toolServerPort: 9883,
+          toolServerUrl: 'http://127.0.0.1:9883'
+        })
+    })
+    .superRefine((llm, context) => {
+      // Claude refuses an effort outside its list, and an OpenAI-compatible server checks its own.
+      const claudeEffort = (effort: string) => effort === '' || (CLAUDE_EFFORTS as readonly string[]).includes(effort)
+      for (const role of ['main', 'fallback'] as const) {
+        const target = llm[role]
+        const claude = target.provider === 'anthropic' || (role === 'main' && llm.transport === 'subscription')
+        if (claude && !claudeEffort(target.effort)) {
+          context.addIssue({
+            code: 'custom',
+            path: [role, 'effort'],
+            message: `must be empty or one of ${CLAUDE_EFFORTS.join(', ')}`
+          })
+        }
+      }
+    }),
   media: z.strictObject({
     watcher: z.strictObject({
       model: z.string().min(1).nullable()

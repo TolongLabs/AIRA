@@ -9,7 +9,8 @@ import {
   type ModelRequest,
   type ModelUsage,
   type PromptBlock,
-  type ToolCallRequest
+  type ToolCallRequest,
+  type TurnState
 } from './types.js'
 
 // The API runner (docs/trd/models.md#turn-runner-interface). The agent kit owns the loop: it asks the model,
@@ -45,6 +46,8 @@ interface LoopState {
   receipts: string[]
   /** For a skill-style command: the one tool offered until it has been called. */
   firstTool?: string
+  /** A provider's state per step, keyed by the step's first tool call id. Kept for this turn only. */
+  replays: Map<string, TurnState>
   /** The first failure of the loop. The agent kit must not swallow it. */
   error?: unknown
 }
@@ -52,7 +55,10 @@ interface LoopState {
 const TRIGGER = '(turn)'
 
 /** The loop's own steps, from the agent kit's contents: what the model called and what the tools returned. */
-export function loopMessages(contents: Content[]): ModelMessage[] {
+export function loopMessages(
+  contents: Content[],
+  replayFor?: (callId: string) => TurnState | undefined
+): ModelMessage[] {
   const messages: ModelMessage[] = []
   for (const [index, content] of contents.entries()) {
     const parts = content.parts ?? []
@@ -65,7 +71,13 @@ export function loopMessages(contents: Content[]): ModelMessage[] {
           : []
       )
       const text = parts.map((part) => part.text ?? '').join('')
-      messages.push({ role: 'assistant', content: text, ...(toolCalls.length > 0 ? { toolCalls } : {}) })
+      const replay = toolCalls[0] ? replayFor?.(toolCalls[0].id) : undefined
+      messages.push({
+        role: 'assistant',
+        content: text,
+        ...(toolCalls.length > 0 ? { toolCalls } : {}),
+        ...(replay ? { replay } : {})
+      })
       continue
     }
     for (const part of parts) {
@@ -97,7 +109,7 @@ class SeamLlm extends BaseLlm {
       role: 'main',
       model: this.options.model,
       system: state.system,
-      messages: [...state.messages, ...loopMessages(llmRequest.contents)],
+      messages: [...state.messages, ...loopMessages(llmRequest.contents, (callId) => state.replays.get(callId))],
       // When a chain limit is reached, the tool list is withdrawn and the model answers with what it has.
       // For a command, the named tool is the only one offered until it has been called.
       tools: state.chainLimit
@@ -118,6 +130,7 @@ class SeamLlm extends BaseLlm {
       const toolCalls = state.chainLimit
         ? []
         : response.toolCalls.filter((call) => state.firstTool === undefined || call.name === state.firstTool)
+      if (toolCalls[0] && response.replay) state.replays.set(toolCalls[0].id, response.replay)
       if (toolCalls.length === 0) {
         if (response.text.trim() === '')
           throw new ModelError('malformed', 'the model returned no text and no tool call')
@@ -197,6 +210,7 @@ export function createApiRunner(options: ApiRunnerOptions): TurnRunner {
         signal,
         turnId: context.turnId,
         toolCalls: 0,
+        replays: new Map(),
         toolMs: 0,
         usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 },
         costUsd: 0,

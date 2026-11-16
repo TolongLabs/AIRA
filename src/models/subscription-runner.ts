@@ -6,7 +6,11 @@ import { ModelError, type ModelFailureKind, type ModelMessage, type ModelUsage, 
 
 export interface SubscriptionRunnerOptions {
   /** `config.llm.subscription` */
-  subscription: { runnerUrl: string; model: string; toolServerUrl: string }
+  subscription: { runnerUrl: string; toolServerUrl: string }
+  /** `llm.main.model` and `llm.main.effort`: both transports run the same model at the same effort. */
+  model: string
+  /** Empty: `medium`, Claude Haiku 5.5's own default (docs/trd/models.md#run-request). */
+  effort: string
   /** The shared secret of the core and the host runner service. */
   runnerToken: string
   toolServer: ToolServer
@@ -128,7 +132,8 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
           tools: { url: options.subscription.toolServerUrl, token: session.token },
           timeoutMs
         }
-        if (options.subscription.model !== '') payload['model'] = options.subscription.model
+        if (options.model !== '') payload['model'] = options.model
+        payload['effort'] = options.effort === '' ? 'medium' : options.effort
 
         let response: Response
         try {
@@ -208,7 +213,7 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
             failure = new ModelError('malformed', 'subscription runner returned an empty result')
           } else {
             const durationMs = Math.max(0, now().getTime() - startedAt.getTime())
-            const model = initModel ?? (options.subscription.model || 'subscription')
+            const model = initModel ?? (options.model || 'subscription')
             const usage: ModelUsage = {
               inputTokens: Number(lastResult.usage?.input_tokens ?? 0),
               outputTokens: Number(lastResult.usage?.output_tokens ?? 0),
@@ -254,7 +259,7 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
 
       const failedCall: ModelCallRecord = {
         role: 'main',
-        model: initModel ?? (options.subscription.model || 'subscription'),
+        model: initModel ?? (options.model || 'subscription'),
         transport: 'subscription',
         attempt: 1,
         startedAt,
