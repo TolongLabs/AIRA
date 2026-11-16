@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
-import { Search } from "lucide-react";
-import { get } from "@/lib/api";
-import { Field, Input, Spinner } from "@/components/ui";
+import { useEffect, useState } from 'react'
+import { Search } from 'lucide-react'
+import { get } from '@/lib/api'
+import { Field, Input, Spinner } from '@/components/ui'
 
 /* Lifted out of the settings page when adding a symbol moved to Markets,
    where you can see the price you are deciding about. Two callers now — the
@@ -12,51 +12,46 @@ import { Field, Input, Spinner } from "@/components/ui";
 export function SymbolSearch({
   regions,
   onPick,
-  label = "find something to track",
-  hint = "Type a company or index — DBS, Maybank, Toyota, S&P — or a ticker if you know it. Local listings work: Genting finds G13.SI, Public Bank finds 1295.KL.",
-  autoFocus,
+  label = 'find something to track',
+  hint = 'Type a company or index — DBS, Maybank, Toyota, S&P — or a ticker if you know it. Local listings work: Genting finds G13.SI, Public Bank finds 1295.KL.',
+  autoFocus
 }: {
-  regions: { value: string; label: string }[];
-  onPick: (symbol: string) => void;
-  label?: string;
-  hint?: string;
-  autoFocus?: boolean;
+  regions: { value: string; label: string }[]
+  onPick: (symbol: string) => void
+  label?: string
+  hint?: string
+  autoFocus?: boolean
 }) {
-  const [q, setQ] = useState("");
-  const [region, setRegion] = useState("");
-  const [hits, setHits] = useState<
-    { symbol: string; name: string; type: string; exchange: string }[]
-  >([]);
-  const [busy, setBusy] = useState(false);
-  const [searched, setSearched] = useState(false);
+  const [q, setQ] = useState('')
+  const [region, setRegion] = useState('')
+  const [hits, setHits] = useState<{ symbol: string; name: string; type: string; exchange: string }[]>([])
+  const [busy, setBusy] = useState(false)
+  const [searched, setSearched] = useState(false)
 
   useEffect(() => {
-    const term = q.trim();
+    const term = q.trim()
     if (term.length < 2) {
-      setHits([]);
-      setSearched(false);
-      return;
+      setHits([])
+      setSearched(false)
+      return
     }
     // Debounced: this is a live remote lookup on every keystroke otherwise.
     const h = window.setTimeout(async () => {
-      setBusy(true);
+      setBusy(true)
       try {
         const r = await get<{
-          results: { symbol: string; name: string; type: string; exchange: string }[];
-        }>(
-          `/api/market/search?q=${encodeURIComponent(term)}` +
-            (region ? `&region=${encodeURIComponent(region)}` : ""),
-        );
-        setHits(r.results ?? []);
+          results: { symbol: string; name: string; type: string; exchange: string }[]
+        }>(`/api/market/search?q=${encodeURIComponent(term)}` + (region ? `&region=${encodeURIComponent(region)}` : ''))
+        setHits(r.results ?? [])
       } catch {
-        setHits([]);
+        setHits([])
       } finally {
-        setBusy(false);
-        setSearched(true);
+        setBusy(false)
+        setSearched(true)
       }
-    }, 300);
-    return () => window.clearTimeout(h);
-  }, [q, region]);
+    }, 300)
+    return () => window.clearTimeout(h)
+  }, [q, region])
 
   return (
     <div>
@@ -83,7 +78,7 @@ export function SymbolSearch({
           >
             <option value="">every market</option>
             {regions
-              .filter((r) => r.value !== "global")
+              .filter((r) => r.value !== 'global')
               .map((r) => (
                 <option key={r.value} value={r.value}>
                   {r.label} first
@@ -102,9 +97,9 @@ export function SymbolSearch({
               key={h.symbol}
               type="button"
               onClick={() => {
-                onPick(h.symbol.toLowerCase());
-                setQ("");
-                setHits([]);
+                onPick(h.symbol.toLowerCase())
+                setQ('')
+                setHits([])
               }}
               className="flex w-full cursor-pointer items-baseline gap-3 border-t border-line-2 bg-transparent px-3 py-2.5 text-left first:border-t-0 hover:bg-card-2 focus-visible:bg-card-2 focus-visible:outline-none"
             >
@@ -121,12 +116,11 @@ export function SymbolSearch({
           firms have no ticker to find. */}
       {searched && !busy && !hits.length && q.trim().length >= 2 && (
         <p className="mt-2 max-w-md text-[0.88rem] text-muted">
-          Nothing listed under “{q.trim()}”. Private companies have no ticker to
-          find — Cognosphere (HoYoverse) is one. Otherwise try the name as the
-          exchange writes it, the parent company (Shopee trades as Sea Limited,
-          SE), or the ticker itself: 1155.KL, D05.SI, 7203.T.
+          Nothing listed under “{q.trim()}”. Private companies have no ticker to find — Cognosphere (HoYoverse) is one.
+          Otherwise try the name as the exchange writes it, the parent company (Shopee trades as Sea Limited, SE), or
+          the ticker itself: 1155.KL, D05.SI, 7203.T.
         </p>
       )}
     </div>
-  );
+  )
 }

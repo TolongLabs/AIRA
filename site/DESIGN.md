@@ -7,6 +7,7 @@ comments.** When code and this file disagree, change the code.
 > **Amendment — 2026-08-18 (owner-directed, supersedes everything below it, including
 > the 2026-08-15 amendment where the two disagree).**
 > Renamed, repainted, and lit. Current law:
+>
 > - **Name**: the product is **TolongAI**. The wordmark is `TolongAI`, serif 400,
 >   2.6rem, **flat `--ink`** — the gradient it briefly carried was owner-rejected. The
 >   `未来` seal is retired with the Mirai name: it was the Japanese for "Mirai" and means
@@ -34,7 +35,7 @@ comments.** When code and this file disagree, change the code.
 > - **Surfaces are liquid glass, not flat panels.** Three things together, and it fails
 >   if any one is missing: a translucent fill (`--glass-fill`, `rgb(255 255 255 / .045)`
 >   dark, `/ .72` light) so the lit ground shows through; `backdrop-filter: blur(--blur)
->   saturate(160%)` so what shows through is diffused rather than legible; and a specular
+saturate(160%)` so what shows through is diffused rather than legible; and a specular
 >   top edge plus the pane's own hairline, both in ONE box-shadow
 >   (`inset 0 1px 0 var(--glass-hi), 0 0 0 1px var(--glass-edge)`). No `border` on a glass
 >   surface — a border on top of the edge shadow reads as two outlines. Radius `14px`.
@@ -62,11 +63,12 @@ comments.** When code and this file disagree, change the code.
 > - Storage keys: `tolongai-theme` / `tolongai-token`, each migrating the `mirai-` and
 >   `memento-` names. Wire header `X-TolongAI-Token`; the server also accepts
 >   `X-Mirai-Token` so a cached bundle still authenticates.
-> Where any paragraph below names Mirai, 未来, indigo, `#fafafa`, flat cards, or "no
-> grain", read it through this amendment.
+>   Where any paragraph below names Mirai, 未来, indigo, `#fafafa`, flat cards, or "no
+>   grain", read it through this amendment.
 
 > **Amendment — 2026-08-15 (owner-directed, superseded in part by 2026-08-18 above).**
 > The owner overrode the warm-monochrome palette in live review. Current law:
+>
 > - **AMOLED ground**: dark mode is pure black `#000000` with near-black lifted cards
 >   (`#0d0d10`/`#15151a`); light mode `#fafafa`/`#ffffff`. No paper grain.
 > - **Indigo accent**, not terracotta: dark `#8c9eff` on soft `#161c3a`; light `#4f46e5`
@@ -79,8 +81,8 @@ comments.** When code and this file disagree, change the code.
 > - **Favicon**: accent dot `#7c7ff2`.
 > - **Root type**: `html{font-size:19px}` both systems — readers are older; err large.
 > - Theme storage key: `mirai-theme` (migrates memento-theme/brain-theme).
-> Where any paragraph below names terracotta, warm-brown dark, 記, 29px, or the nav
-> underline, read it through this amendment.
+>   Where any paragraph below names terracotta, warm-brown dark, 記, 29px, or the nav
+>   underline, read it through this amendment.
 
 **Taste source (authoritative):** the owner's own TolongLabs system — the "Layak editorial
 scale: restrained warm palette, generous whitespace, hairline rules," as restated across
@@ -106,12 +108,12 @@ warm brown + terracotta), wordmark, nav set, theme storage key, radius scale, an
 **v2 is already the owner's taste** — it reads like a self-contained port of the
 Layak/CukaiPandai system. This spec canonizes v2's language, sharpens it toward the owner's
 signature (mono labels, bigger serif titles, grain, flood), then expresses it through the
-*classic token names* so the generated pages recolor for free by editing string constants
+_classic token names_ so the generated pages recolor for free by editing string constants
 in `site.py`. We do not build a third system.
 
 **One rule to remember:** retuning the palette = editing the four `:root` blocks in
 `site.py`'s `CSS` constant **and** the `:root` blocks in `ui/src/styles.css` with the
-*same* values per the mapping table in §1. Both systems must stay coherent — and the
+_same_ values per the mapping table in §1. Both systems must stay coherent — and the
 proof is measured in a browser, not read off the source: the two shells drifted twice
 while a comment claimed they matched.
 
@@ -127,31 +129,32 @@ are the single biggest "different site" tell and are banned.
 
 ### 1a. Core palette
 
-| Role | v2 name | Classic name | Light | Warm dark |
-|---|---|---|---|---|
-| Page ground | `--paper` | `--bg` | `#faf7f2` | `#181512` |
-| Card / raised fill | `--card` | `--raise` | `#fffdf8` | `#1f1b16` |
-| Primary ink | `--ink` | `--fg` | `#201c17` | `#ece5da` |
-| Long-form reading ink | `--read` | `--read` | `#5f5949` | `#c9c0b2` |
-| Secondary text (meta/labels) | `--muted` | `--muted` | `#8a8175` | `#948a7c` |
-| Tertiary / decorative | `--faint` | `--faint` | `#a89e90` | `#6f675c` |
-| Hairline (the only border) | `--line` | `--line` | `#e7e0d6` | `#2e2924` |
-| Soft hairline (row separators) | `--line2` | `--line2` | `#f0ebe2` | `#231f1a` |
-| **Terracotta accent** | `--accent` | `--accent` | `#b4552d` | `#c9713f` |
+| Role                              | v2 name         | Classic name    | Light     | Warm dark |
+| --------------------------------- | --------------- | --------------- | --------- | --------- |
+| Page ground                       | `--paper`       | `--bg`          | `#faf7f2` | `#181512` |
+| Card / raised fill                | `--card`        | `--raise`       | `#fffdf8` | `#1f1b16` |
+| Primary ink                       | `--ink`         | `--fg`          | `#201c17` | `#ece5da` |
+| Long-form reading ink             | `--read`        | `--read`        | `#5f5949` | `#c9c0b2` |
+| Secondary text (meta/labels)      | `--muted`       | `--muted`       | `#8a8175` | `#948a7c` |
+| Tertiary / decorative             | `--faint`       | `--faint`       | `#a89e90` | `#6f675c` |
+| Hairline (the only border)        | `--line`        | `--line`        | `#e7e0d6` | `#2e2924` |
+| Soft hairline (row separators)    | `--line2`       | `--line2`       | `#f0ebe2` | `#231f1a` |
+| **Terracotta accent**             | `--accent`      | `--accent`      | `#b4552d` | `#c9713f` |
 | Accent tint (≈12% wash for fills) | `--accent-soft` | `--accent-soft` | `#f4e6dc` | `#33231a` |
-| Positive (muted olive) | `--up` | `--ok` | `#4a7c59` | `#6f9a7c` |
-| Negative (rust) | `--down` | `--down` | `#a84632` | `#c06a55` |
-| Caution (mustard) | `--amber` | `--warn` | `#a87c32` | `#b99253` |
-| Shadow | *(n/a)* | `--shadow` | `none` | `none` |
+| Positive (muted olive)            | `--up`          | `--ok`          | `#4a7c59` | `#6f9a7c` |
+| Negative (rust)                   | `--down`        | `--down`        | `#a84632` | `#c06a55` |
+| Caution (mustard)                 | `--amber`       | `--warn`        | `#a87c32` | `#b99253` |
+| Shadow                            | _(n/a)_         | `--shadow`      | `none`    | `none`    |
 
 Notes:
+
 - Terracotta `#b4552d`/`#c9713f` is dead-center of the owner's accent family
   (`#C23B4B` / `#b5503c` / `#d9a066`); the olive/rust/mustard semantics are the owner's
   "desaturated botanicals, never neon" habit. These values are locked.
 - v2 currently ships `--card:#fdfaf5`/`#1d1915` and lacks `--read/--faint/--line2/--accent-soft`.
   **Update v2 to the refined values above and add the four missing aliases** so both systems
   match exactly.
-- `--accent-soft` is the *only* accent fill permitted (owner habit: full-strength accent on
+- `--accent-soft` is the _only_ accent fill permitted (owner habit: full-strength accent on
   small elements, 8–16% alpha tints for fills — e.g. SahurHub `--accent-tint: rgba(...,0.16)`).
 - `--shadow: none` in all four classic blocks flattens every generated page for free, because
   `site.py` already references `var(--shadow)` on cards.
@@ -160,11 +163,11 @@ Notes:
 
 ### 1b. Language inks (classic pages — Japanese is the hero)
 
-| Token | Role | Light | Warm dark |
-|---|---|---|---|
-| `--ja` | strongest ink on the page | `#1a160f` | `#f5efe6` |
+| Token  | Role                          | Light     | Warm dark |
+| ------ | ----------------------------- | --------- | --------- |
+| `--ja` | strongest ink on the page     | `#1a160f` | `#f5efe6` |
 | `--zh` | ties to the warm ochre family | `#96602f` | `#d19a68` |
-| `--en` | translation gloss | `#4a463c` | `#b3aa9b` |
+| `--en` | translation gloss             | `#4a463c` | `#b3aa9b` |
 
 ### 1c. Category hues (node types — data colors, desaturated into the warm field)
 
@@ -173,13 +176,13 @@ coding, botanical saturation, never brand colors. Squint test: the page must rea
 categories are legible only up close. Category color appears as **text color + a hue-tinted
 hairline**, never as a solid fill.
 
-| Token | Family | Light | Warm dark |
-|---|---|---|---|
-| `--song` | ochre | `#a06b2e` | `#cf9d5c` |
-| `--vocab` | slate teal | `#4e7285` | `#86a8ba` |
-| `--gram` | dusty plum | `#786a94` | `#a89ac2` |
-| `--artist` | clay | `#9c5f51` | `#c08a7c` |
-| `--mem` | sage | `#5d7a5f` | `#8dab90` |
+| Token      | Family     | Light     | Warm dark |
+| ---------- | ---------- | --------- | --------- |
+| `--song`   | ochre      | `#a06b2e` | `#cf9d5c` |
+| `--vocab`  | slate teal | `#4e7285` | `#86a8ba` |
+| `--gram`   | dusty plum | `#786a94` | `#a89ac2` |
+| `--artist` | clay       | `#9c5f51` | `#c08a7c` |
+| `--mem`    | sage       | `#5d7a5f` | `#8dab90` |
 
 ### 1d. Accent discipline + the flood
 
@@ -188,8 +191,8 @@ underline, the **one** primary button per view, focus rings, the 記 wordmark su
 selected/active markers, mono kickers that need emphasis. Never full-strength as a large fill.
 Never category coding. Never decorative.
 
-**The flood (one per page, optional):** the owner's hierarchy move is *one loud thing, not
-many medium things* (CukaiPandai `.dash-hero`). A page may give exactly one dominant element
+**The flood (one per page, optional):** the owner's hierarchy move is _one loud thing, not
+many medium things_ (CukaiPandai `.dash-hero`). A page may give exactly one dominant element
 a `--accent-soft` fill with a `1px solid color-mix(in srgb, var(--accent) 35%, var(--line))`
 border. Everything else stays paper/card. The dashboard's Brain panel is the designated flood
 (§8); no other page currently needs one.
@@ -214,14 +217,17 @@ matters). These are the system-stack expression of the owner's Fraunces/Literata
 humanist-sans triad. Define all three tokens in **both** stylesheets:
 
 ```css
---serif: "Iowan Old Style","Palatino Linotype",Palatino,Georgia,
-         "Hiragino Mincho ProN","Yu Mincho","Noto Serif CJK JP","Noto Serif JP",serif;
---sans:  system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",
-         "Hiragino Kaku Gothic ProN","Yu Gothic UI","Noto Sans CJK JP","Noto Sans JP",sans-serif;
---mono:  ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,"Liberation Mono",monospace;
+--serif:
+  'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Hiragino Mincho ProN', 'Yu Mincho', 'Noto Serif CJK JP',
+  'Noto Serif JP', serif;
+--sans:
+  system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI',
+  'Noto Sans CJK JP', 'Noto Sans JP', sans-serif;
+--mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 ```
 
 **Division of labor (the owner's triad):**
+
 - **Serif** — headings and large numerals only. Never body text, never buttons.
 - **Mono** — microlabels, kickers, panel headers, field labels, table headers, chips, meta
   stamps, schedules, and the Files editor. This is the signature that most separates the
@@ -230,20 +236,20 @@ humanist-sans triad. Define all three tokens in **both** stylesheets:
 
 Scale (base 16px):
 
-| Role | Face | Size | Weight | Line height | Notes |
-|---|---|---|---|---|---|
-| H1 page title | serif | `clamp(1.75rem, 5vw, 2.75rem)` (28–44px) | 500 | 1.05 | `letter-spacing:-0.02em`; owns its full row — "the title tells you where you are before any panel competes"; JP titles may go one step larger |
-| Mono kicker (above/below H1, card heads) | mono | 0.6875rem (11px) | 500 | 1.2 | UPPERCASE, `letter-spacing:.16em`, `--muted`; category stamps ("Interface", "Entity") |
-| Hero stat / display numeral | serif | `clamp(1.9rem,5vw,2.6rem)` | 400 | 0.95 | `font-variant-numeric: lining-nums tabular-nums`, `letter-spacing:-0.02em` |
-| H2 section | serif | 1.35rem | 400 | 1.3 | |
-| Card / panel label | mono | 0.6875rem (11px) | 500 | 1.2 | UPPERCASE, `.14em` tracking, `--muted` — restyle v2 `.panel-head h2` from sans to mono |
-| UI body | sans | 0.95rem (15px) | 400 | 1.5 | |
-| Reading body (lyrics, notes) | sans | 1rem | 400 | 1.8 | color `--read`; JP gets 1.9 |
-| Meta / captions | sans | 0.78rem | 400 | 1.45 | `--muted` |
-| Chips / micro | mono | 0.7rem | 500 | 1 | uppercase, `.08em` tracking |
-| Numerals in tables / quotes | serif | 1.35rem (22px) | 400 | 1.25 | tabular; as v2 `.quote .px` |
-| Table headers | mono | 0.6875rem | 500 | 1.2 | uppercase, `.08em` tracking, `--muted` |
-| Schedules / editable numerics | mono | 0.85rem | 400 | 1.4 | `font-variant-numeric: tabular-nums` |
+| Role                                     | Face  | Size                                     | Weight | Line height | Notes                                                                                                                                         |
+| ---------------------------------------- | ----- | ---------------------------------------- | ------ | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| H1 page title                            | serif | `clamp(1.75rem, 5vw, 2.75rem)` (28–44px) | 500    | 1.05        | `letter-spacing:-0.02em`; owns its full row — "the title tells you where you are before any panel competes"; JP titles may go one step larger |
+| Mono kicker (above/below H1, card heads) | mono  | 0.6875rem (11px)                         | 500    | 1.2         | UPPERCASE, `letter-spacing:.16em`, `--muted`; category stamps ("Interface", "Entity")                                                         |
+| Hero stat / display numeral              | serif | `clamp(1.9rem,5vw,2.6rem)`               | 400    | 0.95        | `font-variant-numeric: lining-nums tabular-nums`, `letter-spacing:-0.02em`                                                                    |
+| H2 section                               | serif | 1.35rem                                  | 400    | 1.3         |                                                                                                                                               |
+| Card / panel label                       | mono  | 0.6875rem (11px)                         | 500    | 1.2         | UPPERCASE, `.14em` tracking, `--muted` — restyle v2 `.panel-head h2` from sans to mono                                                        |
+| UI body                                  | sans  | 0.95rem (15px)                           | 400    | 1.5         |                                                                                                                                               |
+| Reading body (lyrics, notes)             | sans  | 1rem                                     | 400    | 1.8         | color `--read`; JP gets 1.9                                                                                                                   |
+| Meta / captions                          | sans  | 0.78rem                                  | 400    | 1.45        | `--muted`                                                                                                                                     |
+| Chips / micro                            | mono  | 0.7rem                                   | 500    | 1           | uppercase, `.08em` tracking                                                                                                                   |
+| Numerals in tables / quotes              | serif | 1.35rem (22px)                           | 400    | 1.25        | tabular; as v2 `.quote .px`                                                                                                                   |
+| Table headers                            | mono  | 0.6875rem                                | 500    | 1.2         | uppercase, `.08em` tracking, `--muted`                                                                                                        |
+| Schedules / editable numerics            | mono  | 0.85rem                                  | 400    | 1.4         | `font-variant-numeric: tabular-nums`                                                                                                          |
 
 Weights: sans **400 / 500 / 600 only — no 700.** Serif **400** (stats, wordmark, H2) and
 **500** (page titles) only — size carries hierarchy, not boldness. Mono 400/500. Case habits:
@@ -283,8 +289,8 @@ numerals in `site.py`; apply `--mono` to its `.crumbs`, badges, table headers, a
   explicitly communicative motion (none currently qualifies).
 - **Craft floor (all four repos ship all four — never skip):** 44px minimum touch targets on
   every interactive element; `:focus-visible { outline: 2px solid var(--accent);
-  outline-offset: 2px }` globally; thin tonal scrollbars (`scrollbar-width: thin;
-  scrollbar-color: var(--line) transparent` + matching `::-webkit-scrollbar` at 8px); the
+outline-offset: 2px }` globally; thin tonal scrollbars (`scrollbar-width: thin;
+scrollbar-color: var(--line) transparent` + matching `::-webkit-scrollbar` at 8px); the
   reduced-motion block above.
 
 ---
@@ -326,7 +332,7 @@ border-color:color-mix(in srgb, var(--accent) 35%, var(--line)); color:var(--ink
 `aria-pressed="true"`. Replaces bare `<select>`s wherever options ≤5 and visible space allows.
 
 **Form fields** (this is the fix for the "scuffed" settings/cron pages). Input
-`background:var(--paper)` — one fill-step *below* the card it sits in (inset by fill, not
+`background:var(--paper)` — one fill-step _below_ the card it sits in (inset by fill, not
 shadow) — `1px solid var(--line)`, `--r`, `10px 12px`, `min-height:44px`, sans 0.95rem. Focus:
 `border-color:var(--accent)` + `outline:2px solid var(--accent-soft)`. Labels: **mono**
 micro-label above the field, 6px gap. Field rows stack on phone, 2-col ≥640px. **This deletes
@@ -348,7 +354,7 @@ focus ring, `active` scale .94; ≥44px hit area via padding). Storage: **one ke
 `lang="ja"`. Retire メメント and the "second brain" tagline (the kanji seal carries the
 meaning). See §5.
 
-**Microcopy (owner's voice, everywhere).** Short declarative sentences that explain *why* and
+**Microcopy (owner's voice, everywhere).** Short declarative sentences that explain _why_ and
 state defaults ("Phone is the default." / "Follow this device, or choose a mode."). Mono
 kickers as category stamps. Sentence case. No emoji, no exclamation marks. Destructive =
 plain warning + "This can't be undone."
@@ -365,25 +371,29 @@ you cross from `/` into `/library/`.
 ### 5a. Shell template (abstract)
 
 ```html
-<header class="shell-head">                                    <!-- [byte-consistent] -->
+<header class="shell-head">
+  <!-- [byte-consistent] -->
   <a class="wordmark" href="/">Mirai<span class="ki" lang="ja">未来</span></a>
   <nav class="shell-nav" aria-label="primary">
-    <a href="/"                  {aria-current="page" if section==dashboard}>Dashboard</a>
-    <a href="/library/"          {aria-current if section in (library,songs,ideas)}>Library</a>
-    <a href="/app/graph.html"    {aria-current if section==graph}>Graph</a>
-    <a href="/cron.html"         {aria-current if section==cron}>Cron</a>
-    <a href="/app/settings.html" {aria-current if section==settings}>Settings</a>
+    <a href="/" {aria-current="page" if section="" ="dashboard}">Dashboard</a>
+    <a href="/library/" {aria-current if section in (library,songs,ideas)}>Library</a>
+    <a href="/app/graph.html" {aria-current if section="" ="graph}">Graph</a>
+    <a href="/cron.html" {aria-current if section="" ="cron}">Cron</a>
+    <a href="/app/settings.html" {aria-current if section="" ="settings}">Settings</a>
   </nav>
   <button class="theme-btn" id="theme-btn" type="button" aria-label="theme">◐</button>
 </header>
 
-{if subnav}                                     <!-- Library section + Settings only -->
+{if subnav}
+<!-- Library section + Settings only -->
 <nav class="shell-subnav" aria-label="section">{items; active gets aria-current="page"}</nav>
 {endif}
 
 <main class="wrap {narrow?}">
-  {if crumbs}<nav class="crumbs" aria-label="breadcrumb">{crumbs}</nav>{endif}
-  {page head: mono kicker + serif h1 + optional dek}          <!-- §2 page-head pattern -->
+  {if crumbs}
+  <nav class="crumbs" aria-label="breadcrumb">{crumbs}</nav>
+  {endif} {page head: mono kicker + serif h1 + optional dek}
+  <!-- §2 page-head pattern -->
   {body}
 </main>
 
@@ -395,10 +405,11 @@ terracotta 記 as superscript. `href="/"`.
 
 **Primary nav — 5 items, one row on a phone [byte-consistent]:**
 `Dashboard · Library · Graph · Cron · Settings`, theme button pinned right.
+
 - **Songs and Ideas demote to Library sub-navigation** (classic crumbs already treat Library as
   parent). 7 mixed items → 5 stable ones — inside the owner's 5–8 item nav budget.
 - **Nav hrefs are root-absolute** (`/`, `/library/`, `/app/graph.html`, `/cron.html`,
-  `/app/settings.html`). This retires the `{root}` relative-prefix machinery *for the nav only*
+  `/app/settings.html`). This retires the `{root}` relative-prefix machinery _for the nav only_
   — crumbs and body links keep `{root}`. Tradeoff: classic pages stop working via `file://`;
   they are only ever served by the Handler over Tailscale, so that's acceptable.
 
@@ -409,9 +420,10 @@ accent-edge active state; rails use the accent left-border variant, §7). Never 
 like `.on`.
 
 **Subnav content:**
+
 - Library section (every page under `/library/`): `Overview · Songs · Ideas` →
-  `/library/`, `/library/songs.html`, `/library/ideas.html`. Node pages keep their crumbs *in
-  addition* (subnav = "where can I go", crumbs = "where am I").
+  `/library/`, `/library/songs.html`, `/library/ideas.html`. Node pages keep their crumbs _in
+  addition_ (subnav = "where can I go", crumbs = "where am I").
 - Settings: the settings rail/chip nav (see §7). Its Cron entry points to `/cron.html`.
 - Dashboard, Graph, Cron: no subnav.
 
@@ -434,17 +446,17 @@ if route.startswith("/library/"):
     self.path = route[len("/library"):] or "/index.html"   # then fall through to super()
 ```
 
-| Route | Page | System | Nav active |
-|---|---|---|---|
-| `/` | Dashboard | app (`mirai/index.html`) | Dashboard |
-| `/library/` → `index.html` | Library home | classic | Library › Overview |
-| `/library/songs.html` | Songs index | classic | Library › Songs |
-| `/library/ideas.html` | Ideas | classic | Library › Ideas |
-| `/library/songs/<artist>/<slug>.html` | Song node | classic | Library › Songs |
-| `/library/vocab/*`, `/library/grammar/*`, `/library/artists/*` | Node pages | classic | Library |
-| `/app/graph.html` | Graph (live, lens tabs = page content) | app | Graph |
-| `/cron.html` | Cron | classic (stays at root — ops, not Library content) | Cron |
-| `/app/settings.html` | Settings | app | Settings |
+| Route                                                          | Page                                   | System                                             | Nav active         |
+| -------------------------------------------------------------- | -------------------------------------- | -------------------------------------------------- | ------------------ |
+| `/`                                                            | Dashboard                              | app (`mirai/index.html`)                           | Dashboard          |
+| `/library/` → `index.html`                                     | Library home                           | classic                                            | Library › Overview |
+| `/library/songs.html`                                          | Songs index                            | classic                                            | Library › Songs    |
+| `/library/ideas.html`                                          | Ideas                                  | classic                                            | Library › Ideas    |
+| `/library/songs/<artist>/<slug>.html`                          | Song node                              | classic                                            | Library › Songs    |
+| `/library/vocab/*`, `/library/grammar/*`, `/library/artists/*` | Node pages                             | classic                                            | Library            |
+| `/app/graph.html`                                              | Graph (live, lens tabs = page content) | app                                                | Graph              |
+| `/cron.html`                                                   | Cron                                   | classic (stays at root — ops, not Library content) | Cron               |
+| `/app/settings.html`                                           | Settings                               | app                                                | Settings           |
 
 **Legacy 301s in the Handler:** `/index.html`→`/library/`, `/songs.html`→`/library/songs.html`,
 `/ideas.html`→`/library/ideas.html`, `/graph.html`→`/app/graph.html`,
@@ -472,13 +484,14 @@ SahurHub. Classic's binary `__t()` / `brain-theme` / `THEME_JS` is retired.
 with one-time migration [byte-consistent]:**
 
 ```js
-(function () {
-  var K = "mirai-theme", old = localStorage.getItem("brain-theme");
-  if (old && !localStorage.getItem(K)) localStorage.setItem(K, old); // brain-theme only held light/dark
-  localStorage.removeItem("brain-theme");
-  var t = localStorage.getItem(K);
-  if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
-}());
+;(function () {
+  var K = 'mirai-theme',
+    old = localStorage.getItem('brain-theme')
+  if (old && !localStorage.getItem(K)) localStorage.setItem(K, old) // brain-theme only held light/dark
+  localStorage.removeItem('brain-theme')
+  var t = localStorage.getItem(K)
+  if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t)
+})()
 ```
 
 This replaces `THEME_JS` in `site.py` verbatim **and** is added as an inline `<script>` in the
@@ -486,18 +499,31 @@ three mirai heads (v2 currently applies theme too late — brief FOUC possible).
 button-cycling code becomes one shared implementation targeting `#theme-btn` in both systems:
 
 ```js
-(function () {
-  var K = "mirai-theme", r = document.documentElement, b = document.getElementById("theme-btn");
-  function glyph() { var t = r.getAttribute("data-theme"); b.textContent = t === "light" ? "☀" : t === "dark" ? "☾" : "◐"; }
-  glyph();
-  b && b.addEventListener("click", function () {
-    var t = r.getAttribute("data-theme");
-    if (!t) { r.setAttribute("data-theme", "light"); localStorage.setItem(K, "light"); }
-    else if (t === "light") { r.setAttribute("data-theme", "dark"); localStorage.setItem(K, "dark"); }
-    else { r.removeAttribute("data-theme"); localStorage.removeItem(K); }   // back to auto
-    glyph();
-  });
-}());
+;(function () {
+  var K = 'mirai-theme',
+    r = document.documentElement,
+    b = document.getElementById('theme-btn')
+  function glyph() {
+    var t = r.getAttribute('data-theme')
+    b.textContent = t === 'light' ? '☀' : t === 'dark' ? '☾' : '◐'
+  }
+  glyph()
+  b &&
+    b.addEventListener('click', function () {
+      var t = r.getAttribute('data-theme')
+      if (!t) {
+        r.setAttribute('data-theme', 'light')
+        localStorage.setItem(K, 'light')
+      } else if (t === 'light') {
+        r.setAttribute('data-theme', 'dark')
+        localStorage.setItem(K, 'dark')
+      } else {
+        r.removeAttribute('data-theme')
+        localStorage.removeItem(K)
+      } // back to auto
+      glyph()
+    })
+})()
 ```
 
 **Migration note:** users who set dark via the old classic `brain-theme` key keep their choice on
@@ -512,12 +538,13 @@ first load after deploy (the snippet copies then removes it). The values were al
 scrollable chip row on phone.** This is what GitHub / Linear / Notion / Stripe / Vercel all
 converged on for settings; long-scroll scrollspy is **rejected** as the primary model (settings
 sections are independent tasks with wildly unequal heights, and it fixes neither the Files-width
-nor the off-screen-save-feedback problem). Panel *content* follows the owner's settings anatomy:
+nor the off-screen-save-feedback problem). Panel _content_ follows the owner's settings anatomy:
 per-topic cards with serif title + mono kicker + one explanatory sentence, segmented choice
 groups with accent-tint selected state, and a bordered danger card. No server or build changes —
 everything stays in the single `settings.html` + shared `styles.css`/`app.js`.
 
 **Layout.**
+
 - Desktop (≥880px): two-column grid `grid-template-columns: 180px minmax(0,1fr)`. Rail
   `position:sticky; top:68px`. Widen the wrap from 900px to **~1060px** — the freed width goes to
   Files and Cron. Only the active panel shows: `.panel:not(.is-active){display:none}`.
@@ -533,15 +560,16 @@ everything stays in the single `settings.html` + shared `styles.css`/`app.js`.
 **Router (~15 lines vanilla, in `app.js`):**
 
 ```js
-const panels = [...document.querySelectorAll("main .panel[id]")];
+const panels = [...document.querySelectorAll('main .panel[id]')]
 function route() {
-  const id = (location.hash || "#bindings").slice(1);
-  for (const p of panels) p.classList.toggle("is-active", p.id === id);
-  for (const a of document.querySelectorAll(".subnav a"))
-    a.setAttribute("aria-current", a.hash === "#" + id ? "page" : "false");
-  document.querySelector(`.subnav a[href="#${id}"]`)?.scrollIntoView({ inline:"nearest", block:"nearest" });
+  const id = (location.hash || '#bindings').slice(1)
+  for (const p of panels) p.classList.toggle('is-active', p.id === id)
+  for (const a of document.querySelectorAll('.subnav a'))
+    a.setAttribute('aria-current', a.hash === '#' + id ? 'page' : 'false')
+  document.querySelector(`.subnav a[href="#${id}"]`)?.scrollIntoView({ inline: 'nearest', block: 'nearest' })
 }
-addEventListener("hashchange", route); route();
+addEventListener('hashchange', route)
+route()
 ```
 
 **Rail order (most-touched first, editor last), with a muted count from the already-fetched `S`
@@ -556,6 +584,7 @@ Avatar mirror, alert direction) become **segmented choice groups** (§4) instead
 selects. Destructive actions (delete binding, remove job) collect the danger-card treatment.
 
 **Save feedback — collapse three inconsistent models into two:**
+
 1. **Autosave stays default** for single controls (Bindings selects, Proactive switches). Move
    the confirmation out of the per-panel `.note` span into **one fixed toast**
    (`position:fixed`, bottom-center phone / bottom-right desktop, `aria-live="polite"`, ~1.5s) —
@@ -569,6 +598,7 @@ selects. Destructive actions (delete binding, remove job) collect the danger-car
    "Add alert" only for creating a row.
 
 **Per-section layout:**
+
 - **Bindings — real table.** CSS grid on the container so all rows share tracks:
   `grid-template-columns: minmax(0,1fr) auto auto auto auto auto` (chat / kind / personality /
   mode / agent / —), each `.brow` as `display:contents`, **mono** header row. Selects
@@ -595,7 +625,7 @@ selects. Destructive actions (delete binding, remove job) collect the danger-car
   6 rail items — not required.)
 - **Files — give the editor a real surface.** Full ~840px content column:
   `#f-text { width:100%; min-height:60vh; font-family:var(--mono); font-size:13px;
-  line-height:1.55; tab-size:2; resize:vertical; }`. kind/name selects + Save collapse into one
+line-height:1.55; tab-size:2; resize:vertical; }`. kind/name selects + Save collapse into one
   compact `position:sticky` toolbar above the textarea, Save right-aligned with the dirty-dot.
   Phone: `min-height:55vh`.
 
@@ -651,6 +681,7 @@ Do these in order. Items marked **[BC]** must be byte-consistent between the `si
 shell and the mirai static shells (§5) — diff them after editing.
 
 **Phase A — palette + tokens (recolors everything).**
+
 1. `scripts/brain/site.py` `CSS` constant, all four `:root` blocks (`:root`, the
    `@media(prefers-color-scheme:dark)`, `:root[data-theme=dark]`, `:root[data-theme=light]`):
    replace every hex with §1 values; set `--shadow:none` in all four; add `--down`,
@@ -674,56 +705,43 @@ shell and the mirai static shells (§5) — diff them after editing.
    radius to `var(--r)` (+ `999px` chips, `50%` toggle); add the segmented-choice-group and
    danger-card component classes (§4).
 
-**Phase B — one shell (visual unification).**
-6. `scripts/brain/site.py` `NAV`/brand constant (~865): replace with the §5a shell — wordmark
-   `Mirai未来` **[BC]**, 5-item root-absolute nav **[BC]**, `#theme-btn` circular button **[BC]**;
-   drop `{root}` from nav hrefs only. Unify `<title>` to `{Page} · Mirai` **[BC]** and favicon
-   to the terracotta-dot SVG **[BC]**.
-7. `scripts/brain/site.py` `page()` (~880): extend the `active` mapping to
-   `dashboard|library|songs|ideas|cron|graph|settings`; `songs`/`ideas` light **Library** in the
-   primary nav *and* their subnav tab; render the Library subnav (`Overview · Songs · Ideas`) on
-   `/library/*` pages.
-8. `mirai/index.html`, `mirai/graph.html`, `mirai/settings.html`: swap each header for the
-   shell **[BC]** (wordmark, 5-item nav order/links, drop the "second brain" tagline); make
-   Library link `/library/` and Cron link `/cron.html`; dashboard Services panel-link →
-   `/cron.html`.
+**Phase B — one shell (visual unification).** 6. `scripts/brain/site.py` `NAV`/brand constant (~865): replace with the §5a shell — wordmark
+`Mirai未来` **[BC]**, 5-item root-absolute nav **[BC]**, `#theme-btn` circular button **[BC]**;
+drop `{root}` from nav hrefs only. Unify `<title>` to `{Page} · Mirai` **[BC]** and favicon
+to the terracotta-dot SVG **[BC]**. 7. `scripts/brain/site.py` `page()` (~880): extend the `active` mapping to
+`dashboard|library|songs|ideas|cron|graph|settings`; `songs`/`ideas` light **Library** in the
+primary nav _and_ their subnav tab; render the Library subnav (`Overview · Songs · Ideas`) on
+`/library/*` pages. 8. `mirai/index.html`, `mirai/graph.html`, `mirai/settings.html`: swap each header for the
+shell **[BC]** (wordmark, 5-item nav order/links, drop the "second brain" tagline); make
+Library link `/library/` and Cron link `/cron.html`; dashboard Services panel-link →
+`/cron.html`.
 
-**Phase C — theme (one mechanism).**
-9. `scripts/brain/site.py`: replace `THEME_JS` (~477) with the §6 inline boot snippet **[BC]**
-   (in `<head>` before CSS) + the shared button-cycling code **[BC]** targeting `#theme-btn`.
-   Remove `__t()` and the `button.theme onclick="__t()"`.
-10. `mirai/index.html`, `graph.html`, `settings.html`: add the §6 boot snippet inline in each
-    `<head>` before `styles.css` **[BC]**.
-11. `mirai/app.js`: remove the theme *application* (now in the head snippet); keep only the
-    shared button wiring targeting `#theme-btn`. No storage-key change — `mirai-theme` wins.
+**Phase C — theme (one mechanism).** 9. `scripts/brain/site.py`: replace `THEME_JS` (~477) with the §6 inline boot snippet **[BC]**
+(in `<head>` before CSS) + the shared button-cycling code **[BC]** targeting `#theme-btn`.
+Remove `__t()` and the `button.theme onclick="__t()"`. 10. `mirai/index.html`, `graph.html`, `settings.html`: add the §6 boot snippet inline in each
+`<head>` before `styles.css` **[BC]**. 11. `mirai/app.js`: remove the theme _application_ (now in the head snippet); keep only the
+shared button wiring targeting `#theme-btn`. No storage-key change — `mirai-theme` wins.
 
-**Phase D — routing (`/` resolution).**
-12. `scripts/brain/site.py` Handler `do_GET` (~2321): add the `/library/` prefix-strip mount +
-    the §5b legacy 301 table. Generated files do not move on disk; no page regeneration needed.
-13. `scripts/brain/site.py` graph emit (~1917): stop writing the full classic `graph.html`;
-    write a meta-refresh redirect stub → `/app/graph.html`.
+**Phase D — routing (`/` resolution).** 12. `scripts/brain/site.py` Handler `do_GET` (~2321): add the `/library/` prefix-strip mount +
+the §5b legacy 301 table. Generated files do not move on disk; no page regeneration needed. 13. `scripts/brain/site.py` graph emit (~1917): stop writing the full classic `graph.html`;
+write a meta-refresh redirect stub → `/app/graph.html`.
 
-**Phase E — settings redesign.**
-14. `mirai/styles.css`: add `.subnav`-as-rail styles (desktop 180px sticky rail with mono
-    labels + accent left-border active; phone chip row), `.panel:not(.is-active){display:none}`,
-    the fixed toast, dirty-state Save styling, and the per-section grids (Bindings table,
-    Proactive knob grid, Cron aligned grid, Markets mono subheads, Files editor surface). Widen
-    `.wrap.narrow` to ~1060px for the settings context.
-15. `mirai/settings.html`: give each `section.panel` an `id`; restructure the `.subnav` as the
-    rail/chip nav with counts; panel heads get serif title + mono kicker + one-sentence
-    explanation (§7 anatomy, §4 microcopy); enumerable selects → segmented choice groups;
-    destructive actions → danger treatment; Bindings rows to `display:contents` grid; add the
-    sticky Files toolbar; label Markets subgroups; collapse Markets' double Save button to one.
-16. `mirai/app.js`: add the §7 hash router; redirect `flash()` into the single fixed toast; add
-    dirty-state tracking (Files/HA/Markets) + `Ctrl/Cmd-S` + `beforeunload`; debounce-autosave
-    Markets alerts.
+**Phase E — settings redesign.** 14. `mirai/styles.css`: add `.subnav`-as-rail styles (desktop 180px sticky rail with mono
+labels + accent left-border active; phone chip row), `.panel:not(.is-active){display:none}`,
+the fixed toast, dirty-state Save styling, and the per-section grids (Bindings table,
+Proactive knob grid, Cron aligned grid, Markets mono subheads, Files editor surface). Widen
+`.wrap.narrow` to ~1060px for the settings context. 15. `mirai/settings.html`: give each `section.panel` an `id`; restructure the `.subnav` as the
+rail/chip nav with counts; panel heads get serif title + mono kicker + one-sentence
+explanation (§7 anatomy, §4 microcopy); enumerable selects → segmented choice groups;
+destructive actions → danger treatment; Bindings rows to `display:contents` grid; add the
+sticky Files toolbar; label Markets subgroups; collapse Markets' double Save button to one. 16. `mirai/app.js`: add the §7 hash router; redirect `flash()` into the single fixed toast; add
+dirty-state tracking (Files/HA/Markets) + `Ctrl/Cmd-S` + `beforeunload`; debounce-autosave
+Markets alerts.
 
-**Phase F — dashboard + graph polish.**
-17. `mirai/index.html`: reorder the bento — Brain first as the `--accent-soft` flood hero
-    (§8), Markets demoted; panel heads to mono kickers; microcopy pass.
-18. `mirai/graph.html`: default lens → `all`; lens tabs as segmented group; repaint canvas on
-    `data-theme` mutation; move `TYPE_COLORS` onto §1c category hues read from CSS vars; add the
-    click-inspector + clickable legend filter; exclude grain from the canvas area.
+**Phase F — dashboard + graph polish.** 17. `mirai/index.html`: reorder the bento — Brain first as the `--accent-soft` flood hero
+(§8), Markets demoted; panel heads to mono kickers; microcopy pass. 18. `mirai/graph.html`: default lens → `all`; lens tabs as segmented group; repaint canvas on
+`data-theme` mutation; move `TYPE_COLORS` onto §1c category hues read from CSS vars; add the
+click-inspector + clickable legend filter; exclude grain from the canvas area.
 
 **Byte-consistency gate (before done):** diff the rendered `<head>` boot snippet, the
 `<header class="shell-head">` block, the wordmark, the `<title>` pattern, and the favicon

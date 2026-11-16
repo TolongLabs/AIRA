@@ -1,18 +1,11 @@
-import type React from "react";
-import { useEffect, useMemo, useState } from "react";
-import {
-  ChevronRight,
-  Save,
-  Send,
-  Sparkles,
-  ShieldCheck,
-  X,
-} from "lucide-react";
-import type { AllowedNumber, Chat, Settings } from "@/lib/api";
-import { post } from "@/lib/api";
-import { toast, Toaster, useApi } from "@/lib/hooks";
-import { ago, cn, midTrunc } from "@/lib/utils";
-import { Shell } from "@/components/shell";
+import type React from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { ChevronRight, Save, Send, Sparkles, ShieldCheck, X } from 'lucide-react'
+import type { AllowedNumber, Chat, Settings } from '@/lib/api'
+import { post } from '@/lib/api'
+import { toast, Toaster, useApi } from '@/lib/hooks'
+import { ago, cn, midTrunc } from '@/lib/utils'
+import { Shell } from '@/components/shell'
 import {
   Badge,
   Button,
@@ -25,8 +18,8 @@ import {
   Segmented,
   Spinner,
   Textarea,
-  Toggle,
-} from "@/components/ui";
+  Toggle
+} from '@/components/ui'
 
 /* Chats is its own page, not a tab inside Settings.
  *
@@ -43,68 +36,59 @@ import {
 /* ── chats ────────────────────────────────────────────────────────────── */
 
 interface Pro {
-  key: string;
-  enabled?: boolean;
-  style?: string;
-  temperament?: string;
+  key: string
+  enabled?: boolean
+  style?: string
+  temperament?: string
   /** whether the temperament reaches ORDINARY replies, or only her openings.
    *  Live on at least one chat and, until now, settable only by hand. */
-  mood_in_replies?: boolean;
-  always_chat_voice?: boolean;
-  ground_citations?: boolean;
-  median_hours?: number;
-  interval_minutes?: number;
+  mood_in_replies?: boolean
+  always_chat_voice?: boolean
+  ground_citations?: boolean
+  median_hours?: number
+  interval_minutes?: number
   /** [start, end) local hours she stays silent, wrapping midnight */
-  quiet_hours?: number[];
+  quiet_hours?: number[]
   /** IANA zone those hours are read in; "" follows this machine */
-  timezone?: string;
+  timezone?: string
   /** unanswered openings before she stops knocking; 0 = never */
-  give_up_after?: number;
-  max_per_day?: number;
+  give_up_after?: number
+  max_per_day?: number
   /** how much each ignored opening stretches the next gap; 1 = not at all */
-  backoff_factor?: number;
-  min_gap_hours?: number;
+  backoff_factor?: number
+  min_gap_hours?: number
   /** what is actually in force once the temperament preset and rails apply */
   effective?: {
-    median_hours?: number;
-    min_gap_hours?: number;
-    backoff_factor?: number;
-    backoff_cap?: number;
-    max_per_day?: number;
-  };
-  unanswered?: number;
+    median_hours?: number
+    min_gap_hours?: number
+    backoff_factor?: number
+    backoff_cap?: number
+    max_per_day?: number
+  }
+  unanswered?: number
   /** unix seconds of the opening the scheduler has already sampled */
-  next_due?: number;
+  next_due?: number
 }
 
-function Frequency({
-  hours,
-  onHours,
-}: {
-  hours?: number | null;
-  onHours: (h: number) => void;
-}) {
+function Frequency({ hours, onHours }: { hours?: number | null; onHours: (h: number) => void }) {
   const initial = useMemo(() => {
-    if (hours == null || Number.isNaN(hours))
-      return { n: "", unit: "hours" as const };
-    if (hours < 1)
-      return { n: String(+(hours * 60).toFixed(1)), unit: "minutes" as const };
-    if (hours >= 48)
-      return { n: String(+(hours / 24).toFixed(1)), unit: "days" as const };
-    return { n: String(+hours.toFixed(1)), unit: "hours" as const };
-  }, [hours]);
+    if (hours == null || Number.isNaN(hours)) return { n: '', unit: 'hours' as const }
+    if (hours < 1) return { n: String(+(hours * 60).toFixed(1)), unit: 'minutes' as const }
+    if (hours >= 48) return { n: String(+(hours / 24).toFixed(1)), unit: 'days' as const }
+    return { n: String(+hours.toFixed(1)), unit: 'hours' as const }
+  }, [hours])
 
-  const [n, setN] = useState(initial.n);
-  const [unit, setUnit] = useState<"minutes" | "hours" | "days">(initial.unit);
+  const [n, setN] = useState(initial.n)
+  const [unit, setUnit] = useState<'minutes' | 'hours' | 'days'>(initial.unit)
   useEffect(() => {
-    setN(initial.n);
-    setUnit(initial.unit);
-  }, [initial]);
+    setN(initial.n)
+    setUnit(initial.unit)
+  }, [initial])
 
   function commit(nextN = n, nextUnit = unit) {
-    const v = parseFloat(nextN);
-    if (Number.isNaN(v) || v <= 0) return;
-    onHours(nextUnit === "minutes" ? v / 60 : nextUnit === "days" ? v * 24 : v);
+    const v = parseFloat(nextN)
+    if (Number.isNaN(v) || v <= 0) return
+    onHours(nextUnit === 'minutes' ? v / 60 : nextUnit === 'days' ? v * 24 : v)
   }
 
   return (
@@ -119,15 +103,15 @@ function Frequency({
         className="w-24"
       />
       <Segmented
-        options={["minutes", "hours", "days"] as const}
+        options={['minutes', 'hours', 'days'] as const}
         value={unit}
         onChange={(u) => {
-          setUnit(u as typeof unit);
-          commit(n, u as typeof unit);
+          setUnit(u as typeof unit)
+          commit(n, u as typeof unit)
         }}
       />
     </div>
-  );
+  )
 }
 
 /* A small whole-number cap where 0 means "no cap" — spelled out rather than
@@ -136,20 +120,19 @@ function Counted({
   value,
   unit,
   zeroLabel,
-  onChange,
+  onChange
 }: {
-  value?: number | null;
-  unit: string;
-  zeroLabel: string;
-  onChange: (n: number) => void;
+  value?: number | null
+  unit: string
+  zeroLabel: string
+  onChange: (n: number) => void
 }) {
-  const n = value ?? 0;
+  const n = value ?? 0
   // A configured value outside the shortlist must still show as itself. A
   // select with no matching option renders its FIRST one, so a chat capped at
   // 100 would read "her manner decides" — a lie about live config.
-  const steps = [1, 2, 3, 4, 5, 6, 8, 10, 15, 20];
-  const options =
-    n > 0 && !steps.includes(n) ? [...steps, n].sort((a, b) => a - b) : steps;
+  const steps = [1, 2, 3, 4, 5, 6, 8, 10, 15, 20]
+  const options = n > 0 && !steps.includes(n) ? [...steps, n].sort((a, b) => a - b) : steps
   return (
     <div className="flex items-center gap-2">
       <select
@@ -165,21 +148,15 @@ function Counted({
         ))}
       </select>
     </div>
-  );
+  )
 }
 
-const HOURS = Array.from({ length: 24 }, (_, h) => h);
-const hhmm = (h: number) => `${String(h).padStart(2, "0")}:00`;
+const HOURS = Array.from({ length: 24 }, (_, h) => h)
+const hhmm = (h: number) => `${String(h).padStart(2, '0')}:00`
 
-function QuietHours({
-  value,
-  onChange,
-}: {
-  value?: number[] | null;
-  onChange: (v: [number, number]) => void;
-}) {
-  const [start, end] = value?.length === 2 ? value : [23, 9];
-  const setHours = (v: [number, number]) => onChange(v);
+function QuietHours({ value, onChange }: { value?: number[] | null; onChange: (v: [number, number]) => void }) {
+  const [start, end] = value?.length === 2 ? value : [23, 9]
+  const setHours = (v: [number, number]) => onChange(v)
 
   return (
     <div className="flex items-center gap-2">
@@ -201,57 +178,44 @@ function QuietHours({
         options={HOURS.map((h) => ({ value: String(h), label: hhmm(h) }))}
       />
     </div>
-  );
+  )
 }
 
 /* "Is she broken, or just asleep?" — answered in a sentence rather than left
    to be inferred from a cadence that produces nothing. */
 function NextOpening({ pro }: { pro: Pro }) {
-  const [start, end] =
-    pro.quiet_hours?.length === 2 ? pro.quiet_hours : [23, 9];
-  const zone = pro.timezone || undefined;
+  const [start, end] = pro.quiet_hours?.length === 2 ? pro.quiet_hours : [23, 9]
+  const zone = pro.timezone || undefined
   /* Read in the CHAT's zone, not the browser's. A page open in Kuala Lumpur
      showing a New York box's opinion of "now" is how "it's 4:30am" becomes an
      argument. Both the clock and the printed time follow the same zone. */
-  const fmt = (d: Date, opts: Intl.DateTimeFormatOptions) =>
-    d.toLocaleString(undefined, { ...opts, timeZone: zone });
-  const hour = Number(fmt(new Date(), { hour: "2-digit", hour12: false }));
-  const quiet =
-    start === end
-      ? false
-      : start < end
-        ? hour >= start && hour < end
-        : hour >= start || hour < end;
+  const fmt = (d: Date, opts: Intl.DateTimeFormatOptions) => d.toLocaleString(undefined, { ...opts, timeZone: zone })
+  const hour = Number(fmt(new Date(), { hour: '2-digit', hour12: false }))
+  const quiet = start === end ? false : start < end ? hour >= start && hour < end : hour >= start || hour < end
   const when = pro.next_due
     ? fmt(new Date(pro.next_due * 1000), {
-        weekday: "short",
-        hour: "2-digit",
-        minute: "2-digit",
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit'
       })
-    : null;
-  const zoneNote = zone
-    ? ` ${zone.split("/").pop()!.replace("_", " ")} time`
-    : "";
-  const gaveUp =
-    !!pro.give_up_after && (pro.unanswered ?? 0) >= pro.give_up_after;
+    : null
+  const zoneNote = zone ? ` ${zone.split('/').pop()!.replace('_', ' ')} time` : ''
+  const gaveUp = !!pro.give_up_after && (pro.unanswered ?? 0) >= pro.give_up_after
   /* Backoff is invisible in the numbers: the cadence still reads "5 minutes"
      while she is actually waiting hours, because each unanswered opening
      multiplies the gap. Saying so is the difference between "she is backing
      off" and "she has stopped working". */
-  const unanswered = pro.unanswered ?? 0;
+  const unanswered = pro.unanswered ?? 0
 
   return (
     <p className="mt-3 mb-0 text-[0.85rem] text-muted">
       {gaveUp ? (
-        <>
-          Stopped — {pro.unanswered} openings unanswered. She starts again the
-          moment they reply.
-        </>
+        <>Stopped — {pro.unanswered} openings unanswered. She starts again the moment they reply.</>
       ) : quiet ? (
         <>
           Quiet hours right now — nothing goes out until {hhmm(end)}
           {zoneNote}
-          {when ? `. Next opening ${when}.` : "."}
+          {when ? `. Next opening ${when}.` : '.'}
         </>
       ) : when ? (
         <>
@@ -259,9 +223,9 @@ function NextOpening({ pro }: { pro: Pro }) {
           {zoneNote}.
           {unanswered > 0 && (
             <>
-              {" "}
-              Backing off — {unanswered} unanswered, so this gap is much longer
-              than the cadence above. One reply resets it.
+              {' '}
+              Backing off — {unanswered} unanswered, so this gap is much longer than the cadence above. One reply resets
+              it.
             </>
           )}
         </>
@@ -269,7 +233,7 @@ function NextOpening({ pro }: { pro: Pro }) {
         <>Working out the next opening. Check back in five minutes.</>
       )}
     </p>
-  );
+  )
 }
 
 /* Reply language is a SET — which of English, Japanese and Chinese appear in
@@ -281,35 +245,32 @@ function LanguagePicker({
   labels,
   onChange,
   lessons,
-  onLessons,
+  onLessons
 }: {
-  value: string;
-  options: { code: string; name: string }[];
-  labels: { value: string; label: string }[];
-  onChange: (v: string) => void;
-  lessons: boolean;
-  onLessons: (v: boolean) => void;
+  value: string
+  options: { code: string; name: string }[]
+  labels: { value: string; label: string }[]
+  onChange: (v: string) => void
+  lessons: boolean
+  onLessons: (v: boolean) => void
 }) {
-  const picked = useMemo(
-    () => new Set(value.split("+").filter(Boolean)),
-    [value],
-  );
-  const order = options.map((o) => o.code);
-  const label = labels.find((l) => l.value === value)?.label ?? value;
-  const shows = (c: string) => picked.has(c);
+  const picked = useMemo(() => new Set(value.split('+').filter(Boolean)), [value])
+  const order = options.map((o) => o.code)
+  const label = labels.find((l) => l.value === value)?.label ?? value
+  const shows = (c: string) => picked.has(c)
 
   function toggle(code: string) {
-    const next = new Set(picked);
+    const next = new Set(picked)
     if (next.has(code)) {
-      if (next.size === 1) return; // never leave her mute
-      next.delete(code);
+      if (next.size === 1) return // never leave her mute
+      next.delete(code)
     } else {
-      next.add(code);
+      next.add(code)
     }
-    onChange(order.filter((c) => next.has(c)).join("+"));
+    onChange(order.filter((c) => next.has(c)).join('+'))
   }
 
-  const filed = order.filter((c) => c !== "en" && !shows(c));
+  const filed = order.filter((c) => c !== 'en' && !shows(c))
 
   return (
     <Field
@@ -319,7 +280,7 @@ function LanguagePicker({
           ? filed.length
             ? `${label} — the ${filed
                 .map((c) => options.find((o) => o.code === c)?.name)
-                .join(" and ")} still goes to the library, so nothing is lost`
+                .join(' and ')} still goes to the library, so nothing is lost`
             : label
           : `${label} · lessons off — she talks here, she does not teach, and ` +
             `nothing from this chat goes to the library`
@@ -327,27 +288,27 @@ function LanguagePicker({
     >
       <div className="flex flex-wrap gap-2">
         {options.map((o) => {
-          const on = shows(o.code);
-          const only = on && picked.size === 1;
+          const on = shows(o.code)
+          const only = on && picked.size === 1
           return (
             <button
               key={o.code}
               type="button"
               aria-pressed={on}
               disabled={only}
-              title={only ? "she has to reply in something" : undefined}
+              title={only ? 'she has to reply in something' : undefined}
               onClick={() => toggle(o.code)}
               className={cn(
-                "min-h-11 cursor-pointer rounded-card border px-4 text-[0.92rem] font-medium transition-colors",
+                'min-h-11 cursor-pointer rounded-card border px-4 text-[0.92rem] font-medium transition-colors',
                 on
-                  ? "border-accent bg-accent-soft text-accent"
-                  : "border-line bg-transparent text-muted hover:text-ink",
-                only && "cursor-default",
+                  ? 'border-accent bg-accent-soft text-accent'
+                  : 'border-line bg-transparent text-muted hover:text-ink',
+                only && 'cursor-default'
               )}
             >
               {o.name}
             </button>
-          );
+          )
         })}
 
         {/* The fourth switch, and a different KIND of switch — the three above
@@ -362,44 +323,34 @@ function LanguagePicker({
           onClick={() => onLessons(!lessons)}
           title={
             lessons
-              ? "She teaches here — furigana, vocabulary, grammar, and everything files to the library"
-              : "She talks here and does not teach. Nothing files."
+              ? 'She teaches here — furigana, vocabulary, grammar, and everything files to the library'
+              : 'She talks here and does not teach. Nothing files.'
           }
           className={cn(
-            "min-h-11 cursor-pointer rounded-card border px-4 text-[0.92rem] font-medium transition-colors",
+            'min-h-11 cursor-pointer rounded-card border px-4 text-[0.92rem] font-medium transition-colors',
             lessons
-              ? "border-accent bg-accent-soft text-accent"
-              : "border-line bg-transparent text-muted hover:text-ink",
+              ? 'border-accent bg-accent-soft text-accent'
+              : 'border-line bg-transparent text-muted hover:text-ink'
           )}
         >
           Lessons
         </button>
       </div>
     </Field>
-  );
+  )
 }
 
 /* Inside a group, one more level down. Eight proactive controls sat in a
    single wrap and the reader had to work out which knob answered which
    question — how often, when never, and what happens when nobody replies are
    three different questions and the flat row said so nowhere. */
-function Cluster({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+function Cluster({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h4 className="m-0 mb-2 text-[0.78rem] font-semibold text-read">
-        {title}
-      </h4>
-      <div className="flex flex-wrap items-start gap-x-6 gap-y-4">
-        {children}
-      </div>
+      <h4 className="m-0 mb-2 text-[0.78rem] font-semibold text-read">{title}</h4>
+      <div className="flex flex-wrap items-start gap-x-6 gap-y-4">{children}</div>
     </div>
-  );
+  )
 }
 
 /* The first message, and an editor for it.
@@ -428,35 +379,35 @@ function Cluster({
    of its behaviour (composed draft on arrival, her-voice rewrite, stamps the
    record, recomposes after sending). Message starts blank, stamps nothing,
    and leaves what you wrote alone afterwards. */
-const SEND_MODES = ["introduction", "message"] as const;
-type SendMode = (typeof SEND_MODES)[number];
+const SEND_MODES = ['introduction', 'message'] as const
+type SendMode = (typeof SEND_MODES)[number]
 
 function SendIntro({ chat, onChanged }: { chat: Chat; onChanged: () => void }) {
-  const [mode, setMode] = useState<SendMode>("introduction");
-  const [text, setText] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
-  const [busy, setBusy] = useState<false | "load" | "voice" | "send">(false);
-  const [dirty, setDirty] = useState(false);
-  const [written, setWritten] = useState(false);
-  const sentAt = chat.intro_sent ?? null;
-  const isIntro = mode === "introduction";
-  const body = isIntro ? (text ?? "") : draft;
+  const [mode, setMode] = useState<SendMode>('introduction')
+  const [text, setText] = useState<string | null>(null)
+  const [draft, setDraft] = useState('')
+  const [busy, setBusy] = useState<false | 'load' | 'voice' | 'send'>(false)
+  const [dirty, setDirty] = useState(false)
+  const [written, setWritten] = useState(false)
+  const sentAt = chat.intro_sent ?? null
+  const isIntro = mode === 'introduction'
+  const body = isIntro ? (text ?? '') : draft
 
   async function compose(voice = false) {
-    setBusy(voice ? "voice" : "load");
+    setBusy(voice ? 'voice' : 'load')
     try {
-      const r = await post<{ text: string }>("/api/chats/intro", {
+      const r = await post<{ text: string }>('/api/chats/intro', {
         target: chat.target,
         preview: true,
-        ...(voice ? { voice: true } : {}),
-      });
-      setText(r.text);
-      setDirty(false);
-      setWritten(voice);
+        ...(voice ? { voice: true } : {})
+      })
+      setText(r.text)
+      setDirty(false)
+      setWritten(voice)
     } catch (e) {
-      toast((e as Error).message, false);
+      toast((e as Error).message, false)
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
   }
 
@@ -466,37 +417,37 @@ function SendIntro({ chat, onChanged }: { chat: Chat; onChanged: () => void }) {
      someone click to see the thing the section exists to show is a step that
      buys nothing. Opening the section IS the request. */
   useEffect(() => {
-    void compose();
+    void compose()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat.target]);
+  }, [chat.target])
 
   async function send() {
-    if (!body.trim()) return;
-    setBusy("send");
+    if (!body.trim()) return
+    setBusy('send')
     try {
-      await post("/api/chats/intro", {
+      await post('/api/chats/intro', {
         target: chat.target,
         text: body,
         // A one-off message must not move "when the introduction was last
         // sent" — that record is what the badge and the button label read.
-        ...(isIntro ? {} : { stamp: false }),
-      });
+        ...(isIntro ? {} : { stamp: false })
+      })
       if (isIntro) {
-        toast("introduction sent ✓");
-        setDirty(false);
-        setWritten(false);
-        onChanged();
+        toast('introduction sent ✓')
+        setDirty(false)
+        setWritten(false)
+        onChanged()
         // Recomposed rather than cleared: after sending, the useful thing on
         // screen is what this chat's introduction currently says, not a blank.
-        void compose();
+        void compose()
       } else {
-        toast("message sent ✓");
-        setDraft("");
+        toast('message sent ✓')
+        setDraft('')
       }
     } catch (e) {
-      toast((e as Error).message, false);
+      toast((e as Error).message, false)
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
   }
 
@@ -505,7 +456,7 @@ function SendIntro({ chat, onChanged }: { chat: Chat; onChanged: () => void }) {
       <div className="flex items-center gap-2 text-muted">
         <Spinner /> composing…
       </div>
-    );
+    )
   }
 
   return (
@@ -515,8 +466,8 @@ function SendIntro({ chat, onChanged }: { chat: Chat; onChanged: () => void }) {
           <Segmented options={SEND_MODES} value={mode} onChange={setMode} />
           <span className="text-[0.82rem] text-faint">
             {isIntro
-              ? "her opening line for a chat she has not spoken in yet"
-              : "sent as written, to this chat, right now"}
+              ? 'her opening line for a chat she has not spoken in yet'
+              : 'sent as written, to this chat, right now'}
           </span>
         </div>
 
@@ -524,27 +475,17 @@ function SendIntro({ chat, onChanged }: { chat: Chat; onChanged: () => void }) {
               thing you ask for rather than a thing that happens to you. The
               fixed opening below is a perfectly good introduction on its own —
               leaving it alone is a choice, not a fallback. */}
-        <div
-          className={cn(
-            "mb-2 flex flex-wrap items-center gap-x-3 gap-y-2",
-            !isIntro && "hidden",
-          )}
-        >
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={!!busy}
-            onClick={() => void compose(true)}
-          >
-            {busy === "voice" ? <Spinner /> : <Sparkles />}
-            {written ? "Write it again" : "Write the opening in her voice"}
+        <div className={cn('mb-2 flex flex-wrap items-center gap-x-3 gap-y-2', !isIntro && 'hidden')}>
+          <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => void compose(true)}>
+            {busy === 'voice' ? <Spinner /> : <Sparkles />}
+            {written ? 'Write it again' : 'Write the opening in her voice'}
           </Button>
           <span className="text-[0.82rem] text-faint">
             {dirty
-              ? "recomposes the whole message — your edits below would be lost"
+              ? 'recomposes the whole message — your edits below would be lost'
               : written
-                ? "written fresh from her persona file — the shop, her days, her way of putting it"
-                : "takes a few seconds; the rest of the message does not change"}
+                ? 'written fresh from her persona file — the shop, her days, her way of putting it'
+                : 'takes a few seconds; the rest of the message does not change'}
           </span>
         </div>
 
@@ -553,64 +494,47 @@ function SendIntro({ chat, onChanged }: { chat: Chat; onChanged: () => void }) {
         <Textarea
           value={body}
           rows={isIntro ? 14 : 6}
-          placeholder={isIntro ? undefined : "what she should send…"}
-          aria-label={
-            isIntro
-              ? "the introduction as it will be sent"
-              : "the message as it will be sent"
-          }
+          placeholder={isIntro ? undefined : 'what she should send…'}
+          aria-label={isIntro ? 'the introduction as it will be sent' : 'the message as it will be sent'}
           onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
             if (isIntro) {
-              setText(e.target.value);
-              setDirty(true);
+              setText(e.target.value)
+              setDirty(true)
             } else {
-              setDraft(e.target.value);
+              setDraft(e.target.value)
             }
           }}
           className="w-full max-w-2xl font-mono text-[0.8rem] leading-relaxed"
         />
 
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <Button
-            size="sm"
-            variant="primary"
-            disabled={!!busy || !body.trim()}
-            onClick={() => void send()}
-          >
-            {busy === "send" ? <Spinner /> : <Send />}
-            {!isIntro
-              ? "Send Message"
-              : sentAt
-                ? "Send Introduction Again"
-                : "Send Introduction"}
+          <Button size="sm" variant="primary" disabled={!!busy || !body.trim()} onClick={() => void send()}>
+            {busy === 'send' ? <Spinner /> : <Send />}
+            {!isIntro ? 'Send Message' : sentAt ? 'Send Introduction Again' : 'Send Introduction'}
           </Button>
           <span className="text-[0.82rem] text-faint">
-            {dirty
-              ? "your edits are what gets sent"
-              : "goes out exactly as written above"}
+            {dirty ? 'your edits are what gets sent' : 'goes out exactly as written above'}
             {/* "last sent" is about the INTRODUCTION. A one-off message
                   neither reads nor moves it, so saying "never sent" beside a
                   message box would be answering a question nobody asked. */}
-            {isIntro &&
-              (sentAt ? ` · last sent ${ago(sentAt)}` : " · never sent")}
+            {isIntro && (sentAt ? ` · last sent ${ago(sentAt)}` : ' · never sent')}
           </span>
         </div>
       </div>
     </div>
-  );
+  )
 }
 
-const nf = new Intl.NumberFormat();
+const nf = new Intl.NumberFormat()
 /* Big token counts are unreadable in full and misleading when rounded to one
    significant figure, so: thousands to one decimal, millions to two. */
 function short(n: number) {
-  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
-  if (n >= 1e4) return `${Math.round(n / 1e3)}k`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
-  return nf.format(n);
+  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`
+  if (n >= 1e4) return `${Math.round(n / 1e3)}k`
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}k`
+  return nf.format(n)
 }
-const money = (n: number) =>
-  n >= 1 ? `$${n.toFixed(2)}` : `${(n * 100).toFixed(1)}¢`;
+const money = (n: number) => (n >= 1 ? `$${n.toFixed(2)}` : `${(n * 100).toFixed(1)}¢`)
 
 /* What this chat has cost.
  *
@@ -626,77 +550,54 @@ const money = (n: number) =>
  * are billed at a fraction of the price and merging them makes an expensive
  * turn and a cheap one look identical. */
 function Usage({ chat }: { chat: Chat }) {
-  const all = chat.usage?.all ?? null;
-  const recent = chat.usage?.recent ?? null;
+  const all = chat.usage?.all ?? null
+  const recent = chat.usage?.recent ?? null
 
   if (!all || !all.turns) {
     return (
       <p className="mt-0 mb-0 max-w-prose text-[0.9rem] text-muted">
-        Nothing billed to this chat yet. A row lands here the first time she
-        answers in it.
+        Nothing billed to this chat yet. A row lands here the first time she answers in it.
       </p>
-    );
+    )
   }
 
-  const per = all.tokens / all.turns;
+  const per = all.tokens / all.turns
   /* A 30-day figure identical to the all-time one is not a second fact, it is
      the same number printed twice and it reads as a bug. When the whole ledger
      for this chat falls inside the window, the window is the caption instead. */
-  const windowed = !!recent && recent.tokens < all.tokens;
-  const allRecent = !!recent?.turns && !windowed;
+  const windowed = !!recent && recent.tokens < all.tokens
+  const allRecent = !!recent?.turns && !windowed
   const rows: [string, number, string][] = [
-    ["sent to the model", all.input, "written fresh each turn"],
-    [
-      "read from cache",
-      all.cache_read,
-      "the persona and history, billed at a tenth",
-    ],
-    [
-      "written to cache",
-      all.cache_create,
-      "the first turn after anything changes",
-    ],
-    ["her replies", all.output, "the only part she actually composes"],
-  ];
+    ['sent to the model', all.input, 'written fresh each turn'],
+    ['read from cache', all.cache_read, 'the persona and history, billed at a tenth'],
+    ['written to cache', all.cache_create, 'the first turn after anything changes'],
+    ['her replies', all.output, 'the only part she actually composes']
+  ]
 
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-baseline gap-x-8 gap-y-3">
         <div>
-          <p className="m-0 font-serif text-[2rem] leading-none tnum">
-            {short(all.tokens)}
-          </p>
+          <p className="m-0 font-serif text-[2rem] leading-none tnum">{short(all.tokens)}</p>
           <p className="m-0 mt-1 text-[0.8rem] text-muted">
-            tokens over {nf.format(all.turns)} turn{all.turns === 1 ? "" : "s"}
-            {allRecent ? ", all within 30 days" : ""}
+            tokens over {nf.format(all.turns)} turn{all.turns === 1 ? '' : 's'}
+            {allRecent ? ', all within 30 days' : ''}
           </p>
         </div>
         <div>
-          <p className="m-0 font-serif text-[2rem] leading-none tnum">
-            {money(all.cost_usd)}
-          </p>
-          <p className="m-0 mt-1 text-[0.8rem] text-muted">
-            {money(all.cost_usd / all.turns)} a turn
-          </p>
+          <p className="m-0 font-serif text-[2rem] leading-none tnum">{money(all.cost_usd)}</p>
+          <p className="m-0 mt-1 text-[0.8rem] text-muted">{money(all.cost_usd / all.turns)} a turn</p>
         </div>
         {windowed && (
           <div>
-            <p className="m-0 font-serif text-[2rem] leading-none tnum">
-              {short(recent!.tokens)}
-            </p>
-            <p className="m-0 mt-1 text-[0.8rem] text-muted">
-              last 30 days · {money(recent!.cost_usd)}
-            </p>
+            <p className="m-0 font-serif text-[2rem] leading-none tnum">{short(recent!.tokens)}</p>
+            <p className="m-0 mt-1 text-[0.8rem] text-muted">last 30 days · {money(recent!.cost_usd)}</p>
           </div>
         )}
         {!recent?.turns && (
           <div>
-            <p className="m-0 font-serif text-[2rem] leading-none text-faint">
-              —
-            </p>
-            <p className="m-0 mt-1 text-[0.8rem] text-muted">
-              nothing in 30 days
-            </p>
+            <p className="m-0 font-serif text-[2rem] leading-none text-faint">—</p>
+            <p className="m-0 mt-1 text-[0.8rem] text-muted">nothing in 30 days</p>
           </div>
         )}
       </div>
@@ -710,23 +611,21 @@ function Usage({ chat }: { chat: Chat }) {
                   {label}
                   <span className="block text-[0.78rem] text-faint">{why}</span>
                 </td>
-                <td className="tnum py-2 text-right align-top font-mono">
-                  {nf.format(n)}
-                </td>
+                <td className="tnum py-2 text-right align-top font-mono">{nf.format(n)}</td>
                 <td className="tnum w-14 py-2 pl-3 text-right align-top text-muted">
-                  {all.tokens ? `${Math.round((n / all.tokens) * 100)}%` : ""}
+                  {all.tokens ? `${Math.round((n / all.tokens) * 100)}%` : ''}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
         <p className="mt-3 mb-0 max-w-prose text-[0.82rem] text-faint">
-          {short(per)} tokens a turn on average. These come off the API response
-          the reply already carried, so counting them costs nothing.
+          {short(per)} tokens a turn on average. These come off the API response the reply already carried, so counting
+          them costs nothing.
         </p>
       </div>
     </div>
-  );
+  )
 }
 
 /* Whether her REPLIES here come back as spoken voice notes.
@@ -748,27 +647,27 @@ function VoiceNotes({
   master,
   langFallback,
   langs,
-  onChanged,
+  onChanged
 }: {
-  chat: Chat;
+  chat: Chat
   /** the master switch in Settings; off silences this chat whatever it says */
-  master: boolean;
+  master: boolean
   /** the audio language a chat with no choice of its own gets */
-  langFallback: string;
+  langFallback: string
   /** which languages the server offers, from /api/settings tts.langs */
-  langs: string[];
-  onChanged: () => void;
+  langs: string[]
+  onChanged: () => void
 }) {
-  const [busy, setBusy] = useState(false);
-  const mode = chat.voice_mode ?? null;
+  const [busy, setBusy] = useState(false)
+  const mode = chat.voice_mode ?? null
   /* Both controls here post chat.jid, and the server requires a real WhatsApp
      id — so on a PENDING row (jid = the bare "+60…") every click 400'd, on a
      panel whose own subtitle promises the settings apply the moment they
      write. Say that instead of offering a control that cannot work. */
-  const storable = /^\d{5,}@/.test(String(chat.jid ?? ""));
+  const storable = /^\d{5,}@/.test(String(chat.jid ?? ''))
 
   async function save(next: VoiceMode) {
-    setBusy(true);
+    setBusy(true)
     try {
       /* `restarted` is not decoration. The gateway loads
           gateway_voice_mode.json once in its constructor and never re-reads
@@ -776,21 +675,21 @@ function VoiceNotes({
           running bot keeps the old one — and the toast used to say it had
           worked. HomeChannelPicker already did this correctly; these four did
           not. */
-      const r = await post<{ restarted?: boolean }>("/api/settings/chat_tts", {
+      const r = await post<{ restarted?: boolean }>('/api/settings/chat_tts', {
         chat: chat.jid,
-        mode: next,
-      });
+        mode: next
+      })
       toast(
         r.restarted
-          ? "saved ✓ — gateway restarted"
-          : "saved, but the gateway did not restart — it keeps the old setting until it does",
-        r.restarted !== false,
-      );
-      onChanged();
+          ? 'saved ✓ — gateway restarted'
+          : 'saved, but the gateway did not restart — it keeps the old setting until it does',
+        r.restarted !== false
+      )
+      onChanged()
     } catch (e) {
-      toast((e as Error).message, false);
+      toast((e as Error).message, false)
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
   }
 
@@ -798,52 +697,46 @@ function VoiceNotes({
   // are allowed to diverge, and this only chooses the voice's language. The
   // server picks a different reference clip per language, and using the wrong
   // one is roughly a 5x artefact rate, so it is worth setting deliberately.
-  const lang = chat.tts_language ?? null;
+  const lang = chat.tts_language ?? null
 
   async function saveLang(next: string) {
-    setBusy(true);
+    setBusy(true)
     try {
-      await post("/api/settings/chat_tts_lang", { chat: chat.jid, lang: next });
-      toast("saved \u2713");
-      onChanged();
+      await post('/api/settings/chat_tts_lang', { chat: chat.jid, lang: next })
+      toast('saved \u2713')
+      onChanged()
     } catch (e) {
-      toast((e as Error).message, false);
+      toast((e as Error).message, false)
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
   }
 
   if (!storable) {
     return (
       <div className="flex flex-col gap-3">
-        <h4 className="mt-0 mb-0 text-[0.95rem] font-medium text-ink">
-          When her replies come back as a voice note
-        </h4>
+        <h4 className="mt-0 mb-0 text-[0.95rem] font-medium text-ink">When her replies come back as a voice note</h4>
         <p className="mt-0 mb-0 max-w-prose text-[0.82rem] text-muted">
-          Not yet — this one is keyed on a phone number because they have not
-          written here before. Voice settings are stored against the WhatsApp
-          id, which only exists once they do. Send a message, or wait for
-          theirs, and these controls appear.
+          Not yet — this one is keyed on a phone number because they have not written here before. Voice settings are
+          stored against the WhatsApp id, which only exists once they do. Send a message, or wait for theirs, and these
+          controls appear.
         </p>
       </div>
-    );
+    )
   }
 
   return (
     <div className="flex flex-col gap-7">
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
-          <h4 className="mt-0 mb-0 text-[0.95rem] font-medium text-ink">
-            When her replies come back as a voice note
-          </h4>
+          <h4 className="mt-0 mb-0 text-[0.95rem] font-medium text-ink">When her replies come back as a voice note</h4>
           {/* The sentence that has to be here. Everything below is about
               REPLIES; the feature that makes her message first is Proactivity,
               and saying so once is cheaper than three careful option names. */}
           <p className="mt-0 mb-0 max-w-prose text-[0.82rem] text-muted">
-            This only changes how she answers you. It never makes her message
-            first — that's <b className="font-medium text-read">Proactivity</b>.
-            The text of the reply is always sent either way; a voice note is
-            sent alongside it.
+            This only changes how she answers you. It never makes her message first — that's{' '}
+            <b className="font-medium text-read">Proactivity</b>. The text of the reply is always sent either way; a
+            voice note is sent alongside it.
           </p>
         </div>
 
@@ -853,7 +746,7 @@ function VoiceNotes({
             said so. */}
         <div className="flex flex-col gap-1.5" role="radiogroup">
           {MODE_CHOICES.map((c) => {
-            const on = (mode ?? "off") === c.value;
+            const on = (mode ?? 'off') === c.value
             return (
               <button
                 key={c.value}
@@ -863,35 +756,24 @@ function VoiceNotes({
                 disabled={busy}
                 onClick={() => void save(c.value)}
                 className={cn(
-                  "flex cursor-pointer items-start gap-3 rounded-card border px-3 py-2.5 text-left transition-colors",
-                  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-                  on
-                    ? "border-accent bg-accent-soft"
-                    : "border-line bg-transparent hover:border-line-2",
+                  'flex cursor-pointer items-start gap-3 rounded-card border px-3 py-2.5 text-left transition-colors',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+                  on ? 'border-accent bg-accent-soft' : 'border-line bg-transparent hover:border-line-2'
                 )}
               >
                 <span
                   aria-hidden
                   className={cn(
-                    "mt-[3px] size-4 shrink-0 rounded-full border-2 transition-colors",
-                    on ? "border-accent bg-accent" : "border-line-2",
+                    'mt-[3px] size-4 shrink-0 rounded-full border-2 transition-colors',
+                    on ? 'border-accent bg-accent' : 'border-line-2'
                   )}
                 />
                 <span className="flex min-w-0 flex-col gap-0.5">
-                  <span
-                    className={cn(
-                      "text-[0.9rem] font-medium",
-                      on ? "text-accent" : "text-ink",
-                    )}
-                  >
-                    {c.title}
-                  </span>
-                  <span className="text-[0.8rem] leading-snug text-muted">
-                    {c.note}
-                  </span>
+                  <span className={cn('text-[0.9rem] font-medium', on ? 'text-accent' : 'text-ink')}>{c.title}</span>
+                  <span className="text-[0.8rem] leading-snug text-muted">{c.note}</span>
                 </span>
               </button>
-            );
+            )
           })}
         </div>
         {busy && <span className="text-sm text-muted">saving…</span>}
@@ -901,8 +783,8 @@ function VoiceNotes({
              chat's own controls. The page-level banner says it properly; this
              is the in-context reminder for someone who came straight here. */
           <p className="mt-0 mb-0 text-xs text-muted">
-            Muted everywhere right now, so nothing is spoken in any chat. This
-            choice is kept and takes effect when you unmute under{" "}
+            Muted everywhere right now, so nothing is spoken in any chat. This choice is kept and takes effect when you
+            unmute under{' '}
             <a href="/app/settings.html#voice" className="text-accent">
               Settings → Voice
             </a>
@@ -913,45 +795,41 @@ function VoiceNotes({
 
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
-          <h4 className="mt-0 mb-0 text-[0.95rem] font-medium text-ink">
-            What language the audio is in
-          </h4>
+          <h4 className="mt-0 mb-0 text-[0.95rem] font-medium text-ink">What language the audio is in</h4>
           <p className="mt-0 mb-0 max-w-prose text-[0.82rem] text-muted">
             {/* The counter-intuitive bit: this is not the language she WRITES
                 in. She can answer you in English and speak Japanese. */}
-            Not the language she writes in — she can write English and speak
-            Japanese.
+            Not the language she writes in — she can write English and speak Japanese.
           </p>
         </div>
         <Segmented
           options={LANG_OPTS(langs)}
-          value={lang === null ? "Default" : LANG_LABEL(lang)}
+          value={lang === null ? 'Default' : LANG_LABEL(lang)}
           onChange={(v) => void saveLang(LANG_VALUE(v))}
         />
         <p className="mt-0 mb-0 max-w-prose text-xs text-muted">
           {lang === null
             ? `Following the default, which is ${LANG_LABEL(langFallback)}.`
-            : `The default is ${LANG_LABEL(langFallback)}; this chat overrides it.`}{" "}
+            : `The default is ${LANG_LABEL(langFallback)}; this chat overrides it.`}{' '}
           <a href="/app/settings.html#voice" className="text-accent">
             Change the default
           </a>
           .
         </p>
-        {(lang ?? langFallback) === "zh" && (
+        {(lang ?? langFallback) === 'zh' && (
           /* Honest rather than hidden. Chinese works — the server lists it in
              /health next to ja and en — but it shares English's reference
              clip, so it is her English voice speaking Mandarin. */
           <p className="mt-0 mb-0 max-w-prose text-xs text-muted">
-            Chinese uses her English voice, so it will sound less natural than
-            Japanese.
+            Chinese uses her English voice, so it will sound less natural than Japanese.
           </p>
         )}
       </div>
     </div>
-  );
+  )
 }
 
-type VoiceMode = "off" | "voice_only" | "all";
+type VoiceMode = 'off' | 'voice_only' | 'all'
 
 /* The gateway's three modes, each with the rule it actually implements.
    Verified against gateway/run.py::_maybe_auto_voice_reply, whose gate is
@@ -971,21 +849,21 @@ type VoiceMode = "off" | "voice_only" | "all";
    "Never" mean the same thing and it is honest to draw them the same. */
 const MODE_CHOICES: { value: VoiceMode; title: string; note: string }[] = [
   {
-    value: "off",
-    title: "Never",
-    note: "Text replies only. This is the default.",
+    value: 'off',
+    title: 'Never',
+    note: 'Text replies only. This is the default.'
   },
   {
-    value: "voice_only",
-    title: "Only when answering a voice note",
-    note: "Send her a voice note and she replies with one. Type to her and she types back.",
+    value: 'voice_only',
+    title: 'Only when answering a voice note',
+    note: 'Send her a voice note and she replies with one. Type to her and she types back.'
   },
   {
-    value: "all",
-    title: "Every reply",
-    note: "Every reply is also sent as a voice note.",
-  },
-];
+    value: 'all',
+    title: 'Every reply',
+    note: 'Every reply is also sent as a voice note.'
+  }
+]
 
 /* The inherit chip is just "Default". It used to print what it resolved to —
    `default · match the reply` — which is the ModelField pattern and is right
@@ -995,34 +873,31 @@ const MODE_CHOICES: { value: VoiceMode; title: string; note: string }[] = [
    positions saying the same words, one of them lowercased for no reason.
    What it resolves to is said once, underneath, where it reads as a sentence
    instead of competing with the option beside it. */
-const LANG_OPTS = (langs: string[]) => ["Default", ...langs.map(LANG_LABEL)];
+const LANG_OPTS = (langs: string[]) => ['Default', ...langs.map(LANG_LABEL)]
 
 /* Compared case-insensitively against the chip's own text, not a lowercase
    prefix. The chip is "Default"; a `startsWith("default")` test misses it and
    falls through to LANG_CODE, whose `?? "auto"` fallback would quietly write
    an EXPLICIT auto instead of clearing the override — the chat would look
    like it was inheriting while actually being pinned. */
-const LANG_VALUE = (label: string) =>
-  label.toLowerCase() === "default" ? "default" : LANG_CODE(label);
+const LANG_VALUE = (label: string) => (label.toLowerCase() === 'default' ? 'default' : LANG_CODE(label))
 
 /* Names, not codes. "auto" is the odd one out and needs saying plainly: the
    server decides from the SCRIPT of the text it is handed, so what it really
    means is "whatever she happened to write in". */
 const LANG_LABELS: Record<string, string> = {
-  auto: "Match the reply",
-  ja: "Japanese",
-  en: "English",
-  zh: "Chinese",
-};
+  auto: 'Match the reply',
+  ja: 'Japanese',
+  en: 'English',
+  zh: 'Chinese'
+}
 
 function LANG_LABEL(code: string): string {
-  return LANG_LABELS[code] ?? code;
+  return LANG_LABELS[code] ?? code
 }
 
 function LANG_CODE(label: string): string {
-  return (
-    Object.keys(LANG_LABELS).find((k) => LANG_LABELS[k] === label) ?? "auto"
-  );
+  return Object.keys(LANG_LABELS).find((k) => LANG_LABELS[k] === label) ?? 'auto'
 }
 
 /* What an expanded chat row is for. Ordered the way you'd set one up: which
@@ -1042,19 +917,19 @@ function LANG_CODE(label: string): string {
    what buys the room to explain them. */
 const SECTIONS = [
   // personality, mode, models, reply language, market: which character this is
-  { key: "who", label: "Persona" },
+  { key: 'who', label: 'Persona' },
   // whether her replies are spoken, and in what language
-  { key: "voice", label: "Voice" },
+  { key: 'voice', label: 'Voice' },
   // its own copy: "what reaches her, or what she is allowed to touch"
-  { key: "can", label: "Access" },
+  { key: 'can', label: 'Access' },
   // whether she starts things at all, and everything governing when. The name
   // the code has always used for it — Pro, proactive(), /proactive.
-  { key: "opens", label: "Proactivity" },
-  { key: "intro", label: "Send" },
-  { key: "spend", label: "Usage" },
-] as const;
+  { key: 'opens', label: 'Proactivity' },
+  { key: 'intro', label: 'Send' },
+  { key: 'spend', label: 'Usage' }
+] as const
 
-type SectionKey = (typeof SECTIONS)[number]["key"];
+type SectionKey = (typeof SECTIONS)[number]['key']
 
 /* A model picker whose empty value is a real, named option. "Use the default"
    has to be selectable, not just the state you start in — otherwise trying a
@@ -1065,15 +940,15 @@ function ModelField({
   value,
   effective,
   options,
-  onChange,
+  onChange
 }: {
-  label: string;
-  value: string;
-  effective: string;
-  options: { id: string; label: string; note?: string; kind: string }[];
-  onChange: (v: string) => void;
+  label: string
+  value: string
+  effective: string
+  options: { id: string; label: string; note?: string; kind: string }[]
+  onChange: (v: string) => void
 }) {
-  const named = options.find((o) => o.id === effective);
+  const named = options.find((o) => o.id === effective)
   return (
     <Field label={label}>
       <select
@@ -1083,7 +958,7 @@ function ModelField({
       >
         <option value="">
           Default
-          {named ? ` — ${named.label}` : effective ? ` — ${effective}` : ""}
+          {named ? ` — ${named.label}` : effective ? ` — ${effective}` : ''}
         </option>
         {/* A chat PINNED to a model the catalogue does not carry (Ollama down,
             or an AIRA_CHAT_MODEL that was never in the list) fell through to
@@ -1095,56 +970,55 @@ function ModelField({
         {options.map((o) => (
           <option key={o.id} value={o.id}>
             {o.label}
-            {o.note ? ` — ${o.note}` : ""}
+            {o.note ? ` — ${o.note}` : ''}
           </option>
         ))}
       </select>
     </Field>
-  );
+  )
 }
 
 function ChatCard({
   chat,
   settings,
   pro,
-  onChanged,
+  onChanged
 }: {
-  chat: Chat;
-  settings: Settings;
-  pro?: Pro;
-  onChanged: () => void;
+  chat: Chat
+  settings: Settings
+  pro?: Pro
+  onChanged: () => void
 }) {
-  const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<SectionKey>("who");
-  const [renaming, setRenaming] = useState(false);
-  const [label, setLabel] = useState(chat.label ?? chat.name ?? "");
+  const [open, setOpen] = useState(false)
+  const [tab, setTab] = useState<SectionKey>('who')
+  const [renaming, setRenaming] = useState(false)
+  const [label, setLabel] = useState(chat.label ?? chat.name ?? '')
   // An unnamed live chat has nothing but its id, so the id becomes the name
   // rather than the row reading "group" with the id hidden underneath it.
-  const name = chat.label || chat.name || midTrunc(chat.jid, 28);
+  const name = chat.label || chat.name || midTrunc(chat.jid, 28)
   // Show the number beside the name when they differ: you add someone by
   // number, and the row renames itself to their WhatsApp display name the
   // moment they first write, which is exactly when you go looking for it.
-  const number = chat.number && chat.number !== name ? chat.number : "";
+  const number = chat.number && chat.number !== name ? chat.number : ''
   const sub = chat.pending
     ? chat.heard_in?.length
-      ? `talks to her in ${chat.heard_in.join(", ")}` +
-        (chat.last_seen ? ` · ${ago(chat.last_seen)}` : "")
-      : "settings apply the moment they write"
-    : number;
-  const agentOn = chat.agent === "full";
+      ? `talks to her in ${chat.heard_in.join(', ')}` + (chat.last_seen ? ` · ${ago(chat.last_seen)}` : '')
+      : 'settings apply the moment they write'
+    : number
+  const agentOn = chat.agent === 'full'
 
   const proKey =
     pro?.key ??
     (chat.label || chat.name || `${chat.kind}-${chat.jid.slice(0, 6)}`)
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 24);
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 24)
 
   async function bind(patch: Record<string, unknown>) {
     try {
-      await post("/api/settings/bindings", {
-        action: "set",
+      await post('/api/settings/bindings', {
+        action: 'set',
         platform: chat.platform,
         kind: chat.kind,
         /* A pending chat is keyed on its NUMBER, plus and all.
@@ -1159,28 +1033,28 @@ function ChatCard({
         personality: chat.personality,
         mode: chat.mode,
         agent: chat.agent,
-        ...patch,
-      });
-      toast("saved ✓");
-      onChanged();
+        ...patch
+      })
+      toast('saved ✓')
+      onChanged()
     } catch (e) {
-      toast((e as Error).message, false);
+      toast((e as Error).message, false)
     }
   }
 
-  async function setModel(role: "chat" | "agent", model: string) {
+  async function setModel(role: 'chat' | 'agent', model: string) {
     try {
-      await post("/api/settings/chat_model", {
+      await post('/api/settings/chat_model', {
         platform: chat.platform,
         kind: chat.kind,
         chat: chat.pending ? chat.jid : (chat.sanitised ?? chat.jid),
         role,
-        model,
-      });
-      toast(model ? "saved ✓" : "back to the default ✓");
-      onChanged();
+        model
+      })
+      toast(model ? 'saved ✓' : 'back to the default ✓')
+      onChanged()
     } catch (e) {
-      toast((e as Error).message, false);
+      toast((e as Error).message, false)
     }
   }
 
@@ -1189,66 +1063,58 @@ function ChatCard({
       // A timing change reschedules on the server; saying so is the
       // difference between "did that take?" and watching the new opening
       // appear a second later.
-      const r = await post<{ rescheduled?: boolean }>(
-        "/api/settings/proactive",
-        {
-          key: proKey,
-          chat_id: chat.jid,
-          deliver: chat.target,
-          ...patch,
-        },
-      );
-      toast(r.rescheduled ? "saved — rescheduling now ✓" : "saved ✓");
+      const r = await post<{ rescheduled?: boolean }>('/api/settings/proactive', {
+        key: proKey,
+        chat_id: chat.jid,
+        deliver: chat.target,
+        ...patch
+      })
+      toast(r.rescheduled ? 'saved — rescheduling now ✓' : 'saved ✓')
       // The tick writes next_due a beat after it starts; re-read once it has.
-      onChanged();
-      if (r.rescheduled) window.setTimeout(onChanged, 2500);
+      onChanged()
+      if (r.rescheduled) window.setTimeout(onChanged, 2500)
     } catch (e) {
-      toast((e as Error).message, false);
+      toast((e as Error).message, false)
     }
   }
 
   async function setLanguage(v: string) {
     try {
-      await post("/api/settings/language", {
+      await post('/api/settings/language', {
         scope_key: chat.scope_key,
-        language: v,
-      });
-      toast("saved ✓");
-      onChanged();
+        language: v
+      })
+      toast('saved ✓')
+      onChanged()
     } catch (e) {
-      toast((e as Error).message, false);
+      toast((e as Error).message, false)
     }
   }
 
   async function setLessons(v: boolean) {
     try {
-      await post("/api/settings/language", {
+      await post('/api/settings/language', {
         scope_key: chat.scope_key,
-        lessons: v,
-      });
-      toast("saved ✓");
-      onChanged();
+        lessons: v
+      })
+      toast('saved ✓')
+      onChanged()
     } catch (e) {
-      toast((e as Error).message, false);
+      toast((e as Error).message, false)
     }
   }
 
   async function setGroupAllow(v: boolean) {
     try {
-      const r = await post<{ restarted?: boolean }>(
-        "/api/settings/group_allow",
-        { chat: chat.jid, enabled: v },
-      );
-      const said = v ? "she can hear this group" : "she'll ignore this group";
+      const r = await post<{ restarted?: boolean }>('/api/settings/group_allow', { chat: chat.jid, enabled: v })
+      const said = v ? 'she can hear this group' : "she'll ignore this group"
       toast(
-        r.restarted
-          ? `${said} ✓`
-          : `saved, but the gateway did not restart — ${said} only once it does`,
-        r.restarted !== false,
-      );
-      onChanged();
+        r.restarted ? `${said} ✓` : `saved, but the gateway did not restart — ${said} only once it does`,
+        r.restarted !== false
+      )
+      onChanged()
     } catch (e) {
-      toast((e as Error).message, false);
+      toast((e as Error).message, false)
     }
   }
 
@@ -1256,38 +1122,38 @@ function ChatCard({
     try {
       /* Unlike the two above, this one is re-read per inbound message, so a
           failed restart costs nothing and the toast does not need to hedge. */
-      await post("/api/settings/free_response", { chat: chat.jid, enabled: v });
-      toast(v ? "she'll read this group ✓" : "back to tag-only ✓");
-      onChanged();
+      await post('/api/settings/free_response', { chat: chat.jid, enabled: v })
+      toast(v ? "she'll read this group ✓" : 'back to tag-only ✓')
+      onChanged()
     } catch (e) {
-      toast((e as Error).message, false);
+      toast((e as Error).message, false)
     }
   }
 
   async function setRegion(v: string) {
     try {
-      await post("/api/settings/region", {
+      await post('/api/settings/region', {
         scope_key: chat.scope_key,
-        region: v,
-      });
-      toast("saved ✓");
-      onChanged();
+        region: v
+      })
+      toast('saved ✓')
+      onChanged()
     } catch (e) {
-      toast((e as Error).message, false);
+      toast((e as Error).message, false)
     }
   }
 
   async function rename() {
     try {
-      await post("/api/settings/labels", {
+      await post('/api/settings/labels', {
         target: chat.target,
-        label: label.trim(),
-      });
-      setRenaming(false);
-      toast("renamed ✓");
-      onChanged();
+        label: label.trim()
+      })
+      setRenaming(false)
+      toast('renamed ✓')
+      onChanged()
     } catch (e) {
-      toast((e as Error).message, false);
+      toast((e as Error).message, false)
     }
   }
 
@@ -1299,18 +1165,13 @@ function ChatCard({
      touch, whether she opens conversations, what language) are one scannable
      strip instead of a badge floated to the far right. */
   const facts = [
-    agentOn ? "computer" : null,
-    pro?.enabled ? "opens" : null,
-    (chat.language ?? "en").replace(/\+/g, "·"),
-  ].filter(Boolean) as string[];
+    agentOn ? 'computer' : null,
+    pro?.enabled ? 'opens' : null,
+    (chat.language ?? 'en').replace(/\+/g, '·')
+  ].filter(Boolean) as string[]
 
   return (
-    <div
-      className={cn(
-        "border-t border-line-2 first:border-t-0",
-        open && "bg-card-2",
-      )}
-    >
+    <div className={cn('border-t border-line-2 first:border-t-0', open && 'bg-card-2')}>
       <div className="flex items-center gap-3 px-4">
         {renaming ? (
           <span className="flex flex-1 flex-wrap items-center gap-2 py-3">
@@ -1318,18 +1179,14 @@ function ChatCard({
               value={label}
               autoFocus
               onChange={(e) => setLabel(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && void rename()}
+              onKeyDown={(e) => e.key === 'Enter' && void rename()}
               className="w-56"
               placeholder="a name you'll recognise"
             />
             <Button size="sm" variant="primary" onClick={() => void rename()}>
               Save name
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setRenaming(false)}
-            >
+            <Button size="sm" variant="ghost" onClick={() => setRenaming(false)}>
               Cancel
             </Button>
           </span>
@@ -1343,15 +1200,13 @@ function ChatCard({
             <ChevronRight
               aria-hidden
               className={cn(
-                "size-4 shrink-0 text-faint transition-transform duration-150",
-                open && "rotate-90 text-accent",
+                'size-4 shrink-0 text-faint transition-transform duration-150',
+                open && 'rotate-90 text-accent'
               )}
             />
             <span className="min-w-0 flex-1">
               <span className="flex items-baseline gap-2">
-                <b className="truncate font-serif text-[1.05rem] font-medium">
-                  {name}
-                </b>
+                <b className="truncate font-serif text-[1.05rem] font-medium">{name}</b>
                 <span className="shrink-0 font-mono text-[0.66rem] tracking-[0.08em] text-faint uppercase">
                   {chat.kind}
                 </span>
@@ -1362,7 +1217,7 @@ function ChatCard({
                     to get wrong. */}
                 {chat.pending && (
                   <span className="shrink-0 text-[0.72rem] text-amber">
-                    {chat.heard_in?.length ? "no DM yet" : "not messaged yet"}
+                    {chat.heard_in?.length ? 'no DM yet' : 'not messaged yet'}
                   </span>
                 )}
               </span>
@@ -1372,21 +1227,15 @@ function ChatCard({
                   the list's height to repeat what the name already told you.
                   It moved into the panel. A pending row keeps its line,
                   because there the sentence IS the news. */}
-              {sub && (
-                <span className="mt-0.5 block truncate text-[0.72rem] text-faint">
-                  {sub}
-                </span>
-              )}
+              {sub && <span className="mt-0.5 block truncate text-[0.72rem] text-faint">{sub}</span>}
             </span>
             <span className="hidden shrink-0 items-center gap-2 sm:flex">
               {facts.map((f) => (
                 <span
                   key={f}
                   className={cn(
-                    "rounded-full px-2 py-0.5 font-mono text-[0.66rem] tracking-[0.04em] lowercase",
-                    f === "computer"
-                      ? "bg-accent-soft text-accent"
-                      : "border border-line-2 text-muted",
+                    'rounded-full px-2 py-0.5 font-mono text-[0.66rem] tracking-[0.04em] lowercase',
+                    f === 'computer' ? 'bg-accent-soft text-accent' : 'border border-line-2 text-muted'
                   )}
                 >
                   {f}
@@ -1422,12 +1271,12 @@ function ChatCard({
               role="tablist"
               aria-label={`configure ${name}`}
               className={cn(
-                "flex shrink-0 gap-1 overflow-x-auto border-b border-line p-3",
-                "sm:w-[11rem] sm:flex-col sm:overflow-visible sm:border-r sm:border-b-0 sm:py-4",
+                'flex shrink-0 gap-1 overflow-x-auto border-b border-line p-3',
+                'sm:w-[11rem] sm:flex-col sm:overflow-visible sm:border-r sm:border-b-0 sm:py-4'
               )}
             >
               {SECTIONS.map((s) => {
-                const on = s.key === tab;
+                const on = s.key === tab
                 return (
                   <button
                     key={s.key}
@@ -1436,33 +1285,27 @@ function ChatCard({
                     aria-selected={on}
                     onClick={() => setTab(s.key)}
                     className={cn(
-                      "flex min-h-11 shrink-0 cursor-pointer items-center border-0 px-3 text-left",
-                      "rounded-[var(--radius-control)] transition-colors",
-                      "font-mono text-[0.68rem] font-medium tracking-[0.14em] whitespace-nowrap uppercase",
-                      "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-                      on
-                        ? "bg-accent-soft text-accent"
-                        : "bg-transparent text-muted hover:text-read",
+                      'flex min-h-11 shrink-0 cursor-pointer items-center border-0 px-3 text-left',
+                      'rounded-[var(--radius-control)] transition-colors',
+                      'font-mono text-[0.68rem] font-medium tracking-[0.14em] whitespace-nowrap uppercase',
+                      'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+                      on ? 'bg-accent-soft text-accent' : 'bg-transparent text-muted hover:text-read'
                     )}
                   >
                     {s.label}
                   </button>
-                );
+                )
               })}
             </div>
 
             <div className="min-w-0 flex-1 px-4 pt-4 pb-6 sm:px-5">
-              {tab === "who" && (
+              {tab === 'who' && (
                 <div className="flex flex-col gap-5">
                   <div className="flex flex-wrap items-center gap-3">
                     <code className="rounded-card border border-line-2 bg-sunk px-2 py-1 font-mono text-[0.72rem] text-muted">
                       {chat.jid}
                     </code>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setRenaming(true)}
-                    >
+                    <Button size="sm" variant="ghost" onClick={() => setRenaming(true)}>
                       Rename this chat
                     </Button>
                   </div>
@@ -1510,24 +1353,24 @@ function ChatCard({
                   <div className="flex flex-wrap gap-6">
                     <ModelField
                       label="model"
-                      value={chat.chat_model ?? ""}
-                      effective={chat.chat_model_effective ?? ""}
+                      value={chat.chat_model ?? ''}
+                      effective={chat.chat_model_effective ?? ''}
                       options={settings.models?.catalogue ?? []}
-                      onChange={(v) => void setModel("chat", v)}
+                      onChange={(v) => void setModel('chat', v)}
                     />
                     <ModelField
                       label="model for delegated work"
-                      value={chat.agent_model ?? ""}
-                      effective={chat.agent_model_effective ?? ""}
+                      value={chat.agent_model ?? ''}
+                      effective={chat.agent_model_effective ?? ''}
                       options={(settings.models?.catalogue ?? []).filter(
-                        (c) => c.kind === "claude" || c.kind === "cloud",
+                        (c) => c.kind === 'claude' || c.kind === 'cloud'
                       )}
-                      onChange={(v) => void setModel("agent", v)}
+                      onChange={(v) => void setModel('agent', v)}
                     />
                   </div>
 
                   <LanguagePicker
-                    value={chat.language ?? "en"}
+                    value={chat.language ?? 'en'}
                     options={settings.language_codes ?? []}
                     labels={settings.languages ?? []}
                     lessons={chat.lessons ?? true}
@@ -1539,16 +1382,14 @@ function ChatCard({
                     <Field
                       label="which market this chat means"
                       hint={(() => {
-                        const r = settings.regions.find(
-                          (x) => x.value === (chat.region ?? "global"),
-                        );
+                        const r = settings.regions.find((x) => x.value === (chat.region ?? 'global'))
                         return r
                           ? `A bare ticker resolves on this market, headlines come from it, and prices read in ${r.currency}.`
-                          : "";
+                          : ''
                       })()}
                     >
                       <select
-                        value={chat.region ?? "global"}
+                        value={chat.region ?? 'global'}
                         onChange={(e) => void setRegion(e.target.value)}
                         className="min-h-11 min-w-52 rounded-card border border-line bg-sunk px-3 text-ink"
                       >
@@ -1563,17 +1404,17 @@ function ChatCard({
                 </div>
               )}
 
-              {tab === "voice" && (
+              {tab === 'voice' && (
                 <VoiceNotes
                   chat={chat}
                   master={settings.tts?.enabled !== false}
-                  langFallback={settings.tts?.lang ?? "auto"}
-                  langs={settings.tts?.langs ?? ["auto", "ja", "en", "zh"]}
+                  langFallback={settings.tts?.lang ?? 'auto'}
+                  langs={settings.tts?.langs ?? ['auto', 'ja', 'en', 'zh']}
                   onChanged={onChanged}
                 />
               )}
 
-              {tab === "can" && (
+              {tab === 'can' && (
                 <div className="flex flex-col gap-5">
                   <p className="mt-0 mb-0 max-w-prose text-[0.85rem] text-muted">
                     These control what she can see and do in this chat.
@@ -1587,12 +1428,11 @@ function ChatCard({
                      switch that appears to be about photos, so it is said
                      before it happens rather than discovered later. */
                     <p className="mt-0 mb-0 max-w-prose text-[0.85rem] text-amber">
-                      This chat follows the defaults. Changing anything here
-                      pins it to {chat.personality} · {chat.mode}, and it stops
-                      following them.
+                      This chat follows the defaults. Changing anything here pins it to {chat.personality} · {chat.mode}
+                      , and it stops following them.
                     </p>
                   )}
-                  {chat.kind === "group" && chat.gated && (
+                  {chat.kind === 'group' && chat.gated && (
                     <div>
                       {/* First, because nothing else on this page does anything until
                   it is on. A group added here used to get a persona, a
@@ -1607,24 +1447,21 @@ function ChatCard({
                         onChange={(v) => void setGroupAllow(v)}
                         hint={
                           <>
-                            Off, the gateway drops every message from this group
-                            before she sees it — none of the settings below have
-                            any effect. Restarts the gateway, so give it a few
-                            seconds.
+                            Off, the gateway drops every message from this group before she sees it — none of the
+                            settings below have any effect. Restarts the gateway, so give it a few seconds.
                           </>
                         }
                       />
                     </div>
                   )}
 
-                  {chat.kind === "group" && chat.allowed === false && (
+                  {chat.kind === 'group' && chat.allowed === false && (
                     <p className="mt-0 mb-0 max-w-prose text-[0.82rem] text-muted">
-                      These settings are saved but do nothing until you turn the
-                      group on above.
+                      These settings are saved but do nothing until you turn the group on above.
                     </p>
                   )}
 
-                  {chat.kind === "group" && (
+                  {chat.kind === 'group' && (
                     <div>
                       {/* The gateway has supported this per chat all along; it was
                   only reachable by hand-editing an env var. In a group she is
@@ -1637,10 +1474,8 @@ function ChatCard({
                         onChange={(v) => void setFreeResponse(v)}
                         hint={
                           <>
-                            Off, she only replies when someone @-mentions her or
-                            replies to her. On,
-                            she reads everything in this group — so give it to
-                            the chats she is a member of, not the ones she sits
+                            Off, she only replies when someone @-mentions her or replies to her. On, she reads
+                            everything in this group — so give it to the chats she is a member of, not the ones she sits
                             in.
                           </>
                         }
@@ -1652,15 +1487,12 @@ function ChatCard({
                     <Toggle
                       checked={agentOn}
                       label="Let her use the computer from this chat"
-                      onChange={(v) =>
-                        void bind({ agent: v ? "full" : "none" })
-                      }
+                      onChange={(v) => void bind({ agent: v ? 'full' : 'none' })}
                       hint={
                         <>
-                          Off, she can only talk. On, anyone messaging here can
-                          have her read files, run commands and edit projects on
-                          your machine — so leave it off for group chats and
-                          anyone you would not hand a terminal.
+                          Off, she can only talk. On, anyone messaging here can have her read files, run commands and
+                          edit projects on your machine — so leave it off for group chats and anyone you would not hand
+                          a terminal.
                         </>
                       }
                     />
@@ -1671,37 +1503,31 @@ function ChatCard({
               stranger's search result chose. */}
                   <div>
                     <Toggle
-                      checked={chat.photos === "on"}
+                      checked={chat.photos === 'on'}
                       label="Let her send photos here"
-                      onChange={(v) => void bind({ photos: v ? "on" : "off" })}
+                      onChange={(v) => void bind({ photos: v ? 'on' : 'off' })}
                       hint={
                         <>
-                          Off, she answers in words only. On, asking "what does
-                          Saizeriya look like" gets a real photograph found on
-                          the web and sent to this chat. Nothing is generated,
-                          and the download is capped, timed out and checked to
-                          be an actual image before it is sent.
+                          Off, she answers in words only. On, asking "what does Saizeriya look like" gets a real
+                          photograph found on the web and sent to this chat. Nothing is generated, and the download is
+                          capped, timed out and checked to be an actual image before it is sent.
                         </>
                       }
                     />
                   </div>
 
-                  {chat.kind === "group" && (
+                  {chat.kind === 'group' && (
                     <div>
                       <Toggle
-                        checked={chat.autofetch === "on"}
+                        checked={chat.autofetch === 'on'}
                         label="Send the media from links posted here"
-                        onChange={(v) =>
-                          void bind({ autofetch: v ? "on" : "off" })
-                        }
+                        onChange={(v) => void bind({ autofetch: v ? 'on' : 'off' })}
                         hint={
                           <>
-                            On, anyone posting an Instagram, X, Facebook,
-                            TikTok or Threads link here — tagging her or not —
-                            gets the reel or pictures sent straight back, with
-                            no message. A private or deleted post is skipped
-                            quietly. Messages without a link are ignored as
-                            always, and none of it is saved.
+                            On, anyone posting an Instagram, X, Facebook, TikTok or Threads link here — tagging her or
+                            not — gets the reel or pictures sent straight back, with no message. A private or deleted
+                            post is skipped quietly. Messages without a link are ignored as always, and none of it is
+                            saved.
                           </>
                         }
                       />
@@ -1714,7 +1540,7 @@ function ChatCard({
                 </div>
               )}
 
-              {tab === "opens" && (
+              {tab === 'opens' && (
                 <div className="flex flex-col gap-5">
                   <p className="mt-0 mb-0 max-w-prose text-[0.85rem] text-muted">
                     Unprompted messages. Off, she only ever answers.
@@ -1741,13 +1567,9 @@ function ChatCard({
                         has been waiting"
                           >
                             <Segmented
-                              options={
-                                (settings.temperaments ?? []) as string[]
-                              }
+                              options={(settings.temperaments ?? []) as string[]}
                               value={pro.temperament}
-                              onChange={(v) =>
-                                void proactive({ temperament: v })
-                              }
+                              onChange={(v) => void proactive({ temperament: v })}
                             />
                           </Field>
                           {/* Live on this chat and, until now, invisible: the setting
@@ -1758,9 +1580,7 @@ function ChatCard({
                           <Toggle
                             checked={!!pro?.mood_in_replies}
                             label="let her manner colour ordinary replies too"
-                            onChange={(v) =>
-                              void proactive({ mood_in_replies: v })
-                            }
+                            onChange={(v) => void proactive({ mood_in_replies: v })}
                           />
                           {/* Asked what ISO 22301 and PETRONAS's BCM standards say, she
                     answered from memory in the register of a lookup: a real
@@ -1773,56 +1593,44 @@ function ChatCard({
                           <Toggle
                             checked={!!pro?.ground_citations}
                             label="never cite a standard or clause she has not looked up"
-                            onChange={(v) =>
-                              void proactive({ ground_citations: v })
-                            }
+                            onChange={(v) => void proactive({ ground_citations: v })}
                           />
                           <Field
                             label="timing"
                             hint={
-                              pro.style === "fixed"
-                                ? "a strict clock — for market updates"
-                                : "she picks her own moments"
+                              pro.style === 'fixed'
+                                ? 'a strict clock — for market updates'
+                                : 'she picks her own moments'
                             }
                           >
                             <Segmented
-                              options={["organic", "fixed"] as const}
-                              value={
-                                (pro.style ?? "organic") as "organic" | "fixed"
-                              }
+                              options={['organic', 'fixed'] as const}
+                              value={(pro.style ?? 'organic') as 'organic' | 'fixed'}
                               onChange={(v) => void proactive({ style: v })}
                             />
                           </Field>
                           <Field label="reaches out about every">
                             <Frequency
                               hours={
-                                pro.style === "fixed"
-                                  ? (pro.interval_minutes ?? 0) / 60 || null
-                                  : pro.median_hours
+                                pro.style === 'fixed' ? (pro.interval_minutes ?? 0) / 60 || null : pro.median_hours
                               }
                               onHours={(h) =>
                                 void proactive(
-                                  pro.style === "fixed"
+                                  pro.style === 'fixed'
                                     ? {
-                                        interval_minutes:
-                                          Math.round(h * 600) / 10,
+                                        interval_minutes: Math.round(h * 600) / 10
                                       }
-                                    : { median_hours: h },
+                                    : { median_hours: h }
                                 )
                               }
                             />
                           </Field>
-                          <Field
-                            label="at most"
-                            hint="Openings in any 24 hours."
-                          >
+                          <Field label="at most" hint="Openings in any 24 hours.">
                             <Counted
                               value={pro.max_per_day}
                               zeroLabel="her manner decides"
                               unit="a day"
-                              onChange={(n) =>
-                                void proactive({ max_per_day: n })
-                              }
+                              onChange={(n) => void proactive({ max_per_day: n })}
                             />
                           </Field>
                         </Cluster>
@@ -1835,20 +1643,12 @@ function ChatCard({
                             label="stays quiet between"
                             hint="Overnight silence. Set both to the same hour for none at all."
                           >
-                            <QuietHours
-                              value={pro.quiet_hours}
-                              onChange={(v) =>
-                                void proactive({ quiet_hours: v })
-                              }
-                            />
+                            <QuietHours value={pro.quiet_hours} onChange={(v) => void proactive({ quiet_hours: v })} />
                           </Field>
                           {/* Those hours are on THEIR clock, not this machine's. A box
                     in New York reads a Singaporean's 23:00–09:00 as
                     11:00–21:00 their time: silent all day, chatty at 3am. */}
-                          <Field
-                            label="their clock"
-                            hint="Quiet hours are read in this zone."
-                          >
+                          <Field label="their clock" hint="Quiet hours are read in this zone.">
                             {/* Hundreds of zones. This is the list the picker exists
                       for: type "sing" rather than scroll past Africa. */}
                             <Picker
@@ -1856,14 +1656,14 @@ function ChatCard({
                               className="min-w-52"
                               placeholder="same as this machine"
                               searchPlaceholder="type a city or zone…"
-                              value={pro.timezone ?? ""}
+                              value={pro.timezone ?? ''}
                               onChange={(v) => void proactive({ timezone: v })}
                               options={[
-                                { value: "", label: "same as this machine" },
+                                { value: '', label: 'same as this machine' },
                                 ...(settings.timezones ?? []).map((t) => ({
                                   value: t.value,
-                                  label: t.label,
-                                })),
+                                  label: t.label
+                                }))
                               ]}
                             />
                           </Field>
@@ -1878,16 +1678,14 @@ function ChatCard({
                             hint={
                               pro.give_up_after
                                 ? `${pro.unanswered ?? 0} unanswered right now.`
-                                : "Never stops on her own."
+                                : 'Never stops on her own.'
                             }
                           >
                             <Counted
                               value={pro.give_up_after}
                               zeroLabel="never gives up"
                               unit="unanswered"
-                              onChange={(n) =>
-                                void proactive({ give_up_after: n })
-                              }
+                              onChange={(n) => void proactive({ give_up_after: n })}
                             />
                           </Field>
                           {/* The knob that made the cadence above read as a lie. Each
@@ -1902,51 +1700,43 @@ function ChatCard({
                 </div>
               )}
 
-              {tab === "intro" && (
-                <SendIntro chat={chat} onChanged={onChanged} />
-              )}
+              {tab === 'intro' && <SendIntro chat={chat} onChanged={onChanged} />}
 
-              {tab === "spend" && <Usage chat={chat} />}
+              {tab === 'spend' && <Usage chat={chat} />}
             </div>
           </div>
         </div>
       )}
     </div>
-  );
+  )
 }
 
 /* How much silence costs. Backoff is multiplicative per unanswered opening and
    caps out after a few, so the honest way to present it is the number it
    actually produces — "every 5 min, up to 3 h 48 m when ignored" — rather than
    a bare factor nobody can multiply in their head. */
-function Backoff({
-  pro,
-  onSave,
-}: {
-  pro: Pro;
-  onSave: (p: Record<string, unknown>) => void;
-}) {
-  const eff = pro.effective ?? {};
-  const factor = pro.backoff_factor ?? eff.backoff_factor ?? 1.8;
-  const cap = eff.backoff_cap ?? 4;
-  const base = pro.median_hours ?? eff.median_hours ?? 0;
-  const stretched = base * Math.pow(factor, cap);
+function Backoff({ pro, onSave }: { pro: Pro; onSave: (p: Record<string, unknown>) => void }) {
+  const eff = pro.effective ?? {}
+  const factor = pro.backoff_factor ?? eff.backoff_factor ?? 1.8
+  const cap = eff.backoff_cap ?? 4
+  const base = pro.median_hours ?? eff.median_hours ?? 0
+  const stretched = base * Math.pow(factor, cap)
 
   const say = (h: number) =>
     h < 1 / 60
-      ? "moments"
+      ? 'moments'
       : h < 1
         ? `${Math.round(h * 60)} min`
         : h < 48
           ? `${+h.toFixed(1)} h`
-          : `${+(h / 24).toFixed(1)} days`;
+          : `${+(h / 24).toFixed(1)} days`
 
   return (
     <Field
       label="slows down when ignored"
       hint={
         factor <= 1
-          ? "Same cadence however long they stay quiet."
+          ? 'Same cadence however long they stay quiet.'
           : base
             ? `Every ${say(base)} normally, up to ${say(stretched)} after ${cap} unanswered.`
             : `She waits longer after each message that goes unanswered, up to ${cap} times the usual gap.`
@@ -1960,16 +1750,15 @@ function Backoff({
           max="5"
           value={String(+factor.toFixed(2))}
           onChange={(e) => {
-            const n = Number(e.target.value);
-            if (Number.isFinite(n) && n >= 1 && n <= 5)
-              onSave({ backoff_factor: n });
+            const n = Number(e.target.value)
+            if (Number.isFinite(n) && n >= 1 && n <= 5) onSave({ backoff_factor: n })
           }}
           className="w-24"
         />
         <span className="text-[0.82rem] text-muted">× per unanswered</span>
       </div>
     </Field>
-  );
+  )
 }
 
 /* Which archetype she plays, and how loud. Two axes because they are
@@ -1988,41 +1777,36 @@ function Backoff({
    per-chat cards above cannot list someone who has never written: there is
    nothing to name them by until they do. */
 function Allowlist() {
-  const list = useApi<{ numbers: AllowedNumber[] }>("/api/allowlist");
-  const [adding, setAdding] = useState("");
-  const [editing, setEditing] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
-  const [busy, setBusy] = useState(false);
+  const list = useApi<{ numbers: AllowedNumber[] }>('/api/allowlist')
+  const [adding, setAdding] = useState('')
+  const [editing, setEditing] = useState<string | null>(null)
+  const [draft, setDraft] = useState('')
+  const [busy, setBusy] = useState(false)
 
   async function act(body: Record<string, unknown>, ok: string) {
-    setBusy(true);
+    setBusy(true)
     try {
-      const r = await post<{ restarted?: boolean }>(
-        "/api/settings/allowlist",
-        body,
-      );
+      const r = await post<{ restarted?: boolean }>('/api/settings/allowlist', body)
       toast(
-        r.restarted
-          ? `${ok} — gateway restarted ✓`
-          : `${ok} — but the gateway did not restart`,
-        r.restarted !== false,
-      );
-      setAdding("");
-      setEditing(null);
-      list.reload();
+        r.restarted ? `${ok} — gateway restarted ✓` : `${ok} — but the gateway did not restart`,
+        r.restarted !== false
+      )
+      setAdding('')
+      setEditing(null)
+      list.reload()
     } catch (e) {
-      toast((e as Error).message, false);
+      toast((e as Error).message, false)
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
   }
 
-  const rows = list.data?.numbers ?? [];
+  const rows = list.data?.numbers ?? []
   return (
     <Card className="p-5">
       <p className="mt-0 mb-4 max-w-prose text-[0.92rem] text-muted">
-        Only these numbers can message her. Use international format, e.g. +60
-        12-345 6789. Saving takes a few seconds to apply.
+        Only these numbers can message her. Use international format, e.g. +60 12-345 6789. Saving takes a few seconds
+        to apply.
       </p>
 
       {list.loading && !list.data ? (
@@ -2049,57 +1833,37 @@ function Allowlist() {
                     variant="primary"
                     disabled={busy}
                     onClick={() =>
-                      void act(
-                        { action: "replace", was: n.number, number: draft },
-                        `${n.number} → ${draft}`,
-                      )
+                      void act({ action: 'replace', was: n.number, number: draft }, `${n.number} → ${draft}`)
                     }
                   >
                     <Save /> save
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setEditing(null)}
-                  >
+                  <Button size="sm" variant="ghost" onClick={() => setEditing(null)}>
                     cancel
                   </Button>
                 </>
               ) : (
                 <>
-                  <span className="font-mono text-[0.95rem] tracking-[0.02em]">
-                    {n.number}
-                  </span>
-                  {n.name && (
-                    <span className="min-w-0 truncate text-muted">
-                      {n.name}
-                    </span>
-                  )}
+                  <span className="font-mono text-[0.95rem] tracking-[0.02em]">{n.number}</span>
+                  {n.name && <span className="min-w-0 truncate text-muted">{n.name}</span>}
                   {/* A DM is not the only kind of contact. Someone who has
                       been answering her in a group for weeks has met her, and
                       calling that "no chat yet" was both wrong and useless. */}
                   {n.met ? (
                     n.kind && <Badge tone="neutral">{n.kind}</Badge>
                   ) : n.groups ? (
-                    <Badge tone="neutral">
-                      talks in{" "}
-                      {n.groups === 1 ? "a group" : `${n.groups} groups`}
-                    </Badge>
+                    <Badge tone="neutral">talks in {n.groups === 1 ? 'a group' : `${n.groups} groups`}</Badge>
                   ) : (
                     <Badge tone="neutral">not met yet</Badge>
                   )}
-                  {!n.met && !!n.last_seen && (
-                    <span className="text-[0.82rem] text-faint">
-                      {ago(n.last_seen)}
-                    </span>
-                  )}
+                  {!n.met && !!n.last_seen && <span className="text-[0.82rem] text-faint">{ago(n.last_seen)}</span>}
                   <div className="ml-auto flex gap-1">
                     <Button
                       size="sm"
                       variant="ghost"
                       onClick={() => {
-                        setEditing(n.number);
-                        setDraft(n.number);
+                        setEditing(n.number)
+                        setDraft(n.number)
                       }}
                     >
                       edit
@@ -2110,15 +1874,10 @@ function Allowlist() {
                       disabled={busy || rows.length < 2}
                       title={
                         rows.length < 2
-                          ? "the last number cannot be removed — an empty list stops the gateway filtering at all"
+                          ? 'the last number cannot be removed — an empty list stops the gateway filtering at all'
                           : undefined
                       }
-                      onClick={() =>
-                        void act(
-                          { action: "remove", number: n.number },
-                          `${n.number} removed`,
-                        )
-                      }
+                      onClick={() => void act({ action: 'remove', number: n.number }, `${n.number} removed`)}
                     >
                       <X /> remove
                     </Button>
@@ -2127,11 +1886,7 @@ function Allowlist() {
               )}
             </div>
           ))}
-          {!rows.length && (
-            <Empty>
-              The list is empty, so anyone who finds the number can message her.
-            </Empty>
-          )}
+          {!rows.length && <Empty>The list is empty, so anyone who finds the number can message her.</Empty>}
         </div>
       )}
 
@@ -2141,55 +1896,41 @@ function Allowlist() {
           placeholder="+00 00-000 0000"
           onChange={(e) => setAdding(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && adding.trim())
-              void act({ action: "add", number: adding }, `${adding} added`);
+            if (e.key === 'Enter' && adding.trim()) void act({ action: 'add', number: adding }, `${adding} added`)
           }}
           className="w-52 font-mono"
         />
         <Button
           variant="primary"
           disabled={busy || !adding.trim()}
-          onClick={() =>
-            void act({ action: "add", number: adding }, `${adding} added`)
-          }
+          onClick={() => void act({ action: 'add', number: adding }, `${adding} added`)}
         >
           Allow this number
         </Button>
       </div>
     </Card>
-  );
+  )
 }
 
 /* Where hermes sends what nobody addressed: "gateway shutting down", operator
    pings, and any cron job that names a platform but no chat. It lives in
    hermes's own .env, so this rewrites that one line and restarts the gateway —
    which reads the value at startup and never again. */
-function HomeChannelPicker({
-  chats,
-  current,
-  onChanged,
-}: {
-  chats: Chat[];
-  current: string;
-  onChanged: () => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const known = chats.find((c) => c.jid === current);
+function HomeChannelPicker({ chats, current, onChanged }: { chats: Chat[]; current: string; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const known = chats.find((c) => c.jid === current)
 
   async function save(jid: string) {
-    if (jid === current) return;
-    setBusy(true);
+    if (jid === current) return
+    setBusy(true)
     try {
-      const r = await post<{ restarted?: boolean }>(
-        "/api/settings/home_channel",
-        { jid },
-      );
-      toast(r.restarted ? "saved — gateway restarted ✓" : "saved ✓");
-      onChanged();
+      const r = await post<{ restarted?: boolean }>('/api/settings/home_channel', { jid })
+      toast(r.restarted ? 'saved — gateway restarted ✓' : 'saved ✓')
+      onChanged()
     } catch (e) {
-      toast((e as Error).message, false);
+      toast((e as Error).message, false)
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
   }
 
@@ -2198,10 +1939,10 @@ function HomeChannelPicker({
       label="chat that receives shutdown notices and unaddressed cron jobs"
       hint={
         busy
-          ? "restarting the gateway…"
+          ? 'restarting the gateway…'
           : current
-            ? "She will be unavailable for a few seconds after you change this."
-            : "Nothing set: system notices go nowhere."
+            ? 'She will be unavailable for a few seconds after you change this.'
+            : 'Nothing set: system notices go nowhere.'
       }
     >
       <select
@@ -2221,34 +1962,28 @@ function HomeChannelPicker({
         ))}
       </select>
     </Field>
-  );
+  )
 }
 
-function ChatsBody({
-  settings,
-  onChanged,
-}: {
-  settings: Settings;
-  onChanged: () => void;
-}) {
-  const chats = useApi<{ chats: Chat[] }>("/api/chats");
-  const defaults = settings.bindings?.defaults ?? {};
-  const pros = (settings.proactive ?? []) as Pro[];
+function ChatsBody({ settings, onChanged }: { settings: Settings; onChanged: () => void }) {
+  const chats = useApi<{ chats: Chat[] }>('/api/chats')
+  const defaults = settings.bindings?.defaults ?? {}
+  const pros = (settings.proactive ?? []) as Pro[]
 
   const proFor = (c: Chat) =>
     pros.find(
       (p) =>
         (p as unknown as { chat_id?: string }).chat_id === c.jid ||
-        (p as unknown as { deliver?: string }).deliver === c.target,
-    );
+        (p as unknown as { deliver?: string }).deliver === c.target
+    )
 
   async function setDefault(patch: Record<string, unknown>) {
     try {
-      await post("/api/settings/bindings", { action: "defaults", ...patch });
-      toast("saved ✓");
-      onChanged();
+      await post('/api/settings/bindings', { action: 'defaults', ...patch })
+      toast('saved ✓')
+      onChanged()
     } catch (e) {
-      toast((e as Error).message, false);
+      toast((e as Error).message, false)
     }
   }
 
@@ -2267,9 +2002,9 @@ function ChatsBody({
                split is the one distinction on this page that changes what the
                settings even mean — a pending row is configured in advance and
                applies the moment they write. */
-            const all = chats.data?.chats ?? [];
-            const live = all.filter((c) => !c.pending);
-            const waiting = all.filter((c) => c.pending);
+            const all = chats.data?.chats ?? []
+            const live = all.filter((c) => !c.pending)
+            const waiting = all.filter((c) => c.pending)
             const render = (c: Chat) => (
               <ChatCard
                 key={c.target}
@@ -2277,18 +2012,18 @@ function ChatsBody({
                 settings={settings}
                 pro={proFor(c)}
                 onChanged={() => {
-                  chats.reload();
-                  onChanged();
+                  chats.reload()
+                  onChanged()
                 }}
               />
-            );
+            )
             if (!all.length) {
               return (
                 <Empty>
-                  No chats yet — a chat appears here after its first message,
-                  because WhatsApp offers no way to list them up front.
+                  No chats yet — a chat appears here after its first message, because WhatsApp offers no way to list
+                  them up front.
                 </Empty>
-              );
+              )
             }
             return (
               <div className="flex flex-col gap-6">
@@ -2301,17 +2036,13 @@ function ChatsBody({
                         Waiting to hear from them
                       </h3>
                       <span className="h-px flex-1 bg-line" aria-hidden />
-                      <span className="text-[0.78rem] text-faint">
-                        {waiting.length} allowed, none has written
-                      </span>
+                      <span className="text-[0.78rem] text-faint">{waiting.length} allowed, none has written</span>
                     </div>
-                    <Card className="overflow-hidden p-0">
-                      {waiting.map(render)}
-                    </Card>
+                    <Card className="overflow-hidden p-0">{waiting.map(render)}</Card>
                   </div>
                 )}
               </div>
-            );
+            )
           })()
         )}
       </Section>
@@ -2324,7 +2055,7 @@ function ChatsBody({
         <Card className="p-5">
           <HomeChannelPicker
             chats={chats.data?.chats ?? []}
-            current={settings.home_channel ?? ""}
+            current={settings.home_channel ?? ''}
             onChanged={onChanged}
           />
         </Card>
@@ -2333,8 +2064,8 @@ function ChatsBody({
       <Section title="Everywhere else">
         <Card className="p-5">
           <p className="mt-0 mb-4 max-w-prose text-[0.92rem] text-muted">
-            What she does in a chat you have not configured — including someone
-            brand new messaging her for the first time.
+            What she does in a chat you have not configured — including someone brand new messaging her for the first
+            time.
           </p>
           <div className="flex flex-wrap gap-6">
             <Field label="who she is">
@@ -2360,24 +2091,21 @@ function ChatsBody({
           <p className="mt-6 mb-0 flex max-w-prose items-start gap-2 text-[0.86rem] text-muted">
             <ShieldCheck className="mt-0.5 size-4 shrink-0 text-up" />
             <span>
-              Unconfigured chats can never run commands on this machine. Grant
-              computer access on a named chat above.
+              Unconfigured chats can never run commands on this machine. Grant computer access on a named chat above.
             </span>
           </p>
         </Card>
       </Section>
     </>
-  );
+  )
 }
 
 export default function ChatsPage() {
-  const settings = useApi<Settings>("/api/settings");
-  const chats = useApi<{ chats: Chat[] }>("/api/chats");
+  const settings = useApi<Settings>('/api/settings')
+  const chats = useApi<{ chats: Chat[] }>('/api/chats')
 
-  const total = chats.data?.chats?.length ?? 0;
-  const starts = ((settings.data?.proactive ?? []) as Pro[]).filter(
-    (p) => p.enabled,
-  ).length;
+  const total = chats.data?.chats?.length ?? 0
+  const starts = ((settings.data?.proactive ?? []) as Pro[]).filter((p) => p.enabled).length
 
   return (
     <Shell
@@ -2394,16 +2122,12 @@ export default function ChatsPage() {
         total
           ? [
               { n: String(total) },
-              { t: total === 1 ? " chat. " : " chats. " },
+              { t: total === 1 ? ' chat. ' : ' chats. ' },
               ...(starts
-                ? ([
-                    { t: "She messages first in " },
-                    { n: String(starts) },
-                    { t: "." },
-                  ] as const)
-                : ([{ t: "She never messages first." }] as const)),
+                ? ([{ t: 'She messages first in ' }, { n: String(starts) }, { t: '.' }] as const)
+                : ([{ t: 'She never messages first.' }] as const))
             ]
-          : [{ t: "No chats yet" }]
+          : [{ t: 'No chats yet' }]
       }
     >
       {settings.loading && !settings.data ? (
@@ -2418,5 +2142,5 @@ export default function ChatsPage() {
 
       <Toaster />
     </Shell>
-  );
+  )
 }

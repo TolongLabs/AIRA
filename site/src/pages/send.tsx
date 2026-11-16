@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react";
-import { FileUp, Send as SendIcon, X } from "lucide-react";
-import type { SendRecord, SendView } from "@/lib/api";
-import { postForm } from "@/lib/api";
-import { toast, Toaster, useApi } from "@/lib/hooks";
-import { ago, cn } from "@/lib/utils";
-import { Shell } from "@/components/shell";
+import { useEffect, useRef, useState } from 'react'
+import { FileUp, Send as SendIcon, X } from 'lucide-react'
+import type { SendRecord, SendView } from '@/lib/api'
+import { postForm } from '@/lib/api'
+import { toast, Toaster, useApi } from '@/lib/hooks'
+import { ago, cn } from '@/lib/utils'
+import { Shell } from '@/components/shell'
 import {
   Badge,
   Button,
@@ -16,8 +16,8 @@ import {
   Segmented,
   Spinner,
   Textarea,
-  Toggle,
-} from "@/components/ui";
+  Toggle
+} from '@/components/ui'
 
 /* The owner sends a file himself: one chat, one file, an optional message.
    It used to be an engineer running `hermes send` by hand. The server holds
@@ -26,131 +26,131 @@ import {
 
 /* The gateway's own sets: these two kinds are recompressed by WhatsApp
    unless they go as a document. Everything else always goes as one. */
-const IMAGE = /\.(jpe?g|png|webp|gif)$/i;
-const VIDEO = /\.(mp4|mov|avi|mkv|webm|3gp)$/i;
+const IMAGE = /\.(jpe?g|png|webp|gif)$/i
+const VIDEO = /\.(mp4|mov|avi|mkv|webm|3gp)$/i
 
-function mediaKind(name: string): "photo" | "video" | "file" {
-  if (IMAGE.test(name)) return "photo";
-  if (VIDEO.test(name)) return "video";
-  return "file";
+function mediaKind(name: string): 'photo' | 'video' | 'file' {
+  if (IMAGE.test(name)) return 'photo'
+  if (VIDEO.test(name)) return 'video'
+  return 'file'
 }
 
 function fileSize(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
-  const mb = n / (1024 * 1024);
-  return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`
+  const mb = n / (1024 * 1024)
+  return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`
 }
 
 function when(ts: number): string {
   return new Date(ts * 1000).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  })
 }
 
-const SOURCES = ["upload", "box"] as const;
-type Source = (typeof SOURCES)[number];
+const SOURCES = ['upload', 'box'] as const
+type Source = (typeof SOURCES)[number]
 
-type Picked = { name: string; size: number; file?: File; path?: string };
-type Stage = "edit" | "confirm" | "sending";
+type Picked = { name: string; size: number; file?: File; path?: string }
+type Stage = 'edit' | 'confirm' | 'sending'
 
 export default function SendPage() {
-  const view = useApi<SendView>("/api/send");
-  const [recent, setRecent] = useState<SendRecord[] | null>(null);
-  const [target, setTarget] = useState("");
-  const [source, setSource] = useState<Source>("upload");
-  const [upload, setUpload] = useState<File | null>(null);
-  const [boxPath, setBoxPath] = useState("");
-  const [message, setMessage] = useState("");
-  const [full, setFull] = useState(true);
-  const [stage, setStage] = useState<Stage>("edit");
-  const [progress, setProgress] = useState(0);
-  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
-  const [dragging, setDragging] = useState(false);
-  const fileInput = useRef<HTMLInputElement>(null);
-  const cancelRef = useRef<HTMLButtonElement>(null);
+  const view = useApi<SendView>('/api/send')
+  const [recent, setRecent] = useState<SendRecord[] | null>(null)
+  const [target, setTarget] = useState('')
+  const [source, setSource] = useState<Source>('upload')
+  const [upload, setUpload] = useState<File | null>(null)
+  const [boxPath, setBoxPath] = useState('')
+  const [message, setMessage] = useState('')
+  const [full, setFull] = useState(true)
+  const [stage, setStage] = useState<Stage>('edit')
+  const [progress, setProgress] = useState(0)
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const cancelRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
-    if (view.error) toast(view.error, false);
-  }, [view.error]);
+    if (view.error) toast(view.error, false)
+  }, [view.error])
 
-  const data = view.data;
-  const max = data?.max_bytes ?? 100 * 1024 * 1024;
-  const maxMessage = data?.max_message ?? 4000;
-  const recipients = data?.recipients ?? [];
-  const files = data?.files ?? [];
-  const sendable = files.filter((f) => f.size > 0 && f.size <= max);
-  const who = recipients.find((r) => r.target === target);
-  const boxFile = files.find((f) => f.path === boxPath);
+  const data = view.data
+  const max = data?.max_bytes ?? 100 * 1024 * 1024
+  const maxMessage = data?.max_message ?? 4000
+  const recipients = data?.recipients ?? []
+  const files = data?.files ?? []
+  const sendable = files.filter((f) => f.size > 0 && f.size <= max)
+  const who = recipients.find((r) => r.target === target)
+  const boxFile = files.find((f) => f.path === boxPath)
 
   const picked: Picked | null =
-    source === "upload"
+    source === 'upload'
       ? upload && { name: upload.name, size: upload.size, file: upload }
       : boxFile
         ? { name: boxFile.name, size: boxFile.size, path: boxFile.path }
-        : null;
-  const kind = picked ? mediaKind(picked.name) : "file";
-  const asDocument = kind === "file" || full;
+        : null
+  const kind = picked ? mediaKind(picked.name) : 'file'
+  const asDocument = kind === 'file' || full
 
   /* A new file starts at full quality. Carrying "off" over from the last
      photo would quietly compress the next one. */
-  useEffect(() => setFull(true), [picked?.name, picked?.size]);
+  useEffect(() => setFull(true), [picked?.name, picked?.size])
 
   /* The safe option takes focus, so Enter cancels — the same rule the
      app's destructive confirm follows. */
   useEffect(() => {
-    if (stage === "confirm") cancelRef.current?.focus();
-  }, [stage]);
+    if (stage === 'confirm') cancelRef.current?.focus()
+  }, [stage])
 
   const problem = !picked
-    ? ""
+    ? ''
     : picked.size === 0
-      ? "That file is empty, so there is nothing to send."
+      ? 'That file is empty, so there is nothing to send.'
       : picked.size > max
         ? `That file is over ${fileSize(max)}, the most one send can carry.`
-        : "";
-  const ready = !!who && !!picked && !problem && message.length <= maxMessage;
+        : ''
+  const ready = !!who && !!picked && !problem && message.length <= maxMessage
 
   function choose(list: FileList | null) {
-    const f = list?.[0];
-    if (!f) return;
-    setUpload(f);
-    setResult(null);
+    const f = list?.[0]
+    if (!f) return
+    setUpload(f)
+    setResult(null)
   }
 
   async function send() {
-    if (!who || !picked) return;
-    const form = new FormData();
-    form.append("target", who.target);
-    form.append("message", message.trim());
-    form.append("document", asDocument ? "1" : "0");
-    if (picked.file) form.append("file", picked.file, picked.file.name);
-    else form.append("box", picked.path ?? "");
-    setStage("sending");
-    setProgress(0);
+    if (!who || !picked) return
+    const form = new FormData()
+    form.append('target', who.target)
+    form.append('message', message.trim())
+    form.append('document', asDocument ? '1' : '0')
+    if (picked.file) form.append('file', picked.file, picked.file.name)
+    else form.append('box', picked.path ?? '')
+    setStage('sending')
+    setProgress(0)
     try {
-      const r = await postForm<{ recent: SendRecord[] }>("/api/send", form, setProgress);
-      setRecent(r.recent);
-      setResult({ ok: true, text: `${picked.name} went to ${who.name}.` });
-      toast("sent");
+      const r = await postForm<{ recent: SendRecord[] }>('/api/send', form, setProgress)
+      setRecent(r.recent)
+      setResult({ ok: true, text: `${picked.name} went to ${who.name}.` })
+      toast('sent')
       // The chat stays chosen: a second file to the same place is the
       // likeliest next thing. The file and the words were for this one.
-      setUpload(null);
-      setBoxPath("");
-      setMessage("");
-      if (fileInput.current) fileInput.current.value = "";
+      setUpload(null)
+      setBoxPath('')
+      setMessage('')
+      if (fileInput.current) fileInput.current.value = ''
     } catch (e) {
-      const err = e as Error & { body?: { recent?: SendRecord[] } };
-      if (err.body?.recent) setRecent(err.body.recent);
-      setResult({ ok: false, text: err.message });
+      const err = e as Error & { body?: { recent?: SendRecord[] } }
+      if (err.body?.recent) setRecent(err.body.recent)
+      setResult({ ok: false, text: err.message })
     } finally {
-      setStage("edit");
+      setStage('edit')
     }
   }
 
-  const busy = stage !== "edit";
-  const rows = (recent ?? data?.recent ?? []).slice(0, 20);
+  const busy = stage !== 'edit'
+  const rows = (recent ?? data?.recent ?? []).slice(0, 20)
 
   return (
     <Shell page="send" title="Send a file">
@@ -162,9 +162,7 @@ export default function SendPage() {
             <Spinner /> loading…
           </div>
         ) : !data ? (
-          <Empty title="The page could not load">
-            {view.error ?? "No answer from the server."}
-          </Empty>
+          <Empty title="The page could not load">{view.error ?? 'No answer from the server.'}</Empty>
         ) : (
           <Card className="p-5 sm:p-6">
             <div className="grid gap-6">
@@ -172,8 +170,8 @@ export default function SendPage() {
                 label="To"
                 hint={
                   recipients.length
-                    ? "Every chat and group on the Chats page. Type a name, a number or “group”."
-                    : "No chats yet. A chat appears here once it is on the Chats page."
+                    ? 'Every chat and group on the Chats page. Type a name, a number or “group”.'
+                    : 'No chats yet. A chat appears here once it is on the Chats page.'
                 }
               >
                 <Picker
@@ -184,17 +182,17 @@ export default function SendPage() {
                   disabled={busy}
                   value={target}
                   onChange={(v) => {
-                    setTarget(v);
-                    setResult(null);
+                    setTarget(v)
+                    setResult(null)
                   }}
                   className="max-w-xl"
                   options={recipients.map((r) => ({
                     value: r.target,
                     label: r.name,
                     hint:
-                      r.kind === "group"
-                        ? "group"
-                        : `chat${r.number ? ` · ${r.number}` : ""}${r.pending ? " · has not written yet" : ""}`,
+                      r.kind === 'group'
+                        ? 'group'
+                        : `chat${r.number ? ` · ${r.number}` : ''}${r.pending ? ' · has not written yet' : ''}`
                   }))}
                 />
               </Field>
@@ -205,29 +203,29 @@ export default function SendPage() {
                     options={SOURCES}
                     value={source}
                     onChange={(v) => {
-                      if (busy) return;
-                      setSource(v);
-                      setResult(null);
+                      if (busy) return
+                      setSource(v)
+                      setResult(null)
                     }}
-                    labels={{ upload: "Upload", box: "From Desktop" }}
+                    labels={{ upload: 'Upload', box: 'From Desktop' }}
                     className="self-start"
                   />
 
-                  {source === "upload" ? (
+                  {source === 'upload' ? (
                     <div
                       onDragOver={(e) => {
-                        e.preventDefault();
-                        if (!busy) setDragging(true);
+                        e.preventDefault()
+                        if (!busy) setDragging(true)
                       }}
                       onDragLeave={() => setDragging(false)}
                       onDrop={(e) => {
-                        e.preventDefault();
-                        setDragging(false);
-                        if (!busy) choose(e.dataTransfer.files);
+                        e.preventDefault()
+                        setDragging(false)
+                        if (!busy) choose(e.dataTransfer.files)
                       }}
                       className={cn(
-                        "max-w-xl rounded-card border border-dashed px-4 py-4 transition-colors",
-                        dragging ? "border-accent bg-accent-soft" : "border-line-strong bg-sunk/40",
+                        'max-w-xl rounded-card border border-dashed px-4 py-4 transition-colors',
+                        dragging ? 'border-accent bg-accent-soft' : 'border-line-strong bg-sunk/40'
                       )}
                     >
                       <input
@@ -242,9 +240,7 @@ export default function SendPage() {
                         <div className="flex min-w-0 items-center gap-3">
                           <FileUp className="size-5 shrink-0 text-muted" />
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate font-medium text-ink">
-                              {upload.name}
-                            </span>
+                            <span className="block truncate font-medium text-ink">{upload.name}</span>
                             <span className="tnum block font-mono text-[0.75rem] text-muted">
                               {fileSize(upload.size)}
                             </span>
@@ -255,8 +251,8 @@ export default function SendPage() {
                             disabled={busy}
                             aria-label={`remove ${upload.name}`}
                             onClick={() => {
-                              setUpload(null);
-                              if (fileInput.current) fileInput.current.value = "";
+                              setUpload(null)
+                              if (fileInput.current) fileInput.current.value = ''
                             }}
                           >
                             <X />
@@ -265,16 +261,11 @@ export default function SendPage() {
                         </div>
                       ) : (
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                          <Button
-                            disabled={busy}
-                            onClick={() => fileInput.current?.click()}
-                          >
+                          <Button disabled={busy} onClick={() => fileInput.current?.click()}>
                             <FileUp />
                             Choose a file
                           </Button>
-                          <span className="text-[0.85rem] text-muted">
-                            or drop one here. Up to {fileSize(max)}.
-                          </span>
+                          <span className="text-[0.85rem] text-muted">or drop one here. Up to {fileSize(max)}.</span>
                         </div>
                       )}
                     </div>
@@ -288,26 +279,26 @@ export default function SendPage() {
                         disabled={busy}
                         value={boxPath}
                         onChange={(v) => {
-                          setBoxPath(v);
-                          setResult(null);
+                          setBoxPath(v)
+                          setResult(null)
                         }}
                         options={sendable.map((f) => ({
                           value: f.path,
                           label: f.name,
-                          hint: `${f.folder} · ${fileSize(f.size)} · ${ago(f.mtime)}`,
+                          hint: `${f.folder} · ${fileSize(f.size)} · ${ago(f.mtime)}`
                         }))}
                       />
                       <p className="m-0 mt-1.5 text-[0.78rem] text-faint">
-                        Newest first, from {(data.folders.length ? data.folders : ["Desktop", "taildrop"]).join(" and ")}.
+                        Newest first, from{' '}
+                        {(data.folders.length ? data.folders : ['Desktop', 'taildrop']).join(' and ')}.
                         {files.length > sendable.length
                           ? ` ${files.length - sendable.length} empty or over ${fileSize(max)} not shown.`
-                          : ""}
+                          : ''}
                       </p>
                     </div>
                   ) : (
                     <Empty>
-                      Nothing to send on the Desktop or in taildrop. Put the
-                      file there, then reload this page.
+                      Nothing to send on the Desktop or in taildrop. Put the file there, then reload this page.
                     </Empty>
                   )}
 
@@ -319,10 +310,7 @@ export default function SendPage() {
                 </div>
               </Field>
 
-              <Field
-                label="Message (optional)"
-                hint="Goes with the file, or right after it."
-              >
+              <Field label="Message (optional)" hint="Goes with the file, or right after it.">
                 <Textarea
                   value={message}
                   rows={3}
@@ -331,14 +319,14 @@ export default function SendPage() {
                   placeholder="a line to go with it…"
                   aria-label="message"
                   onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
-                    setMessage(e.target.value);
-                    setResult(null);
+                    setMessage(e.target.value)
+                    setResult(null)
                   }}
                   className="max-w-xl"
                 />
               </Field>
 
-              {picked && kind !== "file" ? (
+              {picked && kind !== 'file' ? (
                 <Toggle
                   checked={full}
                   disabled={busy}
@@ -351,32 +339,30 @@ export default function SendPage() {
                   }
                 />
               ) : picked ? (
-                <p className="m-0 text-[0.85rem] text-muted">
-                  Sent as a document, so it arrives exactly as it is.
-                </p>
+                <p className="m-0 text-[0.85rem] text-muted">Sent as a document, so it arrives exactly as it is.</p>
               ) : null}
 
-              {stage === "confirm" && who && picked ? (
+              {stage === 'confirm' && who && picked ? (
                 <div
                   role="group"
                   aria-label="confirm the send"
                   onKeyDown={(e) => {
-                    if (e.key === "Escape") setStage("edit");
+                    if (e.key === 'Escape') setStage('edit')
                   }}
                   className="rounded-card border border-line-strong bg-card-2 px-4 py-4 sm:px-5"
                 >
                   <p className="m-0 font-serif text-[1.2rem] leading-snug text-ink">
-                    Send <b className="font-medium break-all">{picked.name}</b>{" "}
-                    <span className="tnum text-muted">({fileSize(picked.size)})</span>{" "}
-                    to <b className="font-medium">{who.name}</b>?
+                    Send <b className="font-medium break-all">{picked.name}</b>{' '}
+                    <span className="tnum text-muted">({fileSize(picked.size)})</span> to{' '}
+                    <b className="font-medium">{who.name}</b>?
                   </p>
                   <p className="m-0 mt-1.5 text-[0.85rem] text-muted">
                     {asDocument
-                      ? kind === "file"
-                        ? "As a document."
+                      ? kind === 'file'
+                        ? 'As a document.'
                         : `As a document, at full quality.`
                       : `As a ${kind}, compressed by WhatsApp.`}
-                    {message.trim() ? " With your message." : " No message."}
+                    {message.trim() ? ' With your message.' : ' No message.'}
                   </p>
                   {message.trim() ? (
                     <p className="m-0 mt-2 line-clamp-3 max-w-prose border-l-2 border-line-strong pl-3 text-[0.88rem] text-read">
@@ -384,7 +370,7 @@ export default function SendPage() {
                     </p>
                   ) : null}
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <Button ref={cancelRef} variant="ghost" onClick={() => setStage("edit")}>
+                    <Button ref={cancelRef} variant="ghost" onClick={() => setStage('edit')}>
                       Cancel
                     </Button>
                     <Button variant="primary" onClick={() => void send()}>
@@ -393,13 +379,13 @@ export default function SendPage() {
                     </Button>
                   </div>
                 </div>
-              ) : stage === "sending" ? (
+              ) : stage === 'sending' ? (
                 <div role="status" className="flex max-w-xl flex-col gap-2">
                   <div className="flex items-center gap-2 text-[0.9rem] text-ink">
                     <Spinner />
                     {picked?.file && progress < 1
                       ? `Uploading… ${Math.round(progress * 100)}%`
-                      : "Sending to WhatsApp… a large file can take a few minutes."}
+                      : 'Sending to WhatsApp… a large file can take a few minutes.'}
                   </div>
                   {picked?.file ? (
                     <div className="h-1.5 overflow-hidden rounded-full bg-line">
@@ -416,8 +402,8 @@ export default function SendPage() {
                     variant="primary"
                     disabled={!ready}
                     onClick={() => {
-                      setResult(null);
-                      setStage("confirm");
+                      setResult(null)
+                      setStage('confirm')
                     }}
                   >
                     <SendIcon />
@@ -425,7 +411,7 @@ export default function SendPage() {
                   </Button>
                   {!ready && !problem ? (
                     <span className="text-[0.82rem] text-faint">
-                      {!who ? "Pick a chat first." : !picked ? "Choose a file." : ""}
+                      {!who ? 'Pick a chat first.' : !picked ? 'Choose a file.' : ''}
                     </span>
                   ) : null}
                 </div>
@@ -433,17 +419,15 @@ export default function SendPage() {
 
               {result ? (
                 <div
-                  role={result.ok ? "status" : "alert"}
+                  role={result.ok ? 'status' : 'alert'}
                   className={cn(
-                    "max-w-xl rounded-card border px-4 py-3 text-[0.9rem]",
-                    result.ok
-                      ? "border-up/40 bg-up/10 text-ink"
-                      : "border-down/40 bg-down/5 text-ink",
+                    'max-w-xl rounded-card border px-4 py-3 text-[0.9rem]',
+                    result.ok ? 'border-up/40 bg-up/10 text-ink' : 'border-down/40 bg-down/5 text-ink'
                   )}
                 >
-                  <b className={cn("font-semibold", result.ok ? "text-up" : "text-down")}>
-                    {result.ok ? "Sent." : "Not sent."}
-                  </b>{" "}
+                  <b className={cn('font-semibold', result.ok ? 'text-up' : 'text-down')}>
+                    {result.ok ? 'Sent.' : 'Not sent.'}
+                  </b>{' '}
                   {result.text}
                 </div>
               ) : null}
@@ -469,19 +453,17 @@ export default function SendPage() {
                   <p className="m-0 mt-0.5 text-[0.82rem] text-muted">
                     to {r.recipient}
                     <span className="tnum"> · {fileSize(r.size)}</span>
-                    {" · "}
+                    {' · '}
                     <span title={when(r.at)}>{ago(r.at)}</span>
                   </p>
-                  {!r.ok && r.error ? (
-                    <p className="m-0 mt-1 text-[0.82rem] text-down">{r.error}</p>
-                  ) : null}
+                  {!r.ok && r.error ? <p className="m-0 mt-1 text-[0.82rem] text-down">{r.error}</p> : null}
                 </div>
                 {r.ok ? (
-                  <Badge tone="on" className="shrink-0">sent</Badge>
-                ) : (
-                  <Badge className="shrink-0 border-transparent bg-down/12 text-down">
-                    failed
+                  <Badge tone="on" className="shrink-0">
+                    sent
                   </Badge>
+                ) : (
+                  <Badge className="shrink-0 border-transparent bg-down/12 text-down">failed</Badge>
                 )}
               </div>
             ))}
@@ -489,5 +471,5 @@ export default function SendPage() {
         )}
       </Section>
     </Shell>
-  );
+  )
 }
