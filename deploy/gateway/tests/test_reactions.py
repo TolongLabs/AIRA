@@ -16,7 +16,7 @@ from brain import reactions  # noqa: E402
 
 CHAT_ON = "0000000000@lid"
 CHAT_OFF = "1234567890@s.whatsapp.net"
-CHAT_ABSENT = "0000000001@g.us"
+CHAT_ABSENT = "12345678901@g.us"
 
 
 class ReactionsTest(unittest.TestCase):
