@@ -13,7 +13,7 @@ Status: draft 0.1, 15 Nov 2026. Not yet approved by the owner.
 | Surfaces | WhatsApp DMs and small groups: mention, reply, free-response chats, and text slash commands |
 | Host     | One Linux machine on a private network, behind the Hermes Agent WhatsApp gateway            |
 | Scope    | The chatbot only. The owner's operations tools on the same machine are out of scope         |
-| Status   | 44 requirements: 0 Shipped, 14 Exists (faulty), 30 Planned                                  |
+| Status   | 45 requirements: 0 Shipped, 14 Exists (faulty), 31 Planned                                  |
 
 ## Problem
 
@@ -149,10 +149,11 @@ Status values: **Planned** (not built), **Exists (faulty)** (present today with 
 
 ### Models
 
-| ID    | Requirement                                                                                                                                                                                                                                                                                                      | Status  |
-| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| FR-32 | Choose the model transport in the root configuration file: an OpenAI-compatible API with a key, or the subscription command-line wrapper. The rest of the system behaves the same on both. The launch default is the faster one in a recorded benchmark; the API key is the default until that benchmark exists. | Planned |
-| FR-33 | Retry transient model errors inside a turn deadline, then fall back to a second model on the same loop with the same prompt and tools. Stop at a monthly spend cap.                                                                                                                                              | Planned |
+| ID    | Requirement                                                                                                                                                                                                                                                                                                                                                                                                   | Status  |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| FR-32 | Choose the model transport in the root configuration file: an OpenAI-compatible API with a key, or the subscription command-line wrapper. The rest of the system behaves the same on both. The launch default is the faster one in a recorded benchmark; the API key is the default until that benchmark exists.                                                                                              | Planned |
+| FR-33 | Retry transient model errors inside a turn deadline, then fall back to a second model on the same loop with the same prompt and tools. Stop at a monthly spend cap.                                                                                                                                                                                                                                           | Planned |
+| FR-45 | Think deeper on request. A message that starts with `/think` runs that one turn at a higher effort set per role, and the prefix is not sent to the model. Manual use is required. A per-chat switch turns it on or off, and the turn record notes the raised effort. Optional, later: code raises effort on its own from listed reply-shape signals, only if the harness shows the command misses real cases. | Planned |
 
 ### Records And Test Harness
 
@@ -220,6 +221,7 @@ Each group of requirements has one issue. An issue lists its requirements as a c
 | NFR-4, NFR-11                     | [#35](https://github.com/TolongLabs/AIRA/issues/35) |
 | NFR-12                            | [#36](https://github.com/TolongLabs/AIRA/issues/36) |
 | FR-44                             | [#38](https://github.com/TolongLabs/AIRA/issues/38) |
+| FR-45                             | [#90](https://github.com/TolongLabs/AIRA/issues/90) |
 
 ## Pending Inputs
 
