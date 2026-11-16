@@ -36,16 +36,20 @@ export function mediaSrc(path: string): string {
   }
 })()
 
-let pending: Promise<void> | null = null
+const pending = new Map<string, Promise<void>>()
 
-/** Ask for the site token, once, no matter how many calls 401 at once. */
-function requestToken(): Promise<void> {
-  if (pending) return pending
-  pending = new Promise<void>((resolve) => {
+/** Ask for a token, once per storage key, no matter how many calls 401 at once. */
+export function requestToken(
+  key: string = TOKEN_KEY,
+  message = 'This address needs the token from ~/.hermes/brain/.site-token'
+): Promise<void> {
+  const open = pending.get(key)
+  if (open) return open
+  const asking = new Promise<void>((resolve) => {
     const done = (value: string) => {
-      if (value) localStorage.setItem(TOKEN_KEY, value)
+      if (value) localStorage.setItem(key, value)
       bar.remove()
-      pending = null
+      pending.delete(key)
       resolve()
     }
 
@@ -55,7 +59,7 @@ function requestToken(): Promise<void> {
       'border-t border-line bg-card px-5 py-4 text-[0.95rem] shadow-float'
     const msg = document.createElement('p')
     msg.className = 'm-0 text-muted'
-    msg.textContent = 'This address needs the token from ~/.hermes/brain/.site-token'
+    msg.textContent = message
     const input = document.createElement('input')
     input.type = 'password'
     input.autocomplete = 'off'
@@ -73,7 +77,8 @@ function requestToken(): Promise<void> {
     document.body.appendChild(bar)
     input.focus()
   })
-  return pending
+  pending.set(key, asking)
+  return asking
 }
 
 function authHeaders(base: Record<string, string> = {}) {
