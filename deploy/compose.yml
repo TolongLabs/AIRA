@@ -26,6 +26,10 @@ services:
       # the core refuses every media path. The mount points must match `media.gatewayDirs` in config.yml.
       - ${AIRA_GATEWAY_CACHE:-./unset}:/gateway/cache:ro
       - ${AIRA_GATEWAY_AUDIO_CACHE:-./unset}:/gateway/audio_cache:ro
+      # The owner tools' host files (docs/trd/tools.md#owner-tools): a folder, so a write can replace a file atomically.
+      # ~/.config/aira holds markets.yaml and session_notice_routes.json; ~/.claude/projects is read only.
+      - ${AIRA_OWNER_CONFIG:-./unset}:/owner/config
+      - ${AIRA_CLAUDE_PROJECTS:-./unset}:/owner/claude-projects:ro
     logging:
       driver: json-file
       options:

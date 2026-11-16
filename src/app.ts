@@ -47,6 +47,7 @@ import { registerCoreTools } from './tools/core/index.js'
 import { createExaSearchPort } from './tools/exa.js'
 import { registerLessonTools } from './tools/lessons/index.js'
 import { connectMcpServers } from './tools/mcp-client.js'
+import { registerOwnerTools } from './tools/owner/index.js'
 import { type ToolPorts, createFetchPagePort } from './tools/ports.js'
 import { type ToolRegistry, createToolRegistry } from './tools/registry.js'
 import { type Alerter, createAlerter } from './turn/alerts.js'
@@ -296,6 +297,8 @@ export async function createApp(options: AppOptions): Promise<App> {
     })
     // The lessons and library tools, behind `features.lessons`. No lyrics provider is built: those two tools say so.
     registerLessonTools(registry, { ...options.ports, filesDir: paths.files })
+    // The owner's market and coding-session tools, behind `features.owner`.
+    registerOwnerTools(registry, config.owner)
     // External tool servers (docs/trd/tools.md#external-tool-servers). None is configured at launch.
     if (config.mcp.servers.length > 0) {
       const mcp = await connectMcpServers(config.mcp.servers, registry, logger)

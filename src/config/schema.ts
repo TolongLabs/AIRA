@@ -66,6 +66,15 @@ export const configSchema = z.strictObject({
     timeBudgetMs: ms,
     defaultTimeoutMs: ms
   }),
+  // The owner's market and coding-session tools (docs/trd/tools.md#owner-tools). An empty path turns its tool off.
+  owner: z
+    .strictObject({
+      marketsConfig: z.string().default(''),
+      claudeProjectsDir: z.string().default(''),
+      noticeRoutesFile: z.string().default(''),
+      timeoutMs: ms.default(15000)
+    })
+    .default({ marketsConfig: '', claudeProjectsDir: '', noticeRoutesFile: '', timeoutMs: 15000 }),
   search: z.strictObject({
     provider: z.string().min(1)
   }),
