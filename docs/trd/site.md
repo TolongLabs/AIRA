@@ -66,15 +66,16 @@ validation as start-up and is logged to `setting_change`.
 
 ### Read Routes
 
-| Route                | Answer                                                                                                                                                         |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/health`    | `status` (`ready` or `starting`), `version`, `activeTurns`, and per model role whether it is configured and whether its breaker is open                        |
-| `GET /api/chats`     | `chats`: each chat's id, WhatsApp id, type, label, status, and every setting key with its value and the level it came from                                     |
-| `GET /api/settings`  | With `level` and `scope`: the raw values set at that one level                                                                                                 |
-| `GET /api/turns`     | The newest turn records, newest first, at most `limit` (default 50, at most 200), optionally for one `chat` and `before` a time. Records only: no message text |
-| `GET /api/turns/:id` | One turn record with its model calls, tool calls and failure records                                                                                           |
-| `GET /api/report`    | The figures of `bun run report`: latency, failures, cost and fallback rate                                                                                     |
-| `GET /api/memory`    | With `chat` (required): that chat's memory items: id, kind, subject, key, value, status, updated time                                                          |
+| Route                 | Answer                                                                                                                                                                                                     |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/health`     | `status` (`ready` or `starting`), `version`, `activeTurns`, and per model role whether it is configured and whether its breaker is open                                                                    |
+| `GET /api/chats`      | `chats`: each chat's id, WhatsApp id, type, label, status, and every setting key with its value and the level it came from                                                                                 |
+| `GET /api/settings`   | With `level` and `scope`: the raw values set at that one level                                                                                                                                             |
+| `GET /api/turns`      | The newest turn records, newest first, at most `limit` (default 50, at most 200), optionally for one `chat` and `before` a time. Records only: no message text                                             |
+| `GET /api/turns/:id`  | One turn record with its model calls, tool calls and failure records                                                                                                                                       |
+| `GET /api/report`     | The figures of `bun run report`: latency, failures, cost and fallback rate                                                                                                                                 |
+| `GET /api/memory`     | With `chat` (required): that chat's memory items: id, kind, subject, key, value, status, updated time                                                                                                      |
+| `GET /api/characters` | `characters`: each loaded pack's id, display name, source (`repository` or `data`) and languages. `faults`: each pack that did not load, with its id and reason. Prompt size comes with the studio (FR-41) |
 
 ### Write Routes
 
