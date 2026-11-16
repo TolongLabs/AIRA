@@ -85,7 +85,7 @@ export function renderDirect(
       ...rows.map((row, index) => {
         const repeat = row.repeat ? `, ${REPEAT_WORDS[row.repeat] ?? row.repeat}` : ''
         const whose = row.mine === false ? ' (set by someone else)' : ''
-        return `${index + 1}. ${row.text ?? ''}, ${when(row.dueAt, options.timeZone)}${repeat}${whose}`
+        return `${index + 1}. ${(row.text ?? '').replace(/[.!?\s]+$/, '')}, ${when(row.dueAt, options.timeZone)}${repeat}${whose}`
       })
     ].join('\n')
   }
