@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { type Db, isoNow } from '../storage/database.js'
+import { type Db, type Storage, isoNow } from '../storage/database.js'
 import {
   FORGOTTEN_KEY,
   FORGOTTEN_MESSAGE,
@@ -520,4 +520,46 @@ export function recordEvent(
     event.reason ?? null,
     isoNow(now)
   )
+}
+
+export interface ChatItemRow {
+  id: string
+  kind: string
+  subjectId: string | null
+  key: string | null
+  value: string
+  status: string
+  updatedAt: string
+}
+
+/** Every memory item of one chat that is not forgotten, newest first, for the owner site (docs/trd/site.md). */
+export function listChatItems(storage: Storage, chatId: string): ChatItemRow[] {
+  const rows = storage.read(
+    (db) =>
+      db
+        .prepare(
+          `SELECT id, kind, subject_id, key, value, status, updated_at
+           FROM memory_item
+           WHERE chat_id = ? AND status <> 'forgotten'
+           ORDER BY updated_at DESC, id ASC`
+        )
+        .all(chatId) as {
+        id: string
+        kind: string
+        subject_id: string | null
+        key: string | null
+        value: string
+        status: string
+        updated_at: string
+      }[]
+  )
+  return rows.map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    subjectId: row.subject_id,
+    key: row.key,
+    value: row.value,
+    status: row.status,
+    updatedAt: row.updated_at
+  }))
 }

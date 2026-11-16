@@ -128,3 +128,7 @@ backup:
 # Owned by docs/trd/storage.md
 archive:
   enabled: 'on' # Export records to Parquet before they are pruned
+
+# Owned by docs/trd/site.md
+site:
+  port: 9890 # The site API's port inside the container. Never the gateway's port
