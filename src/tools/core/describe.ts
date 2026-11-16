@@ -48,7 +48,10 @@ export function helpTool(registry: ToolRegistry): ToolDefinition<z.infer<typeof 
         usage: entry.usage,
         description: HELP_TEXT[entry.name] ?? firstSentence(registry.get(entry.tool)?.description ?? '')
       }))
-      return { ok: true, data: { commands } }
+      const rawMax = context.settings['commands.maxPerMessage']?.value
+      const maxPerMessage =
+        typeof rawMax === 'number' && Number.isInteger(rawMax) && rawMax >= 1 ? Math.min(rawMax, 5) : 1
+      return { ok: true, data: { commands, ...(maxPerMessage > 1 ? { maxPerMessage } : {}) } }
     }
   }
 }

@@ -111,7 +111,7 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
       const session = options.toolServer.open({
         turnId: input.context.turnId,
         tools: input.tools,
-        firstTool: input.firstTool,
+        firstTool: input.firstTools?.[0],
         signal: input.signal
       })
 

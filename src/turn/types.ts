@@ -107,10 +107,10 @@ export interface TurnRunner {
     context: TurnContext
     signal: AbortSignal
     /**
-     * For a skill-style command: until this tool has been called, it is the only tool offered. The model fills
-     * its arguments, or asks one question and calls nothing.
+     * For commands: until each named tool has been called once, only the named tools not yet called are offered.
+     * The model fills their arguments, or asks one question and calls nothing.
      */
-    firstTool?: string
+    firstTools?: string[]
   }): Promise<RunResult>
 }
 
@@ -135,7 +135,7 @@ export interface ToolOffer {
   offered(context: TurnContext): OfferedTool[]
 }
 
-/** A message that starts with a command this chat may use (docs/trd/tools.md#explicit-calls-text-commands). */
+/** A command this chat may use (docs/trd/tools.md#explicit-calls-text-commands). */
 export interface CommandMatch {
   /** The command name as typed, lower case, without the slash. */
   name: string
@@ -144,14 +144,14 @@ export interface CommandMatch {
   kind: 'direct' | 'skill'
   /** For a direct command: the tool's arguments, built by code. */
   args?: unknown
-  /** The rest of the message, in the person's own words. */
+  /** The text following this command, up to the next matched command or end of message. */
   rest: string
 }
 
 /** Step 4. Commands implements it. */
 export interface CommandRouter {
-  /** Pure. Undefined for text that is not a command, and for a command this chat may not use. */
-  match(text: string, context: TurnContext): CommandMatch | undefined
+  /** Pure. Empty for text with no command this chat may use. Returns matches in order, up to commands.maxPerMessage. */
+  match(text: string, context: TurnContext): CommandMatch[]
   /** Runs a direct command: code runs the handler and writes the answer. No model call. */
   runDirect(match: CommandMatch, context: TurnContext): Promise<{ ok: boolean; text: string; receipts: string[] }>
   /** Data a skill-style command needs before the model fills the arguments, as one labelled, untrusted block. */

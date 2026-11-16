@@ -162,12 +162,12 @@ describe('what is not a command', () => {
     expect((await gateway.send(msg('m-2', '/help'))).content).not.toContain('/remind')
   })
 
-  it('only the first word of a message is a command', async () => {
-    const model = queueModel([{ text: 'It lists the commands.' }])
+  it('a direct command anywhere in a message runs directly', async () => {
+    const model = queueModel([])
     const { app, gateway } = await startApp(model)
     await gateway.send(msg('m-1', 'what does /help do?'))
-    expect(model.requests).toHaveLength(1)
-    expect(lastTurn(app)['kind']).toBe('reply')
+    expect(model.requests).toHaveLength(0)
+    expect(lastTurn(app)['kind']).toBe('command')
   })
 })
 

@@ -2,10 +2,18 @@ import type { CommandMatch, CommandRouter, TurnContext } from '../turn/types.js'
 import type { ToolRegistry } from './registry.js'
 import type { ToolResult } from './types.js'
 
-// Text commands (docs/trd/tools.md#explicit-calls-text-commands). A command is plain text: the first word names
-// the tool, and the rest is the person's own words. One command per message.
+// Text commands (docs/trd/tools.md#explicit-calls-text-commands). A command is a `/name` token anywhere in the
+// message, at the start or after a space or line break, up to the chat's `commands.maxPerMessage` limit.
 
-const COMMAND = /^\/([A-Za-z][A-Za-z0-9]*)(?:[ \t\n]+([\s\S]*))?$/
+const COMMAND_TOKEN = /(?:^|[ \t\r\n])\/([A-Za-z][A-Za-z0-9]*)(?=$|\s|[.,!?;:](?=\s|$))/g
+
+function maxCommandsPerMessage(context: TurnContext): number {
+  const raw = context.settings['commands.maxPerMessage']?.value
+  if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 1) {
+    return Math.min(raw, 5)
+  }
+  return 1
+}
 
 /**
  * What a skill-style command needs before the model can fill its arguments: a command that removes or cancels
@@ -58,10 +66,15 @@ export function renderDirect(
   if (tool === 'help' && Array.isArray(data['commands'])) {
     const rows = data['commands'] as { command: string; usage: string; description?: string }[]
     if (rows.length === 0) return 'No commands are switched on in this chat.'
-    return [
+    const lines = [
       'Commands in this chat:',
       ...rows.map((row) => `- **${row.command}** ${row.description ?? ''}`.trimEnd())
-    ].join('\n')
+    ]
+    const max = data['maxPerMessage']
+    if (typeof max === 'number' && max > 1) {
+      lines.push(`Up to ${max} commands per message.`)
+    }
+    return lines.join('\n')
   }
   if (tool === 'list') {
     const tools = Array.isArray(data['tools']) ? (data['tools'] as string[]) : []
@@ -109,30 +122,51 @@ export function createCommandRouter(
   options: { timeZone: string } = { timeZone: 'Asia/Kuala_Lumpur' }
 ): CommandRouter {
   return {
-    match(text, context): CommandMatch | undefined {
-      const found = COMMAND.exec(text.trim())
-      if (!found) return undefined
-      const name = (found[1] as string).toLowerCase()
-      const rest = (found[2] ?? '').trim()
-      // A name that matches no command this chat may use is ordinary text and goes to the model.
-      const entry = registry.commands(context).find((command) => command.name === name)
-      if (!entry) return undefined
-      let tool = entry.tool
-      const definition = registry.get(tool)
-      const routed = definition?.command?.route?.(rest)
-      if (routed !== undefined && routed !== tool) {
-        if (!registry.enabled(routed, context)) return undefined
-        tool = routed
+    match(text, context): CommandMatch[] {
+      const limit = maxCommandsPerMessage(context)
+      const available = registry.commands(context)
+      const byName = new Map(available.map((entry) => [entry.name, entry]))
+      const candidates: {
+        name: string
+        entry: (typeof available)[number]
+        tokenStart: number
+        tokenEnd: number
+      }[] = []
+      const pattern = new RegExp(COMMAND_TOKEN.source, 'g')
+      for (const found of text.matchAll(pattern)) {
+        if (candidates.length >= limit) break
+        const name = (found[1] as string).toLowerCase()
+        const entry = byName.get(name)
+        if (!entry) continue
+        const slashOffset = found[0].indexOf('/')
+        const tokenStart = (found.index ?? 0) + slashOffset
+        const tokenEnd = (found.index ?? 0) + found[0].length
+        candidates.push({ name, entry, tokenStart, tokenEnd })
       }
-      const target = registry.get(tool)
-      const kind = target === definition ? entry.kind : (target?.command?.kind ?? 'skill')
-      return {
-        name,
-        tool,
-        kind,
-        rest,
-        ...(kind === 'direct' ? { args: definition?.command?.directArgs?.(name, rest) ?? {} } : {})
+      const matches: CommandMatch[] = []
+      for (let index = 0; index < candidates.length; index++) {
+        const item = candidates[index]
+        if (!item) continue
+        const nextStart = candidates[index + 1]?.tokenStart ?? text.length
+        const rest = text.slice(item.tokenEnd, nextStart).trim()
+        let tool = item.entry.tool
+        const definition = registry.get(tool)
+        const routed = definition?.command?.route?.(rest)
+        if (routed !== undefined && routed !== tool) {
+          if (!registry.enabled(routed, context)) continue
+          tool = routed
+        }
+        const target = registry.get(tool)
+        const kind = target === definition ? item.entry.kind : (target?.command?.kind ?? 'skill')
+        matches.push({
+          name: item.name,
+          tool,
+          kind,
+          rest,
+          ...(kind === 'direct' ? { args: definition?.command?.directArgs?.(item.name, rest) ?? {} } : {})
+        })
       }
+      return matches
     },
 
     async runDirect(match, context) {

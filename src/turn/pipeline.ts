@@ -101,8 +101,8 @@ export interface TurnService {
   active(): number
 }
 
-/** A message that starts with a slash command, by the parser's own shape. An unknown name runs alone too. */
-const COMMAND_TEXT = /^\s*\/[a-z][a-z0-9_-]*(?:\s|$)/i
+/** A message that holds a slash command anywhere, by the parser's own shape. An unknown name runs alone too. */
+const COMMAND_TEXT = /(?:^|[ \t\r\n])\/[a-z][a-z0-9]*(?=$|\s|[.,!?;:](?=\s|$))/i
 
 interface Waiter {
   mid: string
@@ -270,18 +270,20 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     outcome.fields.windowSize = input.window.length
     outcome.diagnostics = { request: input.pending.map((message) => message.content).join('\n\n') }
 
-    // 4. Command check. A message that starts with a registered command names the tool.
+    // 4. Command check. Command tokens anywhere in the message name the tools to offer first.
     const text = input.pending[input.pending.length - 1]?.content ?? ''
-    const command = deps.commands?.match(text, context)
+    const commands = deps.commands?.match(text, context) ?? []
     let built: BuiltPrompt
     let run: RunResult
-    if (command) {
+    if (commands.length > 0) {
       stage('command')
       context.kind = 'command'
     }
 
-    if (command?.kind === 'direct' && deps.commands) {
-      // A direct command: code runs the handler and writes the answer. No model call.
+    const aloneDirect = commands.length === 1 && commands[0]?.kind === 'direct'
+    if (aloneDirect && deps.commands && commands[0]) {
+      const command = commands[0]
+      // A message with one command, a direct one: code runs the handler and writes the answer. No model call.
       const result = await deps.commands.runDirect(command, context)
       if (!result.ok) return line('error', 'tool_error', new Error(`the command ${command.name} failed`))
       built = { system: [], messages: [], record: { lengthBypass: 'command_list' }, shape: { lengthBypass: true } }
@@ -318,12 +320,14 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       built = await deps.prompt.build(input)
       Object.assign(outcome.fields, built.record)
       outcome.stamps.push(['built', now()])
-      if (command && deps.commands) {
-        // A skill-style command: the model fills the named tool's arguments from the person's own words.
-        context.commandTool = command.tool
-        const extra = await deps.commands.contextFor(command, context)
+      if (commands.length > 0 && deps.commands) {
+        // Commands in a model turn: the model fills each named tool's arguments from the person's own words.
+        context.commandTool = commands[0]?.tool
         const last = built.messages[built.messages.length - 1]
-        if (extra !== undefined && last?.role === 'user') last.content += `\n\n${extra}`
+        for (const command of commands) {
+          const extra = await deps.commands.contextFor(command, context)
+          if (extra !== undefined && last?.role === 'user') last.content += `\n\n${extra}`
+        }
       }
 
       // 6. Run: one loop, inside the turn deadline.
@@ -338,7 +342,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
             tools: deps.tools?.offered(context) ?? [],
             context,
             signal: abort.signal,
-            firstTool: command?.tool
+            firstTools: commands.length > 0 ? commands.map((command) => command.tool) : undefined
           }),
           new Promise<never>((_, reject) =>
             abort.signal.addEventListener('abort', () =>
