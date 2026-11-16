@@ -1805,7 +1805,7 @@ function Allowlist() {
   return (
     <Card className="p-5">
       <p className="mt-0 mb-4 max-w-prose text-[0.92rem] text-muted">
-        Only these numbers can message her. Use international format, e.g. +60 12-345 6789. Saving takes a few seconds
+        Only these numbers can message her. Use international format, e.g. +00 00-000 0000. Saving takes a few seconds
         to apply.
       </p>
 
