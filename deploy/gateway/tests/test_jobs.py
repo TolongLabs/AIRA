@@ -33,6 +33,14 @@ class RetagTest(unittest.TestCase):
         self.assertEqual(again["unchanged"], ["a1", "b2"])
         self.assertEqual(len(fake.updates), 2)
 
+    def test_tag_removes_a_scope_marker_from_the_job_text(self):
+        marker = "[HERMES-SCOPE v1 platform=whatsapp kind=group chat=0000000000@g.us]"
+        fake = FakeJobs({"a1": f"{marker}\nCheck the trains."})
+        jobs.retag(["a1"], "tag", fake.get_job, fake.update_job)
+        self.assertEqual(fake.prompts["a1"], "[AIRA-SCHEDULED v1 kind=job id=a1]\nCheck the trains.")
+        again = jobs.retag(["a1"], "tag", fake.get_job, fake.update_job)
+        self.assertEqual(again["unchanged"], ["a1"])
+
     def test_untag_restores_the_original_text(self):
         fake = FakeJobs({"a1": "Check the trains.\nTwice a day."})
         jobs.retag(["a1"], "tag", fake.get_job, fake.update_job)

@@ -21,6 +21,10 @@ from typing import Callable
 
 JOB_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 TAG_LINE = re.compile(r"^\[AIRA-SCHEDULED v1 kind=job id=[A-Za-z0-9_-]{1,64}\]\n?")
+# A job made from a chat keeps that chat's scope marker in its text. The core takes a request with a marker as a
+# member's message, so a tagged job must not hold one; its chat comes from the job row. Rollback restores the
+# gateway's job file from the cutover backup, so untag does not bring the marker back.
+SCOPE_MARKER = re.compile(r"\[HERMES-SCOPE v1[^\]\n]*\]\n?")
 
 
 def tag_for(job_id: str) -> str:
@@ -34,7 +38,7 @@ def retag(
     update_job: Callable[[str, dict], object],
     check_only: bool = False,
 ) -> dict[str, list[str]]:
-    """Puts the tag first in each job's prompt (`tag`) or takes it out (`untag`). Returns what changed."""
+    """Puts the tag first in each job's prompt and drops scope markers (`tag`), or takes the tag out (`untag`)."""
     result: dict[str, list[str]] = {"changed": [], "unchanged": [], "missing": []}
     for job_id in ids:
         job = get_job(job_id)
@@ -43,7 +47,7 @@ def retag(
             continue
         prompt = job.get("prompt") or ""
         bare = TAG_LINE.sub("", prompt, count=1)
-        wanted = f"{tag_for(job_id)}\n{bare}" if mode == "tag" else bare
+        wanted = f"{tag_for(job_id)}\n{SCOPE_MARKER.sub('', bare)}" if mode == "tag" else bare
         if wanted == prompt:
             result["unchanged"].append(job_id)
             continue
