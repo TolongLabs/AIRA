@@ -131,15 +131,15 @@ line, and the failure is recorded.
 ## Tool Footer
 
 A reply from a turn that ran a tool ends with a footer, in the way rokabot does on Discord: one line saying what was
-done and, for research, one line naming the sources. WhatsApp has no small text, so the labels are written in Unicode
-superscript letters.
+done and, for research, one line naming the sources. WhatsApp has no small text, so both lines are italic, which keeps
+them alike and leaves the domains tappable.
 
-- The first line lists each tool that ran with outcome `ok`, once, in call order: `<emoji> <label> · <label> +N`. At
-  most 2 labels show; `+N` counts the rest. Labels are lower-cased and written in superscript (`ˢᵉᵃʳᶜʰᵉᵈ ᵗʰᵉ ʷᵉᵇ`);
-  `q`, which has no superscript form, stays as it is.
-- The second line, `🔗 <domain> · <domain>`, names up to 3 sites the turn read or found: pages read first, then search
-  results in rank order, one per site, `www.` removed. Domains stay in normal characters so WhatsApp makes them
-  tappable. WhatsApp has no link text, so a tap opens the site, not the page.
+- The first line lists each tool that ran with outcome `ok`, once, in call order: `_<emoji> <label> · <label> +N_`.
+  At most 2 labels show; `+N` counts the rest. Labels are lower case.
+- The second line, `_🔗 <domain> · <domain>_`, names up to 3 sites the turn read or found: pages read first, then
+  search results in rank order, one per site, `www.` removed. WhatsApp makes a domain tappable inside italics, but it
+  has no link text, so a tap opens the site, not the page. Superscript was tried and dropped: WhatsApp does not link
+  a domain written in superscript letters.
 - The footer sits after a blank line at the end of the reply and counts toward neither the length limit nor the
   bubble cap. A turn with no `ok` tool call has no footer. A direct command answer, which runs no model, has none.
 - Labels come from the card's `toolFooter.labels`, keyed by tool name, else a plain default from code. Plain labels
