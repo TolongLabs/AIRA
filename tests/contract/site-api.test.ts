@@ -38,7 +38,8 @@ describe('site API read routes', () => {
       '/api/turns',
       '/api/turns/turn-missing',
       '/api/report',
-      '/api/memory?chat=c_test'
+      '/api/memory?chat=c_test',
+      '/api/characters'
     ]
     for (const path of paths) {
       const noToken = await apiFetch(siteUrl, path)
@@ -394,5 +395,22 @@ describe('serving the site', () => {
     const chat = ensureChat(app.storage, { waId: 'test-chat-w4', type: 'dm' })
     const ok = await writeStatus(siteUrl, chat.chatId, { status: 'active' }, { origin: siteUrl })
     expect(ok.status).toBe(200)
+  })
+})
+
+describe('site API characters', () => {
+  it('lists the loaded packs with their names and sources, and the packs that did not load', async () => {
+    const { siteUrl } = await startWithSite()
+    const res = await apiFetch(siteUrl, '/api/characters', { token: TOKEN })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      characters: { id: string; displayName: string; source: string; languages: string[] }[]
+      faults: unknown[]
+    }
+    expect(body.characters.map((pack) => pack.id)).toContain('example')
+    const example = body.characters.find((pack) => pack.id === 'example')
+    expect(example?.source).toBe('repository')
+    expect(typeof example?.displayName).toBe('string')
+    expect(Array.isArray(body.faults)).toBe(true)
   })
 })

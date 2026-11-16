@@ -1,3 +1,4 @@
+import type { PackSet } from '../character/loader.js'
 import { listChatItems } from '../memory/store.js'
 import { buildReport, newestSnapshotFile } from '../records/report.js'
 import { listChats } from '../settings/chats.js'
@@ -15,6 +16,8 @@ export interface RoleHealth {
 
 export interface SiteApiDeps {
   storage: Storage
+  /** The character packs as they load now. */
+  packs: () => PackSet
   paths: DataPaths
   version: string
   ready: () => boolean
@@ -196,6 +199,20 @@ function handleMemory(deps: SiteApiDeps, params: URLSearchParams): RouteResult {
   return ok({ items })
 }
 
+function handleCharacters(deps: SiteApiDeps): RouteResult {
+  const set = deps.packs()
+  const characters = [...set.packs.values()]
+    .map((pack) => ({
+      id: pack.id,
+      displayName: pack.card.displayName,
+      source: pack.source,
+      languages: pack.card.languages
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id))
+  const faults = set.faults.map((fault) => ({ id: fault.id, reason: fault.message }))
+  return ok({ characters, faults })
+}
+
 const TURN_BY_ID = /^\/api\/turns\/([^/]+)$/
 const STATIC_ROUTES = new Set([
   '/api/health',
@@ -203,7 +220,8 @@ const STATIC_ROUTES = new Set([
   '/api/settings',
   '/api/turns',
   '/api/report',
-  '/api/memory'
+  '/api/memory',
+  '/api/characters'
 ])
 
 export function isKnownRoute(pathname: string): boolean {
@@ -220,5 +238,6 @@ export async function dispatchGet(deps: SiteApiDeps, url: URL): Promise<RouteRes
   if (turnMatch?.[1] !== undefined) return handleTurnById(deps, turnMatch[1])
   if (path === '/api/report') return handleReport(deps)
   if (path === '/api/memory') return handleMemory(deps, url.searchParams)
+  if (path === '/api/characters') return handleCharacters(deps)
   return error(404, 'not_found')
 }

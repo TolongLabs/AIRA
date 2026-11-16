@@ -41,13 +41,13 @@ function chatExists(deps: SiteApiDeps, chatId: string): boolean {
   return deps.storage.read((db) => db.prepare('SELECT 1 FROM chat WHERE chat_id = ?').get(chatId) !== undefined)
 }
 
-function writeSetting(deps: SiteWriteDeps, body: unknown): RouteResult {
+function writeSetting(deps: SiteApiDeps, body: unknown): RouteResult {
   const parsed = settingBody.safeParse(body)
   if (!parsed.success || !('value' in (body as object))) return { status: 400, body: { error: 'invalid_body' } }
   const { level, scope, key, value } = parsed.data
   if (!definitionFor(key)) return { status: 400, body: { error: 'invalid_setting' } }
   if (level === 'chat' && !chatExists(deps, scope)) return { status: 404, body: { error: 'not_found' } }
-  if (key === 'character' && value !== null && !(typeof value === 'string' && deps.characters().has(value))) {
+  if (key === 'character' && value !== null && !(typeof value === 'string' && deps.packs().packs.has(value))) {
     return { status: 400, body: { error: 'unknown_character' } }
   }
   const current = deps.storage.read(
@@ -73,12 +73,7 @@ function writeSetting(deps: SiteWriteDeps, body: unknown): RouteResult {
   return { status: 200, body: { level, scope, key, value, changed: true } }
 }
 
-export interface SiteWriteDeps extends SiteApiDeps {
-  /** The ids of the packs that loaded, so a binding names a pack that exists. */
-  characters: () => ReadonlySet<string>
-}
-
-export function dispatchWrite(deps: SiteWriteDeps, method: string, path: string, body: unknown): RouteResult {
+export function dispatchWrite(deps: SiteApiDeps, method: string, path: string, body: unknown): RouteResult {
   if (path === SETTINGS) {
     if (method !== 'PUT') return { status: 405, body: { error: 'method_not_allowed' } }
     return writeSetting(deps, body)
