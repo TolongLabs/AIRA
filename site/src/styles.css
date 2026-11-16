@@ -1,0 +1,487 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────────────────
+   TolongAI design tokens — DESIGN.md, 2026-08-18 amendment, in one place.
+
+   LIGHT is the Luminous Command Center palette carried over from
+   autopilot-hackathon-finals: a cornflower-tinted white ground (#F5F7FF, not
+   flat grey), deep navy ink (#141A42), cornflower blue accent (#8AA2DF),
+   soft #E8EBF2 hairlines. DARK keeps the AMOLED ground the readers already
+   preferred at night, retuned into the same cornflower family so the two
+   themes read as one product rather than two.
+
+   Everything downstream reads these semantic names, never a raw hex, so
+   retuning the palette is editing this block and nothing else.
+
+   Theme is tri-state: an explicit [data-theme] wins in both directions, and
+   with the attribute absent the OS preference decides. That is why the dark
+   values appear twice — once under the media query (guarded so an explicit
+   light choice still beats a dark OS) and once under the attribute. No
+   `dark:` utilities anywhere: components use the semantic tokens and flip for
+   free.
+   ───────────────────────────────────────────────────────────────────────── */
+
+:root {
+  color-scheme: light dark;
+
+  --paper: #f5f7ff; /* cornflower-tinted white, never flat grey */
+  --card: #ffffff;
+  --card-2: #eef1fa;
+  --sunk: #e9edf8;
+  --ink: #141a42; /* deep navy — the premium ink colour */
+  --read: #3a4372;
+  --muted: #5c648c; /* 45% L: WCAG AA on the tinted ground */
+  --faint: #99a1c2;
+  --line: #e8ebf2; /* soft, not harsh grey */
+  --line-2: #f0f2f9;
+  --line-strong: #d6dcec;
+  --accent: #5b76c8; /* cornflower, darkened for AA on white */
+  --accent-soft: #e6ecfb;
+  --on-accent: #ffffff;
+  --up: #17916a;
+  /* Measured 4.42:1 on the composited glass card and 3.86:1 on the
+     bg-down/10 wash — both under the 4.5:1 floor for 15.6px text, so
+     the destructive confirm was marginally illegible in daylight.
+     Same hue, darker: 5.58:1 on the card, 4.81:1 on the wash. */
+  --down: #bd3149;
+  --amber: #c07a11;
+
+  /* data hues — category coding, never brand. Pulled toward the cornflower
+     family so five categories on one page read as a set. */
+  --song: #c2761f;
+  --vocab: #2f6fd0;
+  --gram: #7a5cd6;
+  --artist: #cf4a7e;
+  --mem: #17916a;
+
+  /* Ambience: the lit ground and the pointer trail. Both are decoration and
+     both must be a token, so no component ever carries a hex. */
+  --glow: #8aa2df; /* the cornflower the trail is made of */
+  --glow-gain: 1; /* per-theme strength, multiplied into alpha */
+  --dot: #5c648c; /* sketchboard grid dots, at low alpha */
+  --dot-alpha: 0.13;
+  --noise-alpha: 0.02;
+  /* Liquid glass: a translucent fill the ground shows through, a specular
+     top edge, and a blur. The fill is deliberately not opaque — the dot grid
+     and the pointer trail reading faintly THROUGH a card is the whole effect;
+     an opaque card is just a card. */
+  --glass-fill: rgb(255 255 255 / 0.72);
+  --glass-hi: rgb(255 255 255 / 0.9); /* the lit top edge */
+  --glass-edge: rgb(20 26 66 / 0.05); /* the hairline around it */
+  --blur: 20px;
+
+  --shadow: 0 1px 2px rgb(20 26 66 / 0.06), 0 1px 3px rgb(20 26 66 / 0.04);
+  --shadow-float: 0 12px 34px rgb(20 26 66 / 0.14);
+
+  /* ── layout vocabulary ───────────────────────────────────────────────────
+     One radius scale, one z-scale, one footer height. The app is built out of
+     islands that float clear of all four edges rather than bars welded to
+     them, so every one of those numbers is shared or they drift apart. */
+  --radius-float: 1.25rem; /* the islands */
+  --radius-control: 0.55rem; /* the things inside them */
+  --radius-pill: 9999px;
+
+  --footer-h: 13rem;
+
+  --z-base: 0; /* the footer, lying under the page */
+  --z-page: 10; /* the opaque sheet */
+  --z-scrim: 20; /* the dim */
+  --z-island: 30; /* rails and docks */
+  --z-banner: 40;
+
+  --scrim-fill: rgb(20 26 66 / 0.26);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #000000; /* OLED black: the readers asked for it */
+    --card: #0a0a0d;
+    --card-2: #101014;
+    --sunk: #050507;
+    --ink: #f2f4fb;
+    --read: #bfc5dc;
+    --muted: #8a90ac;
+    --faint: #55596f;
+    --line: #1b1c26;
+    --line-2: #121319;
+    --line-strong: #2a2c3b;
+    --accent: #8aa2df; /* the cornflower itself, unmuted at night */
+    --accent-soft: #141a30;
+    --on-accent: #0a0d1c;
+    --up: #4ade80;
+    --down: #ff6b81;
+    --amber: #ffc247;
+
+    --song: #ffb054;
+    --vocab: #6fb4ff;
+    --gram: #b58cff;
+    --artist: #ff7a9c;
+    --mem: #5fe0a8;
+
+    /* Neutral on black, and dimmer. The cornflower at this alpha read as a
+       light-blue wisp trailing the cursor — a coloured object rather than
+       light. Illumination is white; the tint belongs to whatever it falls on. */
+    --glow: #b9bdcc;
+    --glow-gain: 0.55;
+    --dot: #8aa2df;
+    --dot-alpha: 0.08;
+    --noise-alpha: 0.03;
+    /* On a black ground the glass is a whisper of white, not a tint: any
+       colour in the fill turns AMOLED into charcoal. */
+    --glass-fill: rgb(255 255 255 / 0.045);
+    --glass-hi: rgb(255 255 255 / 0.1);
+    --glass-edge: rgb(255 255 255 / 0.06);
+    --blur: 22px;
+
+    /* A no-op shadow, not the keyword: `none` inside a comma-separated list
+       invalidates the WHOLE declaration, which silently took the glass edge
+       and its specular highlight with it. */
+    --shadow: 0 0 #0000;
+    --shadow-float: 0 12px 34px rgb(0 0 0 / 0.6);
+    --scrim-fill: rgb(0 0 0 / 0.5);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #000000; /* OLED black: the readers asked for it */
+  --card: #0a0a0d;
+  --card-2: #101014;
+  --sunk: #050507;
+  --ink: #f2f4fb;
+  --read: #bfc5dc;
+  --muted: #8a90ac;
+  --faint: #55596f;
+  --line: #1b1c26;
+  --line-2: #121319;
+  --line-strong: #2a2c3b;
+  --accent: #8aa2df; /* the cornflower itself, unmuted at night */
+  --accent-soft: #141a30;
+  --on-accent: #0a0d1c;
+  --up: #4ade80;
+  --down: #ff6b81;
+  --amber: #ffc247;
+
+  --song: #ffb054;
+  --vocab: #6fb4ff;
+  --gram: #b58cff;
+  --artist: #ff7a9c;
+  --mem: #5fe0a8;
+
+  /* Neutral on black, and dimmer. The cornflower at this alpha read as a
+     light-blue wisp trailing the cursor — a coloured object rather than
+     light. Illumination is white; the tint belongs to whatever it falls on. */
+  --glow: #b9bdcc;
+  --glow-gain: 0.55;
+  --dot: #8aa2df;
+  --dot-alpha: 0.08;
+  --noise-alpha: 0.03;
+  --glass-fill: rgb(255 255 255 / 0.045);
+  --glass-hi: rgb(255 255 255 / 0.1);
+  --glass-edge: rgb(255 255 255 / 0.06);
+  --blur: 22px;
+
+  --shadow: 0 0 #0000;
+  --shadow-float: 0 12px 34px rgb(0 0 0 / 0.6);
+  --scrim-fill: rgb(0 0 0 / 0.5);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+/* Expose the tokens to Tailwind so `bg-card`, `text-muted`, `border-line`
+   work as utilities and stay theme-reactive. */
+@theme inline {
+  --color-paper: var(--paper);
+  --color-card: var(--card);
+  --color-card-2: var(--card-2);
+  --color-sunk: var(--sunk);
+  --color-ink: var(--ink);
+  --color-read: var(--read);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
+  --color-up: var(--up);
+  --color-down: var(--down);
+  --color-amber: var(--amber);
+  --color-song: var(--song);
+  --color-vocab: var(--vocab);
+  --color-gram: var(--gram);
+  --color-artist: var(--artist);
+  --color-mem: var(--mem);
+  --color-glow: var(--glow);
+
+  --font-sans:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans CJK JP",
+    "Noto Sans JP", sans-serif;
+  --font-serif:
+    "Iowan Old Style", "Palatino Linotype", Palatino, Georgia,
+    "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif CJK JP", "Noto Serif JP",
+    serif;
+  --font-mono:
+    ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* 0.75rem, the reference's soft-modern radius, in this app's 19px root. */
+  --radius-card: 14px;
+  --radius-float: var(--radius-float);
+  --radius-control: var(--radius-control);
+  --radius-pill: var(--radius-pill);
+
+  --shadow-card: var(--shadow);
+  --shadow-float: var(--shadow-float);
+}
+
+/* ── base ─────────────────────────────────────────────────────────────── */
+/* 19px root: these readers are older and were zooming to 200% to cope. */
+html {
+  font-size: 19px;
+  -webkit-text-size-adjust: 100%;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+
+  /* The lit ground. A sketchboard dot grid over the tinted paper, painted on
+     the body itself rather than on a layer behind it — the content layer
+     already covers the viewport, and a second full-screen element would just
+     be one more thing to keep in sync. The dots are a token at low alpha, so
+     they read as texture rather than as content. */
+  background-color: var(--paper);
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    color-mix(in srgb, var(--dot) calc(var(--dot-alpha) * 100%), transparent)
+      1px,
+    transparent 0
+  );
+  background-size: 16px 16px;
+  background-position: -1px -1px;
+  background-attachment: fixed;
+}
+
+/* Paper grain. 2% of an SVG turbulence, fixed over everything and inert to
+   the pointer: it stops large flat fills reading as printer output. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 800;
+  opacity: var(--noise-alpha);
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ── the pointer trail ────────────────────────────────────────────────────
+   A chain of soft discs, each chasing the one ahead rather than the cursor,
+   which is what bends the trail along the path travelled instead of dragging
+   one lagging blob toward the pointer. Colour lives here because the
+   component moves them by transform alone and must never carry a hex. */
+.cursor-glow {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.cursor-glow-dot {
+  position: fixed;
+  left: 0;
+  top: 0;
+  border-radius: 9999px;
+  will-change: transform;
+  /* `/ 0` rather than `transparent`: some engines interpolate the keyword
+     through grey and leave a dirty fringe on a tinted ground. */
+  background: radial-gradient(
+    circle,
+    color-mix(
+        in srgb,
+        var(--glow) calc(var(--dot-alpha, 0.05) * var(--glow-gain, 1) * 100%),
+        transparent
+      )
+      0%,
+    color-mix(in srgb, var(--glow) 0%, transparent) 70%
+  );
+}
+
+/* Content sits above the trail. Without this the discs wash over the cards
+   instead of lighting the ground behind them. */
+.above-ambience {
+  position: relative;
+  z-index: 1;
+}
+
+/* Liquid glass. Three things together, and it fails if any one is missing:
+   a translucent fill so the lit ground shows through, a backdrop blur so what
+   shows through is diffused rather than legible, and a specular top edge so
+   the pane has a lit side. The outer hairline is the glass's own edge, not a
+   border in the old sense. */
+.glass {
+  background-color: var(--glass-fill);
+  /* Standard property only. Hand-writing the -webkit- twin made Lightning
+     CSS emit THAT one alone, and the blur silently stopped applying in every
+     engine that implements the unprefixed property — which is all of them
+     except old Safari. The compiler prefixes per its targets; let it. */
+  backdrop-filter: blur(var(--blur)) saturate(160%);
+  box-shadow:
+    inset 0 1px 0 0 var(--glass-hi),
+    0 0 0 1px var(--glass-edge),
+    var(--shadow);
+}
+
+/* Only the head of the trail should light a pane it passes under; a full
+   blur radius of glow bleeding through every card reads as fog. */
+@supports not (backdrop-filter: blur(1px)) {
+  .glass {
+    background-color: var(--card);
+  }
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Tailwind v4 folds `outline-color` into `transition-colors`, so every focus
+   ring fades from currentColor to the accent over 150ms. Measured on the
+   destructive button that is a red-to-blue fade, i.e. the ring is the wrong
+   colour for the first ~150ms of every tab stop. Restore the v3 property
+   list: colours still animate, the ring is correct the instant it appears. */
+.transition-colors {
+  transition-property:
+    color, background-color, border-color, text-decoration-color, fill, stroke;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Numbers in tables and stat tiles line up or they are not readable. */
+.tnum {
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+/* Furigana. Half-size and slightly bolder so it survives being small, dimmed
+   so the kanji stays the thing being read and the reading stays the hint. */
+ruby {
+  ruby-position: over;
+}
+rt {
+  font-size: 0.5em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--read);
+  opacity: 0.85;
+}
+
+/* ── the islands, the dim, and the layer the page lies on ──────────────────
+   The chrome is not a header bar and a sidebar welded to the viewport edges.
+   It is a set of panes floating clear of all four, over a page that scrolls
+   underneath them — which is why every one of them is `.glass` and why the
+   dim below exists: a pane that expands over the content has to say that the
+   content is no longer the thing being read.
+   ──────────────────────────────────────────────────────────────────────── */
+
+/* One fixed scrim carries the dim for the whole app. Filtering the content
+   subtree instead janks on every hover. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-scrim);
+  background-color: var(--scrim-fill);
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.scrim[data-visible="true"] {
+  opacity: 1;
+}
+
+/*
+ * Two layers, not one column. The footer is fixed at the bottom of the
+ * viewport for the whole session and the page is an opaque sheet lying on top
+ * of it. Reaching the end UNCOVERS something that was always there rather
+ * than scrolling a panel into view. Nothing animates; the occluder moves.
+ */
+.reveal-page {
+  position: relative;
+  z-index: var(--z-page);
+  min-height: 100vh;
+  margin-bottom: var(--footer-h);
+  /* Opaque, and that is the whole mechanism. A translucent page would show
+     the footer through itself from the first paint. */
+  background-color: var(--paper);
+}
+
+.site-footer {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: var(--z-base);
+  height: var(--footer-h);
+  background-color: var(--accent);
+  color: var(--on-accent);
+}
+
+/*
+ * Below md the reveal is switched off rather than resized. Stacking the
+ * columns roughly doubles the footer, so holding the effect on a phone
+ * reserves most of a viewport as dead scroll to uncover what a normal footer
+ * shows for free.
+ */
+@media (width < 48rem) {
+  .reveal-page {
+    margin-bottom: 0;
+  }
+
+  .site-footer {
+    position: static;
+    height: auto;
+    /* The dock is fixed over the end of the document, and below md the footer
+       is what ends it. Without this the footer's own links sit under the dock
+       and cannot be tapped at all. */
+    padding-bottom: 6rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scrim {
+    transition: none;
+  }
+}
