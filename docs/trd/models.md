@@ -176,12 +176,42 @@ token. The service answers with the program's output lines as they arrive, one J
 
 ## Media Watching
 
-Media is read at intake, before the main model runs.
+Media is read at intake, before the main model runs. The gateway saves each file on the host and names its path in a
+note ([System](system.md#gateway-contract)). The core reads the file through its own read-only mount of the gateway's
+media folders.
 
-1. Code checks type, size and duration against `media` limits.
-2. The media model returns a description, and a transcript where there is speech.
-3. The description enters prompt block 4 as labelled, untrusted text. The main model never receives the file.
-4. A file over a limit, or a failed read, produces the pack's unreadable-media line and a record.
+1. **Which files.** A turn reads the files of every message it answers: the first 3 of each message, and at most 6
+   for the turn, the newest first. A bare photo and the caption that follows it merge into one turn
+   ([Reliability](reliability.md#batching)), so the caption's message is not the only one that counts. Files past
+   those limits are not read and are not recorded as failures. A turn that runs a direct command reads nothing.
+2. **Where from.** `media.gatewayDirs` lists `host` and `container` folder pairs. A path from a note is read only if,
+   after `..` is resolved and every symlink is followed, it lies under one of the `host` folders. It is then opened
+   at the same place under the paired `container` folder. A symlink that leaves the mounted folder, a path outside
+   every pair, a path that is not a file and a missing file are refused. The core never reads a path anywhere else:
+   a note is text, and a member's message could imitate one.
+3. **Which kind.** The kind comes from the file's extension: `.jpg`, `.jpeg`, `.png`, `.webp`, `.gif`, `.heic` for
+   an image; `.ogg`, `.oga`, `.opus`, `.mp3`, `.m4a`, `.aac`, `.wav` for audio and voice notes; `.mp4`, `.mov`, `.webm`,
+   `.3gp` for video; `.pdf` for a document. Any other extension is an unsupported type.
+4. **Limits.** Code checks type, size and duration against the `media` limits before it reads the file into memory. A
+   voice note's duration is not in the gateway's note, so the size limit is the only length limit that applies to it.
+5. **The read.** All files of a turn are read at once, each with its own timeout: `media.timeoutMs`, and at most
+   two thirds of the time left in the turn deadline, so the main model keeps at least a third. The media model returns
+   a description, and a transcript where there is speech. It runs on the free tier of its own key, so its calls record
+   their tokens with a cost of 0 and do not count against the spend cap.
+6. **Into the prompt.** The descriptions enter prompt block 4 as one labelled, untrusted block, clipped to a fixed
+   budget so that media cannot push the prompt over its ceiling. The main model never receives the file.
+   See [Prompt Engine](prompt-engine.md#prompt-blocks).
+7. **Failure.** A file that is refused, over a limit, of an unsupported type, unread because media is off, or whose
+   read fails or times out, does not end the turn. Block 4 gets a short note naming the kind of file and why, and the
+   pack's `unreadableMedia` line. The model tells the sender in its own voice, so the reply can also answer the
+   files that were read and the text that came with them. The note never carries the path.
+8. **Record.** Every request to the media model is one `model_call` row with role `media`, with its tokens and its
+   failure kind when it failed. Every unreadable file is one `failure` row with kind `media_unreadable`, stage
+   `media`, handled by `line:unreadableMedia`, and a message with the kind of file and the reason, never the path.
+   The turn itself stays `delivered`. An `auth` failure of the media role also alerts the operator.
+
+With no media model or no `MEDIA_WATCHER_API_KEY`, media is off: the core logs `media.off` once at start-up, files
+are not read, and each one gets the unreadable note with the reason `off`. The turn still answers.
 
 Video from a linked social post is fetched by the social tool and passed through the same path.
 
@@ -213,5 +243,7 @@ credit, about one per call, not in dollars, so its prices are 0 and it does not 
 | `llm.<role>.model`, `baseUrl`                                  | see above               | The model id and its endpoint                                      |
 | `llm.<role>.effort`                                            | `medium`, `high`        | Effort for `main` and `fallback`. Empty: the model's default       |
 | `llm.<role>.usdPerMTokIn`, `usdPerMTokOut`, `usdPerMTokCached` | see `config.yml`        | Prices for `main` and `fallback`, in US dollars per million tokens |
-| `media.watcher.model`                                          | unset                   | The media model                                                    |
+| `media.watcher.model`                                          | `gemini-3.5-flash-lite` | The media model, on Google AI Studio. Key: `MEDIA_WATCHER_API_KEY` |
+| `media.gatewayDirs`                                            | empty                   | `host` and `container` pairs of the gateway's media folders        |
+| `media.timeoutMs`                                              | 30000                   | One media read, within two thirds of the time left in the turn     |
 | `media.maxVideoSeconds`                                        | 180                     | Longest video that is watched                                      |

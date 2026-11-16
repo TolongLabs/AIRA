@@ -28,19 +28,20 @@ one night.
 Everything of one install lives in one folder owned by the host user that runs the gateway, `~/aira/` by default.
 The container's user has the same uid, so the core writes the data folder and the gateway reads it.
 
-| Item                | Location On The Host                                                                                                                                |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Compose file        | `~/aira/compose.yml`, copied from `deploy/compose.yml` at install                                                                                   |
-| Secrets             | `~/aira/.env`, mode 600, never in git. Also holds the install's `AIRA_*` compose values                                                             |
-| Configuration       | `~/aira/config.yml`, copied from the repository at install with `gateway.hostDataDir` set, mounted read-only over the image's own                   |
-| Data folder         | `~/aira/data/` (`AIRA_DATA_DIR`), bind-mounted at `/data`: the database, files, snapshots, archive and cache. See [Persistence](storage.md#stores)  |
-| Data folder path    | `gateway.hostDataDir`: the data folder's absolute path on the host, where the gateway finds stickers, the unavailable line and the wanted-jobs file |
-| Gateway helpers     | AIRA's `brain.bubbles` and `brain.failure`, from `deploy/gateway/brain/`                                                                            |
-| Schedule reconciler | `deploy/gateway/schedule.py`, run each minute by `aira-schedule.timer` in the gateway's environment                                                 |
-| Off-host copy       | An encrypted repository on another machine                                                                                                          |
-| Core port           | `127.0.0.1:${AIRA_PORT}`, published to loopback only. 9881 after cutover; a spare port beside the old core                                          |
-| Site API port       | `${AIRA_SITE_BIND}:${AIRA_SITE_PORT}`, the private-network address only; loopback beside the old core                                               |
-| Runner service      | A host unit, present only for the subscription transport                                                                                            |
+| Item                | Location On The Host                                                                                                                                                                                        |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Compose file        | `~/aira/compose.yml`, copied from `deploy/compose.yml` at install                                                                                                                                           |
+| Secrets             | `~/aira/.env`, mode 600, never in git. Also holds the install's `AIRA_*` compose values                                                                                                                     |
+| Configuration       | `~/aira/config.yml`, copied from the repository at install with `gateway.hostDataDir` set, mounted read-only over the image's own                                                                           |
+| Data folder         | `~/aira/data/` (`AIRA_DATA_DIR`), bind-mounted at `/data`: the database, files, snapshots, archive and cache. See [Persistence](storage.md#stores)                                                          |
+| Data folder path    | `gateway.hostDataDir`: the data folder's absolute path on the host, where the gateway finds stickers, the unavailable line and the wanted-jobs file                                                         |
+| Gateway media       | The gateway's `~/.hermes/cache/` and `~/.hermes/audio_cache/`, mounted read-only at `/gateway/cache` and `/gateway/audio_cache` (`AIRA_GATEWAY_CACHE`, `AIRA_GATEWAY_AUDIO_CACHE`). See [Install](#install) |
+| Gateway helpers     | AIRA's `brain.bubbles` and `brain.failure`, from `deploy/gateway/brain/`                                                                                                                                    |
+| Schedule reconciler | `deploy/gateway/schedule.py`, run each minute by `aira-schedule.timer` in the gateway's environment                                                                                                         |
+| Off-host copy       | An encrypted repository on another machine                                                                                                                                                                  |
+| Core port           | `127.0.0.1:${AIRA_PORT}`, published to loopback only. 9881 after cutover; a spare port beside the old core                                                                                                  |
+| Site API port       | `${AIRA_SITE_BIND}:${AIRA_SITE_PORT}`, the private-network address only; loopback beside the old core                                                                                                       |
+| Runner service      | A host unit, present only for the subscription transport                                                                                                                                                    |
 
 ## Install
 
@@ -49,7 +50,23 @@ Run by the operator on the host, with each step that changes the host confirmed 
 1. Make `~/aira/` and `~/aira/data/`, mode 700. Copy `deploy/compose.yml` and `config.yml` in. Set
    `gateway.hostDataDir` to the data folder's absolute path.
 2. Write `~/aira/.env`, mode 600: the secrets by name from `.env.example`, and `AIRA_PORT`, `AIRA_SITE_BIND`,
-   `AIRA_SITE_PORT`, `AIRA_DATA_DIR`, `AIRA_IMAGE` and `AIRA_VERSION`.
+   `AIRA_SITE_PORT`, `AIRA_DATA_DIR`, `AIRA_IMAGE` and `AIRA_VERSION`. To let the core read the media members send,
+   also set `AIRA_GATEWAY_CACHE` and `AIRA_GATEWAY_AUDIO_CACHE` to the gateway's media folders on the host, and
+   `MEDIA_WATCHER_API_KEY` to the media model's key. Compose mounts each folder read-only. A variable left unset mounts
+   an empty folder, `./unset`, and the core then refuses every media path.
+   In `config.yml`, `media.gatewayDirs` maps each host folder to its mount. The repository's list is empty. The host's
+   list is:
+
+   ```yaml
+   media:
+     gatewayDirs:
+       - { host: /home/user/.hermes/cache, container: /gateway/cache }
+       - { host: /home/user/.hermes/audio_cache, container: /gateway/audio_cache }
+   ```
+
+   `host` is the path the gateway writes in its notes, so it must match that path exactly. `container` must match the
+   mount point in `deploy/compose.yml`. See [Models](models.md#media-watching).
+
 3. Get the image: pull the release, or, before the first release, build it from a checkout with
    `docker build -f deploy/Dockerfile -t aira-local:<commit> .` and set `AIRA_IMAGE=aira-local`,
    `AIRA_VERSION=<commit>`.

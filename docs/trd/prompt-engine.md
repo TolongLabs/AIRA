@@ -35,16 +35,23 @@ Real character packs are private. They never enter the repository, the release i
 
 The system prompt is assembled in a fixed order. Blocks 1 to 3 are stable per character and form the cached prefix.
 
-| #   | Block         | Source                                            | Changes Per Turn |
-| --- | ------------- | ------------------------------------------------- | ---------------- |
-| 1   | Core          | `card.yml` identity                               | No               |
-| 2   | Speech        | `card.yml` speech rules                           | No               |
-| 3   | Harness Rules | `prompts/` (tools, memory, safety, format)        | No               |
-| 4   | Context       | Chat type, members present, time, recalled memory | Yes              |
-| 5   | Tone          | The detected mood's guidance                      | Yes              |
-| 6   | Reply Shape   | Drawn by code for this turn                       | Yes              |
+| #   | Block         | Source                                                                | Changes Per Turn |
+| --- | ------------- | --------------------------------------------------------------------- | ---------------- |
+| 1   | Core          | `card.yml` identity                                                   | No               |
+| 2   | Speech        | `card.yml` speech rules                                               | No               |
+| 3   | Harness Rules | `prompts/` (tools, memory, safety, format)                            | No               |
+| 4   | Context       | Chat type, members present, time, recalled memory, media descriptions | Yes              |
+| 5   | Tone          | The detected mood's guidance                                          | Yes              |
+| 6   | Reply Shape   | Drawn by code for this turn                                           | Yes              |
 
 - Blocks 4 to 6 carry only labelled data and short instructions. User text never enters the system prompt.
+- **Media in block 4.** When the sender attached files, block 4 ends with a line saying the model cannot open them,
+  then a `<media untrusted="true">` block: one line per file with its kind and description, and the transcript on a
+  second line when there is speech. Line breaks and `<media` tags are stripped from the text. The whole block is
+  clipped to 4,500 characters, shared evenly between the files, so media cannot push the prompt over its ceiling.
+  A file that could not be read adds a short `<media-unreadable>` note with its kind, the reason, and the pack's
+  `unreadableMedia` line. The model says that line in its own voice. See
+  [Models](models.md#media-watching).
 - The whole prompt stays under the ceiling in `config.yml` (`prompt.maxSystemTokens`, default 8,000). A test builds
   the prompt for every pack and fails above it.
 
