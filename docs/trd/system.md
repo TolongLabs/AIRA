@@ -144,6 +144,25 @@ The core then does this:
 - The scheduled turn's user message is written by code from the row: the tag, then the reminder's text.
 - The core applies mute and quiet rules to a scheduled turn like any other turn. See [Reliability](reliability.md).
 
+### Gateway Jobs
+
+The owner's routines (a daily lesson, a commute check) are jobs set up in the gateway's schedule, outside the core.
+The core runs them as turns in their chat, with the bound character and the chat's tools.
+
+- **A job is listed, then tagged.** `gateway.jobs` in the host's `config.yml` lists each job the core runs: the job's
+  id and the WhatsApp id of the chat it belongs to. The repository's file lists none. `deploy/gateway/jobs.py --tag`
+  puts the line `[AIRA-SCHEDULED v1 kind=job id=<job id>]` first in each listed job's text, through the gateway's
+  `cron.jobs` functions and their lock; `--untag` takes it out. Cutover tags, rollback untags.
+- **Identity comes from the list.** A job tag is honoured only in an unmarked request, like a reminder's. The chat
+  comes from `gateway.jobs`, never from the text. An id that is not listed, or whose chat is not active, is an
+  unmarked request and sends nothing.
+- **The turn.** The job's text, without the gateway's block and the tag, is stored in the chat's window as an
+  instruction from the schedule, sender `routine`, behind the tag. Memory never reads it as a member's words. The
+  reply is a `routine` delivery: mute and quiet hours hold it back.
+- **One firing, one turn.** The firing's message id is the job id and the 10-minute window it arrives in, so the
+  gateway's repeated requests for one firing are answered from the stored reply. No job of the owner's runs more
+  often than hourly.
+
 ### When the Core Is Slow or Down
 
 | Case                           | What the Gateway Does (Measured)                                                                                                          |
