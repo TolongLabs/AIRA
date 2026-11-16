@@ -87,8 +87,9 @@ validation as start-up and is logged to `setting_change`.
   accepts (else 400). An unknown chat gets 404.
 - `Host` must be an IP address or `localhost`, with a port. Any other name gets 403 `host_refused`, so a page that
   rebinds its own name to the private address cannot reach the API.
-- A request that carries `Origin` gets 403 `origin_refused` unless that origin is listed in `site.allowedOrigins`.
-  The list is empty by default. A request from a server, with no `Origin`, relies on the token.
+- A request that carries `Origin` gets 403 `origin_refused` unless that origin is the API's own (`http://` and the
+  request's `Host`) or is listed in `site.allowedOrigins`, which is empty by default. A request from a server, with
+  no `Origin`, relies on the token.
 - A setting is checked as start-up checks it: a known key, a valid scope for its level, a value its schema accepts
   (else 400 `invalid_setting`), and for `character` a pack that is loaded (else 400 `unknown_character`). A chat
   scope that does not exist gets 404. Clearing a value restores inheritance from the level above.
@@ -125,3 +126,14 @@ chatbot pages have no control that sends a message to a chat or restarts a servi
 ## Build
 
 The site builds with Vite in CI and ships inside the release image. Built output is not committed.
+
+## Serving The Site
+
+- The core serves the built site on the site API's port, under `/app/`. `/` redirects to `/app/`. Only files of
+  the build are served; any other path outside `/api/` gets 404.
+- The site's files hold no data, so they need no token. Every `/api/` route still does.
+- The browser keeps the token as the existing site does: the first 401 asks for it once, it is kept in the
+  browser's local storage, and it is sent as `Authorization: Bearer` on every call. It never goes in a URL.
+- A page calls the API on its own origin, so a browser write carries the API's own `Origin` and is accepted.
+- Until cutover the owner-tool pages (Markets, Notices, Send and the old dashboard) keep their API on the old site.
+  Served by the core, they show their error state. How they reach their API after cutover is decided with #24.
