@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { writeUnavailableLine } from '../character/unavailable.js'
 import { setChatStatus } from '../settings/chats.js'
 import { definitionFor } from '../settings/keys.js'
 import { SettingError, setSetting, unsetSetting } from '../settings/settings.js'
@@ -60,6 +61,7 @@ function writeSetting(deps: SiteApiDeps, body: unknown): RouteResult {
   try {
     if (value === null) {
       const changed = unsetSetting(deps.storage, { level, scope, key, actor: SITE_ACTOR }, deps.now)
+      if (changed) deps.onWrite?.()
       return { status: 200, body: { level, scope, key, value: null, changed } }
     }
     if (current !== undefined && current === JSON.stringify(value)) {
@@ -70,6 +72,11 @@ function writeSetting(deps: SiteApiDeps, body: unknown): RouteResult {
     if (error instanceof SettingError) return { status: 400, body: { error: 'invalid_setting' } }
     throw error
   }
+  if (level === 'global' && key === 'character' && typeof value === 'string') {
+    const pack = deps.packs().packs.get(value)
+    if (pack) writeUnavailableLine(deps.paths.root, pack)
+  }
+  deps.onWrite?.()
   return { status: 200, body: { level, scope, key, value, changed: true } }
 }
 
@@ -91,5 +98,6 @@ export function dispatchWrite(deps: SiteApiDeps, method: string, path: string, b
   if (!parsed.success) return { status: 400, body: { error: 'invalid_body' } }
   if (!chatExists(deps, chatId)) return { status: 404, body: { error: 'not_found' } }
   const changed = setChatStatus(deps.storage, { chatId, status: parsed.data.status, actor: SITE_ACTOR }, deps.now)
+  if (changed) deps.onWrite?.()
   return { status: 200, body: { chatId, status: parsed.data.status, changed } }
 }

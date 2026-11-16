@@ -15,6 +15,8 @@ export interface RoleHealth {
 }
 
 export interface SiteApiDeps {
+  /** Runs after a write that changed something, such as rewriting the gateway's chat flags. */
+  onWrite?: () => void
   storage: Storage
   /** The character packs as they load now. */
   packs: () => PackSet
