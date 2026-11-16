@@ -1,4 +1,4 @@
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, X } from 'lucide-react'
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { Shell } from '@/components/shell'
 import { Button, Card, Empty, Field, Input, Picker, Section, Segmented, Spinner, Toggle } from '@/components/ui'
@@ -170,6 +170,244 @@ function LanguageField({ chat, onSave }: { chat: CoreChat; onSave: (value: unkno
 }
 
 const FOOTER_EMOJI = ['🛠️', '🧪', '🔬', '🔎', '✨', '🌸', '📎']
+const NAME_CALL_PATTERN = /^[\p{L}\p{N} ]{2,24}$/u
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** Copied from src/turn/name-call.ts: true when any name appears as a whole word in any case. */
+function matchesName(text: string, names: readonly string[]): boolean {
+  return names.some((name) => {
+    if (name.trim() === '') return false
+    return new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(name)}(?![\\p{L}\\p{N}])`, 'iu').test(text)
+  })
+}
+
+function characterNames(pack: CoreCharacter | undefined): string[] {
+  if (!pack) return []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const candidate of [pack.displayName, ...(pack.aliases ?? [])]) {
+    const key = candidate.toLowerCase()
+    if (candidate.trim() === '' || seen.has(key)) continue
+    seen.add(key)
+    out.push(candidate)
+  }
+  return out
+}
+
+function NameCallField({
+  chat,
+  pack,
+  characterId,
+  busy,
+  onSave,
+  onClear
+}: {
+  chat: CoreChat
+  pack: CoreCharacter | undefined
+  characterId: string | undefined
+  busy: boolean
+  onSave: (key: string, value: unknown) => Promise<boolean>
+  onClear: (key: string) => Promise<boolean>
+}) {
+  const enabled = valueOf(chat, 'nameCall', false)
+  const [draft, setDraft] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [sample, setSample] = useState('')
+
+  const namesEntry = chat.settings['nameCall.names']
+  const namesLevel = namesEntry?.level ?? 'unset'
+  const overridden = namesLevel === 'chat'
+  const customNames =
+    overridden && Array.isArray(namesEntry?.value)
+      ? namesEntry.value.filter((item): item is string => typeof item === 'string')
+      : []
+  const inheritedNames =
+    (namesLevel === 'type' || namesLevel === 'global') && Array.isArray(namesEntry?.value)
+      ? namesEntry.value.filter((item): item is string => typeof item === 'string')
+      : characterNames(pack)
+  const activeNames = overridden ? customNames : inheritedNames
+  const inheritedSource =
+    namesLevel === 'type' || namesLevel === 'global'
+      ? sourceText(namesLevel, chat.type)
+      : `From ${pack?.displayName ?? characterId ?? 'character'}`
+
+  async function addName() {
+    const candidate = draft.trim()
+    if (draft === '') return
+    if (customNames.length >= 5) {
+      setError('At most 5 names.')
+      return
+    }
+    const length = [...candidate].length
+    if (length < 2 || length > 24) {
+      setError('Name must be 2 to 24 characters.')
+      return
+    }
+    if (!NAME_CALL_PATTERN.test(candidate)) {
+      setError('Use letters, digits or spaces only.')
+      return
+    }
+    if (customNames.some((item) => item.toLowerCase() === candidate.toLowerCase())) {
+      setError('That name is already in the list.')
+      return
+    }
+    setError(null)
+    const ok = await onSave('nameCall.names', [...customNames, candidate])
+    if (ok) setDraft('')
+  }
+
+  async function removeName(index: number) {
+    setError(null)
+    if (customNames.length <= 1) {
+      await onClear('nameCall.names')
+      return
+    }
+    await onSave(
+      'nameCall.names',
+      customNames.filter((_, i) => i !== index)
+    )
+  }
+
+  const matchedName = sample.trim() ? activeNames.find((name) => matchesName(sample, [name])) : undefined
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Toggle
+        checked={enabled}
+        disabled={busy}
+        onChange={(v) => void onSave('nameCall', v)}
+        label="Answer a message that says the character's name"
+        hint="Off: answers a mention, a reply or a command only."
+      />
+      {enabled && (
+        <div className="flex flex-col gap-4 border-t border-line-2 pt-3">
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <span className="font-mono text-[0.68rem] font-medium tracking-[0.14em] text-muted uppercase">
+                  Names
+                </span>
+                <span className={cn('text-[0.75rem]', overridden ? 'text-accent' : 'text-faint')}>
+                  {overridden ? 'set here' : inheritedSource}
+                </span>
+              </div>
+              {overridden && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() => {
+                    setError(null)
+                    void onClear('nameCall.names')
+                  }}
+                >
+                  Use inherited
+                </Button>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {overridden ? (
+                customNames.map((name, index) => (
+                  <span
+                    key={name}
+                    className="inline-flex min-h-[44px] max-w-full items-center gap-1 rounded-full border border-line bg-sunk/60 py-1 pr-1 pl-3.5 font-mono text-[0.78rem] text-ink"
+                  >
+                    <span className="truncate">{name}</span>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      aria-label={`Remove ${name}`}
+                      onClick={() => void removeName(index)}
+                      className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-muted transition-colors hover:text-down disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </span>
+                ))
+              ) : inheritedNames.length > 0 ? (
+                inheritedNames.map((name) => (
+                  <span
+                    key={name}
+                    className="inline-flex max-w-full items-center rounded-full border border-line-2 px-3.5 py-1.5 font-mono text-[0.78rem] text-muted opacity-75"
+                  >
+                    <span className="truncate">{name}</span>
+                  </span>
+                ))
+              ) : (
+                <span className="text-[0.8rem] text-faint">No character names loaded.</span>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                value={draft}
+                disabled={busy}
+                onChange={(e) => {
+                  setDraft(e.target.value)
+                  if (error) setError(null)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    void addName()
+                  }
+                }}
+                className="min-w-0 flex-1 basis-40"
+                aria-label="Add a name"
+                aria-invalid={error ? true : undefined}
+                placeholder={overridden ? 'Add another name' : 'Override with a name'}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <Button
+                size="sm"
+                className="shrink-0"
+                disabled={busy || draft.length === 0}
+                onClick={() => void addName()}
+              >
+                Add
+              </Button>
+            </div>
+            {error ? (
+              <p role="alert" className="m-0 text-[0.8rem] text-down">
+                {error}
+              </p>
+            ) : (
+              <p className="m-0 text-[0.78rem] text-faint">1 to 5 names, 2 to 24 letters, digits or spaces.</p>
+            )}
+          </div>
+
+          <Field label="Try a message">
+            <Input
+              value={sample}
+              onChange={(e) => setSample(e.target.value)}
+              placeholder="Type a sample message…"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <p
+              aria-live="polite"
+              className={cn(
+                'm-0 text-[0.8rem]',
+                sample.trim() === '' ? 'text-faint' : matchedName ? 'text-up' : 'text-muted'
+              )}
+            >
+              {sample.trim() === ''
+                ? 'Shows whether a message would wake the bot.'
+                : matchedName
+                  ? `Wakes the bot — matched “${matchedName}”.`
+                  : 'Would not wake the bot.'}
+            </p>
+          </Field>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function FooterEmojiField({ chat, onSave }: { chat: CoreChat; onSave: (value: unknown) => void }) {
   const current = valueOf<string | undefined>(chat, 'footerEmoji', undefined)
@@ -227,14 +465,16 @@ function ChatRow({
   const character = valueOf<string | undefined>(chat, 'character', undefined)
   const pack = characters.find((c) => c.id === character)
 
-  const run = async (work: () => Promise<{ changed: boolean }>, done: string) => {
+  const run = async (work: () => Promise<{ changed: boolean }>, done: string): Promise<boolean> => {
     setBusy(true)
     try {
       const result = await work()
       toast(result.changed ? done : 'Nothing changed.')
       onChanged()
+      return true
     } catch (error) {
       toast(reasonText(error), false)
+      return false
     } finally {
       setBusy(false)
     }
@@ -412,12 +652,13 @@ function ChatRow({
                         />
                       </SettingRow>
                       <SettingRow chat={chat} name="nameCall" label="Name call" onClear={clear}>
-                        <Toggle
-                          checked={valueOf(chat, 'nameCall', false)}
-                          disabled={busy}
-                          onChange={(v) => save('nameCall', v)}
-                          label="Answer a message that says the character's name"
-                          hint="Off: answers a mention, a reply or a command only."
+                        <NameCallField
+                          chat={chat}
+                          pack={pack}
+                          characterId={character}
+                          busy={busy}
+                          onSave={save}
+                          onClear={clear}
                         />
                       </SettingRow>
                     </>

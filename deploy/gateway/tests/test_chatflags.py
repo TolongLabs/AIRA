@@ -77,6 +77,47 @@ class ChatFlagsTest(unittest.TestCase):
             self.assertEqual(chatflags.voice_mode(CHAT_A), "off")
             self.assertFalse(chatflags.reactions_on(CHAT_A))
 
+    def test_names_and_free_flags_never_raise_and_follow_cache(self):
+        group_names = "0000000000@g.us"
+        group_free = "12345678901@g.us"
+        group_absent = "123456789012@g.us"
+
+        with self.env(""):
+            self.assertEqual(chatflags.names(group_names), [])
+            self.assertFalse(chatflags.free(group_free))
+
+        self.file.write_text("{bad json", encoding="utf-8")
+        with self.env(self.dir.name):
+            self.assertEqual(chatflags.names(group_names), [])
+            self.assertFalse(chatflags.free(group_free))
+
+        self.write_flags(
+            {
+                group_names: {"names": ["Taiga", "Ah Boy", "", 123]},
+                group_free: {"free": True, "names": "not-a-list"},
+                group_absent: {"free": "yes"},
+            },
+            mtime_ns=3_000_000_000,
+        )
+        with self.env(self.dir.name):
+            self.assertEqual(chatflags.names(group_names), ["Taiga", "Ah Boy"])
+            self.assertFalse(chatflags.free(group_names))
+            self.assertEqual(chatflags.names(group_free), [])
+            self.assertTrue(chatflags.free(group_free))
+            self.assertEqual(chatflags.names(group_absent), [])
+            self.assertFalse(chatflags.free(group_absent))
+
+            self.write_flags(
+                {group_names: {"names": ["Updated"], "free": True}},
+                mtime_ns=4_000_000_000,
+            )
+            self.assertEqual(chatflags.names(group_names), ["Updated"])
+            self.assertTrue(chatflags.free(group_names))
+
+            self.file.unlink()
+            self.assertEqual(chatflags.names(group_names), [])
+            self.assertFalse(chatflags.free(group_names))
+
 
 if __name__ == "__main__":
     unittest.main()

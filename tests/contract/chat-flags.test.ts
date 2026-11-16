@@ -179,4 +179,116 @@ describe('chat flags file', () => {
     expect(res.status).toBe(200)
     expect(readFileSync(join(dataDir, 'gateway', 'unavailable.txt'), 'utf8')).toBe(`${altUnavailable}\n`)
   })
+
+  it('includes names and free for active groups only, updates on writes, and omits inactive or disabled groups', async () => {
+    const { app, dataDir, siteUrl } = await startWithSite()
+    addAltPack(dataDir, 'Alt is away.')
+
+    const nameGroup = ensureChat(app.storage, { waId: '0000000000@g.us', type: 'group' })
+    setChatStatus(app.storage, { chatId: nameGroup.chatId, status: 'active', actor: 'test' })
+    const freeGroup = ensureChat(app.storage, { waId: '12345678901@g.us', type: 'group' })
+    setChatStatus(app.storage, { chatId: freeGroup.chatId, status: 'active', actor: 'test' })
+    const dm = ensureChat(app.storage, { waId: '1234567890@s.whatsapp.net', type: 'dm' })
+    setChatStatus(app.storage, { chatId: dm.chatId, status: 'active', actor: 'test' })
+    const pendingGroup = ensureChat(app.storage, { waId: '123456789012@g.us', type: 'group' })
+
+    // Pending group and DM never receive group flags (names / free).
+    for (const scope of [pendingGroup.chatId, dm.chatId]) {
+      expect(
+        (await putSite(siteUrl, '/api/settings', { level: 'chat', scope, key: 'nameCall', value: true })).status
+      ).toBe(200)
+      expect(
+        (await putSite(siteUrl, '/api/settings', { level: 'chat', scope, key: 'freeResponse', value: true })).status
+      ).toBe(200)
+    }
+    expect(readFlags(dataDir)).toEqual({ version: 1, chats: {} })
+
+    // Enabling nameCall on an active group writes the bound pack's names.
+    expect(
+      (
+        await putSite(siteUrl, '/api/settings', {
+          level: 'chat',
+          scope: nameGroup.chatId,
+          key: 'nameCall',
+          value: true
+        })
+      ).status
+    ).toBe(200)
+    expect(readFlags(dataDir)).toEqual({
+      version: 1,
+      chats: {
+        '0000000000@g.us': { names: ['Example'] }
+      }
+    })
+
+    // Custom nameCall.names overrides the pack's names; enabling freeResponse adds free: true.
+    expect(
+      (
+        await putSite(siteUrl, '/api/settings', {
+          level: 'chat',
+          scope: nameGroup.chatId,
+          key: 'nameCall.names',
+          value: ['Taiga']
+        })
+      ).status
+    ).toBe(200)
+    expect(
+      (
+        await putSite(siteUrl, '/api/settings', {
+          level: 'chat',
+          scope: freeGroup.chatId,
+          key: 'freeResponse',
+          value: true
+        })
+      ).status
+    ).toBe(200)
+    expect(readFlags(dataDir)).toEqual({
+      version: 1,
+      chats: {
+        '0000000000@g.us': { names: ['Taiga'] },
+        '12345678901@g.us': { free: true }
+      }
+    })
+
+    // Clearing nameCall.names and switching character updates resolved names to the new pack.
+    expect(
+      (
+        await putSite(siteUrl, '/api/settings', {
+          level: 'chat',
+          scope: nameGroup.chatId,
+          key: 'nameCall.names',
+          value: null
+        })
+      ).status
+    ).toBe(200)
+    expect(
+      (
+        await putSite(siteUrl, '/api/settings', {
+          level: 'chat',
+          scope: nameGroup.chatId,
+          key: 'character',
+          value: 'alt'
+        })
+      ).status
+    ).toBe(200)
+    expect(readFlags(dataDir).chats['0000000000@g.us']).toEqual({ names: ['Alt'] })
+
+    // Turning nameCall off leaves the group out of chats.json.
+    expect(
+      (
+        await putSite(siteUrl, '/api/settings', {
+          level: 'chat',
+          scope: nameGroup.chatId,
+          key: 'nameCall',
+          value: false
+        })
+      ).status
+    ).toBe(200)
+    expect(readFlags(dataDir)).toEqual({
+      version: 1,
+      chats: {
+        '12345678901@g.us': { free: true }
+      }
+    })
+  })
 })

@@ -1,7 +1,7 @@
-"""AIRA's brain.chatflags for per-chat voice and reaction flags (docs/trd/system.md#chat-flags-file).
+"""AIRA's brain.chatflags for per-chat gateway flags (docs/trd/system.md#chat-flags-file).
 
 The core writes <AIRA_HOST_DATA_DIR>/gateway/chats.json with:
-{"version": 1, "chats": {"<whatsapp chat id>": {"voice": "all", "reactions": true}}}.
+{"version": 1, "chats": {"<whatsapp chat id>": {"voice": "all", "reactions": true, "names": ["Taiga"], "free": true}}}.
 
 This module caches the parsed chats map and reloads it only when the file's
 modification time changes. A missing, unreadable, or invalid file means
@@ -86,5 +86,24 @@ def reactions_on(chat_id: str | None) -> bool:
     """True when passive reactions are enabled for the chat."""
     try:
         return flags(chat_id).get("reactions") is True
+    except Exception:
+        return False
+
+
+def names(chat_id: str | None) -> list[str]:
+    """The chat's resolved name-call names, or [] when absent or unreadable."""
+    try:
+        raw = flags(chat_id).get("names")
+        if not isinstance(raw, list):
+            return []
+        return [item for item in raw if isinstance(item, str) and item.strip()]
+    except Exception:
+        return []
+
+
+def free(chat_id: str | None) -> bool:
+    """True when free response is enabled for the chat."""
+    try:
+        return flags(chat_id).get("free") is True
     except Exception:
         return False

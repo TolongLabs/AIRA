@@ -71,6 +71,45 @@ with tempfile.TemporaryDirectory() as d:
 '''
 
 
+NAME_CALL_FROM_CORE_TEST = '''import json, os, sys, tempfile
+from pathlib import Path
+sys.path.insert(0, str(Path(os.path.expanduser(os.environ.get("HERMES_HOME", "~/.hermes"))) / "scripts"))
+from brain import chatflags
+from gateway.platforms.whatsapp_common import WhatsAppBehaviorMixin as M
+with tempfile.TemporaryDirectory() as d:
+    (Path(d) / "gateway").mkdir()
+    (Path(d) / "gateway" / "chats.json").write_text(
+        json.dumps({
+            "version": 1,
+            "chats": {
+                "0000000000@g.us": {"names": ["Taiga"]},
+                "12345678901@g.us": {"free": True},
+            },
+        }),
+        encoding="utf-8",
+    )
+    os.environ["AIRA_HOST_DATA_DIR"] = d
+    assert chatflags.names("0000000000@g.us") == ["Taiga"]
+    assert chatflags.names("123456789012@g.us") == []
+    assert chatflags.free("12345678901@g.us") is True
+    assert chatflags.free("0000000000@g.us") is False
+    m = object.__new__(M)
+    m._mention_patterns = []
+    m._is_broadcast_chat = lambda _: False
+    m._is_group_allowed = lambda _: True
+    m._whatsapp_free_response_chats = lambda: set()
+    m._whatsapp_require_mention = lambda: True
+    m._message_is_reply_to_bot = lambda _: False
+    m._message_mentions_bot = lambda _: False
+    assert m._message_matches_mention_patterns({"chatId": "0000000000@g.us", "body": "TAIGA, hi"})
+    assert not m._message_matches_mention_patterns({"chatId": "0000000000@g.us", "body": "taigabox"})
+    assert m._should_process_message({"chatId": "0000000000@g.us", "isGroup": True, "body": "hey taiga!"})
+    assert not m._should_process_message({"chatId": "0000000000@g.us", "isGroup": True, "body": "hello"})
+    assert m._should_process_message({"chatId": "12345678901@g.us", "isGroup": True, "body": "hello"})
+    assert not m._should_process_message({"chatId": "123456789012@g.us", "isGroup": True, "body": "taiga"})
+'''
+
+
 def patches() -> list[dict]:
     """Every patch, in the order it is applied. Paths are relative to the gateway tree."""
     py = ["{python}", "-m", "py_compile", "{target}"]
@@ -441,6 +480,62 @@ async def test_reply_prefix_still_injected_when_text_in_history():
             "tests": [["{python}", "-c", VOICE_FROM_CORE_TEST]],
             "cwd": ".",
             "why": "WhatsApp voice mode was stored in gateway state instead of following the core's chats.json",
+        },
+        {
+            "name": "name-call-from-core",
+            "target": "gateway/platforms/whatsapp_common.py",
+            "present": "[aira] name-call-from-core",
+            "edits": (
+        ('''    def _message_matches_mention_patterns(self, data: Dict[str, Any]) -> bool:
+        if not self._mention_patterns:
+            return False
+        body = str(data.get("body") or "")
+        return any(pattern.search(body) for pattern in self._mention_patterns)
+''',
+         '''    def _message_matches_mention_patterns(self, data: Dict[str, Any]) -> bool:
+        body = str(data.get("body") or "")
+        if self._mention_patterns and any(pattern.search(body) for pattern in self._mention_patterns):
+            return True
+        # [aira] name-call-from-core: also wake on the chat's own name-call names from chats.json.
+        chat_id = str(data.get("chatId") or "")
+        if not chat_id or not body:
+            return False
+        try:
+            from brain import chatflags
+            chat_names = chatflags.names(chat_id)
+        except Exception:
+            return False
+        return any(
+            name and re.search(rf"(?<![^\\W_]){re.escape(name)}(?![^\\W_])", body, re.IGNORECASE)
+            for name in chat_names
+        )
+'''),
+        ('''        # Group messages: check mention / free-response settings
+        chat_id = str(data.get("chatId") or "")
+        if chat_id in self._whatsapp_free_response_chats():
+            return True
+        if not self._whatsapp_require_mention():
+            return True
+''',
+         '''        # Group messages: check mention / free-response settings
+        chat_id = str(data.get("chatId") or "")
+        if chat_id in self._whatsapp_free_response_chats():
+            return True
+        # [aira] name-call-from-core: wake on every message in a group with free: true in chats.json.
+        try:
+            from brain import chatflags
+            if chatflags.free(chat_id):
+                return True
+        except Exception:
+            pass
+        if not self._whatsapp_require_mention():
+            return True
+'''),
+    ),
+            "syntax": py,
+            "tests": [["{python}", "-c", NAME_CALL_FROM_CORE_TEST]],
+            "cwd": ".",
+            "why": "per-chat name-call names and free-response groups live in the core's chats.json",
         },
     ]
 
