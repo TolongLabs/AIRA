@@ -44,8 +44,8 @@ interface LoopState {
   model: string
   text?: string
   receipts: string[]
-  /** For a skill-style command: the one tool offered until it has been called. */
-  firstTool?: string
+  /** For commands: the named tools offered alone until each has been called once. */
+  firstTools: string[]
   /** A provider's state per step, keyed by the step's first tool call id. Kept for this turn only. */
   replays: Map<string, TurnState>
   /** The first failure of the loop. The agent kit must not swallow it. */
@@ -105,17 +105,18 @@ class SeamLlm extends BaseLlm {
 
   async *generateContentAsync(llmRequest: LlmRequest): AsyncGenerator<LlmResponse, void> {
     const { state } = this
+    const allowed = state.firstTools.length > 0 ? new Set(state.firstTools) : undefined
     const request: ModelRequest = {
       role: 'main',
       model: this.options.model,
       system: state.system,
       messages: [...state.messages, ...loopMessages(llmRequest.contents, (callId) => state.replays.get(callId))],
       // When a chain limit is reached, the tool list is withdrawn and the model answers with what it has.
-      // For a command, the named tool is the only one offered until it has been called.
+      // For commands, only the named tools not yet called are offered until each has been called once.
       tools: state.chainLimit
         ? []
         : state.tools
-            .filter((tool) => state.firstTool === undefined || tool.schema.name === state.firstTool)
+            .filter((tool) => allowed === undefined || allowed.has(tool.schema.name))
             .map((tool) => tool.schema),
       params: this.options.params ?? {}
     }
@@ -129,7 +130,7 @@ class SeamLlm extends BaseLlm {
       // A call to a tool that was not offered in this step is dropped.
       const toolCalls = state.chainLimit
         ? []
-        : response.toolCalls.filter((call) => state.firstTool === undefined || call.name === state.firstTool)
+        : response.toolCalls.filter((call) => allowed === undefined || allowed.has(call.name))
       if (toolCalls[0] && response.replay) state.replays.set(toolCalls[0].id, response.replay)
       if (toolCalls.length === 0) {
         if (response.text.trim() === '')
@@ -180,7 +181,8 @@ class SeamTool extends BaseTool {
       return { content: JSON.stringify({ error: 'refused', reason: 'the tool limit for this turn is reached' }) }
     }
     state.toolCalls += 1
-    if (state.firstTool === this.name) state.firstTool = undefined
+    const firstIndex = state.firstTools.indexOf(this.name)
+    if (firstIndex !== -1) state.firstTools.splice(firstIndex, 1)
     const callId = `${state.turnId}:${toolContext.functionCallId ?? state.toolCalls}`
     const started = now().getTime()
     try {
@@ -200,8 +202,9 @@ class SeamTool extends BaseTool {
 
 export function createApiRunner(options: ApiRunnerOptions): TurnRunner {
   return {
-    async run({ system, messages, tools, context, signal, firstTool }): Promise<RunResult> {
+    async run({ system, messages, tools, context, signal, firstTools }): Promise<RunResult> {
       const calls: ModelCallRecord[] = []
+      const offeredNames = new Set(tools.map((tool) => tool.schema.name))
       const state: LoopState = {
         system,
         messages,
@@ -216,8 +219,8 @@ export function createApiRunner(options: ApiRunnerOptions): TurnRunner {
         costUsd: 0,
         model: options.model,
         receipts: [],
-        // A command for a tool this chat is not offered has nothing to wait for.
-        firstTool: tools.some((tool) => tool.schema.name === firstTool) ? firstTool : undefined
+        // Commands for tools this chat is not offered have nothing to wait for.
+        firstTools: [...new Set(firstTools ?? [])].filter((name) => offeredNames.has(name))
       }
       const agent = new LlmAgent({
         name: 'turn',
