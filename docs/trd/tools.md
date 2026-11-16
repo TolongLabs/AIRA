@@ -255,6 +255,31 @@ library of about 2,100 notes (1,848 words, 240 patterns, 7 songs, 5 artists), wo
 Chinese meaning, and no chat with lessons switched on. Its migration follows the steps of the
 [memory migration](memory.md#migration). An artist note with no body has no row to become and is reported.
 
+### Owner Tools
+
+The owner's market and coding-session tools, ported into the core in TypeScript, with the same behaviour as the old
+Python (`plugins/markets`, `scripts/brain/markets.py`, `plugins/claudecode`). The state that host services still read
+stays in its host file, mounted into the container, so the `market-alerts.timer` and the `cc-relay` service keep
+working unchanged.
+
+| Tool              | Does                                                                   | Mode | Changes State | Host State                                                  |
+| ----------------- | ---------------------------------------------------------------------- | ---- | ------------- | ----------------------------------------------------------- |
+| `market_quote`    | Live prices for one or more tickers, indices or coins                  | both | No            | None                                                        |
+| `market_analyse`  | One symbol: price, 52-week position, moving averages, volatility, news | both | No            | None                                                        |
+| `market_news`     | Recent headlines for a ticker or a market topic                        | both | No            | None                                                        |
+| `market_watch`    | List, add or remove a watchlist entry, holding or price alert          | both | Yes           | `owner.marketsConfig`, read and written by the alerts timer |
+| `claude_sessions` | What Claude Code sessions are doing on the host                        | both | No            | `owner.claudeProjectsDir`, read only                        |
+| `session_notices` | Turn this chat's Claude Code session notices on or off, or report them | both | Yes           | `owner.noticeRoutesFile`, read by the `cc-relay` service    |
+
+- **Gate:** every owner tool needs the chat setting `features.owner`, off by default. Code removes the tools from any
+  other chat before the model sees them.
+- **Providers:** the same keyless price and news sources the old code used. A provider call has the tool's timeout and
+  fails as a typed result, never as raw error text.
+- **Files:** each path is a container path under a read-write or read-only mount in compose. A path left empty turns
+  its tool off. A write replaces the file atomically (write a temporary file, then rename) and keeps the old file's
+  keys it does not own, so the host service that reads it never sees half a file.
+- `market_watch` and `session_notices` commit their receipt only after the file write succeeds.
+
 ### Changed From The Old Tool Set
 
 | Old Tool                        | Now                                                                                         |
