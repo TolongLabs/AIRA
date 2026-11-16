@@ -2,6 +2,7 @@ import type { LineKind } from '../character/schema.js'
 import type { CleanedReply, ReplyCleaner } from '../turn/types.js'
 import { parseBlocks } from './blocks.js'
 import { joinContent, splitBubbles } from './bubbles.js'
+import { LIST_COMMAND_TOOLS, RESEARCH_MAX_CHARS, RESEARCH_TOOLS, buildFooter, capitaliseParagraphs } from './footer.js'
 import { renderWhatsApp } from './render.js'
 
 // Seven-step reply cleaning chain (docs/trd/prompt-engine.md#cleaning-chain).
@@ -26,6 +27,12 @@ export interface CleanOptions {
   bubbleMaxChars: number
   maxBubbles: number
   media?: string[]
+  /** Tools that ran with outcome `ok` in this turn, in call order. They decide the bypasses and the footer. */
+  toolsOk?: string[]
+  /** For a skill-style command: the tool it names. */
+  commandTool?: string
+  /** The card's footer icon and labels. */
+  footer?: { icon?: string; labels?: Record<string, string> }
 }
 
 const ELLIPSIS = String.fromCodePoint(0x2026)
@@ -385,8 +392,18 @@ export function cleanReply(text: string, options: CleanOptions): CleanedReply {
       current = afterSpeaker
     }
 
-    if (!options.lengthBypass && options.shape.maxChars !== undefined) {
-      const afterLength = enforceLength(current, options.shape.maxChars)
+    const toolsOk = options.toolsOk ?? []
+    const listCommand = options.commandTool !== undefined && LIST_COMMAND_TOOLS.has(options.commandTool)
+    let maxChars = options.shape.maxChars
+    if (listCommand) {
+      maxChars = undefined
+      steps.push('bypass_command_list')
+    } else if (maxChars !== undefined && toolsOk.some((tool) => RESEARCH_TOOLS.has(tool))) {
+      if (maxChars < RESEARCH_MAX_CHARS) steps.push('bypass_research')
+      maxChars = Math.max(maxChars, RESEARCH_MAX_CHARS)
+    }
+    if (!options.lengthBypass && maxChars !== undefined) {
+      const afterLength = enforceLength(current, maxChars)
       if (afterLength !== current) {
         steps.push('length')
         current = afterLength
@@ -428,9 +445,17 @@ export function cleanReply(text: string, options: CleanOptions): CleanedReply {
     })
     if (trimmed) steps.push('bubbles_trimmed')
 
+    const capitalised = bubbles.map(capitaliseParagraphs)
+    if (capitalised.some((bubble, i) => bubble !== bubbles[i])) steps.push('capitals')
+    const footer = replacedBy ? undefined : buildFooter(toolsOk, options.footer)
+    if (footer !== undefined && capitalised.length > 0) {
+      capitalised[capitalised.length - 1] = `${capitalised[capitalised.length - 1]}\n\n${footer}`
+      steps.push('footer')
+    }
+
     return {
-      content: joinContent(bubbles, options.media),
-      bubbleCount: bubbles.length,
+      content: joinContent(capitalised, options.media),
+      bubbleCount: capitalised.length,
       steps,
       ...(replacedBy ? { replacedBy } : {}),
       ...(options.media ? { attachments: options.media } : {})
@@ -443,10 +468,12 @@ export function cleanReply(text: string, options: CleanOptions): CleanedReply {
 /** The pipeline seam. `toolNames` comes from the registry when it exists. */
 export function createReplyCleaner(
   config: { format: { bubbleMaxChars: number; maxBubbles: number; leakCheck: 'on' | 'off' } },
-  toolNames?: () => string[]
+  toolNames?: () => string[],
+  /** The tools that ran with outcome `ok` in a turn, in call order. */
+  toolsOk?: (turnId: string) => string[]
 ): ReplyCleaner {
   return {
-    clean({ text, context, built }) {
+    clean({ text, context, built, run }) {
       const shapeObj =
         typeof built.shape === 'object' && built.shape !== null ? (built.shape as Record<string, unknown>) : undefined
       const maxChars = typeof shapeObj?.maxChars === 'number' ? shapeObj.maxChars : undefined
@@ -464,7 +491,11 @@ export function createReplyCleaner(
         leakCheck: config.format.leakCheck === 'on',
         fallbackLine: context.character.lines.fallback,
         bubbleMaxChars: config.format.bubbleMaxChars,
-        maxBubbles: config.format.maxBubbles
+        maxBubbles: config.format.maxBubbles,
+        // A direct command runs no model and gets no footer.
+        toolsOk: toolsOk && run.calls.length > 0 ? toolsOk(context.turnId) : [],
+        ...(context.commandTool === undefined ? {} : { commandTool: context.commandTool }),
+        ...(context.character.card.toolFooter ? { footer: context.character.card.toolFooter } : {})
       })
     }
   }

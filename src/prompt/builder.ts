@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import type { Pack } from '../character/loader.js'
+import { DEFAULT_FOOTER_ICON, forReplay } from '../format/footer.js'
 import type { ModelMessage, PromptBlock } from '../models/types.js'
 import type { Storage } from '../storage/database.js'
 import type { PromptBuilder, TurnContext, TurnInput } from '../turn/types.js'
@@ -77,10 +78,11 @@ function formatMessages(input: TurnInput): ModelMessage[] {
   const isGroup = input.context.chat.type === 'group'
   const memberNumbers = new Map<string, number>()
   const messages: ModelMessage[] = []
+  const footerIcon = input.context.character.card.toolFooter?.icon ?? DEFAULT_FOOTER_ICON
 
   for (const message of input.window) {
     if (message.role === 'assistant') {
-      messages.push({ role: 'assistant', content: message.content })
+      messages.push({ role: 'assistant', content: forReplay(message.content, footerIcon) })
       continue
     }
     // A file sent with no caption has no text, and a model API refuses an empty message.

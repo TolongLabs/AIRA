@@ -406,14 +406,18 @@ describe('prompt builder', () => {
         window: [
           { role: 'user', senderId: 's_alice', content: 'first', at: '2026-01-02T03:00:00.000Z' },
           { role: 'user', senderId: 's_bob', content: 'second', at: '2026-01-02T03:01:00.000Z' },
-          { role: 'assistant', content: 'reply', at: '2026-01-02T03:02:00.000Z' },
+          {
+            role: 'assistant',
+            content: 'reply\n\u2063\nmore\n\n_🛠️ searched the web_\nMEDIA:/data/stickers/a.webp',
+            at: '2026-01-02T03:02:00.000Z'
+          },
           { role: 'user', senderId: 's_alice', content: 'third', at: '2026-01-02T03:03:00.000Z' }
         ]
       })
     )
     expect(groupBuilt.messages).toEqual([
       { role: 'user', content: '[member 1] first\n\n[member 2] second' },
-      { role: 'assistant', content: 'reply' },
+      { role: 'assistant', content: 'reply\nmore' },
       { role: 'user', content: '[member 1] third' }
     ])
 
