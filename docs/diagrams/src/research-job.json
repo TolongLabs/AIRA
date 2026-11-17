@@ -1,0 +1,89 @@
+{
+  "diagram_type": "sequence",
+  "messages": [
+    {
+      "from": "member",
+      "label": "/research <topic>",
+      "note": "Explicit only: code runs research_start; the model is never offered it",
+      "to": "turns",
+      "y": 160
+    },
+    {
+      "from": "turns",
+      "label": "Commit queued row",
+      "note": "Stores chat, requester, topic and wants_pdf; one job per chat",
+      "to": "jobs",
+      "y": 230
+    },
+    {
+      "from": "turns",
+      "label": "researchStarted reply",
+      "note": "Immediate short reply; empty topic gets the researchTopic line",
+      "to": "member",
+      "y": 300
+    },
+    {
+      "from": "worker",
+      "label": "tick leases next row",
+      "note": "A running row requeues once; a second stop marks it failed",
+      "to": "jobs",
+      "y": 370
+    },
+    {
+      "from": "worker",
+      "label": "Plan, search, read",
+      "note": "Up to 6 queries, 6 searches, 8 page reads; 3 model calls; 120 s cap",
+      "to": "exa",
+      "y": 440
+    },
+    {
+      "from": "exa",
+      "label": "Pages and mold",
+      "note": "validateFindings keeps read URLs only; long lists cut; a stopped job falls back to excerpts",
+      "to": "worker",
+      "y": 510
+    },
+    {
+      "from": "worker",
+      "label": "Store findings, mark done",
+      "note": "A failed job writes a failure row and the chat gets researchFailed",
+      "to": "jobs",
+      "y": 580
+    },
+    {
+      "from": "turns",
+      "label": "Summary plus PDF offer",
+      "note": "wantsPdf renders at once; otherwise the offerPdf line stays open 30 min",
+      "to": "member",
+      "y": 650
+    },
+    {
+      "from": "member",
+      "label": "yes or /pdf",
+      "note": "Only the requester's whole-message answer counts; anything else is ordinary text",
+      "to": "turns",
+      "y": 720
+    },
+    {
+      "from": "turns",
+      "label": "PDF document",
+      "note": "An accepted offer renders through renderReport and delivers a MEDIA file",
+      "to": "member",
+      "y": 790
+    }
+  ],
+  "meta": {
+    "locale": "en",
+    "output": ".archify/research-job.html",
+    "quality_profile": "showcase",
+    "title": "Research Job, From Command To PDF Offer"
+  },
+  "participants": [
+    { "id": "member", "label": "Chat Member", "type": "external" },
+    { "id": "turns", "label": "TurnService", "type": "backend" },
+    { "id": "jobs", "label": "research_job Row", "type": "database" },
+    { "id": "worker", "label": "createResearchWorker", "type": "backend" },
+    { "id": "exa", "label": "Exa Search and Contents", "type": "external" }
+  ],
+  "schema_version": 1
+}

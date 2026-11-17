@@ -1,0 +1,76 @@
+{
+  "diagram_type": "workflow",
+  "edges": [
+    { "from": "doc", "id": "e1", "label": "validated doc", "to": "format" },
+    { "from": "notedoc", "id": "e2", "label": "second kind", "role": "branch", "to": "format" },
+    { "from": "format", "id": "e3", "label": "doc and profile", "to": "compile" },
+    { "from": "compile", "id": "e4", "label": "out.pdf", "to": "pdf" },
+    { "from": "pdf", "id": "e5", "label": "putFile stored", "to": "deliver" }
+  ],
+  "lanes": [
+    { "id": "docs", "label": "Document and Profile" },
+    { "id": "renderer", "label": "Typst Renderer" },
+    { "id": "delivery", "label": "Chat Delivery" }
+  ],
+  "mainPath": ["doc", "format", "compile", "pdf", "deliver"],
+  "meta": {
+    "locale": "en",
+    "output": ".archify/report-render.html",
+    "quality_profile": "showcase",
+    "title": "Report Render, From Document To PDF"
+  },
+  "nodes": [
+    {
+      "col": 0,
+      "id": "doc",
+      "label": "ReportDocument",
+      "lane": "docs",
+      "sublabel": "Validated findings mold",
+      "type": "backend",
+      "yOffset": -46
+    },
+    {
+      "col": 0,
+      "id": "notedoc",
+      "label": "NoteDocument",
+      "lane": "docs",
+      "sublabel": "Contract mold for /doc",
+      "tag": "Not built yet",
+      "type": "backend",
+      "yOffset": 46
+    },
+    {
+      "col": 1,
+      "id": "format",
+      "label": "Format Profile",
+      "lane": "docs",
+      "sublabel": "report.format or default",
+      "type": "backend"
+    },
+    {
+      "col": 2,
+      "id": "compile",
+      "label": "renderReport and Typst",
+      "lane": "renderer",
+      "sublabel": "Isolated env, 20 s, 1 MiB cap",
+      "type": "backend"
+    },
+    {
+      "col": 3,
+      "id": "pdf",
+      "label": "PDF File",
+      "lane": "renderer",
+      "sublabel": "At most 30 pages, 5 MB",
+      "type": "database"
+    },
+    {
+      "col": 4,
+      "id": "deliver",
+      "label": "MEDIA Document",
+      "lane": "delivery",
+      "sublabel": "Reply text, sticker, file",
+      "type": "backend"
+    }
+  ],
+  "schema_version": 2
+}

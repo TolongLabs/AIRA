@@ -34,6 +34,8 @@ command starts a job.
 4. **Row.** One `research_job` row commits before any search: chat, requester, topic, `wants_pdf`, state `queued`.
    The job runs on the job queue ([Persistence](storage.md#everything-in-flight-is-a-row)). A restart requeues a
    `running` job once; a second interruption marks it `failed` and the chat gets the pack's `researchFailed` line.
+   The worker leases the row (`src/research/worker.ts`), the bounded run plans, reads and synthesises
+   (`src/research/job.ts`), and the offer helper (`src/research/offer.ts`) opens and answers the PDF offer.
 5. **Plan.** One model call (the main role, structured output) writes 3 to 6 search queries for the topic.
 6. **Search and read.** Each query runs through the search port (Exa, 5 results). Code ranks results by how many
    queries found them, drops duplicates and private addresses, and reads the top 8 through the page reader (Exa
@@ -51,8 +53,15 @@ command starts a job.
 10. **Deliver.** The job stores the findings on its row, sets state `done`, and declares a one-time gateway job due at
     once in `gateway/schedule.json`, tagged `[AIRA-SCHEDULED v1 kind=research id=<job id>]`, as reminders do
     ([System](system.md#scheduled-turns)). The firing runs a `research` turn in the job's chat (see Delivery).
-11. **Limits.** A job that passes 120 s, or the monthly spend cap, stops and delivers what it has when it holds at
-    least one read source; else it fails with the `researchFailed` line.
+11. **Limits.** A job that passes 120 s, or the monthly spend cap, stops. With at least one read page it delivers
+    excerpt findings instead (see Excerpt Fallback); with none it fails with the `researchFailed` line.
+
+**Excerpt fallback.** When the deadline or the spend cap stops the job after at least one page was read, code builds
+the findings from page excerpts: each excerpt holds up to 300 characters, 3 key findings and 2 sections repeat
+excerpts when few pages were read, and one limitation says the research stopped at its limit. The excerpt object
+passes the same mold check. A stop with no page read fails instead.
+
+![A /research command from intake to the background job, the findings, and the PDF offer](../diagrams/research-job.svg)
 
 ## The Mold
 
@@ -70,6 +79,8 @@ The findings object is the only thing the model writes for a report. Code render
 
 The type lives in `src/render/types.ts` as `ReportDocument`, and its zod schema beside it. Research fills it; the
 renderer reads it. `NoteDocument` (see Documents) is the second kind; a future kind adds a new type beside them rather than changing either.
+
+**Not built yet:** the code defines only `ReportDocument`; `NoteDocument` is absent (src/render/types.ts:11-37).
 
 ## Delivery
 
@@ -110,17 +121,27 @@ While a job's offer is open, the next message in that chat from the requester is
    (`MEDIA:` line). The file is stored through `putFile`.
 6. `/report` is no longer this tool's command; it is kept for the member feedback form (#125).
 
+**Not built yet:** `make_report` still answers `/report` as a skill command and always writes a `.md` file; the
+`/doc` command, the format argument, and the `note.typ` template are absent (src/tools/core/report.ts:33;
+src/render/render.ts:72-85). [Tools](tools.md#tool-set) owns the command list.
+
 ## The Renderer
 
 `src/render/` turns a `ReportDocument` and a format profile into a PDF. It knows nothing about chats or research.
+
+![A document validated against its schema, rendered by Typst, and delivered](../diagrams/report-render.svg)
 
 - **Engine.** Typst, a single pinned binary installed in the image with its SHA-256 checked, as yt-dlp is. Code
   writes the document as JSON beside a template (`src/render/templates/report.typ`) and runs `typst compile` with no
   network, in a temporary folder under `/tmp`, with a 20 s timeout. Fonts ship in the image: Noto Sans and Noto Sans
   CJK SC, so Chinese and Japanese text render.
+
+- **Isolation.** The Typst process inherits only `PATH`, with a temporary `HOME`, `XDG_CACHE_HOME`,
+  `XDG_CONFIG_HOME` and `TMPDIR`. Stdout and stderr together are capped at 1 MiB; past it the render fails.
 - **Profile.** `ReportFormat`: page size (`A4` or `Letter`), accent colour, body font size (9 to 12 pt), a cover page
-  on or off, a sources appendix on or off, and an optional header line. Defaults live in `config.yml` under
-  `render.report`; the setting key `report.format` is reserved for a per-chat override that the owner site will edit.
+  on or off, a sources appendix on or off, and an optional header line. `config.yml` under `render.report` defaults
+  to `A4`, `#2f6fde`, 10.5 pt, cover on, sources appendix on, and an empty header. The setting key `report.format`
+  is reserved for a per-chat override that the owner site will edit.
 - **Output.** At most 30 pages and 5 MB; past either, the render fails and the turn says so in the pack's error line.
   The PDF is stored through `putFile` in the `file` table with the files retention, named from the title.
 - **Text safety.** The template prints every field as plain text. No field is evaluated as Typst markup, so a page's
@@ -136,6 +157,8 @@ While a job's offer is open, the next message in that chat from the requester is
 | `research.offerMinutes`  | 30      | How long the PDF offer stays open |
 | `render.report.pageSize` | `A4`    | Default page size                 |
 | `render.timeoutMs`       | 20000   | One PDF render                    |
+| `render.maxPages`        | 30      | Page cap for one PDF render       |
+| `render.maxBytes`        | 5242880 | Byte cap for one PDF (5 MiB)      |
 
 ## Tests
 
