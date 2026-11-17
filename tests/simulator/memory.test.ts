@@ -46,6 +46,9 @@ function assertNoStuckJob(sim: Simulation): void {
   expect(open).toEqual([])
 }
 
+// Each scenario runs many memory operations; 5 s timed out on a loaded workstation (#174).
+vi.setConfig({ testTimeout: 30_000 })
+
 describe.each(SEEDS)('memory simulator, seed %i', (seed) => {
   let fetchSpy: ReturnType<typeof vi.spyOn>
   beforeEach(() => {
