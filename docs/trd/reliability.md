@@ -4,16 +4,22 @@ Who gets a turn, what stops one, how failures are contained, and how mute and qu
 
 ## Turn Admission
 
-Checked in this order at step 3 of a turn. The first failing check ends the turn with the stated outcome.
+![Turn admission: arrival, replay, batching, queueing, claim, newest-only reply](../diagrams/turn-admission.svg)
 
-| #   | Check                                                            | Outcome When It Fails                              |
-| --- | ---------------------------------------------------------------- | -------------------------------------------------- |
-| 1   | Chat is known and bound to a valid character                     | No reply. Failure record and operator alert.       |
-| 2   | Sender is allowed in this chat                                   | No reply. Record only.                             |
-| 3   | Group message is addressed to AIRA, or the chat is free response | No reply. No record beyond the gateway's.          |
-| 4   | Scheduled turn, and the chat is muted or in quiet hours          | No send. Record with reason `muted` or `quiet`.    |
-| 5   | One turn per chat                                                | The message joins the pending batch for that chat. |
-| 6   | Spend cap                                                        | The pack's limit line.                             |
+Admission runs in two places. The per-chat queue serialises turns before a turn opens. Resolve and the checks
+below run inside the turn, in this order. The first failing check ends the turn with the stated outcome.
+
+| #   | Check                                                              | Outcome When It Fails                              |
+| --- | ------------------------------------------------------------------ | -------------------------------------------------- |
+| 1   | One turn per chat. The queue holds this rule before any turn opens | The message joins the pending batch for that chat. |
+| 2   | Chat is known, active, and bound to a valid character              | No reply. Failure record and operator alert.       |
+| 3   | Sender is allowed in this chat. Scheduled turns skip this check    | No reply. Record only.                             |
+| 4   | Delivery allowed for its kind; replies and research always pass    | No send. Record with reason `muted` or `quiet`.    |
+| 5   | Spend cap                                                          | The pack's limit line.                             |
+
+- **Group addressing is the gateway's.** The core runs no mention, reply, or free-response check. The gateway
+  forwards only addressed group messages, and the core answers every group message it receives. See
+  [System](system.md#gateway-contract).
 
 ## Mute And Quiet
 
@@ -24,20 +30,35 @@ Checked in this order at step 3 of a turn. The first failing check ends the turn
 - **It runs twice for scheduled turns:** at admission, and again immediately before the reply is returned, because a
   mute can arrive while the turn runs.
 - A reminder a member set for themselves fires during quiet hours but not during a mute they set.
+- Research deliveries always pass this check, like replies.
 
 ## Batching
 
-Messages that arrive while a turn runs are held and merged into the next turn for that chat. Messages that arrive
-within `turn.batchMs` of each other, before a turn starts, form one turn. A photo with no caption waits
-`turn.mediaWaitMs` for a following text.
+One turn runs per chat. Messages that arrive while a turn runs wait in that chat's pending batch. The next turn
+starts at once when the running turn ends: its messages have waited already.
 
-- The wait before a turn starts is at most three times `turn.batchMs`, however many messages keep arriving.
-- A turn that follows a running turn starts at once: its messages have waited already.
-- One turn sends one reply. It is returned for the newest message of the turn. The requests of the other merged
-- A message that starts with a slash command is never merged. It runs as its own turn, after the messages before it
-  and before the messages after it. A turn claims only the messages up to its newest one.
-  messages get an empty reply, and a repeat of one of them gets an empty reply too.
-- A repeat of a message whose turn is still running waits for that turn and gets its reply.
+- Before a turn starts, each new message restarts the batch timer. The wait ends `turn.batchMs` after the latest
+  message, and at most three times `turn.batchMs` after the first pending message, however many keep arriving.
+- One merged turn answers only its newest message. The reply goes to the newest request. The other merged requests
+  get an empty reply, which the gateway seam sends as `NO_REPLY`. A repeat of one of them gets the same.
+- A message that holds command-shaped text (`/name` at the start or after whitespace) is never merged. It runs as
+  its own turn: the queue splits the pending batch before and after each command, and a turn claims only the
+  messages up to its newest one.
+- Attachments stay on their waiter in memory and are read after the batch starts. A restart answers from the stored
+  text but loses the attachment reference. There is no photo-specific wait: `turn.mediaWaitMs` is accepted by the
+  config schema but the turn pipeline does not read it.
+
+### Repeat Requests
+
+A repeated message id runs no second turn. The inbound row is keyed by chat and message id, so the same id is
+inserted once. A repeat resolves like this:
+
+| Repeat State | Outcome                                                                |
+| ------------ | ---------------------------------------------------------------------- |
+| Answered     | The stored reply, replayed.                                            |
+| Dropped      | Empty, replayed.                                                       |
+| Running      | Waits for that turn, then reads what it stored. Retried up to 3 times. |
+| Otherwise    | Runs again as a retry.                                                 |
 
 ## Deadlines
 
@@ -48,8 +69,9 @@ within `turn.batchMs` of each other, before a turn starts, form one turn. A phot
 | `judge.timeoutMs`        | 1500    | One judge call on the reply path                                         |
 | `media.timeoutMs`        | 30000   | One media read, at most two thirds of the time left in the turn deadline |
 
-When the turn deadline passes, the runner is cancelled and the turn ends with the pack's slow line. Nothing waits
-without a limit.
+When the turn deadline passes, the runner is cancelled and the turn ends with the pack's slow line. The runner has
+its own per-turn deadline timer: it fires at the deadline, the run aborts with a transient failure, and the timer
+is cleared in `finally`. Nothing waits without a limit.
 
 ## Containment
 
@@ -59,6 +81,8 @@ without a limit.
 - Background work runs outside the reply path and cannot delay a reply.
 - An uncaught exception is logged with the turn id, the turn ends with the pack's error line, and the process stays
   up.
+- Storage that fails around a turn resolves an empty reply and sends nothing. Nothing was acknowledged, so no pack
+  line is sent.
 
 ## Start-Up And Shutdown
 
@@ -68,7 +92,8 @@ without a limit.
 - The full start-up order, with the storage checks and the recovery pass, is in
   [Persistence](storage.md#start-up-sequence). A health endpoint reports ready only after all of it passes.
 - On SIGTERM the core stops admitting turns, lets running turns finish up to `shutdown.graceMs`, releases its job
-  leases and closes the database. See [Persistence](storage.md#shutdown).
+  leases and closes the database. See [Persistence](storage.md#shutdown). Drain starts each queued batch at once,
+  then waits for the running turns or the grace timeout.
 
 ## Operator Alerts
 
@@ -81,9 +106,15 @@ after its last retry, spend at 80% and 100%, migration or deploy health failure.
 
 ## Configuration
 
-| Key                | Default | Effect                                 |
-| ------------------ | ------- | -------------------------------------- |
-| `turn.batchMs`     | 1500    | Window that merges quick messages      |
-| `turn.mediaWaitMs` | 8000    | Wait for a caption after a bare photo  |
-| `shutdown.graceMs` | 20000   | Time for running turns at shutdown     |
-| `alerts.minGapMs`  | 900000  | Minimum gap between alerts of one kind |
+| Key                  | Default             | Effect                                                        |
+| -------------------- | ------------------- | ------------------------------------------------------------- |
+| `turn.batchMs`       | 1500                | Window that merges quick messages                             |
+| `shutdown.graceMs`   | 20000               | Time for running turns at shutdown                            |
+| `alerts.minGapMs`    | 900000              | Minimum gap between alerts of one kind                        |
+| `records.windowDays` | Set in `config.yml` | Window rows older than this are not read                      |
+| `maxWindowMessages`  | 40                  | Cap on window rows read per turn; the app leaves this default |
+
+Code lives in `src/turn/pipeline.ts` (queueing, admission, batching, deadlines), `src/turn/deliver.ts` (the
+delivery rule), `src/turn/window.ts` (claims and reads), and `src/storage/turns.ts` (inbound rows, open and close).
+Window mechanics (claims, ordering, replay of merged messages) are owned by
+[System](system.md#gateway-contract).
