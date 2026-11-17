@@ -363,9 +363,10 @@ the post's image, and then to its text only. A remote audio download over 600 se
 The post's text, author, most-liked replies and media enter block 4 as lines with its platform, author, date, reply
 count and canonical URL (`src/media/turn-media.ts`).
 
-A link read at intake is not opened again in the same turn: `read_page` and `read_post` refuse its canonical URL
-with kind `refused`, and the link note tells the model it is already open. A link whose watch or read failed is not
-refused, so the model may read the page instead, and the footer then shows a page read. The turn records the URL so
+A link whose video or image intake watched is not opened again in the same turn: `read_post` and `read_page` refuse
+its canonical URL with kind `refused`, and the refusal tells the model the content is already in its context. A link
+intake read as text only, or whose watch failed, stays open, so the model may fetch the post's replies and media;
+the footer then shows that read as well. The turn records the URL so
 the tools know it (`src/turn/pipeline.ts`).
 
 ### Limits
