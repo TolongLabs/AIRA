@@ -3,7 +3,10 @@ import { appendFile, mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { DeployRecord, Release, UpdaterOps } from './update.js'
 
-export const DOCKER_PULL_TIMEOUT_MS = 8 * 60_000
+/** One pull attempt. A fresh tag sometimes stalls on its first connection; a new attempt usually finishes quickly. */
+export const DOCKER_PULL_TIMEOUT_MS = 3 * 60_000
+/** Attempts per deploy, so a pull gives up after at most 9 minutes. */
+export const DOCKER_PULL_ATTEMPTS = 3
 export const DOCKER_TIMEOUT_MS = 90_000
 export const KILL_GRACE_MS = 5_000
 export const SYNTHETIC_TURN_TIMEOUT_MS = 60_000
@@ -283,7 +286,17 @@ export function createRealOps(options: RealOpsOptions): UpdaterOps {
     },
 
     async pull(version: string): Promise<void> {
-      await execChecked(run, 'docker', ['pull', `${options.image}:${version}`])
+      let lastError: unknown
+      for (let attempt = 1; attempt <= DOCKER_PULL_ATTEMPTS; attempt += 1) {
+        try {
+          await execChecked(run, 'docker', ['pull', `${options.image}:${version}`])
+          return
+        } catch (error) {
+          lastError = error
+          if (attempt < DOCKER_PULL_ATTEMPTS) process.stdout.write(`deploy: pull attempt ${attempt} failed, retrying\n`)
+        }
+      }
+      throw lastError
     },
 
     async start(version: string): Promise<void> {
