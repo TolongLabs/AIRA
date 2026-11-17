@@ -85,6 +85,7 @@ The primary key is `(level, scope, key)`. Deleting a row at a level restores inh
 | `features.reports`       | Boolean                                                                           | `true`                  |
 | `features.research`      | Boolean: `/research` jobs and their PDF reports                                   | `true`                  |
 | `report.format`          | Reserved: a per-chat report format profile ([Research](research.md#the-renderer)) | unset: `render.report`  |
+| `report.defaultFormat`   | `pdf` or `markdown`: the format of `/doc` when the message names none             | `pdf`                   |
 | `features.owner`         | Boolean: the owner's market and coding-session tools                              | `false`                 |
 | `features.toolFooter`    | Boolean                                                                           | `true`                  |
 | `nameCall`               | Boolean: answer a group message that only names the character                     | `false`                 |
