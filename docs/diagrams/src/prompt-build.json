@@ -1,0 +1,50 @@
+{
+  "activations": [
+    { "from": 160, "participant": "builder", "to": 633 },
+    { "from": 204, "participant": "packs", "to": 270 },
+    { "from": 314, "participant": "mood", "to": 413 },
+    { "from": 358, "participant": "judge", "to": 413 },
+    { "from": 457, "participant": "state", "to": 501 },
+    { "from": 541, "participant": "state", "to": 553 }
+  ],
+  "diagram_type": "sequence",
+  "messages": [
+    { "from": "turn", "label": "window, settings, character", "to": "builder", "y": 160 },
+    {
+      "from": "builder",
+      "label": "loadPack: card, moods, lines",
+      "note": "Data wins; faults listed.",
+      "to": "packs",
+      "y": 204
+    },
+    { "from": "packs", "label": "pack or PackError", "to": "builder", "variant": "return", "y": 270 },
+    { "from": "builder", "label": "score newest 3", "note": "Newer weighs most.", "to": "mood", "y": 314 },
+    { "from": "mood", "label": "moods plus messages", "note": "Odds must clear minimum.", "to": "judge", "y": 358 },
+    { "from": "judge", "label": "mood or rule result", "to": "mood", "variant": "return", "y": 413 },
+    { "from": "builder", "label": "get opener, ending", "to": "state", "y": 457 },
+    { "from": "state", "label": "last values", "to": "builder", "variant": "return", "y": 501 },
+    { "from": "builder", "label": "save opener, ending", "to": "state", "y": 545 },
+    {
+      "from": "builder",
+      "label": "blocks 1-6, messages",
+      "note": "Recall joins block 4; shape is last.",
+      "to": "prompt",
+      "y": 589
+    }
+  ],
+  "meta": {
+    "output": ".archify/prompt-build.html",
+    "quality_profile": "showcase",
+    "title": "Prompt Build: From Turn Input to Model Input"
+  },
+  "participants": [
+    { "id": "turn", "label": "Turn Input", "sublabel": "chat window", "type": "external" },
+    { "id": "builder", "label": "PromptBuilder", "sublabel": "makes the prompt", "type": "backend" },
+    { "id": "packs", "label": "loadPack", "sublabel": "card, moods, lines", "type": "backend" },
+    { "id": "mood", "label": "detectMood", "sublabel": "rules then judge", "type": "backend" },
+    { "id": "judge", "label": "Mood Judge", "sublabel": "mood and odds", "type": "backend" },
+    { "id": "state", "label": "chat_state", "sublabel": "openers, endings", "type": "database" },
+    { "id": "prompt", "label": "Model Input", "sublabel": "blocks, messages", "type": "external" }
+  ],
+  "schema_version": 1
+}
