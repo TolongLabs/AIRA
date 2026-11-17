@@ -33,9 +33,20 @@ llm:
 - `subscription` runs the `claude` program on the owner's login through the host runner service.
 - Both transports run the main role on the same `llm.main.model` at the same `llm.main.effort`. Only the way the
   model is reached differs.
-- The launch default is the faster transport in the benchmark (**Spike S-4**). Until then it is `api`.
-- The launch models above hold until the benchmark (#28) compares latency and output. Claude Sonnet 5.5 is the
-  candidate for a later main model.
+- The launch default is `api`, the faster transport in the benchmark (S-4, measured on dev2, 17 Nov 2026, same image,
+  same model `claude-haiku-5-5` at `medium`, one chat per set; latency from arrival to return, including the 1.5 s
+  batch wait):
+
+  | Set              | API p50 / p90 | Subscription p50 / p90 |
+  | ---------------- | ------------- | ---------------------- |
+  | Casual, 12 turns | 3.2 s / 3.4 s | 5.5 s / 5.9 s          |
+  | Tool, 8 turns    | 6.9 s / 9.0 s | 5.8 s / 8.9 s          |
+
+  Both delivered every turn. The subscription runner adds about 2.3 s to a casual turn, the program's start-up, and
+  ties on tool turns. The subscription runner stays available as `llm.transport: subscription` with the host runner
+  in `deploy/host-runner/`, which is not installed on dev2.
+
+- The launch models above hold. Claude Sonnet 5.5 is the candidate for a later main model.
 
 ## Providers And Effort
 
@@ -129,7 +140,7 @@ token. The service answers with the program's output lines as they arrive, one J
 - The program starts with: print mode, stream output, no built-in tools, no settings sources, no saved session, no
   slash commands, and only the tool server named in the request. The prompt is written to its standard input.
 - The program takes one prompt, not a list of messages. The core writes the earlier messages of the window as a
-  labelled transcript and the messages this turn answers after it (**Assumption A-7**, the tool names confirmed).
+  labelled transcript and the messages this turn answers after it (A-7, confirmed by the S-4 benchmark, 17 Nov 2026).
 - The last output line of type `result` holds the reply text, the token counts and the estimated cost.
 - A failed run is a `result` line with `is_error` true, even when its `subtype` says `success`. Its kind comes from
   `api_error_status` (429 or 529 is a rate limit, 401 or 403 is auth), then from the program's own `error` on the
@@ -153,7 +164,7 @@ token. The service answers with the program's output lines as they arrive, one J
 - For a skill-style command, the named tool is the only one listed until it has been called.
 - Tool calls arrive as JSON bodies of at most 1 MiB. A larger declared or streamed body is refused with 413.
 - The program shows a tool to the model under a prefixed name. The prompt's tool list is written with the same
-  prefix on this transport (**Assumption A-7**, the tool names confirmed).
+  prefix on this transport (A-7, confirmed by the S-4 benchmark, 17 Nov 2026).
 
 ## Failure Kinds
 
