@@ -1,0 +1,173 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Social Readers",
+    "quality_profile": "showcase",
+    "output": ".archify/social-readers.html"
+  },
+  "lanes": [
+    {
+      "id": "safety",
+      "label": "URL and Safety"
+    },
+    {
+      "id": "posts",
+      "label": "Post Readers"
+    },
+    {
+      "id": "replies",
+      "label": "Reply Readers"
+    },
+    {
+      "id": "serve",
+      "label": "Cache and Serve"
+    }
+  ],
+  "mainPath": ["parse", "fetch", "direct", "extract", "cache"],
+  "nodes": [
+    {
+      "id": "parse",
+      "lane": "safety",
+      "col": 0,
+      "type": "security",
+      "label": "Normalise Post URL",
+      "sublabel": "parseSocialPostUrl: https, 8"
+    },
+    {
+      "id": "fetch",
+      "lane": "safety",
+      "col": 1,
+      "type": "security",
+      "label": "Safe Fetch Only",
+      "sublabel": "checkedFetcher: no redirects"
+    },
+    {
+      "id": "direct",
+      "lane": "posts",
+      "col": 2,
+      "type": "cloud",
+      "label": "Direct APIs and Pages",
+      "sublabel": "X, Bluesky, Threads, RSS"
+    },
+    {
+      "id": "extract",
+      "lane": "posts",
+      "col": 3,
+      "type": "cloud",
+      "label": "yt-dlp Extraction",
+      "sublabel": "runYtDlp: isolated, 2 MiB"
+    },
+    {
+      "id": "oembed",
+      "lane": "posts",
+      "col": 4,
+      "type": "cloud",
+      "label": "YouTube oEmbed Fallback",
+      "sublabel": "title, author fallback"
+    },
+    {
+      "id": "dispatch",
+      "lane": "replies",
+      "col": 3,
+      "type": "backend",
+      "label": "Dispatch Per Platform",
+      "sublabel": "ReplyReader: 8, 1 timeout"
+    },
+    {
+      "id": "rank",
+      "lane": "replies",
+      "col": 4,
+      "type": "backend",
+      "label": "Rank and Shape",
+      "sublabel": "rankReplies: likes, cap"
+    },
+    {
+      "id": "cache",
+      "lane": "serve",
+      "col": 4,
+      "type": "database",
+      "label": "Cache Successes",
+      "sublabel": "TTL, entry cap"
+    },
+    {
+      "id": "port",
+      "lane": "serve",
+      "col": 5,
+      "type": "backend",
+      "label": "Serve Tool and Intake",
+      "sublabel": "createSocialPostPort"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "parse",
+      "to": "fetch",
+      "label": "target"
+    },
+    {
+      "id": "e2",
+      "from": "fetch",
+      "to": "direct",
+      "label": "allowed host"
+    },
+    {
+      "id": "e3",
+      "from": "direct",
+      "to": "cache",
+      "label": "feed post, no video",
+      "role": "branch"
+    },
+    {
+      "id": "e4",
+      "from": "direct",
+      "to": "extract",
+      "label": "video or other platform"
+    },
+    {
+      "id": "e5",
+      "from": "extract",
+      "to": "cache",
+      "label": "found"
+    },
+    {
+      "id": "e6",
+      "from": "extract",
+      "to": "oembed",
+      "label": "YouTube failed",
+      "role": "error"
+    },
+    {
+      "id": "e7",
+      "from": "oembed",
+      "to": "cache",
+      "label": "title and author"
+    },
+    {
+      "id": "e8",
+      "from": "cache",
+      "to": "dispatch",
+      "label": "same target",
+      "role": "branch"
+    },
+    {
+      "id": "e9",
+      "from": "dispatch",
+      "to": "rank",
+      "label": "candidates"
+    },
+    {
+      "id": "e10",
+      "from": "rank",
+      "to": "port",
+      "label": "replies"
+    },
+    {
+      "id": "e11",
+      "from": "cache",
+      "to": "port",
+      "label": "post"
+    }
+  ]
+}

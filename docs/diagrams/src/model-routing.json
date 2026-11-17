@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Model Routing",
+    "quality_profile": "showcase",
+    "output": ".archify/model-routing.html"
+  },
+  "participants": [
+    {
+      "id": "runner",
+      "type": "backend",
+      "label": "Turn Runner",
+      "sublabel": "API + subscription runners"
+    },
+    {
+      "id": "routed",
+      "type": "backend",
+      "label": "Routed Client",
+      "sublabel": "createRoutedClient, callTarget"
+    },
+    {
+      "id": "provider",
+      "type": "cloud",
+      "label": "Provider Client",
+      "sublabel": "Anthropic, OpenAI-compatible"
+    },
+    {
+      "id": "breaker",
+      "type": "backend",
+      "label": "Breaker",
+      "sublabel": "createBreaker, per role"
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "Spend and Records",
+      "sublabel": "addSpend, onCall"
+    }
+  ],
+  "messages": [
+    {
+      "id": "m1",
+      "from": "runner",
+      "to": "routed",
+      "y": 160,
+      "label": "call(request, signal)"
+    },
+    {
+      "id": "m2",
+      "from": "routed",
+      "to": "store",
+      "y": 220,
+      "label": "spendState: replies allowed?",
+      "note": "At 100% of llm.monthlyBudgetUsd it throws budget and no provider is called. A budget of 0 or less skips the check."
+    },
+    {
+      "id": "m3",
+      "from": "routed",
+      "to": "breaker",
+      "y": 300,
+      "label": "isOpen(main)?",
+      "note": "An open breaker skips the role. Breaker state is process-wide, not per chat."
+    },
+    {
+      "id": "m4",
+      "from": "routed",
+      "to": "provider",
+      "y": 380,
+      "label": "callTarget(main), attempt 1"
+    },
+    {
+      "id": "m5",
+      "from": "provider",
+      "to": "routed",
+      "y": 440,
+      "label": "response: usage and cost",
+      "variant": "return"
+    },
+    {
+      "id": "m6",
+      "from": "routed",
+      "to": "store",
+      "y": 510,
+      "label": "onCall and addSpend per attempt",
+      "note": "Every attempt is recorded, success or failure. Subscription transport records cost but does not count it."
+    },
+    {
+      "id": "m7",
+      "from": "routed",
+      "to": "provider",
+      "y": 590,
+      "label": "retry transient, 250ms doubling, at most 2",
+      "variant": "emphasis",
+      "note": "Malformed gets one retry. Refusal and budget throw. The turn signal cuts waits short."
+    },
+    {
+      "id": "m8",
+      "from": "routed",
+      "to": "breaker",
+      "y": 670,
+      "label": "open(role) on rate_limit or auth",
+      "note": "Auth also alerts the operator through onAuthFailure."
+    },
+    {
+      "id": "m9",
+      "from": "routed",
+      "to": "provider",
+      "y": 740,
+      "label": "callTarget(fallback), same request",
+      "variant": "emphasis",
+      "note": "Same prompt and tools, fallback model. If both roles fail the turn ends with the pack error line."
+    }
+  ]
+}
