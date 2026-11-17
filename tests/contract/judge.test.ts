@@ -46,6 +46,32 @@ describe('the judge client', () => {
     await expect(judge.ask('t', { a: { type: 'noul', instructions: 'q' } }, signal())).rejects.toMatchObject({ kind })
   })
 
+  it('reports an aborted request once even if the transport ignores cancellation and resolves later', async () => {
+    let finish: (response: Response) => void = () => {}
+    const onCall = vi.fn()
+    const judge = createSystemOneClient({
+      apiKey: key,
+      model: 'judge-test',
+      fetch: vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            finish = resolve
+          })
+      ) as typeof fetch,
+      onCall
+    })
+    const controller = new AbortController()
+    const pending = judge.ask('invented input', { a: { type: 'noul', instructions: 'q' } }, controller.signal)
+    controller.abort()
+    await expect(pending).rejects.toMatchObject({ kind: 'transient' })
+    expect(onCall).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ failureKind: 'transient', durationMs: expect.any(Number) })
+    )
+    finish(new Response(JSON.stringify({ answers: { a: { type: 'noul', noul: 0.8 } } })))
+    await Promise.resolve()
+    expect(onCall).toHaveBeenCalledTimes(1)
+  })
+
   it('rejects a reply with no answer, an answer of another type, or a probability out of range', async () => {
     const question = { a: { type: 'noul' as const, instructions: 'q' } }
     for (const reply of [

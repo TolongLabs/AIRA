@@ -1,6 +1,9 @@
+import { randomUUID } from 'node:crypto'
 import { closeSync, fsyncSync, mkdirSync, openSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import Database from 'better-sqlite3'
+import { type Redactor, createRedactor } from '../records/redact.js'
+import { endJobRun, recordFailure, startJobRun } from '../records/turn-record.js'
 import { type Db, type Storage, isoNow } from './database.js'
 import { insertFailure } from './failures.js'
 
@@ -68,13 +71,42 @@ function verify(path: string, before: Map<string, number>, after: Map<string, nu
 
 /**
  * Takes one snapshot with the online backup and verifies it. An unverified snapshot is deleted and recorded as
- * backup_failed. Never throws for a failed snapshot; the result says what happened.
+ * backup_failed. Copy and verification faults return a failed result; setup or storage faults reject.
  */
 export async function takeSnapshot(
   storage: Storage,
   snapshotsDir: string,
   reason: SnapshotReason,
-  now: Clock = wallClock
+  now: Clock = wallClock,
+  options: { redactor?: Redactor; afterVerified?: () => void } = {}
+): Promise<SnapshotResult> {
+  const redactor = options.redactor ?? createRedactor()
+  const jobId = randomUUID()
+  let runId: number | undefined
+  try {
+    runId = storage.tx((db) => startJobRun(db, { kind: 'snapshot', jobId }, now))
+    const result = await copySnapshot(storage, snapshotsDir, reason, now, jobId, redactor)
+    if (result.state === 'verified') options.afterVerified?.()
+    const id = runId
+    storage.tx((db) => endJobRun(db, id, { outcome: result.state === 'verified' ? 'ok' : 'failed' }, now))
+    return result
+  } catch (error) {
+    const id = runId
+    storage.tx((db) => {
+      recordFailure(db, { jobId, stage: 'snapshot', kind: 'backup_failed', error, handledBy: 'backup' }, redactor, now)
+      if (id !== undefined) endJobRun(db, id, { outcome: 'failed' }, now)
+    })
+    throw error
+  }
+}
+
+async function copySnapshot(
+  storage: Storage,
+  snapshotsDir: string,
+  reason: SnapshotReason,
+  now: Clock,
+  jobId: string,
+  redactor: Redactor
 ): Promise<SnapshotResult> {
   mkdirSync(snapshotsDir, { recursive: true })
   const stamp = isoNow(now)
@@ -116,7 +148,11 @@ export async function takeSnapshot(
         isoNow(now),
         id
       )
-      insertFailure(db, { stage: 'snapshot', kind: 'backup_failed', message: detail, handledBy: 'backup' }, now)
+      insertFailure(
+        db,
+        { jobId, stage: 'snapshot', kind: 'backup_failed', message: redactor.scrub(detail), handledBy: 'backup' },
+        now
+      )
     })
     return { id, state: 'failed', file, detail }
   }
@@ -173,18 +209,30 @@ export function latestSnapshot(storage: Storage): string | undefined {
 export function startSnapshotTimer(
   storage: Storage,
   snapshotsDir: string,
-  options: { everyMin: number; keepDays: number; onResult?: (result: SnapshotResult) => void; now?: Clock }
+  options: {
+    everyMin: number
+    keepDays: number
+    onResult?: (result: SnapshotResult) => void
+    onError?: (error: unknown) => void
+    redactor?: Redactor
+    now?: Clock
+  }
 ): () => Promise<void> {
   let running: Promise<void> | undefined
   const tick = () => {
     if (running) return
-    running = takeSnapshot(storage, snapshotsDir, 'timer', options.now)
+    running = takeSnapshot(storage, snapshotsDir, 'timer', options.now, {
+      redactor: options.redactor,
+      afterVerified: () => {
+        pruneSnapshots(storage, snapshotsDir, options.keepDays, options.now)
+      }
+    })
       .then((result) => {
-        if (result.state === 'verified') pruneSnapshots(storage, snapshotsDir, options.keepDays, options.now)
+        if (result.state === 'failed') options.onError?.(new Error(result.detail ?? 'snapshot failed'))
         options.onResult?.(result)
       })
-      .catch(() => {
-        // takeSnapshot records its own failures. A fault here must not end the process.
+      .catch((error: unknown) => {
+        options.onError?.(error)
       })
       .finally(() => {
         running = undefined

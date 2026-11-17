@@ -1,10 +1,23 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { z } from 'zod'
 import type { MemoryJudge } from '../memory/types.js'
-import { ModelError } from '../models/types.js'
+import { ModelError, type ModelFailureKind } from '../models/types.js'
 import type { MoodJudge } from '../prompt/mood.js'
 
 // The judge model (docs/trd/models.md#roles): a hosted small model that answers typed questions about a text
 // with calibrated probabilities. It makes no text. Code decides on its numbers, and every caller has a timeout.
+
+/** Carries record ownership across concurrent turns and background attempts, without storing prompt data. */
+export const modelRecordContext = new AsyncLocalStorage<{ turnId?: string; jobId?: string }>()
+
+export interface JudgeCall {
+  turnId?: string
+  jobId?: string
+  model: string
+  startedAt: Date
+  durationMs: number
+  failureKind?: ModelFailureKind
+}
 
 export interface SystemOneOptions {
   apiKey: string
@@ -12,6 +25,8 @@ export interface SystemOneOptions {
   model: string
   baseUrl?: string
   fetch?: typeof fetch
+  onCall?: (call: JudgeCall) => void
+  now?: () => Date
 }
 
 export type JudgeQuestion =
@@ -42,7 +57,7 @@ const DEFAULT_BASE_URL = 'https://api.typesafe.ai'
 export function createSystemOneClient(options: SystemOneOptions): SystemOneClient {
   const send = options.fetch ?? fetch
   const endpoint = `${(options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '')}/v1/systemone`
-  return {
+  const client: SystemOneClient = {
     async ask(state, questions, signal) {
       let response: Response
       try {
@@ -80,6 +95,38 @@ export function createSystemOneClient(options: SystemOneOptions): SystemOneClien
         }
       }
       return parsed.data.answers
+    }
+  }
+  return {
+    async ask(state, questions, signal) {
+      const startedAt = (options.now ?? (() => new Date()))()
+      const start = performance.now()
+      let failureKind: ModelFailureKind | undefined
+      try {
+        // Race the signal too: a transport that ignores cancellation must still leave exactly one record.
+        if (signal.aborted) throw new ModelError('transient', 'judge request aborted')
+        let onAbort: () => void = () => {}
+        const aborted = new Promise<never>((_, reject) => {
+          onAbort = () => reject(new ModelError('transient', 'judge request aborted'))
+          signal.addEventListener('abort', onAbort, { once: true })
+        })
+        try {
+          return await Promise.race([client.ask(state, questions, signal), aborted])
+        } finally {
+          signal.removeEventListener('abort', onAbort)
+        }
+      } catch (error) {
+        failureKind = error instanceof ModelError ? error.kind : 'transient'
+        throw error
+      } finally {
+        options.onCall?.({
+          ...modelRecordContext.getStore(),
+          model: options.model,
+          startedAt,
+          durationMs: Math.max(0, Math.round(performance.now() - start)),
+          failureKind
+        })
+      }
     }
   }
 }

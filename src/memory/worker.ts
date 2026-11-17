@@ -1,8 +1,10 @@
+import { modelRecordContext } from '../judge/systemone.js'
 import { spendState } from '../models/spend.js'
 import { type ModelClient, ModelError } from '../models/types.js'
 import type { Logger } from '../records/logger.js'
+import { type Redactor, createRedactor } from '../records/redact.js'
+import { endJobRun, recordFailure, startJobRun } from '../records/turn-record.js'
 import type { Db, Storage } from '../storage/database.js'
-import { insertFailure } from '../storage/failures.js'
 import { type Job, completeJob, failJob, leaseNextJob } from '../storage/leases.js'
 import type { Alerter } from '../turn/alerts.js'
 import { type EpisodePayload, closeDueEpisodes } from './episodes.js'
@@ -31,6 +33,7 @@ export interface MemoryWorkerOptions {
   client: ModelClient
   /** Absent means nothing is admitted: the judge fails closed. */
   judge?: MemoryJudge
+  redactor?: Redactor
   logger: Logger
   alerter?: Alerter
   /** True while background work must wait, such as a critical disk level. */
@@ -59,6 +62,7 @@ class Terminal extends Error {
 
 export function createMemoryWorker(options: MemoryWorkerOptions): MemoryWorker {
   const { storage, config, client, judge, logger } = options
+  const redactor = options.redactor ?? createRedactor()
   const now = options.now ?? (() => new Date())
   const owner = options.owner ?? `memory-${process.pid}`
 
@@ -233,22 +237,15 @@ export function createMemoryWorker(options: MemoryWorkerOptions): MemoryWorker {
       now
     )
     if (state === undefined) return 'lost'
-    // The record holds a reason code only: never message text, a value or a model's words.
+    // Events keep reason codes; the failure keeps the redacted error and stack for every attempt.
     storage.tx((db) => {
       recordEvent(db, job.chatId, { jobId: job.jobId, step: 'job', outcome: 'failed', reason: code }, now)
-      if (state === 'failed') {
-        insertFailure(
-          db,
-          {
-            jobId: job.jobId,
-            stage: 'memory',
-            kind: 'memory_job_failed',
-            message: code,
-            handledBy: 'memory_job_failed'
-          },
-          now
-        )
-      }
+      recordFailure(
+        db,
+        { jobId: job.jobId, stage: 'memory', kind: 'memory_job_failed', error, handledBy: state },
+        redactor,
+        now
+      )
     })
     logger.warn('memory.job_failed', {
       job: job.jobId,
@@ -262,6 +259,8 @@ export function createMemoryWorker(options: MemoryWorkerOptions): MemoryWorker {
 
   const tick = async (): Promise<TickResult> => {
     let job: Job | undefined
+    let runId: number | undefined
+    let outcome: TickResult = 'lost'
     try {
       // From 80% of the monthly budget, background work stops before replies do. Jobs wait in the queue.
       if (options.paused?.() || !spendState(storage, config.llm.monthlyBudgetUsd, now).backgroundAllowed) {
@@ -274,19 +273,33 @@ export function createMemoryWorker(options: MemoryWorkerOptions): MemoryWorker {
       )
       job = leaseNextJob(storage, 'memory_job', { owner, leaseMs: LEASE_MS }, now)
       if (!job) return 'idle'
-      return await run(job)
+      const leased = job
+      runId = storage.tx((db) => startJobRun(db, { kind: 'memory', jobId: leased.jobId, chatId: leased.chatId }, now))
+      outcome = await modelRecordContext.run({ jobId: leased.jobId }, () => run(leased))
+      return outcome
     } catch (error) {
       if (!job) {
         logger.error('memory.tick_failed', { error })
         return 'idle'
       }
       try {
-        if (error instanceof Terminal) return fail(job, error.code, false, error)
-        if (error instanceof ModelError) return fail(job, `model_${error.kind}`, true, error)
-        return fail(job, 'internal', true, error)
+        outcome =
+          error instanceof Terminal
+            ? fail(job, error.code, false, error)
+            : fail(job, error instanceof ModelError ? `model_${error.kind}` : 'internal', true, error)
+        return outcome
       } catch (inner) {
         logger.error('memory.fail_failed', { job: job.jobId, error: inner })
         return 'lost'
+      }
+    } finally {
+      if (runId !== undefined) {
+        const id = runId
+        try {
+          storage.tx((db) => endJobRun(db, id, { outcome }, now))
+        } catch (error) {
+          logger.error('memory.run_record_failed', { error })
+        }
       }
     }
   }

@@ -457,9 +457,15 @@ describe('the memory worker (steps 4 to 10)', () => {
       attempts: 5
     })
     expect(alerts).toEqual(['memory_job_failed'])
-    expect(storage.read((db) => db.prepare("SELECT kind, message FROM failure WHERE stage = 'memory'").all())).toEqual([
-      { kind: 'memory_job_failed', message: 'model_malformed' }
-    ])
+    expect(
+      storage.read((db) => db.prepare("SELECT kind, message, stack FROM failure WHERE stage = 'memory'").all())
+    ).toEqual(
+      Array.from({ length: 5 }, () => ({
+        kind: 'memory_job_failed',
+        message: 'the extraction reply is not JSON',
+        stack: expect.stringContaining('the extraction reply is not JSON')
+      }))
+    )
     expect(itemsOf(storage, chatId)).toEqual([])
     clock.at = later(100_000)
     expect(await worker.tick()).toBe('idle')
