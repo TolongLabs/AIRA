@@ -537,6 +537,23 @@ async def test_reply_prefix_still_injected_when_text_in_history():
             "cwd": ".",
             "why": "per-chat name-call names and free-response groups live in the core's chats.json",
         },
+        {
+            "name": "name-call-only-from-core",
+            "target": "gateway/platforms/whatsapp_common.py",
+            "present": "[aira] name-call-only-from-core",
+            "edits": (
+        ('''        if self._mention_patterns and any(pattern.search(body) for pattern in self._mention_patterns):
+            return True
+        # [aira] name-call-from-core:''',
+         '''        # [aira] name-call-only-from-core: the global patterns no longer wake a WhatsApp chat. Only the names the
+        # core lists for a chat with name call on do, so a chat with it off never shows typing for a name.
+        # [aira] name-call-from-core:'''),
+    ),
+            "syntax": py,
+            "tests": [],
+            "cwd": ".",
+            "why": "the global name patterns woke every group, so a chat with name call off showed typing and sent nothing",
+        },
     ]
 
 
