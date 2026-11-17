@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   type DeployHostConfig,
   type DeployHostOps,
@@ -9,6 +9,7 @@ import {
   updateEnvContent,
   writeInstallEnv
 } from '../../scripts/deploy-host.js'
+import { DOCKER_PULL_TIMEOUT_MS, SYNTHETIC_TURN_TIMEOUT_MS, createRealOps } from '../../scripts/updater/ops.js'
 import type { DeployRecord } from '../../scripts/updater/update.js'
 import { tmpDir } from '../support/tmp.js'
 
@@ -116,6 +117,11 @@ const defaultConfig: DeployHostConfig = {
 }
 
 describe('runDeployHost', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
   it('executes the full deploy flow in contract order and alerts on success', async () => {
     const { ops, calls, records, alerts } = createFakeOps({
       activeTurnsQueue: [1, 0]
@@ -212,6 +218,212 @@ describe('runDeployHost', () => {
     })
     expect(alerts).toHaveLength(1)
     expect(alerts[0]).toContain('synthetic_turn_failed')
+  })
+
+  it('a stalled pull ends the deploy as pull_failed with the core untouched', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+
+    const dir = tmpDir()
+    const envFile = join(dir, '.env')
+    const recordFile = join(dir, 'deploys.jsonl')
+    const initialEnv = 'AIRA_IMAGE=ghcr.io/tolonglabs/aira\nAIRA_VERSION=sha-0000001\n'
+    writeFileSync(envFile, initialEnv, 'utf8')
+
+    const commands: string[][] = []
+    const alerts: string[] = []
+    let healthCall = 0
+
+    const baseOps = createRealOps({
+      image: 'ghcr.io/tolonglabs/aira',
+      repository: 'TolongLabs/AIRA',
+      composeFile: join(dir, 'compose.yml'),
+      service: 'aira',
+      coreUrl: 'http://127.0.0.1:9881',
+      recordFile,
+      run: async (_command, args, _env, options) => {
+        commands.push(args)
+        if (args.includes('images')) {
+          return {
+            code: 0,
+            stdout: JSON.stringify([{ Repository: 'ghcr.io/tolonglabs/aira', Tag: 'sha-0000001' }]),
+            stderr: ''
+          }
+        }
+        if (args[0] === 'pull') {
+          return new Promise((resolve) => {
+            options?.signal?.addEventListener(
+              'abort',
+              () => resolve({ code: 1, stdout: '', stderr: 'killed by SIGTERM' }),
+              { once: true }
+            )
+          })
+        }
+        return { code: 0, stdout: '', stderr: '' }
+      },
+      fetch: (async () => {
+        healthCall += 1
+        return new Response(
+          JSON.stringify({ status: 'ready', activeTurns: 0, snapshot: { id: healthCall, state: 'verified' } }),
+          { status: 200 }
+        )
+      }) as typeof fetch
+    })
+
+    const ops: DeployHostOps = {
+      ...baseOps,
+      writeEnv: (version) => writeInstallEnv(envFile, 'ghcr.io/tolonglabs/aira', version),
+      alert: async (message) => {
+        alerts.push(message)
+      }
+    }
+
+    const resultPromise = runDeployHost(ops, defaultConfig)
+    await vi.advanceTimersByTimeAsync(DOCKER_PULL_TIMEOUT_MS)
+    const result = await resultPromise
+
+    expect(result).toEqual({
+      action: 'failed',
+      from: 'sha-0000001',
+      to: 'sha-1234567',
+      reason: 'pull_failed'
+    })
+    expect(commands.some((args) => args.includes('up'))).toBe(false)
+    expect(readFileSync(envFile, 'utf8')).toBe(initialEnv)
+    const savedRecord = JSON.parse(readFileSync(recordFile, 'utf8').trim()) as DeployRecord
+    expect(savedRecord).toMatchObject({
+      from: 'sha-0000001',
+      to: 'sha-1234567',
+      outcome: 'failed_before_start',
+      reason: 'pull_failed'
+    })
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]).toContain('pull failed')
+  })
+
+  it('a synthetic turn that never answers counts as failed and rolls back', async () => {
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    const turnController = new AbortController()
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(turnController.signal)
+
+    const dir = tmpDir()
+    const envFile = join(dir, '.env')
+    const recordFile = join(dir, 'deploys.jsonl')
+    writeFileSync(envFile, 'AIRA_IMAGE=ghcr.io/tolonglabs/aira\nAIRA_VERSION=sha-0000001\n', 'utf8')
+
+    const upVersions: (string | undefined)[] = []
+    const alerts: string[] = []
+    let healthCall = 0
+
+    const baseOps = createRealOps({
+      image: 'ghcr.io/tolonglabs/aira',
+      repository: 'TolongLabs/AIRA',
+      composeFile: join(dir, 'compose.yml'),
+      service: 'aira',
+      coreUrl: 'http://127.0.0.1:9881',
+      recordFile,
+      run: async (_command, args, env) => {
+        if (args.includes('images')) {
+          return {
+            code: 0,
+            stdout: JSON.stringify([{ Repository: 'ghcr.io/tolonglabs/aira', Tag: 'sha-0000001' }]),
+            stderr: ''
+          }
+        }
+        if (args.includes('up')) {
+          upVersions.push(env?.['AIRA_VERSION'])
+        }
+        return { code: 0, stdout: '', stderr: '' }
+      },
+      fetch: ((input, init) => {
+        const url = String(input)
+        if (url.endsWith('/v1/chat/completions')) {
+          return new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener(
+              'abort',
+              () => reject(init.signal?.reason ?? new DOMException('timed out', 'TimeoutError')),
+              { once: true }
+            )
+            setTimeout(() => turnController.abort(new DOMException('timed out', 'TimeoutError')), 5)
+          })
+        }
+        healthCall += 1
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ status: 'ready', activeTurns: 0, snapshot: { id: healthCall, state: 'verified' } }),
+            { status: 200 }
+          )
+        )
+      }) as typeof fetch
+    })
+
+    const ops: DeployHostOps = {
+      ...baseOps,
+      writeEnv: (version) => writeInstallEnv(envFile, 'ghcr.io/tolonglabs/aira', version),
+      alert: async (message) => {
+        alerts.push(message)
+      }
+    }
+
+    const result = await runDeployHost(ops, defaultConfig)
+
+    expect(timeoutSpy).toHaveBeenCalledWith(SYNTHETIC_TURN_TIMEOUT_MS)
+    expect(result).toEqual({
+      action: 'rolled_back',
+      from: 'sha-0000001',
+      to: 'sha-1234567',
+      reason: 'synthetic_turn_failed'
+    })
+    expect(upVersions).toEqual(['sha-1234567', 'sha-0000001'])
+    expect(readFileSync(envFile, 'utf8')).toContain('AIRA_VERSION=sha-0000001')
+    const savedRecord = JSON.parse(readFileSync(recordFile, 'utf8').trim()) as DeployRecord
+    expect(savedRecord).toMatchObject({
+      from: 'sha-0000001',
+      to: 'sha-1234567',
+      outcome: 'rolled_back',
+      reason: 'synthetic_turn_failed'
+    })
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]).toContain('synthetic_turn_failed')
+  })
+
+  it('the deploy prints a start and done line for each step', async () => {
+    const chunks: string[] = []
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      chunks.push(String(chunk))
+      return true
+    })
+
+    const { ops } = createFakeOps({
+      activeTurnsQueue: [1, 0]
+    })
+
+    const result = await runDeployHost(ops, defaultConfig)
+    expect(result.action).toBe('deployed')
+
+    const lines = chunks.join('').split('\n').filter(Boolean)
+    expect(lines).toEqual([
+      'deploy: running-version start',
+      'deploy: running-version done 0s',
+      'deploy: idle-wait start',
+      'deploy: idle-wait done 2s',
+      'deploy: snapshot start',
+      'deploy: snapshot done 0s',
+      'deploy: pull sha-1234567 start',
+      'deploy: pull done 0s',
+      'deploy: env sha-1234567 start',
+      'deploy: env done 0s',
+      'deploy: recreate sha-1234567 start',
+      'deploy: recreate done 0s',
+      'deploy: health start',
+      'deploy: health done 0s',
+      'deploy: synthetic-turn start',
+      'deploy: synthetic-turn done 0s',
+      'deploy: prune start',
+      'deploy: prune done 0s',
+      'deploy: alert start',
+      'deploy: alert done 0s'
+    ])
   })
 })
 
