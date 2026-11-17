@@ -104,6 +104,7 @@ export const SETTING_KEYS: Record<string, SettingDefinition> = {
       .refine((names) => new Set(names.map((name) => name.toLowerCase())).size === names.length, 'names must be unique')
   },
   reactions: { schema: z.boolean(), default: false },
+  'reactions.chance': { schema: z.number().int().min(0).max(100), default: 33 },
   'commands.maxPerMessage': { schema: z.number().int().min(1).max(5), default: 1 },
   'features.owner': { schema: z.boolean(), default: false },
   footerEmoji: {

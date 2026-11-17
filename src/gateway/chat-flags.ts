@@ -13,6 +13,7 @@ import { resolveNames } from '../turn/name-call.js'
 export interface ChatFlagsEntry {
   voice?: 'all'
   reactions?: true
+  reactionChance?: number
   names?: string[]
   free?: true
 }
@@ -39,7 +40,10 @@ export function buildChatFlags(storage: Storage, packs?: PacksSource): ChatFlags
     if (chat.status !== 'active') continue
     const settings = resolveSettings(storage, chat)
     const voice = settings['features.voice']?.value === true
-    const reactions = settings['reactions']?.value === true
+    const muted = Boolean(settings['muted']?.value)
+    const reactions = settings['reactions']?.value === true && !muted
+    const chanceValue = settings['reactions.chance']?.value
+    const reactionChance = typeof chanceValue === 'number' ? chanceValue / 100 : 0.33
     const free = chat.type === 'group' && settings['freeResponse']?.value === true
     const nameCall = chat.type === 'group' && settings['nameCall']?.value === true
     let names: string[] = []
@@ -51,7 +55,10 @@ export function buildChatFlags(storage: Storage, packs?: PacksSource): ChatFlags
     if (!voice && !reactions && names.length === 0 && !free) continue
     const entry: ChatFlagsEntry = {}
     if (voice) entry.voice = 'all'
-    if (reactions) entry.reactions = true
+    if (reactions) {
+      entry.reactions = true
+      entry.reactionChance = reactionChance
+    }
     if (names.length > 0) entry.names = names
     if (free) entry.free = true
     chats[chat.waId] = entry

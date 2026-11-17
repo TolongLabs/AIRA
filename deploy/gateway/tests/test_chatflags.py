@@ -118,6 +118,57 @@ class ChatFlagsTest(unittest.TestCase):
             self.assertEqual(chatflags.names(group_names), [])
             self.assertFalse(chatflags.free(group_names))
 
+    def test_reaction_chance_reads_clamps_defaults_and_never_raises(self):
+        group_a = "0000000000@g.us"
+        group_b = "12345678901@g.us"
+
+        with self.env(""):
+            self.assertEqual(chatflags.reaction_chance(group_a), 0.33)
+            self.assertEqual(chatflags.reaction_chance(None), 0.33)
+
+        self.file.write_text("{bad json", encoding="utf-8")
+        with self.env(self.dir.name):
+            self.assertEqual(chatflags.reaction_chance(group_a), 0.33)
+
+        self.write_flags(
+            {
+                group_a: {"reactions": True, "reactionChance": 0.75},
+                group_b: {"reactions": True, "reactionChance": 0},
+            },
+            mtime_ns=5_000_000_000,
+        )
+        with self.env(self.dir.name):
+            self.assertEqual(chatflags.reaction_chance(group_a), 0.75)
+            self.assertEqual(chatflags.reaction_chance(group_b), 0.0)
+            self.assertEqual(chatflags.reaction_chance(group_a, default=0.9), 0.75)
+
+            self.write_flags(
+                {
+                    group_a: {"reactions": True, "reactionChance": 1.8},
+                    group_b: {"reactions": True, "reactionChance": -0.4},
+                },
+                mtime_ns=6_000_000_000,
+            )
+            self.assertEqual(chatflags.reaction_chance(group_a), 1.0)
+            self.assertEqual(chatflags.reaction_chance(group_b), 0.0)
+
+            self.write_flags(
+                {
+                    group_a: {"reactions": True, "reactionChance": True},
+                    group_b: {"reactions": True, "reactionChance": "0.5"},
+                },
+                mtime_ns=7_000_000_000,
+            )
+            self.assertEqual(chatflags.reaction_chance(group_a), 0.33)
+            self.assertEqual(chatflags.reaction_chance(group_b, default=0.5), 0.5)
+
+            self.file.write_text('{"version": 1, "chats": {"0000000000@g.us": {"reactionChance": NaN}}}', encoding="utf-8")
+            os.utime(self.file, ns=(8_000_000_000, 8_000_000_000))
+            self.assertEqual(chatflags.reaction_chance(group_a), 0.33)
+
+            self.file.unlink()
+            self.assertEqual(chatflags.reaction_chance(group_a), 0.33)
+
 
 if __name__ == "__main__":
     unittest.main()
