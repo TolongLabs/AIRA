@@ -102,6 +102,29 @@ describe('media.maxLinkVideoSeconds configuration', () => {
     const withoutKey = source.replace(/\n\s*maxLinkVideoSeconds:[^\n]*/, '')
     expect(parseConfig(withoutKey).media.maxLinkVideoSeconds).toBe(600)
   })
+
+  it('media link segment keys default to 12000, 180, 60 and 4 in schema and config.yml', () => {
+    const source = readFileSync('config.yml', 'utf8')
+    const parsed = parseConfig(source)
+    expect(parsed.media.linkWatchMs).toBe(12000)
+    expect(parsed.media.linkSegmentSeconds).toBe(180)
+    expect(parsed.media.linkFirstSegmentSeconds).toBe(60)
+    expect(parsed.media.maxLinkSegments).toBe(4)
+    expect(parsed.media.linkFps).toBe(0.25)
+
+    const withoutKeys = source
+      .replace(/\n\s*linkWatchMs:[^\n]*/, '')
+      .replace(/\n\s*linkSegmentSeconds:[^\n]*/, '')
+      .replace(/\n\s*linkFirstSegmentSeconds:[^\n]*/, '')
+      .replace(/\n\s*maxLinkSegments:[^\n]*/, '')
+      .replace(/\n\s*linkFps:[^\n]*/, '')
+    const defaults = parseConfig(withoutKeys).media
+    expect(defaults.linkWatchMs).toBe(12000)
+    expect(defaults.linkSegmentSeconds).toBe(180)
+    expect(defaults.linkFirstSegmentSeconds).toBe(60)
+    expect(defaults.maxLinkSegments).toBe(4)
+    expect(defaults.linkFps).toBe(0.25)
+  })
 })
 
 describe('gemini-watcher watchUrl and readMediaUrl', () => {
@@ -145,6 +168,25 @@ describe('gemini-watcher watchUrl and readMediaUrl', () => {
       file_data: {
         file_uri: 'https://www.youtube.com/watch?v=vid12345678',
         mime_type: 'video/mp4'
+      }
+    })
+
+    const withFps = toGenerateContentUrlBody({
+      url: 'https://www.youtube.com/watch?v=vid12345678',
+      startSec: 0,
+      endSec: 60,
+      fps: 0.25
+    })
+    const fpsPart = (withFps['contents'] as { parts: Record<string, unknown>[] }[])[0]?.parts[0]
+    expect(fpsPart).toEqual({
+      file_data: {
+        file_uri: 'https://www.youtube.com/watch?v=vid12345678',
+        mime_type: 'video/mp4'
+      },
+      video_metadata: {
+        start_offset: '0s',
+        end_offset: '60s',
+        fps: 0.25
       }
     })
   })
@@ -208,13 +250,13 @@ describe('createLinkReader', () => {
   const baseLimits = { ...DEFAULT_MEDIA_LIMITS, maxVideoSeconds: 180, maxLinkVideoSeconds: 600 }
 
   it('clips longer YouTube videos at maxLinkVideoSeconds from t= start and labels the description', async () => {
-    const watchUrlCalls: { url: string; startSec?: number; endSec?: number }[] = []
+    const watchUrlCalls: { url: string; startSec?: number; endSec?: number; fps?: number }[] = []
     const watcher: MediaWatcher = {
       async watch() {
         throw new Error('watch should not be called for YouTube')
       },
       async watchUrl(source) {
-        watchUrlCalls.push({ url: source.url, startSec: source.startSec, endSec: source.endSec })
+        watchUrlCalls.push({ url: source.url, startSec: source.startSec, endSec: source.endSec, fps: source.fps })
         return {
           reading: { description: 'Someone builds a clock.', transcript: 'Step one.' },
           usage: { inputTokens: 800, outputTokens: 30, cachedTokens: 0 },
@@ -289,23 +331,35 @@ describe('createLinkReader', () => {
     })
 
     const longRes = await reader.read(['https://www.youtube.com/watch?v=long0'], 5000, { media: true, social: true })
-    expect(watchUrlCalls[0]).toEqual({ url: 'https://www.youtube.com/watch?v=long0', startSec: 0, endSec: 600 })
+    expect(watchUrlCalls.slice(0, 4)).toEqual([
+      { url: 'https://www.youtube.com/watch?v=long0', startSec: 0, endSec: 60, fps: 0.25 },
+      { url: 'https://www.youtube.com/watch?v=long0', startSec: 60, endSec: 240, fps: 0.25 },
+      { url: 'https://www.youtube.com/watch?v=long0', startSec: 240, endSec: 420, fps: 0.25 },
+      { url: 'https://www.youtube.com/watch?v=long0', startSec: 420, endSec: 600, fps: 0.25 }
+    ])
     expect(longRes.links?.[0]?.reading?.description).toContain('Covers only the first part (0:00–10:00 of 25:00):')
+    expect(longRes.links?.[0]?.reading?.description).toContain('[0:00–1:00] Someone builds a clock.')
     expect(longRes.unreadable).toEqual([])
 
     const longTRes = await reader.read(['https://www.youtube.com/watch?v=longT&t=90'], 5000, {
       media: true,
       social: true
     })
-    expect(watchUrlCalls[1]).toEqual({ url: 'https://www.youtube.com/watch?v=longT', startSec: 90, endSec: 690 })
+    expect(watchUrlCalls.slice(4, 8)).toEqual([
+      { url: 'https://www.youtube.com/watch?v=longT', startSec: 90, endSec: 150, fps: 0.25 },
+      { url: 'https://www.youtube.com/watch?v=longT', startSec: 150, endSec: 330, fps: 0.25 },
+      { url: 'https://www.youtube.com/watch?v=longT', startSec: 330, endSec: 510, fps: 0.25 },
+      { url: 'https://www.youtube.com/watch?v=longT', startSec: 510, endSec: 690, fps: 0.25 }
+    ])
     expect(longTRes.links?.[0]?.reading?.description).toContain('Covers only the first part')
     expect(longTRes.links?.[0]?.reading?.description).toContain('1:30–11:30 of 25:00')
 
     const shortRes = await reader.read(['https://www.youtube.com/watch?v=short'], 5000, { media: true, social: true })
-    expect(watchUrlCalls[2]).toEqual({
+    expect(watchUrlCalls[8]).toEqual({
       url: 'https://www.youtube.com/watch?v=short',
       startSec: undefined,
-      endSec: undefined
+      endSec: undefined,
+      fps: 0.25
     })
     expect(shortRes.links?.[0]?.reading?.description).toBe('Someone builds a clock.')
 
@@ -313,8 +367,311 @@ describe('createLinkReader', () => {
       media: true,
       social: true
     })
-    expect(watchUrlCalls[3]).toEqual({ url: 'https://www.youtube.com/watch?v=unknown', startSec: 30, endSec: 630 })
-    expect(unknownRes.links?.[0]?.reading?.description).toBe('Someone builds a clock.')
+    expect(watchUrlCalls[9]).toEqual({
+      url: 'https://www.youtube.com/watch?v=unknown',
+      startSec: 30,
+      endSec: 210,
+      fps: 0.25
+    })
+    expect(unknownRes.links?.[0]?.reading?.description).toContain(
+      "Covers only 0:30–3:30; the video's length is unknown:"
+    )
+    expect(unknownRes.links?.[0]?.reading?.description).toContain('Someone builds a clock.')
+  })
+
+  it('watches a 10-minute YouTube video as 4 segments at once', async () => {
+    let inFlight = 0
+    let maxInFlight = 0
+    const seenSources: { startSec?: number; endSec?: number; fps?: number }[] = []
+    let releaseAll!: () => void
+    const gate = new Promise<void>((resolve) => {
+      releaseAll = resolve
+    })
+
+    const watcher: MediaWatcher = {
+      async watch() {
+        throw new Error('watch should not be called')
+      },
+      async watchUrl(source) {
+        inFlight++
+        maxInFlight = Math.max(maxInFlight, inFlight)
+        seenSources.push({ startSec: source.startSec, endSec: source.endSec, fps: source.fps })
+        if (inFlight === 4) releaseAll()
+        await gate
+        inFlight--
+        return {
+          reading: { description: `Part ${source.startSec}-${source.endSec}.` },
+          usage: { inputTokens: 300, outputTokens: 20, cachedTokens: 0 },
+          costUsd: 0,
+          model: 'fake-media-model'
+        }
+      }
+    }
+
+    const post = makePost({
+      platform: 'youtube',
+      id: 'tenmin',
+      canonicalUrl: 'https://www.youtube.com/watch?v=tenmin',
+      target: makeTarget('youtube', 'tenmin'),
+      durationSec: 600
+    })
+    const reader = createLinkReader({
+      viewer: { lookup: async () => ({ status: 'found', post }) },
+      findTarget: fakeFindTarget,
+      watcher,
+      model: 'fake-media-model',
+      limits: baseLimits
+    })
+
+    const res = await reader.read(['https://www.youtube.com/watch?v=tenmin'], 5000, { media: true, social: true })
+    expect(maxInFlight).toBe(4)
+    expect(seenSources).toEqual([
+      { startSec: 0, endSec: 60, fps: 0.25 },
+      { startSec: 60, endSec: 240, fps: 0.25 },
+      { startSec: 240, endSec: 420, fps: 0.25 },
+      { startSec: 420, endSec: 600, fps: 0.25 }
+    ])
+    expect(res.calls).toHaveLength(4)
+    expect(res.unreadable).toEqual([])
+    expect(res.partial).toBeUndefined()
+    expect(res.links?.[0]?.reading?.description).toBe(
+      '[0:00–1:00] Part 0-60. [1:00–4:00] Part 60-240. [4:00–7:00] Part 240-420. [7:00–10:00] Part 420-600.'
+    )
+  })
+
+  it('keeps the segments that answered and names the parts not watched', async () => {
+    const watcher: MediaWatcher = {
+      async watch() {
+        throw new Error('watch should not be called')
+      },
+      async watchUrl(source) {
+        if (source.startSec === 240) throw new ModelError('rate_limit', 'HTTP 429')
+        return {
+          reading: { description: `Seg ${source.startSec}.` },
+          usage: { inputTokens: 200, outputTokens: 15, cachedTokens: 0 },
+          costUsd: 0,
+          model: 'fake-media-model'
+        }
+      }
+    }
+
+    const post = makePost({
+      platform: 'youtube',
+      id: 'partial1',
+      canonicalUrl: 'https://www.youtube.com/watch?v=partial1',
+      target: makeTarget('youtube', 'partial1'),
+      durationSec: 600
+    })
+    const reader = createLinkReader({
+      viewer: { lookup: async () => ({ status: 'found', post }) },
+      findTarget: fakeFindTarget,
+      watcher,
+      model: 'fake-media-model',
+      limits: baseLimits
+    })
+
+    const res = await reader.read(['https://www.youtube.com/watch?v=partial1'], 5000, { media: true, social: true })
+    expect(res.unreadable).toEqual([])
+    expect(res.partial).toEqual([{ kind: 'YouTube video part 3 (4:00–7:00)', reason: 'unreadable' }])
+    expect(res.links?.[0]?.reading?.description).toBe(
+      'Not watched: 4:00–7:00. [0:00–1:00] Seg 0. [1:00–4:00] Seg 60. [7:00–10:00] Seg 420.'
+    )
+  })
+
+  it('aborts unfinished segments at media.linkWatchMs', async () => {
+    const started = Date.now()
+    let segment4AbortedAt = 0
+    const watcher: MediaWatcher = {
+      async watch() {
+        throw new Error('watch should not be called')
+      },
+      watchUrl(source, signal) {
+        if (source.startSec !== 420) {
+          return Promise.resolve({
+            reading: { description: `Seg ${source.startSec}.` },
+            usage: { inputTokens: 200, outputTokens: 10, cachedTokens: 0 },
+            costUsd: 0,
+            model: 'fake-media-model'
+          })
+        }
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener(
+            'abort',
+            () => {
+              segment4AbortedAt = Date.now() - started
+              reject(new ModelError('transient', 'aborted'))
+            },
+            { once: true }
+          )
+        })
+      }
+    }
+
+    const post = makePost({
+      platform: 'youtube',
+      id: 'watchcap',
+      canonicalUrl: 'https://www.youtube.com/watch?v=watchcap',
+      target: makeTarget('youtube', 'watchcap'),
+      durationSec: 600
+    })
+    const reader = createLinkReader({
+      viewer: { lookup: async () => ({ status: 'found', post }) },
+      findTarget: fakeFindTarget,
+      watcher,
+      model: 'fake-media-model',
+      limits: { ...baseLimits, linkWatchMs: 50 }
+    })
+
+    const res = await reader.read(['https://www.youtube.com/watch?v=watchcap'], 5000, { media: true, social: true })
+    expect(segment4AbortedAt).toBeGreaterThanOrEqual(35)
+    expect(segment4AbortedAt).toBeLessThan(200)
+    expect(res.partial).toEqual([{ kind: 'YouTube video part 4 (7:00–10:00)', reason: 'unreadable' }])
+    expect(res.calls[3]).toMatchObject({ role: 'media', failureKind: 'transient' })
+    expect(res.links?.[0]?.reading?.description).toContain('Not watched: 7:00–10:00.')
+  })
+
+  it('never waits past the link reader timeout', async () => {
+    const started = Date.now()
+    let abortedAt = 0
+    const watcher: MediaWatcher = {
+      async watch() {
+        throw new Error('watch should not be called')
+      },
+      watchUrl(_source, signal) {
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener(
+            'abort',
+            () => {
+              abortedAt = Date.now() - started
+              reject(new ModelError('transient', 'aborted'))
+            },
+            { once: true }
+          )
+        })
+      }
+    }
+
+    const post = makePost({
+      platform: 'youtube',
+      id: 'readercap',
+      canonicalUrl: 'https://www.youtube.com/watch?v=readercap',
+      target: makeTarget('youtube', 'readercap'),
+      durationSec: 600
+    })
+    const reader = createLinkReader({
+      viewer: { lookup: async () => ({ status: 'found', post }) },
+      findTarget: fakeFindTarget,
+      watcher,
+      model: 'fake-media-model',
+      limits: { ...baseLimits, linkWatchMs: 12000 }
+    })
+
+    const res = await reader.read(['https://www.youtube.com/watch?v=readercap'], 40, { media: true, social: true })
+    expect(abortedAt).toBeGreaterThanOrEqual(25)
+    expect(abortedAt).toBeLessThan(200)
+    expect(res.unreadable).toEqual([{ kind: 'YouTube video', reason: 'unreadable' }])
+  })
+
+  it('gives one unreadable note when every segment fails, unavailable when one was unavailable', async () => {
+    const post = makePost({
+      platform: 'youtube',
+      id: 'allfail',
+      canonicalUrl: 'https://www.youtube.com/watch?v=allfail',
+      target: makeTarget('youtube', 'allfail'),
+      externalTitle: 'All Fail Video',
+      authorName: 'Channel',
+      durationSec: 600
+    })
+
+    const unreadableReader = createLinkReader({
+      viewer: { lookup: async () => ({ status: 'found', post }) },
+      findTarget: fakeFindTarget,
+      watcher: {
+        async watch() {
+          throw new Error('watch should not be called')
+        },
+        async watchUrl() {
+          throw new ModelError('rate_limit', 'HTTP 429')
+        }
+      },
+      model: 'fake-media-model',
+      limits: baseLimits
+    })
+    const r1 = await unreadableReader.read(['https://www.youtube.com/watch?v=allfail'], 5000, {
+      media: true,
+      social: true
+    })
+    expect(r1.unreadable).toEqual([{ kind: 'YouTube video', reason: 'unreadable' }])
+    expect(r1.partial).toBeUndefined()
+    expect(r1.links).toEqual([{ post }])
+    expect(r1.calls).toHaveLength(4)
+
+    const mixedReader = createLinkReader({
+      viewer: { lookup: async () => ({ status: 'found', post }) },
+      findTarget: fakeFindTarget,
+      watcher: {
+        async watch() {
+          throw new Error('watch should not be called')
+        },
+        async watchUrl(source) {
+          if (source.startSec === 60) {
+            throw new ModelError('malformed', 'HTTP 400: cannot fetch content')
+          }
+          throw new ModelError('transient', 'HTTP 503')
+        }
+      },
+      model: 'fake-media-model',
+      limits: baseLimits
+    })
+    const r2 = await mixedReader.read(['https://www.youtube.com/watch?v=allfail'], 5000, {
+      media: true,
+      social: true
+    })
+    expect(r2.unreadable).toEqual([{ kind: 'YouTube video', reason: 'unavailable' }])
+    expect(r2.partial).toBeUndefined()
+    expect(r2.links).toEqual([{ post }])
+    expect(r2.calls).toHaveLength(4)
+  })
+
+  it('sends a short video with no offsets, as before', async () => {
+    const seenSources: { url: string; mimeType?: string; startSec?: number; endSec?: number; fps?: number }[] = []
+    const reader = createLinkReader({
+      viewer: {
+        lookup: async () => ({
+          status: 'found',
+          post: makePost({
+            platform: 'youtube',
+            id: 'short1',
+            canonicalUrl: 'https://www.youtube.com/watch?v=short1',
+            target: makeTarget('youtube', 'short1'),
+            durationSec: 120
+          })
+        })
+      },
+      findTarget: fakeFindTarget,
+      watcher: {
+        async watch() {
+          throw new Error('watch should not be called')
+        },
+        async watchUrl(source) {
+          seenSources.push(source)
+          return {
+            reading: { description: 'A short video.' },
+            usage: { inputTokens: 100, outputTokens: 10, cachedTokens: 0 },
+            costUsd: 0,
+            model: 'fake-media-model'
+          }
+        }
+      },
+      model: 'fake-media-model',
+      limits: baseLimits
+    })
+
+    const res = await reader.read(['https://www.youtube.com/watch?v=short1'], 5000, { media: true, social: true })
+    expect(seenSources).toEqual([{ url: 'https://www.youtube.com/watch?v=short1', mimeType: 'video/mp4', fps: 0.25 }])
+    expect(seenSources[0]?.startSec).toBeUndefined()
+    expect(seenSources[0]?.endSec).toBeUndefined()
+    expect(res.links?.[0]?.reading).toEqual({ description: 'A short video.' })
   })
 
   it('downloads social post video, falls back to imageUrl on failure, else text only', async () => {
@@ -457,7 +814,10 @@ describe('createLinkReader', () => {
 describe('turn pipeline link intake and media switch', () => {
   async function startPipelineTest(options: {
     lookup?: (target: LinkTarget) => Promise<SocialPostLookup>
-    watchUrl?: (url: string) => Promise<{ description: string }> | never
+    watchUrl?: (
+      source: { url: string; startSec?: number; endSec?: number; fps?: number },
+      signal: AbortSignal
+    ) => Promise<{ description: string; transcript?: string }> | never
     watchFile?: () => Promise<{ description: string }>
     withReadCommand?: boolean
   }) {
@@ -481,9 +841,9 @@ describe('turn pipeline link intake and media switch', () => {
           model: 'fake-media-model'
         }
       },
-      async watchUrl(source) {
+      async watchUrl(source, signal) {
         seenWatchUrls.push(source.url)
-        const res = options.watchUrl ? await options.watchUrl(source.url) : { description: 'A YouTube video.' }
+        const res = options.watchUrl ? await options.watchUrl(source, signal) : { description: 'A YouTube video.' }
         return {
           reading: res,
           usage: { inputTokens: 500, outputTokens: 20, cachedTokens: 0 },
@@ -739,5 +1099,99 @@ describe('turn pipeline link intake and media switch', () => {
 
     await core.gateway.send(msg('m-1', 'https://www.youtube.com/watch?v=authFail123'))
     expect(core.alerts).toEqual([expect.objectContaining({ kind: 'model_auth', detail: { role: 'media' } })])
+  })
+
+  it('writes one model_call row per segment, with the failure kind on the failed one', async () => {
+    const { core } = await startPipelineTest({
+      lookup: async (target) => ({
+        status: 'found',
+        post: makePost({
+          platform: 'youtube',
+          id: target.id,
+          target,
+          canonicalUrl: `https://www.youtube.com/watch?v=${target.id}`,
+          durationSec: 600
+        })
+      }),
+      watchUrl: async (source) => {
+        if (source.startSec === 240) throw new ModelError('rate_limit', 'HTTP 429')
+        return { description: `Watched ${source.startSec}-${source.endSec}.` }
+      }
+    })
+
+    await core.gateway.send(msg('m-1', 'https://www.youtube.com/watch?v=callsSeg1'))
+    const calls = core.storage.read(
+      (db) =>
+        db
+          .prepare(
+            "SELECT role, model, attempt, input_tokens, cost_usd, failure_kind FROM model_call WHERE role = 'media' ORDER BY id"
+          )
+          .all() as Record<string, unknown>[]
+    )
+    expect(calls).toEqual([
+      { role: 'media', model: 'fake-media-model', attempt: 1, input_tokens: 500, cost_usd: 0, failure_kind: null },
+      { role: 'media', model: 'fake-media-model', attempt: 1, input_tokens: 500, cost_usd: 0, failure_kind: null },
+      {
+        role: 'media',
+        model: 'fake-media-model',
+        attempt: 1,
+        input_tokens: null,
+        cost_usd: null,
+        failure_kind: 'rate_limit'
+      },
+      { role: 'media', model: 'fake-media-model', attempt: 1, input_tokens: 500, cost_usd: 0, failure_kind: null }
+    ])
+  })
+
+  it('turns a partial reading into media_unreadable failures handled by coverage:partial, with no note in block 4', async () => {
+    const partialUrl = 'https://www.youtube.com/watch?v=partialPipe1'
+    const { core, capturedMedia, logs } = await startPipelineTest({
+      lookup: async (target) => ({
+        status: 'found',
+        post: makePost({
+          platform: 'youtube',
+          id: target.id,
+          target,
+          canonicalUrl: partialUrl,
+          durationSec: 600
+        })
+      }),
+      watchUrl: async (source) => {
+        if (source.startSec === 240) throw new ModelError('rate_limit', 'HTTP 429')
+        return { description: `Segment ${source.startSec}.` }
+      }
+    })
+
+    const reply = await core.gateway.send(msg('m-1', `watch ${partialUrl}`))
+    expect(reply.content).toBe('okay!')
+    expect(capturedMedia[0]).toContain('<media untrusted="true">')
+    expect(capturedMedia[0]).toContain('Not watched: 4:00–7:00.')
+    expect(capturedMedia[0]).not.toContain('<media-unreadable>')
+
+    const failures = core.storage.read(
+      (db) =>
+        db.prepare('SELECT stage, kind, handled_by, message FROM failure ORDER BY id').all() as Record<
+          string,
+          unknown
+        >[]
+    )
+    expect(failures).toEqual([
+      {
+        stage: 'media',
+        kind: 'media_unreadable',
+        handled_by: 'coverage:partial',
+        message: 'YouTube video part 3 (4:00–7:00): unreadable'
+      }
+    ])
+    expect(logs).toContainEqual(
+      expect.objectContaining({
+        event: 'media.link_segments',
+        segments: 4,
+        answered: 3,
+        failed: 1,
+        watchMs: expect.any(Number)
+      })
+    )
+    expect(JSON.stringify(logs)).not.toContain(partialUrl)
   })
 })

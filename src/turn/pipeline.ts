@@ -455,6 +455,9 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
             combined.links = [...(combined.links ?? []), ...linkRead.links]
           }
           combined.unreadable.push(...linkRead.unreadable)
+          if (linkRead.partial && linkRead.partial.length > 0) {
+            combined.partial = [...(combined.partial ?? []), ...linkRead.partial]
+          }
           combined.calls.push(...linkRead.calls)
         }
         const readLinks = (combined.links ?? []).filter((link) => link.post.platform !== 'youtube' || link.reading)
@@ -480,6 +483,14 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
             kind: 'media_unreadable',
             error: item.error ?? new Error(`${item.kind}: ${item.reason}`),
             handledBy: 'line:unreadableMedia'
+          })
+        }
+        for (const item of combined.partial ?? []) {
+          outcome.failures.push({
+            stage: 'media',
+            kind: 'media_unreadable',
+            error: new Error(`${item.kind}: ${item.reason}`),
+            handledBy: 'coverage:partial'
           })
         }
         if (combined.calls.some((call) => call.failureKind === 'auth')) {

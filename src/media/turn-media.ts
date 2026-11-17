@@ -21,6 +21,7 @@ export interface TurnMediaResult {
   readings: { kind: MediaKind; reading: MediaReading }[]
   links?: LinkReading[]
   unreadable: { kind: string; reason: MediaUnreadable; error?: unknown }[]
+  partial?: { kind: string; reason: MediaUnreadable }[]
   /** One row for each request to the media model, for the model_call table. */
   calls: ModelCallRecord[]
 }
