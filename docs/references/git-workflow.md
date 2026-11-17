@@ -10,10 +10,11 @@ it is.
 Contents:
 
 1. [The loop](#the-loop)
-2. [Naming](#naming)
-3. [What enforces what](#what-enforces-what)
-4. [Secrets](#secrets)
-5. [Setting it up](#setting-it-up)
+2. [Issues](#issues)
+3. [Naming](#naming)
+4. [What enforces what](#what-enforces-what)
+5. [Secrets](#secrets)
+6. [Setting it up](#setting-it-up)
 
 ## The Loop
 
@@ -23,11 +24,17 @@ Contents:
 3. **Push the branch.** `git push -u origin HEAD`. Pushing to `main` is refused by the pre-push hook.
 4. **Open a pull request.** `gh pr create --fill-first`, then check the title. Not `--fill`: on a branch with more than
    one commit that takes the title from the branch name, which the title check rejects. `--fill-first` takes it from the
-   first commit, which may not describe the whole branch, so pass `--title` when it does not.
+   first commit, which may not describe the whole branch, so pass `--title` when it does not. The body follows
+   `.github/pull_request_template.md`, and `scripts/pr-header.ts` checks it.
 5. **Review.** One approval required. Review looks at the diff and at the commit history, because the history is what
    lands.
 6. **Resolve.** Every review conversation must be marked resolved before merging.
 7. **Merge and delete.** Rebase merge, then the branch deletes itself.
+
+## Issues
+
+Every issue has an assignee. Whoever opens it picks the right person; `.github/workflows/assign-issues.yml` only catches
+a miss when an issue opens or reopens unassigned.
 
 ## Naming
 
@@ -78,6 +85,8 @@ what the pull request list, the notification, and the reviewer see first.
 | `.github/workflows/lint.yml`              | An unformatted tree                                |
 | `.github/workflows/container.yml`         | An image that does not build or start              |
 | `.github/workflows/issue-title-lint.yml`  | A bad issue title — labels and explains it         |
+| `.github/workflows/assign-issues.yml`     | An unassigned issue — assigns the author or owner  |
+| `.github/workflows/pr-header.yml`         | A pull request missing its header or visual        |
 | `.github/pull_request_template.md`        | Nothing; it reminds you                            |
 | `.github/ISSUE_TEMPLATE/`                 | Blank issues, and titles with no type              |
 
