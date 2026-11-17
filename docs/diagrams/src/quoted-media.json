@@ -1,0 +1,63 @@
+{
+  "diagram_type": "sequence",
+  "messages": [
+    {
+      "from": "member",
+      "id": "m1",
+      "label": "reply to a picture or video",
+      "note": "A reply to AIRA's own message counts too",
+      "to": "bridge",
+      "y": 160
+    },
+    {
+      "from": "bridge",
+      "id": "m2",
+      "label": "message text with quoted file note",
+      "note": "The bridge downloads the quoted file; its path rides in the quoting message's notes",
+      "to": "core",
+      "y": 240
+    },
+    {
+      "from": "core",
+      "id": "m3",
+      "label": "readMedia(file)",
+      "note": "Path under media.gatewayDirs only; type and size checked; one timeout",
+      "to": "watcher",
+      "y": 320
+    },
+    {
+      "from": "watcher",
+      "id": "m4",
+      "label": "description and transcript",
+      "note": "Tokens recorded with cost 0; a failure never ends the turn",
+      "to": "core",
+      "variant": "return",
+      "y": 400
+    },
+    {
+      "from": "core",
+      "id": "m5",
+      "label": "mediaPromptText",
+      "note": "One labelled block; unreadable files get kind and reason, never the path",
+      "to": "prompt",
+      "y": 480
+    },
+    {
+      "from": "core",
+      "id": "m6",
+      "label": "in-character reply",
+      "note": "The model voices the pack unreadableMedia line; the turn stays delivered",
+      "to": "member",
+      "y": 560
+    }
+  ],
+  "meta": { "output": ".archify/quoted-media.html", "quality_profile": "showcase", "title": "Quoted Media Watch" },
+  "participants": [
+    { "id": "member", "label": "Chat Member", "type": "external" },
+    { "id": "bridge", "label": "Gateway Bridge", "sublabel": "quoted-media patch, notes", "type": "external" },
+    { "id": "core", "label": "Core Intake", "sublabel": "request.ts, files.ts, turn-media.ts", "type": "backend" },
+    { "id": "watcher", "label": "Media Watcher", "sublabel": "Gemini, its own key", "type": "cloud" },
+    { "id": "prompt", "label": "Prompt Block 4", "sublabel": "mediaPromptText", "type": "backend" }
+  ],
+  "schema_version": 1
+}

@@ -1,0 +1,55 @@
+{
+  "diagram_type": "sequence",
+  "messages": [
+    {
+      "from": "intake",
+      "id": "m1",
+      "label": "lookup(post id, startSec)",
+      "note": "One link per turn; newest text first, then quotes; commands naming read_post skip this",
+      "to": "viewer",
+      "y": 160
+    },
+    {
+      "from": "viewer",
+      "id": "m2",
+      "label": "post and durationSec",
+      "note": "A failed lookup adds an unreadable note with reason link",
+      "to": "intake",
+      "variant": "return",
+      "y": 240
+    },
+    {
+      "from": "intake",
+      "id": "m3",
+      "label": "watch segments in parallel",
+      "note": "First 60 s, then 180 s pieces, at most 4; offsets at 0.25 fps, low resolution",
+      "to": "watcher",
+      "y": 320
+    },
+    {
+      "from": "watcher",
+      "id": "m4",
+      "label": "answered segment readings",
+      "note": "One 12 s budget for all; no retry; each segment is its own model_call row",
+      "to": "intake",
+      "variant": "return",
+      "y": 400
+    },
+    {
+      "from": "intake",
+      "id": "m5",
+      "label": "merged description",
+      "note": "Clock labels in order; gaps and clipping named; all failed means unreadable",
+      "to": "block",
+      "y": 480
+    }
+  ],
+  "meta": { "output": ".archify/youtube-watch.html", "quality_profile": "showcase", "title": "YouTube Segment Watch" },
+  "participants": [
+    { "id": "intake", "label": "Turn Intake", "sublabel": "pipeline.ts, link-intake.ts", "type": "backend" },
+    { "id": "viewer", "label": "SocialPostViewer", "sublabel": "lookup, cache, yt-dlp", "type": "backend" },
+    { "id": "watcher", "label": "Media Watcher", "sublabel": "Gemini file_data URL", "type": "cloud" },
+    { "id": "block", "label": "Prompt Block 4", "sublabel": "mergeLinkReadings", "type": "backend" }
+  ],
+  "schema_version": 1
+}

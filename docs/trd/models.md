@@ -257,14 +257,146 @@ media folders.
 
 ![How attached files and shared links are read at intake, with limits and refusals](../diagrams/media-intake.svg)
 
+### How Media Reaches The Core
+
+Every path starts in the gateway's notes. The table in [System](system.md#gateway-contract) lists each note shape.
+
+- **An attached file.** The gateway saves the file on the host and writes its path in a note before the message's
+  marker. A picture, a voice note, an audio file, a video and a document each have their own note. The core parses
+  them into attachments (`src/gateway/request.ts`, `src/gateway/request.ts`).
+- **A transcribed voice note.** The gateway writes the transcript as one quoted line before a marker with no text
+  after it. That line becomes the message text (`src/gateway/request.ts`).
+- **An inline image.** The gateway sends `image_url` parts with one `[Image attached at: <path>]` line per picture at
+  the end of the text. The core takes at most one line per part, from the end, and drops them from the text
+  (`src/gateway/request.ts`).
+- **A quoted file.** The bridge downloads the file a reply quotes and names it in the quoting message's notes. It
+  then arrives as that message's attachment. See [Quoted Media](#quoted-media).
+- **A link.** The first supported link in the turn's texts: newest message first, then quoted text. See
+  [YouTube Links](#youtube-links) and [Post Links](#post-links).
+- **A leading timestamp.** The gateway may start a message with a bracketed timestamp on the same line as its first
+  note. The core strips it before reading notes, so no note is lost and the stamp never enters the text
+  (`src/gateway/request.ts`).
+
+A note is text, so a member could imitate one. The core opens a path only when it lies under a `media.gatewayDirs`
+pair, after `..` is resolved and every symlink is followed. Anything else is refused (`src/media/files.ts`,
+`src/media/files.ts`).
+
+### Quoted Media
+
+A reply to a picture or a video gets the quoted file watched. This covers AIRA's own messages too.
+
+The gateway's bridge downloads the quoted file and names its path in the quoting message's notes. The core reads it
+as that message's file, within the same per-message and per-turn limits. Quoted media is always watched, even on a
+turn that would otherwise read nothing else.
+
+The quoted text is stored beside the message, never in it. The model sees it as a labelled block, while memory and
+mood read the text only. Forget clears the quotes of a cleared message. See [System](system.md#gateway-contract)
+and [Memory](memory.md).
+
+The link reader also scans quoted text. A link there counts when no newer message holds one
+(`src/turn/pipeline.ts`).
+
+![A member replies to a media message and the quoted file is watched](../diagrams/quoted-media.svg)
+
+### YouTube Links
+
+One link is read per turn. The reader takes the first supported target from the turn's texts, newest message first,
+then quoted text. A disabled platform never shadows a later allowed link. YouTube needs `features.media`; a post
+link needs `features.social`. A turn whose commands already name `read_post` or `read_page` reads no link
+(`src/media/link-intake.ts`, `src/turn/pipeline.ts`).
+
+A failed lookup adds one unreadable note with the platform and the reason `link`. It writes no model call, and no
+log or note carries the URL (`src/media/link-intake.ts`).
+
+A YouTube video is watched from its URL, never downloaded. The start offset comes from the `t` or `start` parameter
+or a `#t=` fragment, in seconds or clock form (`src/social/urls.ts`). The span is capped at
+`media.maxLinkVideoSeconds` from that offset. A longer video is clipped, never refused.
+
+The span is split by `planLinkSegments`: one short first segment (`media.linkFirstSegmentSeconds`, 60), then full
+segments (`media.linkSegmentSeconds`, 180). A last segment under 30 s joins the one before. At most
+`media.maxLinkSegments` (4) are kept; the rest stays unwatched (`src/media/link-segments.ts`).
+
+All kept segments are watched at once. Each call sends its own `video_metadata` offsets at `media.linkFps` (0.25)
+and low media resolution. The segments share one budget, `media.linkWatchMs` (12,000), counted from the end of the
+lookup and never past the link timeout. There is no retry (`src/media/link-intake.ts`,
+`src/media/gemini-watcher.ts`).
+
+Code merges the answered segments in order under clock labels. The merged text names the parts not watched: clipped
+ranges, failed segments and unknown length (`src/media/link-segments.ts`).
+
+A failed segment is one `failure` row, handled by `coverage:partial`, with no note in block 4. It still leaves its
+own `model_call` row. Only when every segment fails is the video unreadable. A private or removed video fails as
+`unavailable` (`src/media/link-intake.ts`, `src/turn/pipeline.ts`).
+
+A video of unknown length is watched for one segment from its start offset. The description says the length is
+unknown (`src/media/link-segments.ts`).
+
+![One YouTube link watched in parallel segments under one time budget](../diagrams/youtube-watch.svg)
+
+### Post Links
+
+A social post reaches the turn through the reader in
+[Social Post And Reply Readers](#social-post-and-reply-readers). Eight platforms are covered: X, Bluesky, Threads,
+YouTube, TikTok, Reddit, Instagram and Bilibili.
+
+Video from a linked social post is fetched by the social tool and passed through the same watch path as a file. It
+must fit the same size limit and `media.maxVideoSeconds`. When the video does not qualify, the reader falls back to
+the post's image, and then to its text only. A remote audio download over 600 seconds is refused
+(`src/media/link-intake.ts`).
+
+The post's text, author, most-liked replies and media enter block 4 as lines with its platform, author, date, reply
+count and canonical URL (`src/media/turn-media.ts`).
+
+A link read at intake is not opened again in the same turn: `read_page` and `read_post` refuse its canonical URL
+with kind `refused`, and the link note tells the model it is already open. A link whose watch or read failed is not
+refused, so the model may read the page instead, and the footer then shows a page read. The turn records the URL so
+the tools know it (`src/turn/pipeline.ts`).
+
+### Limits
+
+| Limit                  | Key And Default                                    | At The Limit                                                                            |
+| ---------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Files from one message | Code `MAX_MEDIA_PER_MESSAGE`, 3                    | Extras are skipped, never failures (`src/media/turn-media.ts`)                          |
+| Files in one turn      | Code `MAX_MEDIA_PER_TURN`, 6, newest first         | Extras are skipped (`src/media/turn-media.ts`)                                          |
+| File size              | Code default, 20,000,000 bytes, no config key      | Refused as `too large` before the file is read (`src/media/limits.ts`)                  |
+| Video length           | `media.maxVideoSeconds`, 180                       | Refused as `too long` (`src/media/limits.ts`)                                           |
+| Audio length           | Code default, 600 seconds                          | Refused as `too long`, only when the sender reported one (`src/media/limits.ts`)        |
+| One media read         | `media.timeoutMs`, 30000, at most two thirds left  | The read fails and the file is unreadable (`src/media/turn-media.ts`)                   |
+| All YouTube segments   | `media.linkWatchMs`, 12000                         | Running segments abort; answered ones still merge (`src/media/link-intake.ts`)          |
+| Media text in block 4  | Code `MEDIA_TEXT_BUDGET`, 4,500 characters         | Clipped evenly across the turn's items (`src/media/turn-media.ts`)                      |
+| Watcher answer         | 120 words, 300-word transcript, schema 2,000 chars | Over-long text fails validation; the file is unreadable (`src/media/gemini-watcher.ts`) |
+
+An attached video's length is never checked: a gateway attachment names only a kind and a path, so no duration
+reaches the check (`src/media/files.ts`). A voice note's duration is likewise absent, so only its size applies.
+
 With no media model or no `MEDIA_WATCHER_API_KEY`, media is off: the core logs `media.off` once at start-up, files
 are not read, and each one gets the unreadable note with the reason `off`. The turn still answers.
 
-Video from a linked social post is fetched by the social tool and passed through the same path.
+### Records
 
-A link read at intake is not opened again in the same turn: `read_page` and `read_post` refuse its canonical URL with
-kind `refused`, and the link note tells the model it is already open. A link whose watch or read failed is not
-refused, so the model may read the page instead, and the footer then shows a page read.
+- Every request to the media model is one `model_call` row with role `media`. It carries the tokens and a cost of 0. A failed call carries its failure kind. Each YouTube segment is its own row (`src/media/turn-media.ts`,
+  `src/media/link-intake.ts`).
+- Every unreadable file is one `failure` row: kind `media_unreadable`, stage `media`, handled by
+  `line:unreadableMedia`. Its message names the kind of file and the reason (`src/turn/pipeline.ts`).
+- A failed segment beside an answered one is one `failure` row handled by `coverage:partial`
+  (`src/turn/pipeline.ts`).
+- The turn itself stays `delivered`.
+- An `auth` failure of the media role also alerts the operator (`src/turn/pipeline.ts`).
+- Never stored: the file, its path, the link URL. Logs carry platform and reason only
+  (`src/media/link-intake.ts`). Block 4 notes name kind and reason only, never the path
+  (`src/media/turn-media.ts`).
+
+### Failures
+
+Every media failure is contained. The turn continues and answers in character.
+
+| Failure                                                                                                            | What The Member Sees                                                                    |
+| ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| Refused path, missing file, unsupported type, empty file, too large, too long, media off, failed read, failed link | The pack's `unreadableMedia` line, voiced by the model, beside the files that were read |
+| One YouTube segment fails while another answers                                                                    | Nothing about the failure; the merged text names the unwatched part                     |
+| Every segment fails                                                                                                | The whole video unreadable; the post text stays when the lookup gave it                 |
+| Private or removed video                                                                                           | Unreadable with the reason `unavailable`                                                |
+| Media model auth failure                                                                                           | The same unreadable outcome, plus an operator alert                                     |
 
 ## Social Post And Reply Readers
 
