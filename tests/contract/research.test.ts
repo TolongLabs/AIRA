@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import type { ModelClient } from '../../src/models/types.js'
 import { runResearch, validateFindings } from '../../src/research/job.js'
 import { offerAnswer } from '../../src/research/offer.js'
@@ -162,5 +163,72 @@ describe('research boundaries', () => {
       limits: { maxSearches: 2, maxPages: 1, deadlineMs: 120000 }
     })
     expect(read.mock.calls[0]?.[0]).toBe(source.url)
+  })
+
+  it('trims 8 queries to 6 and proceeds with the job', async () => {
+    const call = vi
+      .fn()
+      .mockResolvedValueOnce({ text: JSON.stringify({ queries: ['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8'] }) })
+      .mockResolvedValueOnce({ text: JSON.stringify(doc) })
+    const search = vi.fn().mockResolvedValue([{ title: 'A source', url: source.url, snippet: '' }])
+    const read = vi.fn().mockResolvedValue({ title: 'A source', text: 'Read text.' })
+    const result = await runResearch({
+      topic: 'A question?',
+      client: { call } as ModelClient,
+      model: 'fake',
+      search: { search },
+      page: { read, download: vi.fn() },
+      limits: { maxSearches: 6, maxPages: 1, deadlineMs: 120000 },
+      now: () => new Date(at)
+    })
+    expect(search).toHaveBeenCalledTimes(6)
+    expect(search.mock.calls.map((c) => c[0])).toEqual(['q1', 'q2', 'q3', 'q4', 'q5', 'q6'])
+    expect(result.sources).toEqual([source])
+  })
+
+  it('trims over-long findings arrays to their maximums and still enforces zod limits', async () => {
+    const read = Array.from({ length: 14 }, (_, index) => ({
+      n: index + 1,
+      title: `Source ${index + 1}`,
+      url: `https://example.com/${index + 1}`,
+      domain: 'example.com',
+      accessedAt: at,
+      text: `Text ${index + 1}`
+    }))
+    const overlong = {
+      title: 'A report',
+      question: 'A question?',
+      summary: 'A summary',
+      keyFindings: Array.from({ length: 9 }, (_, i) => ({ text: `Finding ${i + 1}`, sources: [1] })),
+      sections: Array.from({ length: 8 }, (_, i) => ({ heading: `Section ${i + 1}`, body: 'Body', sources: [1] })),
+      limitations: Array.from({ length: 6 }, (_, i) => `Limitation ${i + 1}`),
+      sources: read.slice(0, 14).map((s, i) => ({ n: i < 12 ? s.n : 12, title: s.title, url: s.url }))
+    }
+    const result = validateFindings(overlong, read)
+    expect(result.keyFindings).toHaveLength(7)
+    expect(result.sections).toHaveLength(6)
+    expect(result.limitations).toHaveLength(4)
+    expect(result.sources).toHaveLength(12)
+
+    expect(() => validateFindings({ ...doc, title: 'abc' }, [{ ...source, text: 'Read text' }])).toThrow(z.ZodError)
+    expect(() =>
+      validateFindings(
+        { ...doc, keyFindings: [{ text: 'x'.repeat(301), sources: [1] }, ...doc.keyFindings.slice(1)] },
+        [{ ...source, text: 'Read text' }]
+      )
+    ).toThrow(z.ZodError)
+
+    await expect(
+      runResearch({
+        topic: 'A question?',
+        client: {
+          call: vi.fn().mockResolvedValueOnce({ text: JSON.stringify({ queries: ['only-one'] }) })
+        } as ModelClient,
+        model: 'fake',
+        search: { search: vi.fn() },
+        page: { read: vi.fn(), download: vi.fn() },
+        limits: { maxSearches: 6, maxPages: 8, deadlineMs: 120000 }
+      })
+    ).rejects.toThrow(z.ZodError)
   })
 })

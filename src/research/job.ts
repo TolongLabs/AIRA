@@ -3,14 +3,24 @@ import type { ModelClient } from '../models/types.js'
 import { type ReportDocument, reportDocumentSchema } from '../render/types.js'
 import { type PagePort, type SearchPort, isForbiddenUrl } from '../tools/ports.js'
 
-const planSchema = z.strictObject({ queries: z.array(z.string().trim().min(1).max(300)).min(3).max(6) })
+const MAX_QUERIES = 6
+const MAX_KEY_FINDINGS = 7
+const MAX_SECTIONS = 6
+const MAX_SOURCES = 12
+const MAX_LIMITATIONS = 4
+
+const planSchema = z.strictObject({ queries: z.array(z.string().trim().min(1).max(300)).min(3).max(MAX_QUERIES) })
 // The model supplies neither domain nor access time. Those are observations made by the reader.
 const findingsSchema = reportDocumentSchema.extend({
   sources: z
     .array(reportDocumentSchema.shape.sources.element.omit({ domain: true, accessedAt: true }))
     .min(1)
-    .max(12)
+    .max(MAX_SOURCES)
 })
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
 
 export interface ReadSource {
   n: number
@@ -23,33 +33,36 @@ export interface ReadSource {
 
 /** Drop unsupported citations before applying the complete mold, including its minimum counts. */
 export function validateFindings(raw: unknown, read: ReadSource[]): ReportDocument {
-  const clean = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : undefined
-  if (clean) {
-    for (const [key, text] of [
-      ['keyFindings', 'text'],
-      ['sections', 'body']
+  let candidate: unknown = raw
+  if (isRecord(raw)) {
+    const obj: Record<string, unknown> = { ...raw }
+    for (const [key, text, max] of [
+      ['keyFindings', 'text', MAX_KEY_FINDINGS],
+      ['sections', 'body', MAX_SECTIONS]
     ] as const) {
-      if (Array.isArray(clean[key]))
-        clean[key] = clean[key].filter((item: unknown) => {
-          const value = item && typeof item === 'object' ? (item as Record<string, unknown>)[text] : undefined
-          return typeof value !== 'string' || value.trim() !== ''
-        })
+      const list = obj[key]
+      if (Array.isArray(list)) {
+        obj[key] = list
+          .filter((item: unknown) => {
+            const value = isRecord(item) ? item[text] : undefined
+            return typeof value !== 'string' || value.trim() !== ''
+          })
+          .slice(0, max)
+      }
     }
+    if (Array.isArray(obj['limitations'])) {
+      obj['limitations'] = obj['limitations'].slice(0, MAX_LIMITATIONS)
+    }
+    if (Array.isArray(obj['sources'])) {
+      obj['sources'] = obj['sources'].slice(0, MAX_SOURCES).map((value) => {
+        if (!isRecord(value)) return value
+        const { domain: _domain, accessedAt: _at, ...source } = value
+        return source
+      })
+    }
+    candidate = obj
   }
-  const parsed = findingsSchema.parse(
-    raw && typeof raw === 'object'
-      ? {
-          ...raw,
-          sources: Array.isArray((raw as { sources?: unknown }).sources)
-            ? (raw as { sources: unknown[] }).sources.map((value) => {
-                if (!value || typeof value !== 'object' || Array.isArray(value)) return value
-                const { domain: _domain, accessedAt: _at, ...source } = value as Record<string, unknown>
-                return source
-              })
-            : undefined
-        }
-      : raw
-  )
+  const parsed = findingsSchema.parse(candidate)
   const sources = parsed.sources.flatMap((source) => {
     const found = read.find((page) => page.url === source.url)
     return found ? [{ ...source, domain: found.domain, accessedAt: found.accessedAt }] : []
@@ -132,8 +145,16 @@ export async function runResearch(input: ResearchInput): Promise<ReportDocument>
     return JSON.parse(reply.text.replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, '')) as unknown
   }
   try {
+    const rawPlan = await ask(
+      'research_plan',
+      planSchema,
+      'Plan 3 to 6 distinct web search queries for the topic.',
+      input.topic
+    )
     const plan = planSchema.parse(
-      await ask('research_plan', planSchema, 'Plan 3 to 6 distinct web search queries for the topic.', input.topic)
+      isRecord(rawPlan) && Array.isArray(rawPlan['queries'])
+        ? { ...rawPlan, queries: rawPlan['queries'].slice(0, MAX_QUERIES) }
+        : rawPlan
     )
     const ranked = new Map<string, { title: string; hits: number }>()
     for (const query of [...new Set(plan.queries)].slice(0, Math.min(6, input.limits.maxSearches))) {

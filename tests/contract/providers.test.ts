@@ -1,15 +1,22 @@
 import { readFileSync } from 'node:fs'
 import type Anthropic from '@anthropic-ai/sdk'
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import { parseConfig } from '../../src/config/loader.js'
 import { configSchema } from '../../src/config/schema.js'
-import { createAnthropicClient, fromMessage, toMessagesBody } from '../../src/models/anthropic-client.js'
+import {
+  createAnthropicClient,
+  fromMessage,
+  toClaudeSchema,
+  toMessagesBody
+} from '../../src/models/anthropic-client.js'
 import { createApiRunner } from '../../src/models/api-runner.js'
 import { createBreaker } from '../../src/models/breaker.js'
 import { fromChatCompletionsBody, toChatCompletionsBody } from '../../src/models/openai-client.js'
 import { createSubscriptionRunner } from '../../src/models/subscription-runner.js'
 import type { ModelClient, ModelRequest, ModelResponse } from '../../src/models/types.js'
 import { createLogger } from '../../src/records/logger.js'
+import { reportDocumentSchema } from '../../src/render/types.js'
 import type { OfferedTool, TurnContext } from '../../src/turn/types.js'
 
 // Providers and effort, and a provider's turn state (docs/trd/models.md#providers-and-effort).
@@ -188,6 +195,146 @@ describe('the anthropic provider', () => {
       status = code
       await expect(client.call(request())).rejects.toMatchObject({ kind })
     }
+  })
+
+  it('converts JSON schemas to the Claude structured-output subset without mutating the input', () => {
+    const input = {
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
+      type: 'object',
+      description: 'Top level',
+      additionalProperties: false,
+      required: ['itemsList', 'optionalZero', 'format', 'choice', 'num'],
+      properties: {
+        itemsList: {
+          type: 'array',
+          minItems: 3,
+          maxItems: 6,
+          items: { type: 'string', minLength: 1, maxLength: 300, pattern: '^[a-z]+$', format: 'date-time' }
+        },
+        optionalZero: {
+          type: 'array',
+          minItems: 0,
+          items: { type: 'integer', minimum: 1, maximum: 10, multipleOf: 1 }
+        },
+        oneItem: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 5,
+          items: { type: 'number', exclusiveMinimum: 0, exclusiveMaximum: 100 }
+        },
+        format: {
+          type: 'string',
+          enum: ['a', 'b'],
+          format: 'uri'
+        },
+        choice: {
+          anyOf: [
+            { const: 'fixed', description: 'Fixed' },
+            { type: 'object', additionalProperties: true, properties: { x: { type: 'string', minLength: 2 } } }
+          ]
+        },
+        num: { type: 'number' }
+      }
+    }
+    const snapshot = structuredClone(input)
+    expect(toClaudeSchema(input)).toEqual({
+      type: 'object',
+      description: 'Top level',
+      additionalProperties: false,
+      required: ['itemsList', 'optionalZero', 'format', 'choice', 'num'],
+      properties: {
+        itemsList: {
+          type: 'array',
+          items: { type: 'string' }
+        },
+        optionalZero: {
+          type: 'array',
+          minItems: 0,
+          items: { type: 'integer' }
+        },
+        oneItem: {
+          type: 'array',
+          minItems: 1,
+          items: { type: 'number' }
+        },
+        format: {
+          type: 'string',
+          enum: ['a', 'b']
+        },
+        choice: {
+          anyOf: [
+            { const: 'fixed', description: 'Fixed' },
+            { type: 'object', properties: { x: { type: 'string' } } }
+          ]
+        },
+        num: { type: 'number' }
+      }
+    })
+    expect(input).toEqual(snapshot)
+  })
+
+  it('strips unsupported limits from the research plan and findings schemas in toMessagesBody', () => {
+    const planSchema = z.strictObject({ queries: z.array(z.string().trim().min(1).max(300)).min(3).max(6) })
+    const planBody = toMessagesBody(
+      request({
+        params: {
+          temperature: 0,
+          response_format: {
+            type: 'json_schema',
+            json_schema: { name: 'research_plan', schema: z.toJSONSchema(planSchema) }
+          }
+        }
+      })
+    )
+    expect(planBody.output_config?.format).toEqual({
+      type: 'json_schema',
+      schema: {
+        type: 'object',
+        properties: {
+          queries: {
+            type: 'array',
+            items: { type: 'string' }
+          }
+        },
+        required: ['queries'],
+        additionalProperties: false
+      }
+    })
+    const serializedPlan = JSON.stringify(planBody)
+    expect(serializedPlan).not.toContain('minItems')
+    expect(serializedPlan).not.toContain('maxItems')
+    expect(serializedPlan).not.toContain('minLength')
+    expect(serializedPlan).not.toContain('maxLength')
+
+    const findingsSchema = reportDocumentSchema.extend({
+      sources: z
+        .array(reportDocumentSchema.shape.sources.element.omit({ domain: true, accessedAt: true }))
+        .min(1)
+        .max(12)
+    })
+    const findingsBody = toMessagesBody(
+      request({
+        params: {
+          response_format: {
+            type: 'json_schema',
+            json_schema: { name: 'research_findings', schema: z.toJSONSchema(findingsSchema) }
+          }
+        }
+      })
+    )
+    const findingsOutputSchema = findingsBody.output_config?.format?.schema as Record<string, unknown>
+    const props = findingsOutputSchema['properties'] as Record<string, Record<string, unknown>>
+    expect(props['sources']?.['minItems']).toBe(1)
+    expect(props['sources']).not.toHaveProperty('maxItems')
+    expect(props['keyFindings']).not.toHaveProperty('minItems')
+    expect(props['keyFindings']).not.toHaveProperty('maxItems')
+    const serializedFindings = JSON.stringify(findingsOutputSchema)
+    expect(serializedFindings).not.toContain('maxItems')
+    expect(serializedFindings).not.toContain('minLength')
+    expect(serializedFindings).not.toContain('maxLength')
+    expect(serializedFindings).not.toContain('minimum')
+    expect(serializedFindings).not.toContain('maximum')
+    expect(serializedFindings).not.toContain('format')
   })
 })
 

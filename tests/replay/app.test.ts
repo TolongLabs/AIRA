@@ -392,6 +392,99 @@ describe('the whole service', () => {
     await expect(createApp({ config, env: {}, logger: quiet })).rejects.toThrow(/RUNNER_TOKEN/)
     expect(existsSync(join(config.storage.path, 'aira.db'))).toBe(true)
   })
+
+  it('records a failure row and model_call row with job_id when research fails with ModelError', async () => {
+    const secret = 'app-research-secret-999'
+    const failing: ModelClient = {
+      call: async () => {
+        throw new ModelError('malformed', `HTTP 400: invalid_request_error (${secret})`)
+      }
+    }
+    const { app, gateway, logs } = await start(failing, { env: { LLM_API_KEY: secret } })
+    await gateway.send(msg('m-1', '/research private subject 1234567890@lid'))
+    const job = app.storage.read((db) => db.prepare('SELECT job_id FROM research_job').get()) as { job_id: string }
+    expect(await app.research.tick()).toBe('failed')
+
+    const failure = app.storage.read((db) =>
+      db.prepare('SELECT job_id, stage, kind, message, handled_by FROM failure WHERE job_id = ?').get(job.job_id)
+    ) as Record<string, unknown>
+    expect(failure).toEqual({
+      job_id: job.job_id,
+      stage: 'research',
+      kind: 'malformed',
+      message: 'HTTP 400: invalid_request_error ([secret])',
+      handled_by: 'line:researchFailed'
+    })
+
+    const modelCalls = app.storage.read((db) =>
+      db
+        .prepare(
+          'SELECT job_id, turn_id, role, model, transport, attempt, failure_kind FROM model_call WHERE job_id = ?'
+        )
+        .all(job.job_id)
+    ) as Record<string, unknown>[]
+    expect(modelCalls).toEqual([
+      {
+        job_id: job.job_id,
+        turn_id: null,
+        role: 'main',
+        model: 'main-model',
+        transport: 'api',
+        attempt: 1,
+        failure_kind: 'malformed'
+      }
+    ])
+
+    const failedLog = logs.find((entry) => entry['event'] === 'research.job_failed')
+    expect(failedLog).toMatchObject({
+      job_id: job.job_id,
+      kind: 'malformed',
+      message: 'HTTP 400: invalid_request_error ([secret])'
+    })
+    expect(JSON.stringify(failedLog)).not.toContain('private subject')
+    expect(JSON.stringify(failedLog)).not.toContain('1234567890@lid')
+    expect(JSON.stringify(failedLog)).not.toContain(secret)
+  })
+
+  it('records model_call rows with job_id when research succeeds', async () => {
+    const doc = {
+      title: 'A report',
+      question: 'A question?',
+      summary: 'A summary',
+      keyFindings: [1, 2, 3].map((n) => ({ text: `Finding ${n}`, sources: [1] })),
+      sections: [1, 2].map((n) => ({ heading: `Section ${n}`, body: 'Body', sources: [1] })),
+      limitations: [],
+      sources: [{ n: 1, title: 'Source', url: 'https://example.com/' }]
+    }
+    const model = queueModel([
+      { text: JSON.stringify({ queries: ['q1', 'q2', 'q3'] }), costUsd: 0.02 },
+      { text: JSON.stringify(doc), costUsd: 0.03 }
+    ])
+    const { app, gateway } = await start(model, {
+      ports: {
+        search: { search: async () => [{ title: 'Source', url: 'https://example.com/', snippet: '' }] },
+        page: {
+          read: async () => ({ title: 'Source', text: 'Read text.' }),
+          download: async () => ({ data: Buffer.alloc(0), contentType: 'text/plain' })
+        }
+      }
+    })
+    await gateway.send(msg('m-1', '/research test topic'))
+    const job = app.storage.read((db) => db.prepare('SELECT job_id FROM research_job').get()) as { job_id: string }
+    expect(await app.research.tick()).toBe('done')
+
+    const modelCalls = app.storage.read((db) =>
+      db
+        .prepare(
+          'SELECT job_id, turn_id, role, model, failure_kind, cost_usd FROM model_call WHERE job_id = ? ORDER BY id'
+        )
+        .all(job.job_id)
+    ) as Record<string, unknown>[]
+    expect(modelCalls).toEqual([
+      { job_id: job.job_id, turn_id: null, role: 'main', model: 'main-model', failure_kind: null, cost_usd: 0.02 },
+      { job_id: job.job_id, turn_id: null, role: 'main', model: 'main-model', failure_kind: null, cost_usd: 0.03 }
+    ])
+  })
 })
 
 describe('per-chat tool call limit', () => {
