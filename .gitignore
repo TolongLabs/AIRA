@@ -106,3 +106,4 @@ bench-results/
 # Python bytecode from the gateway helper tests
 __pycache__/
 *.pyc
+live-results/
