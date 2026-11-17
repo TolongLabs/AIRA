@@ -128,6 +128,27 @@ Results are compared with the targets in the PRD (NFR-1). A benchmark does not g
   page-read prompts).
 - The runner lives in `src/bench/run.ts`; the local session lives in `src/bench/chat.ts`.
 
+## Live Checks
+
+`bun run live` runs fixed case sets through the full turn against live models, before a release. It is the Live layer
+in [Test Layers](#test-layers). It does not gate a commit; a failed case blocks the release.
+
+- A set is YAML with a non-empty name and description and 1 to 50 cases. A case has a non-empty `prompt` and an
+  optional `expect`: `tools`, a list of tool names of which the turn must call at least one, or `noTools: true`, for a
+  turn that must call none. `loadLiveSet` rejects anything else, including a case with both.
+- Cases run in order through one local core session (`openChatSession`), as benchmarks do. The tools a turn called
+  are read from its `tool_call` rows.
+- Every case also runs the persona checks on its delivered reply. The reply is not empty and is not `NO_REPLY`. It
+  never names itself an AI, a language model, a bot or an assistant, and never claims to be human. It holds no
+  Markdown heading, table or link text. It is at most `format.bubbleMaxChars` characters long.
+- A case passes when its turn is delivered, its tool expectation holds and every persona check passes. A failed case
+  records the name of each check it failed, never the reply text.
+- `writeLiveResult` writes one JSON line per case plus a summary line with `"summary": true`, named like a benchmark
+  result. The script exits 1 when any case fails.
+- Shipped sets: `live/tools.yml` (search, page reading, reminders and recall) and `live/persona.yml` (identity
+  questions, format requests and casual messages that must call no tool).
+- The runner lives in `src/live/run.ts`; the script lives in `scripts/live.ts`.
+
 ## Manual Tools
 
 - `bun run sim` opens the WhatsApp simulator. See [WhatsApp Simulator](#whatsapp-simulator).
