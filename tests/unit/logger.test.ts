@@ -156,3 +156,18 @@ describe('redaction', () => {
     expect(JSON.stringify(shape)).not.toContain('private words')
   })
 })
+
+describe('the default logger redactor (CI, 18 Nov 2026)', () => {
+  it('masks secret-named variables and leaves ordinary values alone', async () => {
+    const { secretEnvValues } = await import('../../src/records/logger.js')
+    const values = secretEnvValues({
+      GITHUB_JOB: 'check',
+      NODE_ENV: 'production',
+      EXA_API_KEY: 'invented-exa-value',
+      RUNNER_TOKEN: 'invented-runner-value',
+      AIRA_BACKUP_PASSWORD: 'invented-backup-value',
+      EMPTY_TOKEN: ''
+    })
+    expect(Object.keys(values).sort()).toEqual(['AIRA_BACKUP_PASSWORD', 'EXA_API_KEY', 'RUNNER_TOKEN'])
+  })
+})
