@@ -1,0 +1,32 @@
+name: pr-header
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pr-header-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-header:
+    name: PR header
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Check pull request header
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun scripts/pr-header.ts
