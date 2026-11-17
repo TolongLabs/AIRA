@@ -148,6 +148,9 @@ jobs:
     needs: [check, scan, image]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, aira-dev2]
+    # A named environment makes each run a GitHub deployment, listed on the repository page.
+    environment:
+      name: production
     timeout-minutes: 15
     permissions:
       contents: read
