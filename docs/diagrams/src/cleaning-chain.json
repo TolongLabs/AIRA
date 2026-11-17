@@ -1,0 +1,159 @@
+{
+  "diagram_type": "workflow",
+  "edges": [
+    { "from": "narration", "id": "e1", "label": "stripped", "to": "speaker" },
+    { "from": "narration", "id": "e0", "label": "throw at any step", "role": "branch", "to": "empty" },
+    { "from": "speaker", "id": "e2", "label": "untagged", "to": "length" },
+    { "from": "length", "id": "e3", "label": "fitted or bypassed", "to": "lists" },
+    { "from": "lists", "id": "e4", "label": "repaired", "to": "faces" },
+    { "from": "faces", "id": "e5", "label": "guarded", "to": "leak" },
+    { "from": "leak", "id": "e6", "label": "checked; hit takes fallback", "to": "render" },
+    { "from": "render", "id": "e7", "label": "rendered", "to": "bubbles" },
+    { "from": "bubbles", "id": "e8", "label": "split; past cap dropped", "to": "capitals" },
+    { "from": "capitals", "id": "e9", "label": "capitalised", "to": "footer" },
+    { "from": "footer", "id": "e10", "label": "footed or none", "to": "sticker" },
+    { "from": "sticker", "id": "e11", "label": "MEDIA line or text only", "to": "content" }
+  ],
+  "lanes": [
+    { "id": "chain", "label": "Cleaning Chain" },
+    { "id": "result", "label": "Reply Result" }
+  ],
+  "mainPath": [
+    "narration",
+    "speaker",
+    "length",
+    "lists",
+    "faces",
+    "leak",
+    "render",
+    "bubbles",
+    "capitals",
+    "footer",
+    "sticker",
+    "content"
+  ],
+  "meta": {
+    "output": ".archify/cleaning-chain.html",
+    "quality_profile": "showcase",
+    "title": "Reply Cleaning Chain, Bubbles and Sticker"
+  },
+  "nodes": [
+    {
+      "col": 0,
+      "id": "narration",
+      "label": "removeToolNarration",
+      "lane": "chain",
+      "sublabel": "strip tool calls, syntax",
+      "type": "backend",
+      "yOffset": -55
+    },
+    {
+      "col": 0,
+      "id": "speaker",
+      "label": "removeSpeakerTags",
+      "lane": "chain",
+      "sublabel": "names, indentation",
+      "type": "backend",
+      "yOffset": 55
+    },
+    {
+      "col": 1,
+      "id": "length",
+      "label": "enforceLength",
+      "lane": "chain",
+      "sublabel": "skipped on bypass",
+      "type": "backend",
+      "yOffset": -55
+    },
+    {
+      "col": 1,
+      "id": "lists",
+      "label": "repairLists",
+      "lane": "chain",
+      "sublabel": "normalize markers",
+      "type": "backend",
+      "yOffset": 55
+    },
+    {
+      "col": 2,
+      "id": "faces",
+      "label": "guardFaces",
+      "lane": "chain",
+      "sublabel": "full-width in faces",
+      "type": "backend",
+      "yOffset": -55
+    },
+    {
+      "col": 2,
+      "id": "leak",
+      "label": "leaksPrompt",
+      "lane": "chain",
+      "sublabel": "12-word run swaps fallback",
+      "type": "backend",
+      "yOffset": 55
+    },
+    {
+      "col": 3,
+      "id": "render",
+      "label": "renderWhatsApp",
+      "lane": "chain",
+      "sublabel": "markup that survives",
+      "type": "backend",
+      "yOffset": -55
+    },
+    {
+      "col": 3,
+      "id": "bubbles",
+      "label": "splitBubbles",
+      "lane": "chain",
+      "sublabel": "grows to fit, then trims",
+      "type": "backend",
+      "yOffset": 55
+    },
+    {
+      "col": 4,
+      "id": "capitals",
+      "label": "capitaliseParagraphs",
+      "lane": "chain",
+      "sublabel": "first letter per paragraph",
+      "type": "backend",
+      "yOffset": -55
+    },
+    {
+      "col": 4,
+      "id": "footer",
+      "label": "buildFooter",
+      "lane": "chain",
+      "sublabel": "labels, up to 3 sources",
+      "type": "backend",
+      "yOffset": 55
+    },
+    {
+      "col": 5,
+      "id": "sticker",
+      "label": "withStickers",
+      "lane": "chain",
+      "sublabel": "mood sticker, no repeats",
+      "type": "backend",
+      "yOffset": -55
+    },
+    {
+      "col": 5,
+      "id": "content",
+      "label": "joinContent",
+      "lane": "chain",
+      "sublabel": "bubbles plus MEDIA line",
+      "type": "frontend",
+      "yOffset": 55
+    },
+    {
+      "col": 0,
+      "id": "empty",
+      "label": "Empty Reply",
+      "lane": "result",
+      "sublabel": "a throw lands here, zero bubbles",
+      "type": "backend"
+    }
+  ],
+  "schema_version": 2
+}

@@ -27,9 +27,16 @@ Real character packs are private. They never enter the repository, the release i
   another character (PRD FR-9).
 - Every mood named in the rules must exist in `moods.yml`. Every line kind the core can send must exist in
   `lines.yml`. The validator checks both.
+- Cross references are checked too. The default mood must exist in the map. Every pattern must compile with the
+  `iu` flags. Every sticker a mood names must exist under `stickers/` and pass the WebP checks. Every face group
+  and beat a mood names must be defined. The loader collects every fault and throws one `PackError` that lists
+  them all. `loadPacks` still loads the other packs and returns each fault with its pack id
+  (`src/character/loader.ts`).
 - The `unavailable` line is what a chat sees when the core cannot be reached. At start-up, and whenever the global
   default character changes, the core writes that pack's line to `<hostDataDir>/gateway/unavailable.txt`, where the
   gateway's failure helper reads it. See [System](system.md#gateway-helper-modules).
+
+![How a character pack is loaded and validated](../diagrams/pack-loading.svg)
 
 ## Live Context
 
@@ -66,16 +73,35 @@ The system prompt is assembled in a fixed order. Blocks 1 to 3 are stable per ch
   [Models](models.md#media-watching).
 - The whole prompt stays under the ceiling in `config.yml` (`prompt.maxSystemTokens`, default 8,000). A test builds
   the prompt for every pack and fails above it.
+- Block 3 ends with the tool rules when the registry supplies them for this turn. Otherwise it holds the harness
+  rules alone (`src/prompt/builder.ts`).
+- In a group, each user message carries the sender's display name when the gateway gave one, else a stable
+  per-window member number. Consecutive user messages join into one model message (`src/prompt/builder.ts`).
+- A quote arrives as a `<quoted>` block before the message that quotes it. It names its source and is marked
+  untrusted. Tag-like text inside is stripped, so a quote can never close its own block (`src/prompt/quote.ts`).
+- Block 4 opens with the chat type and a local-time line: weekday, date, minute, time zone and UTC offset. The
+  zone is `format.timeZone`; without one the line falls back to UTC. A `Language:` line appears only when the
+  chat's `language` setting holds a string other than `auto` (`src/prompt/builder.ts`).
+- The size estimate is the character count divided by three, rounded up. A prompt over the ceiling throws, and the
+  turn fails instead of sending (`src/prompt/builder.ts`).
+
+![How one turn's prompt is built from pack, memory, window, mood and shape](../diagrams/prompt-build.svg)
 
 ## Mood Detection
 
-1. **Rules.** Each mood has patterns in `moods.yml`. Code scores the newest user messages in the window and picks
-   the best match, or the pack's default mood. This costs no model call.
-2. **Judge Override.** When `judge.mood` is on, the judge model receives the mood list and the recent messages. Its
-   choice replaces the rule result when its probability is at or above `judge.moodMinProbability`.
-3. **Failure.** A judge timeout or error keeps the rule result. The turn record notes which source chose the mood.
+1. **Rules.** Code scores the newest three user messages against each mood's patterns. Newer messages weigh more:
+   the newest weighs 3, the one before 2, the one before that 1. A tie keeps the earliest mood in the map. No
+   match returns the pack's default mood. This costs no model call (`src/prompt/mood.ts`).
+2. **Judge Override.** When `judge.mood` is on, the judge model receives the mood list with tones and the recent
+   messages inside `<messages untrusted="true">`. It must answer with JSON holding a mood key and a probability
+   from 0 to 1. Its choice replaces the rule result only for a known mood at or above
+   `judge.moodMinProbability`.
+3. **Failure.** A bad parse, an unknown mood, a low probability, or a timeout past `judge.timeoutMs` keeps the
+   rule result. The judge call aborts on timeout. The turn record notes which source chose the mood.
 
-Mood state is keyed by chat and character. AIRA's own replies are excluded from rule scoring.
+Only user messages are scored. AIRA's own replies never count. The mood itself is not stored: what persists
+across turns is continuity, the last opener, ending and sticker, each keyed by chat and character so no style
+leaks across characters (`src/prompt/chat-state.ts`).
 
 ## Reply Shape
 
@@ -102,6 +128,11 @@ turn record.
 | A command whose output is a list                                                      | From the command, at clean           | None                |
 
 With no limit, the bubble rules below still cap the reply at `format.maxBubbles` bubbles.
+
+The `replyLength` chat setting wins when it is `short` or `long`; any other value uses the pack's default. The
+request bypass is read from the newest pending message at build time and lifts the length with no limit. The
+research and command-list bypasses apply at clean time, from the turn's tool calls (`src/format/request.ts`,
+`src/format/clean.ts`).
 
 Randomness uses a seeded generator. The seed is stored in the turn record so a replay draws the same shape.
 
@@ -138,6 +169,11 @@ record.
 
 The chain never rewrites meaning. It removes, trims and re-marks. A reply it cannot repair is replaced by a pack
 line, and the failure is recorded.
+
+A throw anywhere in the chain returns empty content with zero bubbles and the steps collected so far. The caller
+then sends nothing for that turn (`src/format/clean.ts`).
+
+![How a reply passes the cleaning chain, bubbles and the sticker line](../diagrams/cleaning-chain.svg)
 
 ## Tool Footer
 
@@ -188,8 +224,11 @@ runs the renderer's output through a copy of the gateway's conversion and checks
 
 The core decides the bubbles. The gateway only delivers them.
 
-- A reply longer than `format.bubbleMaxChars` is split at a paragraph, else a sentence, else a word. A code block or
-  a list item is never cut. A reply is at most `format.maxBubbles` bubbles. The launch value is 1: one text message
+- A reply longer than `format.bubbleMaxChars` is split at a paragraph, else a sentence, else a word. A code block
+  or list item that exceeds the gateway chunk limit is split at its lines, and an overlong line is cut into
+  fixed-size chunks. The per-bubble limit grows toward 4,095 characters to fit `format.maxBubbles` bubbles. Any
+  bubble past the cap is dropped, and the turn record marks the reply trimmed (`src/format/bubbles.ts`). A reply
+  is at most `format.maxBubbles` bubbles. The launch value is 1: one text message
   and at most one sticker per reply, because members of the old bot complained about several messages per reply.
 - Between two bubbles the core writes a bubble break: a line holding only the character U+2063.
 - The gateway's bubble patch sends each bubble as its own message, with a typing pause before every bubble after the
@@ -203,6 +242,10 @@ The core decides the bubbles. The gateway only delivers them.
 
 - A sticker is a WebP image, 512 by 512 pixels, within WhatsApp's sticker size limit. The site converts uploaded
   images to this format when a pack is saved.
+- Stickers attach only for packs loaded from the data volume. Every file must be exactly 512 by 512 pixels, at
+  most 100,000 bytes still or 500,000 bytes animated. The loader rejects anything else (`src/character/webp.ts`).
+- Sticker load, selection, path and state-write errors are caught. The cleaned text goes out unchanged, with no
+  sticker (`src/prompt/stickers.ts`).
 - After the reply is cleaned, code picks one sticker from the mood's set, not repeating the last one sent in this
   chat. The model never sees or chooses it.
 - The sticker is sent as a second message after the text. A mood with no sticker, or a chat with expressions
@@ -220,9 +263,10 @@ The core decides the bubbles. The gateway only delivers them.
 | `prompt.maxSystemTokens`   | 8000                | Ceiling enforced by the size test                                                                                                                             |
 | `judge.mood`               | `on`                | Allows the judge to override the rule mood                                                                                                                    |
 | `judge.moodMinProbability` | 0.3                 | Threshold for the override                                                                                                                                    |
+| `judge.timeoutMs`          | 1500                | Judge wait per turn, in ms                                                                                                                                    |
 | `format.bubbleMaxChars`    | 3800                | Split point for bubbles                                                                                                                                       |
 | `format.maxBubbles`        | 1                   | Most bubbles in one reply                                                                                                                                     |
-| `format.leakCheck`         | `on`                | Step 6 of the cleaning chain                                                                                                                                  |
+| `format.leakCheck`         | `on`                | Step 7 of the cleaning chain                                                                                                                                  |
 | `format.timeZone`          | `Asia/Kuala_Lumpur` | The time zone code uses when it writes a time in a reply, such as a due time in `/reminders`, and the local time with its offset that block 4 gives the model |
 
 Per-chat switches for expressions and length are settings, not configuration. See [Data](data.md).

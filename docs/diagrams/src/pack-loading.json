@@ -1,0 +1,75 @@
+{
+  "diagram_type": "workflow",
+  "edges": [
+    { "from": "roots", "id": "e1", "label": "folders", "to": "scan" },
+    { "from": "scan", "id": "e2", "label": "candidates", "to": "validate" },
+    { "from": "validate", "id": "e3", "label": "parsed", "to": "xrefs" },
+    { "from": "validate", "id": "e4", "label": "unreadable or invalid", "role": "branch", "to": "fault" },
+    { "from": "xrefs", "id": "e5", "label": "refs ok", "to": "webp" },
+    { "from": "xrefs", "id": "e6", "label": "bad ref", "role": "branch", "to": "fault" },
+    { "from": "webp", "id": "e7", "label": "stickers ok", "to": "pack" },
+    { "from": "webp", "id": "e8", "label": "bad sticker", "role": "branch", "to": "fault" }
+  ],
+  "lanes": [
+    { "id": "roots", "label": "Pack Roots" },
+    { "id": "loader", "label": "Pack Loader" }
+  ],
+  "mainPath": ["roots", "scan", "validate", "xrefs", "webp", "pack"],
+  "meta": {
+    "output": ".archify/pack-loading.html",
+    "quality_profile": "showcase",
+    "title": "Character Pack Loading and Validation"
+  },
+  "nodes": [
+    {
+      "col": 0,
+      "id": "roots",
+      "label": "Two Roots",
+      "lane": "roots",
+      "sublabel": "data first, then repo",
+      "type": "external"
+    },
+    {
+      "col": 0,
+      "id": "scan",
+      "label": "scan folders",
+      "lane": "loader",
+      "sublabel": "data wins on same id",
+      "type": "backend"
+    },
+    {
+      "col": 1,
+      "id": "validate",
+      "label": "readAndValidate",
+      "lane": "loader",
+      "sublabel": "card, moods, lines schemas",
+      "type": "backend"
+    },
+    {
+      "col": 2,
+      "id": "xrefs",
+      "label": "cross-check refs",
+      "lane": "loader",
+      "sublabel": "id, mood, patterns, faces, beats",
+      "type": "backend"
+    },
+    {
+      "col": 3,
+      "id": "webp",
+      "label": "readWebpInfo",
+      "lane": "loader",
+      "sublabel": "512 square, byte limits",
+      "type": "backend"
+    },
+    { "col": 4, "id": "pack", "label": "Pack", "lane": "loader", "sublabel": "joins the set", "type": "backend" },
+    {
+      "col": 5,
+      "id": "fault",
+      "label": "PackError",
+      "lane": "loader",
+      "sublabel": "one error lists all faults",
+      "type": "backend"
+    }
+  ],
+  "schema_version": 2
+}
