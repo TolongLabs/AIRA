@@ -1,0 +1,163 @@
+{
+  "diagram_type": "dataflow",
+  "flows": [
+    {
+      "from": "airadb",
+      "label": "backup call",
+      "to": "takesnap"
+    },
+    {
+      "from": "takesnap",
+      "label": "check the copy",
+      "to": "verify"
+    },
+    {
+      "from": "verify",
+      "label": "verified file",
+      "to": "snapshots"
+    },
+    {
+      "from": "verify",
+      "label": "failed result recorded",
+      "to": "backuprun"
+    },
+    {
+      "from": "takesnap",
+      "label": "started and verified rows",
+      "to": "backuprun"
+    },
+    {
+      "from": "airadb",
+      "label": "collect rows, rolled back",
+      "to": "archivejob"
+    },
+    {
+      "from": "archivejob",
+      "label": "export groups",
+      "to": "writeparquet"
+    },
+    {
+      "from": "writeparquet",
+      "label": "table and month files",
+      "to": "archive"
+    },
+    {
+      "from": "snapshots",
+      "label": "newest verified",
+      "to": "duckdb"
+    },
+    {
+      "from": "archive",
+      "label": "Parquet history",
+      "to": "duckdb"
+    },
+    {
+      "from": "snapshots",
+      "label": "planned ship, not built",
+      "to": "offhost",
+      "variant": "dashed"
+    }
+  ],
+  "meta": {
+    "output": ".archify/backups.html",
+    "quality_profile": "showcase",
+    "title": "Snapshots, Archive, and the Off-Host Copy"
+  },
+  "nodes": [
+    {
+      "id": "airadb",
+      "label": "aira.db",
+      "row": 0,
+      "stage": 0,
+      "sublabel": "Live SQLite in WAL",
+      "type": "database"
+    },
+    {
+      "id": "takesnap",
+      "label": "takeSnapshot",
+      "row": 0,
+      "stage": 1,
+      "sublabel": "Online backup per timer",
+      "type": "backend"
+    },
+    {
+      "id": "verify",
+      "label": "verify",
+      "row": 1,
+      "stage": 1,
+      "sublabel": "integrity_check, row counts",
+      "type": "backend"
+    },
+    {
+      "id": "backuprun",
+      "label": "backup_run",
+      "row": 2,
+      "stage": 1,
+      "sublabel": "started, verified, failed",
+      "type": "database"
+    },
+    {
+      "id": "snapshots",
+      "label": "snapshots/",
+      "row": 0,
+      "stage": 2,
+      "sublabel": "Verified copies, pruned",
+      "type": "database"
+    },
+    {
+      "id": "archivejob",
+      "label": "archiveAndPrune",
+      "row": 1,
+      "stage": 2,
+      "sublabel": "Collect, export, prune",
+      "type": "backend"
+    },
+    {
+      "id": "writeparquet",
+      "label": "writeParquet",
+      "row": 2,
+      "stage": 2,
+      "sublabel": "Parquet by table, month",
+      "type": "backend"
+    },
+    {
+      "id": "archive",
+      "label": "archive/",
+      "row": 0,
+      "stage": 3,
+      "sublabel": "Parquet history by month",
+      "type": "database"
+    },
+    {
+      "id": "duckdb",
+      "label": "DuckDB",
+      "row": 1,
+      "stage": 3,
+      "sublabel": "Reads snapshots, archive",
+      "type": "backend"
+    },
+    {
+      "id": "offhost",
+      "label": "Off-Host Copy",
+      "row": 2,
+      "stage": 3,
+      "sublabel": "Not built yet",
+      "type": "external"
+    }
+  ],
+  "schema_version": 1,
+  "stages": [
+    {
+      "label": "Live"
+    },
+    {
+      "label": "Copy"
+    },
+    {
+      "label": "Store"
+    },
+    {
+      "label": "Use"
+    }
+  ]
+}
