@@ -1,0 +1,65 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Settings Migration",
+    "quality_profile": "showcase",
+    "output": ".archify/settings-migration.html"
+  },
+  "lanes": [
+    { "id": "copy", "label": "Private Copy" },
+    { "id": "plan", "label": "Plan" },
+    { "id": "core", "label": "Core Apply" }
+  ],
+  "mainPath": ["files", "planner", "review", "chats", "apply"],
+  "nodes": [
+    {
+      "id": "files",
+      "lane": "copy",
+      "col": 0,
+      "type": "database",
+      "label": "Old Files",
+      "sublabel": "bindings + state"
+    },
+    {
+      "id": "planner",
+      "lane": "plan",
+      "col": 1,
+      "type": "backend",
+      "label": "Plan Settings",
+      "sublabel": "chats + settings"
+    },
+    {
+      "id": "unmapped",
+      "lane": "plan",
+      "col": 2,
+      "type": "messagebus",
+      "label": "Unmapped Values",
+      "sublabel": "counts + reasons"
+    },
+    {
+      "id": "review",
+      "lane": "plan",
+      "col": 3,
+      "type": "frontend",
+      "label": "Review Plan",
+      "sublabel": "dry run output"
+    },
+    { "id": "chats", "lane": "core", "col": 4, "type": "database", "label": "Create Chats", "sublabel": "active rows" },
+    { "id": "apply", "lane": "core", "col": 5, "type": "backend", "label": "Apply Plan", "sublabel": "one transaction" }
+  ],
+  "edges": [
+    { "id": "e1", "from": "files", "to": "planner", "label": "read" },
+    { "id": "e2", "from": "planner", "to": "unmapped", "label": "count skipped", "variant": "dashed" },
+    { "id": "e3", "from": "planner", "to": "review", "label": "print plan", "variant": "emphasis" },
+    { "id": "e4", "from": "review", "to": "chats", "label": "confirm" },
+    { "id": "e5", "from": "chats", "to": "apply", "label": "write settings", "variant": "emphasis" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Keeps Existing",
+      "items": ["Set values are never replaced", "Runs before the memory import"]
+    }
+  ]
+}

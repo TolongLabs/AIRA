@@ -1,0 +1,91 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Memory Migration",
+    "quality_profile": "showcase",
+    "output": ".archify/memory-migration.html"
+  },
+  "lanes": [
+    { "id": "legacy", "label": "Legacy Copy" },
+    { "id": "export", "label": "Export" },
+    { "id": "core", "label": "Core Import" }
+  ],
+  "mainPath": ["copy", "readers", "export", "backup", "dryrun", "report", "import"],
+  "nodes": [
+    {
+      "id": "copy",
+      "lane": "legacy",
+      "col": 0,
+      "type": "database",
+      "label": "Private Copy",
+      "sublabel": "old brain folder"
+    },
+    {
+      "id": "readers",
+      "lane": "legacy",
+      "col": 1,
+      "type": "backend",
+      "label": "Read Old Brain",
+      "sublabel": "memories + lingo"
+    },
+    {
+      "id": "export",
+      "lane": "export",
+      "col": 2,
+      "type": "database",
+      "label": "Export NDJSON",
+      "sublabel": "facts + lingo"
+    },
+    {
+      "id": "backup",
+      "lane": "core",
+      "col": 3,
+      "type": "database",
+      "label": "Backup Export",
+      "sublabel": "SHA-256 sums"
+    },
+    { "id": "dryrun", "lane": "core", "col": 4, "type": "backend", "label": "Dry Run", "sublabel": "scratch database" },
+    {
+      "id": "report",
+      "lane": "core",
+      "col": 5,
+      "type": "frontend",
+      "label": "Review Report",
+      "sublabel": "kept merged rejected"
+    },
+    {
+      "id": "import",
+      "lane": "core",
+      "col": 5,
+      "type": "backend",
+      "label": "Confirmed Import",
+      "sublabel": "one transaction",
+      "yOffset": 90
+    },
+    {
+      "id": "rejects",
+      "lane": "export",
+      "col": 3,
+      "type": "messagebus",
+      "label": "Rejects File",
+      "sublabel": "unparseable lines"
+    }
+  ],
+  "edges": [
+    { "id": "e1", "from": "copy", "to": "readers", "label": "read" },
+    { "id": "e2", "from": "readers", "to": "export", "label": "write", "variant": "emphasis" },
+    { "id": "e3", "from": "export", "to": "backup", "label": "copy + checksum" },
+    { "id": "e4", "from": "backup", "to": "dryrun", "label": "import", "variant": "emphasis" },
+    { "id": "e5", "from": "dryrun", "to": "report", "label": "report" },
+    { "id": "e6", "from": "report", "to": "import", "label": "confirm same digest", "variant": "security" },
+    { "id": "e7", "from": "readers", "to": "rejects", "label": "rejects", "variant": "dashed" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Never Guessed",
+      "items": ["Unknown chat is unassigned, never imported", "Second real run changes nothing"]
+    }
+  ]
+}

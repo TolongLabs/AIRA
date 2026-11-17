@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Memory Recall",
+    "quality_profile": "showcase",
+    "output": ".archify/memory-recall.html"
+  },
+  "participants": [
+    { "id": "turn", "type": "backend", "label": "Turn", "sublabel": "prompt block 4" },
+    { "id": "recall", "type": "backend", "label": "Recall", "sublabel": "recallForTurn" },
+    { "id": "fts", "type": "database", "label": "FTS Index", "sublabel": "memory_fts" },
+    { "id": "store", "type": "database", "label": "Memory Store", "sublabel": "memory_item" },
+    { "id": "window", "type": "database", "label": "Window", "sublabel": "session_message" }
+  ],
+  "segments": [
+    { "from": 160, "to": 356, "label": "Prompt recall" },
+    { "from": 366, "to": 470, "label": "Tools" }
+  ],
+  "messages": [
+    { "id": "build", "from": "turn", "to": "recall", "y": 170, "label": "build memory block", "variant": "default" },
+    { "id": "pinned", "from": "recall", "to": "store", "y": 200, "label": "read pinned facts", "variant": "default" },
+    {
+      "id": "pinned-rows",
+      "from": "store",
+      "to": "recall",
+      "y": 228,
+      "label": "active pinned rows",
+      "variant": "return"
+    },
+    {
+      "id": "fts-query",
+      "from": "recall",
+      "to": "fts",
+      "y": 258,
+      "label": "FTS query, 12 words OR",
+      "variant": "emphasis",
+      "note": "At most 12 distinct words, 2+ letters or digits."
+    },
+    { "id": "fts-rows", "from": "fts", "to": "recall", "y": 318, "label": "ranked matches", "variant": "return" },
+    {
+      "id": "lines",
+      "from": "recall",
+      "to": "turn",
+      "y": 348,
+      "label": "lines within budget",
+      "variant": "return",
+      "note": "Pinned, notes, facts, summaries. 1 token per 3 chars."
+    },
+    {
+      "id": "recall-tool",
+      "from": "turn",
+      "to": "store",
+      "y": 408,
+      "label": "recall tool search",
+      "variant": "default"
+    },
+    {
+      "id": "history-tool",
+      "from": "turn",
+      "to": "window",
+      "y": 436,
+      "label": "history substring + episodes",
+      "variant": "dashed"
+    },
+    { "id": "history-rows", "from": "window", "to": "turn", "y": 464, "label": "newest first", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "recall", "from": 170, "to": 348, "type": "backend" },
+    { "participant": "store", "from": 200, "to": 234, "type": "database" },
+    { "participant": "fts", "from": 258, "to": 318, "type": "database" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Chat Scoped",
+      "items": ["Every read filters by chat id", "Off switch returns no lines"]
+    },
+    {
+      "dot": "amber",
+      "title": "Budget",
+      "items": ["Stops before the first line over budget", "History merges window and episodes"]
+    }
+  ]
+}
