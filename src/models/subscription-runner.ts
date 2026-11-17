@@ -112,6 +112,7 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
         turnId: input.context.turnId,
         tools: input.tools,
         firstTool: input.firstTools?.[0],
+        maxToolCalls: input.maxToolCalls,
         signal: input.signal
       })
 

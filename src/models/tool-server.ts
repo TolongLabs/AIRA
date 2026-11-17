@@ -21,7 +21,13 @@ export interface ToolSession {
 export interface ToolServer {
   /** Starts listening on host 127.0.0.1. Port 0 picks a free port. Resolves with the port. */
   listen(port: number): Promise<number>
-  open(turn: { turnId: string; tools: OfferedTool[]; firstTool?: string; signal: AbortSignal }): ToolSession
+  open(turn: {
+    turnId: string
+    tools: OfferedTool[]
+    firstTool?: string
+    maxToolCalls?: number
+    signal: AbortSignal
+  }): ToolSession
   close(): Promise<void>
 }
 
@@ -30,6 +36,7 @@ interface ActiveSession {
   tools: OfferedTool[]
   toolsByName: Map<string, OfferedTool>
   firstTool?: string
+  maxCalls: number
   signal: AbortSignal
   state: ToolSession['state']
 }
@@ -126,7 +133,7 @@ export function createToolServer(options: {
       }
 
       const { state } = session
-      if (state.toolCalls >= options.limits.maxCallsPerTurn) state.chainLimit ??= 'calls'
+      if (state.toolCalls >= session.maxCalls) state.chainLimit ??= 'calls'
       else if (state.toolMs >= options.limits.timeBudgetMs) state.chainLimit ??= 'time'
       if (state.chainLimit) {
         return {
@@ -159,7 +166,7 @@ export function createToolServer(options: {
         }
       } finally {
         state.toolMs += now().getTime() - started
-        if (state.toolCalls >= options.limits.maxCallsPerTurn) state.chainLimit ??= 'calls'
+        if (state.toolCalls >= session.maxCalls) state.chainLimit ??= 'calls'
         else if (state.toolMs >= options.limits.timeBudgetMs) state.chainLimit ??= 'time'
       }
     })
@@ -228,6 +235,7 @@ export function createToolServer(options: {
         tools: turn.tools,
         toolsByName: new Map(turn.tools.map((tool) => [tool.schema.name, tool])),
         firstTool: turn.tools.some((tool) => tool.schema.name === turn.firstTool) ? turn.firstTool : undefined,
+        maxCalls: Math.min(turn.maxToolCalls ?? options.limits.maxCallsPerTurn, options.limits.maxCallsPerTurn),
         signal: turn.signal,
         state
       }

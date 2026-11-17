@@ -9,6 +9,7 @@ describe('config.yml', () => {
   it('parses the repository file', () => {
     const config = loadConfig('config.yml')
     expect(config.format.maxBubbles).toBe(1)
+    expect(config.tools.maxCallsPerTurn).toBe(8)
     expect(config.gateway.hostDataDir).toBe('')
     expect(config.storage.path).toBe('/data')
   })

@@ -727,6 +727,21 @@ function ChatRow({
                       onChange={(v) => save('commands.maxPerMessage', Number(v))}
                     />
                   </SettingRow>
+                  <SettingRow
+                    chat={chat}
+                    name="tools.maxPerMessage"
+                    label="Tools per message"
+                    hint="Tool calls one reply may make"
+                    onClear={clear}
+                  >
+                    <Segmented
+                      options={['1', '2', '3', '4', '5', '6', '7', '8'] as const}
+                      value={
+                        String(valueOf(chat, 'tools.maxPerMessage', 3)) as '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8'
+                      }
+                      onChange={(v) => save('tools.maxPerMessage', Number(v))}
+                    />
+                  </SettingRow>
                 </>
               )}
               {tab === 'features' &&

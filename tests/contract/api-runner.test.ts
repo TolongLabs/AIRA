@@ -223,4 +223,48 @@ describe('the API runner', () => {
     setTimeout(() => abort.abort(), 20)
     await expect(running).rejects.toMatchObject({ kind: 'transient' })
   })
+
+  it('uses maxToolCalls per turn when below the ceiling and caps it at the ceiling', async () => {
+    const lowLog: { args: unknown; callId: string }[] = []
+    const lowModel = queueModel([{ toolCalls: [call('1')] }, { text: 'stopped at one', toolCalls: [call('2')] }])
+    const lowRunner = createApiRunner({
+      clientFor: () => lowModel,
+      model: 'main-model',
+      limits: { maxCallsPerTurn: 8, timeBudgetMs: 15_000 }
+    })
+    const lowResult = await lowRunner.run({
+      system,
+      messages: window,
+      tools: [lookupTool(lowLog)],
+      context,
+      signal: new AbortController().signal,
+      maxToolCalls: 1
+    })
+    expect(lowResult).toMatchObject({ text: 'stopped at one', chainLimit: 'calls' })
+    expect(lowLog).toHaveLength(1)
+    expect(lowModel.requests[1]?.tools).toEqual([])
+
+    const capLog: { args: unknown; callId: string }[] = []
+    const capModel = queueModel([
+      { toolCalls: [call('1')] },
+      { toolCalls: [call('2')] },
+      { text: 'capped at ceiling', toolCalls: [call('3')] }
+    ])
+    const capRunner = createApiRunner({
+      clientFor: () => capModel,
+      model: 'main-model',
+      limits: { maxCallsPerTurn: 2, timeBudgetMs: 15_000 }
+    })
+    const capResult = await capRunner.run({
+      system,
+      messages: window,
+      tools: [lookupTool(capLog)],
+      context,
+      signal: new AbortController().signal,
+      maxToolCalls: 6
+    })
+    expect(capResult).toMatchObject({ text: 'capped at ceiling', chainLimit: 'calls' })
+    expect(capLog).toHaveLength(2)
+    expect(capModel.requests[2]?.tools).toEqual([])
+  })
 })
