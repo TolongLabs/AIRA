@@ -134,6 +134,19 @@ describe('a scripted conversation', () => {
       '<quoted from="aira" untrusted="true">an earlier reply</quoted>\nreally?'
     )
   })
+
+  it('lets deps.maxWindowMessages override context.maxMessages in tests', async () => {
+    const runner = scriptedRunner((_, call) => `reply ${call}`)
+    const core = await startTestCore({ runner, deps: { maxWindowMessages: 2 } })
+    const chatId = core.activate('0000000000@g.us')
+    setSetting(core.storage, { level: 'chat', scope: chatId, key: 'context.maxMessages', value: 10, actor: 'test' })
+    await core.gateway.send(msg('m-1', 'one', ALICE, '0000000000@g.us'))
+    await core.gateway.send(msg('m-2', 'two', ALICE, '0000000000@g.us'))
+    expect(runner.inputs[1]?.messages).toEqual([
+      { role: 'assistant', content: 'reply 1' },
+      { role: 'user', content: 'two' }
+    ])
+  })
 })
 
 describe('turn admission', () => {

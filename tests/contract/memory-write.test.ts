@@ -259,6 +259,38 @@ describe('closeDueEpisodes (steps 2 and 3)', () => {
       storage.read((db) => db.prepare('SELECT forget_epoch FROM memory_cursor WHERE chat_id = ?').pluck().get(chatId))
     ).toBe(1)
   })
+
+  it('closes at memory.pageMessages 5 while the default stays 25', async () => {
+    const custom = tmpStorage()
+    const customChatId = activeChat(custom, '0000000000@g.us')
+    setSetting(custom, { level: 'chat', scope: customChatId, key: 'memory.pageMessages', value: 5, actor: 'test' })
+    for (let index = 0; index < 4; index += 1) {
+      say(custom, { chatId: customChatId, senderId: 'a', text: `msg ${index}`, at: T0 })
+    }
+    expect(closeDueEpisodes(custom, { idleMs: 180_000, maxMessages: 25 }, () => T0)).toBe(0)
+    say(custom, { chatId: customChatId, senderId: 'a', text: 'msg 4', at: T0 })
+
+    const worker = createMemoryWorker({
+      storage: custom,
+      config: memoryConfig,
+      client: scriptedModel(() => ({ operations: [] })),
+      logger: quietLogger,
+      now: () => T0
+    })
+    expect(await worker.tick()).toBe('skipped')
+    expect(jobs(custom)).toHaveLength(1)
+    expect(JSON.parse(jobs(custom)[0]?.payload ?? '')).toMatchObject({ count: 5 })
+
+    const standard = tmpStorage()
+    const defaultChatId = activeChat(standard, '0000000000@g.us')
+    for (let index = 0; index < 24; index += 1) {
+      say(standard, { chatId: defaultChatId, senderId: 'a', text: `msg ${index}`, at: T0 })
+    }
+    expect(closeDueEpisodes(standard, { idleMs: 180_000, maxMessages: 25 }, () => T0)).toBe(0)
+    say(standard, { chatId: defaultChatId, senderId: 'a', text: 'msg 24', at: T0 })
+    expect(closeDueEpisodes(standard, { idleMs: 180_000, maxMessages: 25 }, () => T0)).toBe(1)
+    expect(JSON.parse(jobs(standard)[0]?.payload ?? '')).toMatchObject({ count: 25 })
+  })
 })
 
 function tmpPending(storage: Storage): string {

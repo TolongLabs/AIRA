@@ -498,3 +498,67 @@ describe('per-chat tool call limit', () => {
     expect(turn(app)).toMatchObject({ chat_id: chatId, chain_limit: 'calls' })
   })
 })
+
+describe('per-chat live context', () => {
+  const TEST_CHAT = '0000000000@g.us'
+  const TEST_SENDER = '0000000000@s.whatsapp.net'
+  const sendToTestChat = (gateway: FakeGateway, mid: string, text: string) =>
+    gateway.send({ chat: { waId: TEST_CHAT, kind: 'group' }, sender: TEST_SENDER, mid, text })
+  const activateTestChat = (app: App) => {
+    const chat = ensureChat(app.storage, { waId: TEST_CHAT, type: 'group' })
+    setChatStatus(app.storage, { chatId: chat.chatId, status: 'active', actor: 'test' })
+    return chat.chatId
+  }
+
+  it('sends no earlier messages to the model when features.context is false, while still logging to session_message', async () => {
+    const model = queueModel([{ text: 'First reply.' }, { text: 'Second reply.' }, { text: 'Third reply.' }])
+    const { app, gateway } = await start(model)
+    const chatId = activateTestChat(app)
+    setSetting(app.storage, { level: 'chat', scope: chatId, key: 'features.context', value: false, actor: 'test' })
+
+    await sendToTestChat(gateway, 'm-1', 'first secret word pineapple')
+    await sendToTestChat(gateway, 'm-2', 'second question now')
+    setSetting(app.storage, { level: 'chat', scope: chatId, key: 'context.maxMessages', value: 0, actor: 'test' })
+    await sendToTestChat(gateway, 'm-3', 'third question now')
+
+    expect(model.requests[1]?.messages).toEqual([{ role: 'user', content: '[member 1] second question now' }])
+    expect(model.requests[2]?.messages).toEqual([{ role: 'user', content: '[member 1] third question now' }])
+    const logged = app.storage.read((db) =>
+      db.prepare('SELECT role, content FROM session_message WHERE chat_id = ? ORDER BY id').all(chatId)
+    )
+    expect(logged).toEqual([
+      { role: 'user', content: 'first secret word pineapple' },
+      { role: 'assistant', content: 'First reply.' },
+      { role: 'user', content: 'second question now' },
+      { role: 'assistant', content: 'Second reply.' },
+      { role: 'user', content: 'third question now' },
+      { role: 'assistant', content: 'Third reply.' }
+    ])
+  })
+
+  it('limits the prompt window to context.maxMessages 5', async () => {
+    const model = queueModel([
+      { text: 'Reply 1.' },
+      { text: 'Reply 2.' },
+      { text: 'Reply 3.' },
+      { text: 'Reply 4.' },
+      { text: 'Reply 5.' }
+    ])
+    const { app, gateway } = await start(model)
+    const chatId = activateTestChat(app)
+    setSetting(app.storage, { level: 'chat', scope: chatId, key: 'context.maxMessages', value: 5, actor: 'test' })
+
+    for (let index = 1; index <= 5; index += 1) {
+      await sendToTestChat(gateway, `m-${index}`, `turn ${index}`)
+    }
+
+    expect(model.requests[4]?.messages).toEqual([
+      { role: 'user', content: '[member 1] turn 3' },
+      { role: 'assistant', content: 'Reply 3.' },
+      { role: 'user', content: '[member 1] turn 4' },
+      { role: 'assistant', content: 'Reply 4.' },
+      { role: 'user', content: '[member 1] turn 5' }
+    ])
+    expect(turn(app)).toMatchObject({ chat_id: chatId, window_size: 5 })
+  })
+})
