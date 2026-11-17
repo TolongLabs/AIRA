@@ -12,12 +12,15 @@ CI. Each row is one item of #32.
 | NFR-4 Memory simulator    | Isolation, lost writes, drift, forget, recovery   | `tests/simulator` 30 of 30                                                                         | Pass   |
 | NFR-5 Privacy and secrets | Both scans pass on the release                    | Privacy Scan in `tests/gates` 4 of 4; gitleaks `scan` job: no leaks                                | Pass   |
 | Fixed gates in CI         | All pass, zero live calls in replay and simulator | `check` on `01941e4`: 1,301 passed, 4 skipped; Zero Live Calls gate passes                         | Pass   |
-| Live layer                | Tool triggering and persona checks on real models | Not built as a suite. The live benchmark's tool set triggered tools on 6 of 8 turns as expected    | Gap    |
+| Live layer                | Tool triggering and persona checks on real models | `bun run live` (#211) on `4608ef5`, both packs: tools 6 of 6, persona 8 of 8                       | Pass   |
 | Migration dry run         | Report with no unassigned fact                    | 124 kept, 7 rejected, 0 unassigned (16 Nov); real run at cutover, same counts                      | Pass   |
 | Rollback on staging       | Rehearsed once                                    | Waived: the owner cut over without staging on 17 Nov (`docs/DECISIONS.md`)                         | Waived |
 | NFR-11 Restart suite      | No lost write, no double reply, no stuck lease    | `tests/restart` 10 of 10                                                                           | Pass   |
 | NFR-12 Restore drill      | Off-host restore under 30 minutes                 | 4 s; `integrity_check: ok`; scratch core `ready`, synthetic turn 200 (#36)                         | Pass   |
 | Disk-full suite           | Passes                                            | `tests/diskfull` 2 of 2                                                                            | Pass   |
 
-The benchmark raw results are kept outside the repository with the session files. Latency is measured from arrival
-to return and includes the 1.5 s batch wait.
+The default pack first failed 2 persona cases, because its card said it was an AI. On 18 Nov the owner had the card
+rewritten to answer as its persona, and both packs then passed.
+
+The benchmark and live check raw results are kept outside the repository with the session files. Latency is
+measured from arrival to return and includes the 1.5 s batch wait.
