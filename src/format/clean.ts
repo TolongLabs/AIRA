@@ -2,7 +2,14 @@ import type { LineKind } from '../character/schema.js'
 import type { CleanedReply, ReplyCleaner } from '../turn/types.js'
 import { parseBlocks } from './blocks.js'
 import { joinContent, splitBubbles } from './bubbles.js'
-import { LIST_COMMAND_TOOLS, RESEARCH_MAX_CHARS, RESEARCH_TOOLS, buildFooter, capitaliseParagraphs } from './footer.js'
+import {
+  CODE_REPLY_NOTE_LINE,
+  LIST_COMMAND_TOOLS,
+  RESEARCH_MAX_CHARS,
+  RESEARCH_TOOLS,
+  buildFooter,
+  capitaliseParagraphs
+} from './footer.js'
 import { renderWhatsApp } from './render.js'
 
 // Seven-step reply cleaning chain (docs/trd/prompt-engine.md#cleaning-chain).
@@ -412,7 +419,7 @@ export function cleanReply(text: string, options: CleanOptions): CleanedReply {
   try {
     let current = text
 
-    const afterTool = removeToolNarration(current, options.toolNames)
+    const afterTool = removeToolNarration(current.replace(CODE_REPLY_NOTE_LINE, ''), options.toolNames)
     if (afterTool !== current) {
       steps.push('tool_narration')
       current = afterTool

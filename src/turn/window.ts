@@ -70,6 +70,7 @@ interface Row {
   quote_of_aira: number
   created_at: string
   turn_id: string | null
+  by_code: number
 }
 
 /**
@@ -88,6 +89,8 @@ export function readWindow(
       db
         .prepare(
           `SELECT role, sender_id, content, quote, quote_of_aira, created_at, turn_id,
+             CASE WHEN role = 'assistant' AND turn_id IS NOT NULL AND NOT EXISTS (
+               SELECT 1 FROM model_call WHERE model_call.turn_id = message.turn_id) THEN 1 ELSE 0 END AS by_code,
              CASE WHEN role = 'assistant' THEN coalesce(
                (SELECT max(asked.id) FROM session_message AS asked
                 WHERE asked.chat_id = message.chat_id AND asked.turn_id = message.turn_id AND asked.role = 'user'),
@@ -102,6 +105,7 @@ export function readWindow(
     role: row.role,
     ...(row.sender_id === null ? {} : { senderId: row.sender_id }),
     ...(row.turn_id === null ? {} : { turnId: row.turn_id }),
+    ...(row.by_code === 1 ? { byCode: true } : {}),
     content: row.content,
     ...(row.quote === null ? {} : { quote: { text: row.quote, ofAira: row.quote_of_aira === 1 } }),
     at: row.created_at

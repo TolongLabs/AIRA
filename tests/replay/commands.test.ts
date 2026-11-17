@@ -24,6 +24,21 @@ describe('direct commands', () => {
     ])
   })
 
+  it('replays a code-written answer labelled as code, and strips the label if the model copies it', async () => {
+    const model = queueModel([
+      {
+        text: '[Code wrote this reply from stored data for a command. It is accurate; you did not write it.]\nYes, that list is real.'
+      }
+    ])
+    const { gateway } = await startApp(model)
+    await gateway.send(msg('m-1', '/help'))
+    const reply = await gateway.send(msg('m-2', 'did you make that list up?'))
+    const replayed = JSON.stringify(model.requests[0]?.messages)
+    expect(replayed).toContain('Code wrote this reply from stored data for a command')
+    expect(reply.content).toContain('Yes, that list is real.')
+    expect(reply.content).not.toContain('Code wrote this reply')
+  })
+
   it('/mute and /unmute change the setting, each with a receipt', async () => {
     const model = queueModel([{ text: 'must not be asked' }])
     const { app, gateway } = await startApp(model)
