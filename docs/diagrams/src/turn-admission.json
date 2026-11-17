@@ -1,0 +1,152 @@
+{
+  "activations": [
+    {
+      "from": 180,
+      "participant": "svc",
+      "to": 750
+    },
+    {
+      "from": 390,
+      "participant": "queue",
+      "to": 460
+    },
+    {
+      "from": 610,
+      "participant": "run",
+      "to": 680
+    }
+  ],
+  "diagram_type": "sequence",
+  "messages": [
+    {
+      "from": "gw",
+      "label": "POST turn (mid, text, attachments)",
+      "note": "Attachments stay on the waiter in memory only",
+      "to": "svc",
+      "y": 180
+    },
+    {
+      "from": "svc",
+      "label": "receiveInbound: insert once by chat and mid",
+      "note": "Repeat: answered returns the stored reply, dropped returns empty, running waits then rereads",
+      "to": "db",
+      "y": 250
+    },
+    {
+      "from": "db",
+      "label": "new, answered, dropped, or running",
+      "to": "svc",
+      "variant": "return",
+      "y": 320
+    },
+    {
+      "from": "svc",
+      "label": "enqueue waiter (command flag splits batch)",
+      "note": "Command-shaped text anywhere runs alone; the batch splits before and after it",
+      "to": "queue",
+      "y": 390
+    },
+    {
+      "from": "queue",
+      "label": "timer fires: start batch",
+      "note": "Each message resets the timer, capped at three batchMs; a turn after a running turn starts at once",
+      "to": "svc",
+      "y": 460
+    },
+    {
+      "from": "svc",
+      "label": "openTurn plus claimPending up to newest mid",
+      "note": "Claims unanswered rows and reclaims interrupted rows; later rows wait",
+      "to": "db",
+      "y": 540
+    },
+    {
+      "from": "svc",
+      "label": "execute: resolve, admit, run, clean",
+      "note": "Resolve checks chat and pack; admit checks sender, delivery, spend; one direct command skips the loop",
+      "to": "run",
+      "y": 610
+    },
+    {
+      "from": "run",
+      "label": "closeTurn: store reply, close record",
+      "note": "One transaction; the reply is stored once as the assistant row",
+      "to": "db",
+      "y": 680
+    },
+    {
+      "from": "svc",
+      "label": "TurnReply for newest; empty for merged others",
+      "note": "A repeat of a merged message gets empty; NO_REPLY sends nothing",
+      "to": "gw",
+      "variant": "return",
+      "y": 750
+    }
+  ],
+  "meta": {
+    "output": ".archify/turn-admission.html",
+    "quality_profile": "showcase",
+    "title": "Turn Admission",
+    "repository": {
+      "url": "https://github.com/TolongLabs/AIRA",
+      "provider": "github",
+      "revision": "163a320e5dfeaf636ffe3e4e4c389470d9567d35"
+    }
+  },
+  "participants": [
+    {
+      "id": "gw",
+      "label": "Gateway",
+      "type": "messagebus"
+    },
+    {
+      "id": "svc",
+      "label": "Turn Service",
+      "sources": [
+        {
+          "label": "handle and admit",
+          "path": "src/turn/pipeline.ts"
+        }
+      ],
+      "sublabel": "handle, admit, enqueue",
+      "type": "backend"
+    },
+    {
+      "id": "queue",
+      "label": "Chat Queue",
+      "sources": [
+        {
+          "label": "enqueue and batchLength",
+          "path": "src/turn/pipeline.ts"
+        }
+      ],
+      "sublabel": "one current turn",
+      "type": "backend"
+    },
+    {
+      "id": "db",
+      "label": "SQLite",
+      "sources": [
+        {
+          "label": "receiveInbound",
+          "path": "src/storage/turns.ts"
+        }
+      ],
+      "sublabel": "inbound, window, turns",
+      "type": "database"
+    },
+    {
+      "id": "run",
+      "label": "Turn Runner",
+      "sources": [
+        {
+          "label": "runTurn",
+          "path": "src/turn/pipeline.ts"
+        }
+      ],
+      "sublabel": "runTurn, execute",
+      "type": "backend"
+    }
+  ],
+  "schema_version": 1
+}
