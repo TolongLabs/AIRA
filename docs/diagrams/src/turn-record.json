@@ -1,0 +1,167 @@
+{
+  "diagram_type": "lifecycle",
+  "mainPath": ["open", "markStage", "childCalls", "closeTurn", "closed"],
+  "meta": {
+    "output": ".archify/turn-record.html",
+    "quality_profile": "showcase",
+    "title": "Turn Record Lifecycle",
+    "repository": {
+      "url": "https://github.com/TolongLabs/AIRA",
+      "provider": "github",
+      "revision": "163a320e5dfeaf636ffe3e4e4c389470d9567d35"
+    }
+  },
+  "schema_version": 3,
+  "states": [
+    {
+      "id": "open",
+      "label": "Open",
+      "type": "start"
+    },
+    {
+      "id": "markStage",
+      "label": "markStage",
+      "sources": [
+        {
+          "label": "markStage",
+          "path": "src/records/turn-record.ts"
+        }
+      ],
+      "sublabel": "First stamp wins",
+      "type": "active"
+    },
+    {
+      "id": "childCalls",
+      "label": "recordModelCall, recordToolCall",
+      "sources": [
+        {
+          "label": "recordModelCall",
+          "path": "src/records/turn-record.ts"
+        },
+        {
+          "label": "recordToolCall",
+          "path": "src/records/turn-record.ts"
+        }
+      ],
+      "sublabel": "One row per call",
+      "type": "active"
+    },
+    {
+      "id": "closeTurn",
+      "label": "updateTurnRecord",
+      "sources": [
+        {
+          "label": "updateTurnRecord",
+          "path": "src/records/turn-record.ts"
+        }
+      ],
+      "sublabel": "Commit at close",
+      "type": "active"
+    },
+    {
+      "id": "closed",
+      "label": "Turn closed",
+      "sublabel": "Outcome set",
+      "type": "success"
+    },
+    {
+      "id": "recordFailure",
+      "label": "recordFailure",
+      "sources": [
+        {
+          "label": "recordFailure",
+          "path": "src/records/turn-record.ts"
+        }
+      ],
+      "sublabel": "Handled or not",
+      "type": "failure"
+    },
+    {
+      "id": "saveDiagnostics",
+      "label": "saveDiagnostics",
+      "sources": [
+        {
+          "label": "saveDiagnostics",
+          "path": "src/records/turn-record.ts"
+        }
+      ],
+      "sublabel": "Verbatim failed-turn copy",
+      "type": "waiting"
+    },
+    {
+      "id": "pruneRecords",
+      "label": "pruneRecords",
+      "sources": [
+        {
+          "label": "pruneRecords",
+          "path": "src/records/retention.ts"
+        }
+      ],
+      "sublabel": "Running turns stay",
+      "type": "neutral"
+    },
+    {
+      "id": "readTurn",
+      "label": "readTurn, buildReport",
+      "sources": [
+        {
+          "label": "readTurn",
+          "path": "src/records/turn-view.ts"
+        },
+        {
+          "label": "buildReport",
+          "path": "src/records/report.ts"
+        }
+      ],
+      "sublabel": "Snapshot only, never live",
+      "type": "neutral"
+    }
+  ],
+  "transitions": [
+    {
+      "from": "open",
+      "label": "admitted",
+      "to": "markStage"
+    },
+    {
+      "from": "markStage",
+      "label": "calls",
+      "to": "childCalls"
+    },
+    {
+      "from": "childCalls",
+      "label": "return",
+      "to": "closeTurn"
+    },
+    {
+      "from": "closeTurn",
+      "label": "set",
+      "to": "closed"
+    },
+    {
+      "from": "closed",
+      "label": "retention",
+      "to": "pruneRecords"
+    },
+    {
+      "from": "pruneRecords",
+      "label": "operator reads",
+      "to": "readTurn"
+    },
+    {
+      "from": "childCalls",
+      "label": "error",
+      "to": "recordFailure"
+    },
+    {
+      "from": "recordFailure",
+      "label": "failed turn",
+      "to": "saveDiagnostics"
+    },
+    {
+      "from": "saveDiagnostics",
+      "label": "close as failed",
+      "to": "closed"
+    }
+  ]
+}

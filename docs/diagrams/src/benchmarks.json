@@ -1,0 +1,123 @@
+{
+  "diagram_type": "workflow",
+  "edges": [
+    {
+      "from": "load",
+      "id": "e1",
+      "label": "set",
+      "to": "session"
+    },
+    {
+      "from": "session",
+      "id": "e2",
+      "label": "session",
+      "to": "run"
+    },
+    {
+      "from": "run",
+      "id": "e3",
+      "label": "rows",
+      "to": "summary"
+    },
+    {
+      "from": "summary",
+      "id": "e4",
+      "label": "summary",
+      "to": "write"
+    }
+  ],
+  "lanes": [
+    {
+      "id": "bench",
+      "label": "Bench Runner"
+    },
+    {
+      "id": "core",
+      "label": "Local Core Session"
+    }
+  ],
+  "mainPath": ["load", "session", "run", "summary", "write"],
+  "meta": {
+    "output": ".archify/benchmarks.html",
+    "quality_profile": "showcase",
+    "title": "Benchmark Run and Result Lifecycle",
+    "repository": {
+      "url": "https://github.com/TolongLabs/AIRA",
+      "provider": "github",
+      "revision": "163a320e5dfeaf636ffe3e4e4c389470d9567d35"
+    }
+  },
+  "nodes": [
+    {
+      "col": 0,
+      "id": "load",
+      "label": "loadBenchSet",
+      "lane": "bench",
+      "sources": [
+        {
+          "label": "loadBenchSet",
+          "path": "src/bench/run.ts"
+        }
+      ],
+      "sublabel": "1 to 50 prompts",
+      "type": "backend"
+    },
+    {
+      "col": 1,
+      "id": "session",
+      "label": "openChatSession",
+      "lane": "core",
+      "sources": [
+        {
+          "label": "openChatSession",
+          "path": "src/bench/chat.ts"
+        }
+      ],
+      "sublabel": "Scratch data dir",
+      "type": "backend"
+    },
+    {
+      "col": 2,
+      "id": "run",
+      "label": "runBench",
+      "lane": "bench",
+      "sources": [
+        {
+          "label": "runBench",
+          "path": "src/bench/run.ts"
+        }
+      ],
+      "sublabel": "One row per prompt",
+      "type": "backend"
+    },
+    {
+      "col": 3,
+      "id": "summary",
+      "label": "summarise",
+      "lane": "bench",
+      "sources": [
+        {
+          "label": "summarise",
+          "path": "src/bench/run.ts"
+        }
+      ],
+      "sublabel": "Nearest-rank p50, p90",
+      "type": "backend"
+    },
+    {
+      "col": 4,
+      "id": "write",
+      "label": "writeBenchResult",
+      "lane": "bench",
+      "sources": [
+        {
+          "label": "writeBenchResult",
+          "path": "src/bench/run.ts"
+        }
+      ],
+      "sublabel": "JSONL plus summary",
+      "type": "database"
+    }
+  ],
+  "schema_version": 2
+}
