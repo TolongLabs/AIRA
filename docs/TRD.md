@@ -2,7 +2,8 @@
 
 The canonical index of AIRA's technical contracts. Each subsystem has one module under `docs/trd/`.
 
-Status: draft 0.1, 15 Nov 2026. This describes the revamped chatbot core. Nothing here is built yet.
+Status: draft 0.2, 17 Nov 2026. This is the draft contract for the revamped chatbot core, which is mostly
+built. [Traceability](trd/traceability.md) records what the code at this commit proves for each requirement.
 
 ## At a Glance
 
@@ -30,6 +31,7 @@ Status: draft 0.1, 15 Nov 2026. This describes the revamped chatbot core. Nothin
 | [Research and Reports](trd/research.md) | `/research` jobs, the findings mold, the PDF offer, the report renderer                                     | `docs/trd/research.md`      |
 | [Owner Site](trd/site.md)               | The revamped site, its API, the character studio, the design contract                                       | `docs/trd/site.md`          |
 | [Deployment](trd/deployment.md)         | CI, the release image, the pull deploy, the shadow period, the one-night cutover                            | `docs/trd/deployment.md`    |
+| [Traceability](trd/traceability.md)     | Status, code and test paths, and one-line gap per requirement                                               | `docs/trd/traceability.md`  |
 
 ## Decisions
 
