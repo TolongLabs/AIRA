@@ -5,6 +5,8 @@ import { listChats } from '../settings/chats.js'
 import { resolveSettings } from '../settings/settings.js'
 import type { Storage } from '../storage/database.js'
 import type { DataPaths } from '../storage/startup.js'
+import type { ToolRegistry } from '../tools/registry.js'
+import type { ToolMode } from '../tools/types.js'
 
 // Read handlers for the core's site API (docs/trd/site.md#read-routes).
 // All reads go through storage.read or the verified snapshot/archive report. Nothing here writes.
@@ -17,6 +19,7 @@ export interface RoleHealth {
 export interface SiteApiDeps {
   /** Runs after a write that changed something, such as rewriting the gateway's chat flags. */
   onWrite?: () => void
+  registry: ToolRegistry
   storage: Storage
   /** The character packs as they load now. */
   packs: () => PackSet
@@ -66,6 +69,21 @@ function handleChats(deps: SiteApiDeps): RouteResult {
     settings: resolveSettings(deps.storage, chat)
   }))
   return ok({ chats })
+}
+
+function handleTools(deps: SiteApiDeps): RouteResult {
+  const features = new Map<string, { name: string; mode: ToolMode; commands: string[] }[]>()
+  for (const tool of deps.registry.all()) {
+    if (!tool.feature) continue
+    const tools = features.get(tool.feature) ?? []
+    tools.push({
+      name: tool.name,
+      mode: tool.mode,
+      commands: tool.command?.names.map((name) => `/${name}`) ?? []
+    })
+    features.set(tool.feature, tools)
+  }
+  return ok({ features: [...features].map(([key, tools]) => ({ key, tools })) })
 }
 
 function handleSettings(deps: SiteApiDeps, params: URLSearchParams): RouteResult {
@@ -219,6 +237,7 @@ const TURN_BY_ID = /^\/api\/turns\/([^/]+)$/
 const STATIC_ROUTES = new Set([
   '/api/health',
   '/api/chats',
+  '/api/tools',
   '/api/settings',
   '/api/turns',
   '/api/report',
@@ -234,6 +253,7 @@ export async function dispatchGet(deps: SiteApiDeps, url: URL): Promise<RouteRes
   const path = url.pathname
   if (path === '/api/health') return handleHealth(deps)
   if (path === '/api/chats') return handleChats(deps)
+  if (path === '/api/tools') return handleTools(deps)
   if (path === '/api/settings') return handleSettings(deps, url.searchParams)
   if (path === '/api/turns') return handleTurns(deps, url.searchParams)
   const turnMatch = TURN_BY_ID.exec(path)
