@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import ts from 'typescript'
+import ts from 'typescript-api'
 import { describe, expect, it } from 'vitest'
 import { createMemoryPort } from '../../src/memory/port.js'
 import { recallForTurn, searchHistory, searchMemory } from '../../src/memory/recall.js'
