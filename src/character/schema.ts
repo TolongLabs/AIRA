@@ -79,4 +79,11 @@ const lineValue = z
 
 const lineShape = Object.fromEntries(LINE_KINDS.map((kind) => [kind, lineValue])) as Record<LineKind, typeof lineValue>
 
-export const linesSchema = z.strictObject(lineShape)
+export const linesSchema = z.strictObject({
+  ...lineShape,
+  researchStarted: lineValue.optional(),
+  researchTopic: lineValue.optional(),
+  researchBusy: lineValue.optional(),
+  researchFailed: lineValue.optional(),
+  offerPdf: lineValue.optional()
+})

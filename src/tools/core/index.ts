@@ -5,6 +5,7 @@ import { forgetTool, historySearchTool, lingoNoteTool, noteTool, recallTool } fr
 import { setMuteTool } from './mute.js'
 import { reminderCancelTool, reminderListTool, reminderSetTool } from './reminders.js'
 import { makeReportTool } from './report.js'
+import { reportPdfTool, researchStartTool } from './research.js'
 import { readPageTool, readPostTool, sendPhotoTool, webSearchTool } from './web.js'
 
 export const CORE_TOOL_NAMES = [
@@ -22,6 +23,8 @@ export const CORE_TOOL_NAMES = [
   'reminder_cancel',
   'set_mute',
   'make_report',
+  'research_start',
+  'report_pdf',
   'help',
   'list'
 ] as const
@@ -43,6 +46,8 @@ export function registerCoreTools(registry: ToolRegistry, ports: ToolPorts): voi
   registry.register(reminderCancelTool(storage, ports, logger))
   registry.register(setMuteTool(storage))
   registry.register(makeReportTool(storage, ports))
+  registry.register(researchStartTool(storage))
+  registry.register(reportPdfTool(ports))
   registry.register(helpTool(registry))
   registry.register(listTool(registry))
 }

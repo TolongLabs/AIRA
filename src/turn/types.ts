@@ -25,6 +25,8 @@ export interface TurnContext {
   deadline: number
   /** For a skill-style command: the tool the command names. Its call is recorded with source `command`. */
   commandTool?: string
+  /** Read sources of a completed research job, supplied by code for its footer. */
+  researchSources?: string[]
 }
 
 export interface WindowMessage {

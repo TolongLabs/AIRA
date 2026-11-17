@@ -125,7 +125,9 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
             parsed,
             parsed.kind === 'job'
               ? 'a job tag names no listed job of an active chat'
-              : 'a scheduled tag names no reminder due at that time'
+              : parsed.kind === 'research'
+                ? 'a research tag names no completed research job'
+                : 'a scheduled tag names no reminder due at that time'
           )
           return
         }

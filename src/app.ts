@@ -26,10 +26,10 @@ import { createApiRunner } from './models/api-runner.js'
 import { type Breaker, createBreaker } from './models/breaker.js'
 import { createOpenAiClient } from './models/openai-client.js'
 import { createRoutedClient } from './models/routed-client.js'
-import { spendState } from './models/spend.js'
+import { addSpend, spendState } from './models/spend.js'
 import { createSubscriptionRunner } from './models/subscription-runner.js'
 import { createToolServer } from './models/tool-server.js'
-import type { ModelClient } from './models/types.js'
+import { type ModelClient, ModelError, type ModelResponse } from './models/types.js'
 import { createPromptBuilder, loadHarnessRules } from './prompt/builder.js'
 import type { MoodJudge } from './prompt/mood.js'
 import { withStickers } from './prompt/stickers.js'
@@ -38,6 +38,10 @@ import { createRedactor, secretsFromEnv } from './records/redact.js'
 import { pruneRecords } from './records/retention.js'
 import { recordModelCall } from './records/turn-record.js'
 import { okToolsOfTurn } from './records/turn-view.js'
+import { renderReport } from './render/render.js'
+import { reportFormatSchema } from './render/types.js'
+import { type ReportRenderer, createResearchOffers } from './research/offer.js'
+import { createResearchWorker } from './research/worker.js'
 import { listChats } from './settings/chats.js'
 import { resolveSettings } from './settings/settings.js'
 import { createSocialPostPort } from './social/port.js'
@@ -91,6 +95,8 @@ export interface AppOptions {
   logger?: Logger
   /** Model clients to use instead of the configured endpoints: recordings, fakes. */
   clients?: { main?: ModelClient; fallback?: ModelClient }
+  /** PDF renderer port. Tests supply a fake. */
+  reportRenderer?: ReportRenderer
   /** The mood judge. Absent means rules only. */
   judge?: MoodJudge
   /** The memory judge. Absent means the hosted judge when it is configured, else none: memory admits nothing. */
@@ -321,7 +327,82 @@ export async function createApp(options: AppOptions): Promise<App> {
     viewer.setYtDlpAvailable(extractorAvailable)
     replyReader.setYtDlpAvailable(extractorAvailable)
     if (!extractorAvailable) logger.warn('social.extractor_off', { platform: 'yt-dlp', reason: 'binary_missing' })
+    const hostDataDir = config.gateway.hostDataDir === '' ? paths.root : config.gateway.hostDataDir
+    const research = createResearchOffers({
+      storage,
+      filesDir: paths.files,
+      hostDataDir,
+      renderer: options.reportRenderer ?? ((doc, format) => renderReport(doc, format, config.render ?? {})),
+      format: config.render?.report ?? reportFormatSchema.parse({}),
+      offerMinutes: config.research.offerMinutes,
+      now
+    })
+    const worker = createResearchWorker({
+      storage,
+      config,
+      search: search ?? {
+        search: async () => {
+          throw new Error('search_unavailable')
+        }
+      },
+      page: options.ports?.page ?? page,
+      schedule,
+      logger,
+      now,
+      client: {
+        async call(request, signal) {
+          if (!extractionTarget) throw new Error('research_model_unavailable')
+          const startedAt = now()
+          // One provider call per step: retries here would exceed research's three-call budget.
+          let response: ModelResponse
+          try {
+            response = await extractionTarget.client.call({ ...request, model: extractionTarget.model }, signal)
+          } catch (error) {
+            storage.tx((db) =>
+              recordModelCall(db, {
+                role: 'main',
+                model: extractionTarget.model,
+                transport: 'api',
+                attempt: 1,
+                startedAt,
+                durationMs: now().getTime() - startedAt.getTime(),
+                failureKind: error instanceof ModelError ? error.kind : 'transient'
+              })
+            )
+            throw error
+          }
+          storage.tx((db) => {
+            addSpend(
+              db,
+              {
+                role: 'main',
+                counted: true,
+                costUsd: response.costUsd,
+                inputTokens: response.usage.inputTokens,
+                outputTokens: response.usage.outputTokens
+              },
+              now
+            )
+            recordModelCall(db, {
+              role: 'main',
+              model: response.model,
+              transport: 'api',
+              attempt: 1,
+              startedAt,
+              durationMs: now().getTime() - startedAt.getTime(),
+              inputTokens: response.usage.inputTokens,
+              outputTokens: response.usage.outputTokens,
+              cachedTokens: response.usage.cachedTokens,
+              costUsd: response.costUsd
+            })
+          })
+          return response
+        }
+      }
+    })
+    closers.push(worker.start(1000))
     registerCoreTools(registry, {
+      research,
       post: createSocialPostPort(viewer, replyReader),
       memory: createMemoryPort({
         storage,
@@ -362,8 +443,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       toolRules: (context) => registry.rulesText(context),
       now
     })
-    const hostDataDir = config.gateway.hostDataDir === '' ? paths.root : config.gateway.hostDataDir
-    // After the cleaning chain: files a tool made, then the mood's sticker, which is always the last line.
+    // Stickers follow the text. PDF reports follow the sticker.
     const cleaner = withStickers(
       withAttachments(
         createReplyCleaner(
@@ -391,6 +471,7 @@ export async function createApp(options: AppOptions): Promise<App> {
 
     const turns = createTurnService({
       storage,
+      research,
       config,
       logger,
       redactor,

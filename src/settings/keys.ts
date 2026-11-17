@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { reportFormatSchema } from '../render/types.js'
 
 // Registry of setting keys and their schemas (docs/trd/data.md#setting-keys).
 
@@ -88,6 +89,8 @@ export const SETTING_KEYS: Record<string, SettingDefinition> = {
   'features.media': { schema: z.boolean(), default: true },
   'features.voice': { schema: z.boolean(), default: false },
   'features.lessons': { schema: z.boolean(), default: false },
+  'features.research': { schema: z.boolean(), default: true },
+  'report.format': { schema: reportFormatSchema.optional() },
   'features.reports': { schema: z.boolean(), default: true },
   'features.toolFooter': { schema: z.boolean(), default: true },
   nameCall: { schema: z.boolean(), default: false },

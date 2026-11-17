@@ -18,6 +18,8 @@ import {
   saveDiagnostics,
   updateTurnRecord
 } from '../records/turn-record.js'
+import { reportDocumentSchema } from '../render/types.js'
+import { RESEARCH_LINES, type ResearchOffers, type ResearchRow, offerAnswer } from '../research/offer.js'
 import {
   type Chat,
   displayNameOfNumber,
@@ -71,6 +73,7 @@ export interface TurnServiceDeps {
   /** Called after a firing changed a reminder, so the wanted-jobs file is written again. */
   onScheduleChange?: () => void
   storage: Storage
+  research?: ResearchOffers
   config: Pick<Config, 'turn' | 'llm' | 'records'> & {
     gateway?: Partial<Pick<Config['gateway'], 'jobs' | 'selfIds'>>
     tools?: Partial<Pick<Config['tools'], 'maxCallsPerTurn'>>
@@ -135,6 +138,7 @@ interface Outcome {
   stamps: [TurnStage, Date][]
   context?: TurnContext
   diagnostics?: { request: string; reply?: string }
+  researchDelivery?: { jobId: string; fileId?: string; openOffer: boolean }
 }
 
 interface ReminderOfFiring {
@@ -169,6 +173,19 @@ export function nextDue(dueAt: string, repeat: string, now: Date): string {
   do step(next)
   while (next.getTime() <= now.getTime())
   return next.toISOString()
+}
+
+function codeRun(text: string, receipts: string[] = []): RunResult {
+  return {
+    text,
+    receipts,
+    usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 },
+    costUsd: 0,
+    model: '',
+    role: '',
+    transport: '',
+    calls: []
+  }
 }
 
 const LINE_FOR: Record<string, LineKind> = { refusal: 'refusal', malformed: 'fallback', budget: 'limit' }
@@ -261,7 +278,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       stage(`admit:${decision.reason}`)
       return decline('muted')
     }
-    if (deps.hooks?.spendAllows?.() === false) {
+    if (delivery.kind !== 'research' && deps.hooks?.spendAllows?.() === false) {
       return line('limit', 'budget', new Error('the monthly spend cap is reached'))
     }
     stamp('admitted')
@@ -283,7 +300,54 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
 
     // 4. Command check. Command tokens anywhere in the message name the tools to offer first.
     const text = input.pending[input.pending.length - 1]?.content ?? ''
-    const commands = deps.commands?.match(text, context) ?? []
+    const researchRow =
+      delivery.kind === 'research'
+        ? storage.read(
+            (db) =>
+              db
+                .prepare('SELECT * FROM research_job WHERE job_id = ? AND chat_id = ?')
+                .get(delivery.jobId, chat.chatId) as ResearchRow | undefined
+          )
+        : undefined
+    if (researchRow) {
+      outcome.researchDelivery = { jobId: researchRow.job_id, openOffer: false }
+      if (researchRow.findings)
+        context.researchSources = reportDocumentSchema
+          .parse(JSON.parse(researchRow.findings))
+          .sources.map((source) => source.url)
+    }
+    let handoverReceipts: string[] = []
+    let handover = false
+    let handoverText = ''
+    // Mechanical offers are checked before command parsing. Other members and sentences never accept them.
+    if (!newest.scheduled && deps.research && settings['features.research']?.value !== false) {
+      const offer = deps.research.open(chat.chatId, newest.senderId)
+      const answer = offerAnswer(text)
+      if (offer && answer === 'declined') {
+        storage.tx((db) =>
+          db
+            .prepare(
+              "UPDATE research_job SET offer = 'declined', updated_at = ? WHERE job_id = ? AND chat_id = ? AND requester_id = ? AND offer = 'open'"
+            )
+            .run(isoNow(now), offer.job_id, chat.chatId, newest.senderId)
+        )
+      } else if (offer && answer === 'accepted' && text.trim().toLowerCase() !== '/pdf' && deps.commands) {
+        const command = deps.commands.match('/pdf', context)[0]
+        if (command) {
+          const result = await deps.commands.runDirect(command, context)
+          if (!result.ok) return line('error', 'tool_error', new Error('report_pdf failed'))
+          handover = result.receipts.length > 0
+          handoverReceipts = result.receipts
+          handoverText = result.text
+          if (!handover) {
+            outcome.content = result.text
+            outcome.state = 'delivered'
+            return outcome
+          }
+        }
+      }
+    }
+    const commands = researchRow || handover ? [] : (deps.commands?.match(text, context) ?? [])
     let built: BuiltPrompt
     let run: RunResult
     if (commands.length > 0) {
@@ -292,6 +356,23 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     }
 
     const aloneDirect = commands.length === 1 && commands[0]?.kind === 'direct'
+    let researchMedia: string | undefined
+    if (researchRow && researchRow.state === 'failed') {
+      outcome.content = pack.lines.researchFailed ?? RESEARCH_LINES.researchFailed
+      outcome.state = 'delivered'
+      outcome.fields.outcome = 'delivered'
+      outcome.researchDelivery = { jobId: researchRow.job_id, openOffer: false }
+      return outcome
+    }
+    if (researchRow?.wants_pdf && deps.research) {
+      try {
+        const file = await deps.research.prepare(researchRow, context)
+        researchMedia = deps.research.media(file.attachment)
+        outcome.researchDelivery = { jobId: researchRow.job_id, fileId: file.fileId, openOffer: false }
+      } catch (error) {
+        return line('error', 'tool_error', error)
+      }
+    }
     if (aloneDirect && deps.commands && commands[0]) {
       const command = commands[0]
       // A message with one command, a direct one: code runs the handler and writes the answer. No model call.
@@ -300,22 +381,13 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       stamp('model_done')
       if (!result.ok) return line('error', 'tool_error', new Error(`the command ${command.name} failed`))
       built = { system: [], messages: [], record: { lengthBypass: 'command_list' }, shape: { lengthBypass: true } }
-      run = {
-        text: result.text,
-        usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 },
-        costUsd: 0,
-        model: '',
-        role: '',
-        transport: '',
-        calls: [],
-        receipts: result.receipts
-      }
+      run = codeRun(result.text, result.receipts)
       Object.assign(outcome.fields, built.record, { receipts: result.receipts } satisfies TurnRecordFields)
     } else {
       // The files members sent, and at most one supported link, are read before the model runs. A failure never ends
       // the turn: the prompt carries a note, and the failure is recorded.
-      const mediaOn = settings['features.media']?.value !== false
-      const socialOn = settings['features.social']?.value !== false
+      const mediaOn = !researchRow && !handover && settings['features.media']?.value !== false
+      const socialOn = !researchRow && !handover && settings['features.social']?.value !== false
       const files = mediaToRead(batch.map((waiter) => waiter.attachments ?? []))
       const newestFirst = [...input.pending].reverse()
       const linkTexts = [
@@ -373,6 +445,18 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         }
       }
       built = await deps.prompt.build(input)
+      if (researchRow) {
+        built.shape = { ...(typeof built.shape === 'object' ? built.shape : {}), maxChars: 1400, lengthBypass: false }
+        built.record.lengthBypass = 'research'
+        const shape = built.system.find((block) => block.name === 'shape')
+        if (shape)
+          shape.text = 'Give a brief research summary: the answer and 3 to 5 key points, at most 1400 characters.'
+      }
+      if (handover) {
+        built.shape = { maxChars: 280, lengthBypass: false }
+        const shape = built.system.find((block) => block.name === 'shape')
+        if (shape) shape.text = 'Give only a one-line hand-over for the attached PDF report.'
+      }
       Object.assign(outcome.fields, built.record)
       stamp('built')
       if (commands.length > 0 && deps.commands) {
@@ -398,39 +482,48 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       const abort = new AbortController()
       const timer = setTimeout(() => abort.abort(), Math.max(0, context.deadline - now().getTime()))
       try {
-        run = await Promise.race([
-          deps.runner.run({
-            system: built.system,
-            messages: built.messages,
-            tools: deps.tools?.offered(context) ?? [],
-            context,
-            signal: abort.signal,
-            firstTools: commands.length > 0 ? commands.map((command) => command.tool) : undefined,
-            maxToolCalls,
-            onCall: (call) => {
-              outcome.calls.push(call)
-              Object.assign(outcome.fields, {
-                transport: call.transport,
-                role: call.role,
-                model: call.model,
-                attempts: outcome.calls.filter((entry) => entry.role !== 'media').length
-              })
-            },
-            onSpendError: (error) => {
-              log.warn('model.spend_failed', { kind: 'storage_error' })
-              outcome.failures.push({ stage: 'run', kind: 'storage_error', error, handledBy: 'reply' })
-            }
-          }),
-          new Promise<never>((_, reject) =>
-            abort.signal.addEventListener('abort', () =>
-              reject(new ModelError('transient', 'the turn deadline passed'))
+        if (researchRow?.findings && deps.hooks?.spendAllows?.() === false) {
+          const findings = reportDocumentSchema.parse(JSON.parse(researchRow.findings))
+          run = codeRun([findings.summary, ...findings.keyFindings.map((finding) => `- ${finding.text}`)].join('\n'))
+        } else
+          run = await Promise.race([
+            deps.runner.run({
+              system: built.system,
+              messages: built.messages,
+              tools: researchRow || handover ? [] : (deps.tools?.offered(context) ?? []),
+              context,
+              signal: abort.signal,
+              firstTools: commands.length > 0 ? commands.map((command) => command.tool) : undefined,
+              maxToolCalls,
+              onCall: (call) => {
+                outcome.calls.push(call)
+                Object.assign(outcome.fields, {
+                  transport: call.transport,
+                  role: call.role,
+                  model: call.model,
+                  attempts: outcome.calls.filter((entry) => entry.role !== 'media').length
+                })
+              },
+              onSpendError: (error) => {
+                log.warn('model.spend_failed', { kind: 'storage_error' })
+                outcome.failures.push({ stage: 'run', kind: 'storage_error', error, handledBy: 'reply' })
+              }
+            }),
+            new Promise<never>((_, reject) =>
+              abort.signal.addEventListener('abort', () =>
+                reject(new ModelError('transient', 'the turn deadline passed'))
+              )
             )
-          )
-        ])
+          ])
       } catch (error) {
-        if (abort.signal.aborted) return line('slow', 'transient', error)
-        if (error instanceof ModelError) return line(LINE_FOR[error.kind] ?? 'error', error.kind, error)
-        throw error
+        if (handover) {
+          run = codeRun(handoverText)
+          fail('run', 'transient', error, 'pdf_handover')
+        } else {
+          if (abort.signal.aborted) return line('slow', 'transient', error)
+          if (error instanceof ModelError) return line(LINE_FOR[error.kind] ?? 'error', error.kind, error)
+          throw error
+        }
       } finally {
         clearTimeout(timer)
         stamp('model_done')
@@ -450,6 +543,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         chainLimit: run.chainLimit
       } satisfies TurnRecordFields)
     }
+    run.receipts.push(...handoverReceipts)
     outcome.diagnostics.reply = run.text
 
     // 7. Clean: the cleaning chain, the renderer, the bubbles.
@@ -477,6 +571,20 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
 
     log.debug('turn.cleaned', { bubbles: cleaned.bubbleCount, steps: cleaned.steps })
     outcome.content = cleaned.content
+    if (researchRow && !cleaned.replacedBy) {
+      if (!researchRow.wants_pdf) {
+        const mediaAt = outcome.content.indexOf('\nMEDIA:')
+        const at = mediaAt < 0 ? outcome.content.length : mediaAt
+        outcome.content =
+          outcome.content.slice(0, at) +
+          `\n\n${pack.lines.offerPdf ?? RESEARCH_LINES.offerPdf}` +
+          outcome.content.slice(at)
+        outcome.researchDelivery = { jobId: researchRow.job_id, openOffer: true }
+      } else if (researchMedia) {
+        outcome.content += `\n${researchMedia}`
+        outcome.fields.attachments = [...(cleaned.attachments ?? []), researchMedia.slice(6)]
+      }
+    }
     outcome.state = cleaned.replacedBy ? 'failed' : 'delivered'
     outcome.fields.outcome = cleaned.replacedBy ? 'failed' : 'delivered'
     return outcome
@@ -593,11 +701,29 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
             if (outcome.state === 'failed' && outcome.diagnostics) {
               saveDiagnostics(db, { turnId, ...outcome.diagnostics }, now)
             }
+            if (outcome.state !== 'declined' && outcome.content && outcome.researchDelivery) {
+              const delivered = outcome.researchDelivery
+              db.prepare(
+                `UPDATE research_job SET delivered_at = ?, report_file_id = coalesce(?, report_file_id),
+                offer = ?, offer_expires_at = ?, updated_at = ? WHERE job_id = ? AND chat_id = ? AND delivered_at IS NULL`
+              ).run(
+                isoNow(now),
+                delivered.fileId ?? null,
+                delivered.openOffer ? 'open' : 'none',
+                delivered.openOffer
+                  ? new Date(now().getTime() + (deps.research?.offerMinutes ?? 30) * 60000).toISOString()
+                  : null,
+                isoNow(now),
+                delivered.jobId,
+                chat.chatId
+              )
+            }
             if (outcome.state === 'delivered' && outcome.context) deps.hooks?.onDelivered?.(db, outcome.context)
           }
         },
         now
       )
+      if (closed && outcome.researchDelivery) deps.onScheduleChange?.()
       if (closed) reply = { content: content ?? '', turnId, replayed: false }
       for (const failure of outcome.failures) {
         log.warn('turn.failure', { stage: failure.stage, kind: failure.kind, error: failure.error })
@@ -722,7 +848,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       },
       undefined,
       request.attachments,
-      COMMAND_TEXT.test(request.text)
+      COMMAND_TEXT.test(request.text) || offerAnswer(request.text) !== undefined
     )
   }
 
@@ -782,6 +908,40 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
 
   async function handleScheduled(request: ScheduledRequest): Promise<TurnReply | null> {
     if (request.kind === 'job') return handleJob(request)
+    if (request.kind === 'research') {
+      const row = storage.read(
+        (db) =>
+          db
+            .prepare("SELECT * FROM research_job WHERE job_id = ? AND state IN ('done', 'failed')")
+            .get(request.jobId) as ResearchRow | undefined
+      )
+      const chat = row ? getChat(storage, row.chat_id) : undefined
+      if (!row || !chat || !deps.research) return null
+      const mid = `research-${row.job_id}`
+      return admit(
+        chat,
+        { chatId: chat.chatId, senderId: row.requester_id, mid },
+        { kind: 'research', jobId: row.job_id, owner: row.requester_id },
+        (db) => {
+          if (row.delivered_at) throw new NotDue()
+          const findings = row.findings ? reportDocumentSchema.parse(JSON.parse(row.findings)) : undefined
+          const body = JSON.stringify(findings ?? {}).replace(/<\/?research_findings[^>]*>/gi, '')
+          storeUserMessage(
+            db,
+            {
+              chatId: chat.chatId,
+              senderId: ROUTINE_SENDER,
+              content: `<research_findings untrusted="true">${body}</research_findings>`,
+              mid
+            },
+            now
+          )
+        },
+        undefined,
+        undefined,
+        true
+      )
+    }
     // Identity comes from the core's own reminder row. The request names a reminder and a due time, nothing else.
     const row = storage.read(
       (db) =>

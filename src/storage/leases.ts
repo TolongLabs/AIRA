@@ -1,10 +1,11 @@
 import { type Db, type Storage, StorageError, isoNow } from './database.js'
+import { insertFailure } from './failures.js'
 
 // Job leases (docs/trd/storage.md#everything-in-flight-is-a-row).
 // A lease has an owner and an expiry. Nothing is in progress without one.
 
 /** Every job table. Each has the lease columns of memory_job. The recovery pass walks this list. */
-export const JOB_TABLES = ['memory_job'] as const
+export const JOB_TABLES = ['memory_job', 'research_job'] as const
 export type JobTable = (typeof JOB_TABLES)[number]
 
 type Clock = () => Date
@@ -28,16 +29,37 @@ function tableName(table: JobTable): string {
 export function enqueueJob(
   db: Db,
   table: JobTable,
-  job: { jobId: string; chatId: string; payload: string; runAfter?: Date },
+  job: {
+    jobId: string
+    chatId: string
+    payload: string
+    runAfter?: Date
+    requesterId?: string
+    topic?: string
+    wantsPdf?: boolean
+  },
   now: Clock = wallClock
 ): boolean {
   const at = isoNow(now)
+  const research = table === 'research_job'
+  if (research && (!job.requesterId || !job.topic))
+    throw new StorageError('research job needs a requester and topic', 'internal')
   const result = db
     .prepare(
-      `INSERT INTO ${tableName(table)} (job_id, chat_id, state, payload, run_after, created_at, updated_at)
-       VALUES (?, ?, 'queued', ?, ?, ?, ?) ON CONFLICT (job_id) DO NOTHING`
+      `INSERT INTO ${tableName(table)} (job_id, chat_id, state, payload, run_after, created_at, updated_at${research ? ', requester_id, topic, wants_pdf' : ''})
+       VALUES (?, ?, 'queued', ?, ?, ?, ?${research ? ', ?, ?, ?' : ''}) ON CONFLICT (job_id) DO NOTHING`
     )
-    .run(job.jobId, job.chatId, job.payload, job.runAfter?.toISOString() ?? at, at, at)
+    .run(
+      ...[
+        job.jobId,
+        job.chatId,
+        job.payload,
+        job.runAfter?.toISOString() ?? at,
+        at,
+        at,
+        ...(research ? [job.requesterId, job.topic, job.wantsPdf ? 1 : 0] : [])
+      ]
+    )
   return result.changes === 1
 }
 
@@ -48,6 +70,7 @@ export function reapExpiredLeases(storage: Storage, table: JobTable, now: Clock 
 
 function reapIn(db: Db, table: JobTable, now: Clock): number {
   const at = isoNow(now)
+  if (table === 'research_job') return recoverResearch(db, at, true)
   return db
     .prepare(
       `UPDATE ${tableName(table)} SET state = 'queued', lease_owner = NULL, lease_expires_at = NULL, updated_at = ?
@@ -73,7 +96,7 @@ export function leaseNextJob(
       .prepare(
         `SELECT job_id, chat_id, payload, attempts FROM ${name} AS candidate
          WHERE state = 'queued' AND run_after <= ?
-           AND NOT EXISTS (SELECT 1 FROM ${name} AS busy WHERE busy.chat_id = candidate.chat_id AND busy.state = 'leased')
+           AND NOT EXISTS (SELECT 1 FROM ${name} AS busy WHERE busy.chat_id = candidate.chat_id AND busy.state = '${table === 'research_job' ? 'running' : 'leased'}')
            AND NOT EXISTS (
              SELECT 1 FROM ${name} AS earlier
              WHERE earlier.chat_id = candidate.chat_id AND earlier.state = 'queued'
@@ -84,7 +107,7 @@ export function leaseNextJob(
       .get(at) as { job_id: string; chat_id: string; payload: string; attempts: number } | undefined
     if (!row) return undefined
     db.prepare(
-      `UPDATE ${name} SET state = 'leased', lease_owner = ?, lease_expires_at = ?, attempts = attempts + 1, updated_at = ?
+      `UPDATE ${name} SET state = '${table === 'research_job' ? 'running' : 'leased'}', lease_owner = ?, lease_expires_at = ?, attempts = attempts + 1, updated_at = ?
        WHERE job_id = ?`
     ).run(lease.owner, new Date(now().getTime() + lease.leaseMs).toISOString(), at, row.job_id)
     return { jobId: row.job_id, chatId: row.chat_id, payload: row.payload, attempts: row.attempts + 1 }
@@ -103,7 +126,7 @@ export function extendLease(
       db
         .prepare(
           `UPDATE ${tableName(table)} SET lease_expires_at = ?, updated_at = ?
-           WHERE job_id = ? AND state = 'leased' AND lease_owner = ? AND lease_expires_at > ?`
+           WHERE job_id = ? AND state = '${table === 'research_job' ? 'running' : 'leased'}' AND lease_owner = ? AND lease_expires_at > ?`
         )
         .run(
           new Date(now().getTime() + lease.leaseMs).toISOString(),
@@ -129,7 +152,7 @@ export function completeJob(
     const result = db
       .prepare(
         `UPDATE ${tableName(table)} SET state = 'done', lease_owner = NULL, lease_expires_at = NULL, updated_at = ?
-         WHERE job_id = ? AND state = 'leased' AND lease_owner = ?`
+         WHERE job_id = ? AND state = '${table === 'research_job' ? 'running' : 'leased'}' AND lease_owner = ?`
       )
       .run(isoNow(now), done.jobId, done.owner)
     if (result.changes !== 1) return false
@@ -151,7 +174,9 @@ export function failJob(
   const name = tableName(table)
   return storage.tx((db) => {
     const attempts = db
-      .prepare(`SELECT attempts FROM ${name} WHERE job_id = ? AND state = 'leased' AND lease_owner = ?`)
+      .prepare(
+        `SELECT attempts FROM ${name} WHERE job_id = ? AND state = '${table === 'research_job' ? 'running' : 'leased'}' AND lease_owner = ?`
+      )
       .pluck()
       .get(failed.jobId, failed.owner) as number | undefined
     if (attempts === undefined) return undefined
@@ -172,6 +197,9 @@ export function failJob(
  * kills the process cannot retry for ever.
  */
 export function releaseLeases(storage: Storage, table: JobTable, owner?: string, now: Clock = wallClock): number {
+  if (table === 'research_job' && owner === undefined) {
+    return storage.tx((db) => recoverResearch(db, isoNow(now), false))
+  }
   return storage.tx(
     (db) =>
       db
@@ -179,8 +207,40 @@ export function releaseLeases(storage: Storage, table: JobTable, owner?: string,
           `UPDATE ${tableName(table)}
            SET state = 'queued', lease_owner = NULL, lease_expires_at = NULL, updated_at = ?,
              attempts = CASE WHEN ? IS NULL THEN attempts ELSE max(attempts - 1, 0) END
-           WHERE state = 'leased' AND (? IS NULL OR lease_owner = ?)`
+           WHERE state = '${table === 'research_job' ? 'running' : 'leased'}' AND (? IS NULL OR lease_owner = ?)`
         )
         .run(isoNow(now), owner ?? null, owner ?? null, owner ?? null).changes
   )
+}
+
+/** A research job may survive one interrupted attempt, never a third start. */
+function recoverResearch(db: Db, at: string, expiredOnly: boolean): number {
+  const failed = db
+    .prepare(
+      "SELECT job_id FROM research_job WHERE state = 'running' AND attempts >= 2 AND (? = 0 OR lease_expires_at <= ?)"
+    )
+    .all(expiredOnly ? 1 : 0, at) as { job_id: string }[]
+  const changed = db
+    .prepare(
+      `UPDATE research_job SET
+    state = CASE WHEN attempts >= 2 THEN 'failed' ELSE 'queued' END,
+    ended_at = CASE WHEN attempts >= 2 THEN ? ELSE ended_at END,
+    last_error = CASE WHEN attempts >= 2 THEN 'interrupted' ELSE last_error END,
+    lease_owner = NULL, lease_expires_at = NULL, updated_at = ?
+    WHERE state = 'running' AND (? = 0 OR lease_expires_at <= ?)`
+    )
+    .run(at, at, expiredOnly ? 1 : 0, at).changes
+  for (const row of failed)
+    insertFailure(
+      db,
+      {
+        jobId: row.job_id,
+        stage: 'research',
+        kind: 'internal',
+        message: 'interrupted',
+        handledBy: 'line:researchFailed'
+      },
+      () => new Date(at)
+    )
+  return changed
 }

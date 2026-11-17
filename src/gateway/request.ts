@@ -52,6 +52,7 @@ export type GatewayRequest =
   /** A job of the gateway's schedule that the core declared. Only the reminder row says whose it is. */
   | { type: 'scheduled'; kind: 'reminder'; reminderId: string; due: string; stream: boolean; includeUsage: boolean }
   /** An owner's gateway job (docs/trd/system.md#gateway-jobs). `text` is the job's own text, without the tag. */
+  | { type: 'scheduled'; kind: 'research'; jobId: string; stream: boolean; includeUsage: boolean }
   | { type: 'scheduled'; kind: 'job'; jobId: string; text: string; stream: boolean; includeUsage: boolean }
 
 /** A request the core cannot accept. It is a deployment fault and the only case that gets an error status. */
@@ -66,6 +67,7 @@ const FIELD = /^[A-Za-z0-9@._:+-]+$/
 /** The core's tag, written by the core into a gateway job (docs/trd/system.md#scheduled-turns). */
 const SCHEDULED_TAG = /^\[AIRA-SCHEDULED v1 kind=reminder id=([A-Za-z0-9_-]{1,64}) due=(\d{8}T\d{6}Z)\]$/m
 /** The tag `deploy/gateway/jobs.py` puts first in a listed gateway job's text. */
+const RESEARCH_TAG = /^\[AIRA-SCHEDULED v1 kind=research id=([A-Za-z0-9_-]{1,64})\]$/m
 const JOB_TAG = /^\[AIRA-SCHEDULED v1 kind=job id=([A-Za-z0-9_-]{1,64})\]$/m
 /** The start of a note the gateway writes before a message's marker. */
 const NOTE_OPEN =
@@ -217,6 +219,8 @@ export function parseGatewayRequest(body: unknown): GatewayRequest {
     if (tag?.[1] && tag[2]) {
       return { type: 'scheduled', kind: 'reminder', reminderId: tag[1], due: tag[2], stream, includeUsage }
     }
+    const research = RESEARCH_TAG.exec(content)
+    if (research?.[1]) return { type: 'scheduled', kind: 'research', jobId: research[1], stream, includeUsage }
     const job = JOB_TAG.exec(content)
     if (job?.[1]) {
       const text = content.slice(job.index + job[0].length).trim()

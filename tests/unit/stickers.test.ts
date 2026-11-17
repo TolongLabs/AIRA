@@ -200,6 +200,24 @@ describe('withStickers', () => {
     return { clean: () => reply }
   }
 
+  it('keeps a PDF after the sticker while keeping the text first', () => {
+    const storage = tmpStorage()
+    const cleaner = withStickers(
+      fakeCleaner({
+        content: 'Findings.\nMEDIA:/host/files/report.pdf',
+        bubbleCount: 1,
+        steps: [],
+        attachments: ['/host/files/report.pdf']
+      }),
+      { storage, hostDataDir: '/host', random: () => 0 }
+    )
+    const reply = cleaner.clean(makeInput({}))
+    expect(reply.content).toBe(
+      'Findings.\nMEDIA:/host/characters/example/stickers/a.webp\nMEDIA:/host/files/report.pdf'
+    )
+    expect(reply.attachments).toEqual(['/host/characters/example/stickers/a.webp', '/host/files/report.pdf'])
+  })
+
   it('appends the sticker MEDIA line last, sets stickerId and attachments, and avoids repeating in one chat', () => {
     const storage = tmpStorage()
     const cleaner = withStickers(

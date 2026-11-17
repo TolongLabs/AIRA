@@ -56,11 +56,20 @@ export function withStickers(cleaner: ReplyCleaner, options: StickerOptions): Re
           setChatState(db, key, file, now)
         })
 
+        const pdfs = cleaned.content.split('\n').filter((line) => /^MEDIA:.*\.pdf$/.test(line))
+        const body = cleaned.content
+          .split('\n')
+          .filter((line) => !pdfs.includes(line))
+          .join('\n')
         return {
           ...cleaned,
-          content: `${cleaned.content}\nMEDIA:${mediaPath}`,
+          content: [body, `MEDIA:${mediaPath}`, ...pdfs].join('\n'),
           stickerId: file,
-          attachments: [...(cleaned.attachments ?? []), mediaPath]
+          attachments: [
+            ...(cleaned.attachments ?? []).filter((path) => !path.endsWith('.pdf')),
+            mediaPath,
+            ...(cleaned.attachments ?? []).filter((path) => path.endsWith('.pdf'))
+          ]
         }
       } catch {
         return cleaned

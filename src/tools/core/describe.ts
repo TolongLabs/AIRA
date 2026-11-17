@@ -17,6 +17,8 @@ const HELP_TEXT: Readonly<Record<string, string>> = {
   remember: 'Remembers something you tell me.',
   remind: 'Sets a reminder.',
   reminders: 'Lists the reminders in this chat.',
+  research: 'Researches a topic and sends findings here.',
+  pdf: 'Makes a PDF from your open research offer.',
   report: 'Writes a long answer as a document.',
   search: 'Searches the web.',
   read: 'Reads a web page.',

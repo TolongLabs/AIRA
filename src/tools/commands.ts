@@ -63,6 +63,7 @@ export function renderDirect(
   if (result.receipt?.kind === 'mute.on') return 'Proactive messages are off for this chat.'
   if (result.receipt?.kind === 'mute.off') return 'Proactive messages are on for this chat.'
   const data = (result.data ?? {}) as Record<string, unknown>
+  if ((tool === 'research_start' || tool === 'report_pdf') && typeof data['text'] === 'string') return data['text']
   if (tool === 'help' && Array.isArray(data['commands'])) {
     const rows = data['commands'] as { command: string; usage: string; description?: string }[]
     if (rows.length === 0) return 'No commands are switched on in this chat.'
