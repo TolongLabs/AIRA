@@ -34,12 +34,12 @@ from this page after an audit.
 
 ## Expression, Mood And Tone
 
-| ID    | Status  | Main Code Paths                                   | Test Paths     | TRD Module       | Gap                                                        |
-| ----- | ------- | ------------------------------------------------- | -------------- | ---------------- | ---------------------------------------------------------- |
-| FR-11 | Shipped | src/prompt/mood.ts, src/prompt/builder.ts         | tests/contract | prompt-engine.md | None.                                                      |
-| FR-12 | Shipped | src/prompt/shape.ts, src/prompt/builder.ts        | tests/harness  | prompt-engine.md | Research and command bypasses apply at clean time.         |
-| FR-13 | Partial | src/prompt/stickers.ts, deploy/gateway/patches.py | tests/harness  | prompt-engine.md | No save-time conversion; packs ship valid WebP.            |
-| FR-14 | Partial | src/character/schema.ts, src/turn/pipeline.ts     | tests/harness  | prompt-engine.md | Broken bindings and storage failures can end with no line. |
+| ID    | Status  | Main Code Paths                                   | Test Paths     | TRD Module       | Gap                                                                                      |
+| ----- | ------- | ------------------------------------------------- | -------------- | ---------------- | ---------------------------------------------------------------------------------------- |
+| FR-11 | Shipped | src/prompt/mood.ts, src/prompt/builder.ts         | tests/contract | prompt-engine.md | None.                                                                                    |
+| FR-12 | Shipped | src/prompt/shape.ts, src/prompt/builder.ts        | tests/harness  | prompt-engine.md | Research and command bypasses apply at clean time.                                       |
+| FR-13 | Partial | src/prompt/stickers.ts, deploy/gateway/patches.py | tests/harness  | prompt-engine.md | Pack stickers are validated at load; conversion when a card is saved is deferred to #22. |
+| FR-14 | Partial | src/character/schema.ts, src/turn/pipeline.ts     | tests/harness  | prompt-engine.md | Broken bindings and storage failures can end with no line.                               |
 
 ## Reply Formatting
 
@@ -52,17 +52,17 @@ from this page after an audit.
 
 ## Tools And Commands
 
-| ID    | Status  | Main Code Paths                                   | Test Paths     | TRD Module | Gap                                                                |
-| ----- | ------- | ------------------------------------------------- | -------------- | ---------- | ------------------------------------------------------------------ |
-| FR-19 | Shipped | src/tools/registry.ts, src/tools/types.ts         | tests/contract | tools.md   | None.                                                              |
-| FR-20 | Partial | src/tools/registry.ts, src/turn/pipeline.ts       | tests/contract | tools.md   | PRD says 4 calls; code runs 3 per chat under a ceiling of 8.       |
-| FR-21 | Partial | src/tools/commands.ts                             | tests/harness  | tools.md   | PRD says one leading command; code allows up to 5 anywhere.        |
-| FR-22 | Shipped | src/tools/commands.ts, src/tools/core/describe.ts | tests/harness  | tools.md   | Code and PRD answer /report; tools.md names /doc.                  |
-| FR-23 | Shipped | src/tools/registry.ts                             | tests/contract | tools.md   | None.                                                              |
-| FR-24 | Shipped | src/tools/core/index.ts                           | tests/harness  | tools.md   | None.                                                              |
-| FR-39 | Partial | src/media/turn-media.ts, src/social/viewer.ts     | tests/harness  | models.md  | Attachment video duration is not checked; embed cover is unproven. |
-| FR-44 | Shipped | src/tools/lessons/index.ts                        | tests/harness  | tools.md   | None.                                                              |
-| FR-25 | Partial | src/tools/registry.ts                             | tests/contract | tools.md   | Seam built; no server enabled and startup lives elsewhere.         |
+| ID    | Status  | Main Code Paths                                                               | Test Paths                                                | TRD Module | Gap                                                                                                  |
+| ----- | ------- | ----------------------------------------------------------------------------- | --------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------- |
+| FR-19 | Shipped | src/tools/registry.ts, src/tools/types.ts                                     | tests/contract                                            | tools.md   | None.                                                                                                |
+| FR-20 | Partial | src/tools/registry.ts, src/turn/pipeline.ts                                   | tests/contract                                            | tools.md   | PRD says 4 calls; code runs 3 per chat under a ceiling of 8.                                         |
+| FR-21 | Partial | src/tools/commands.ts                                                         | tests/harness                                             | tools.md   | PRD says one leading command; code allows up to 5 anywhere.                                          |
+| FR-22 | Shipped | src/tools/commands.ts, src/tools/core/describe.ts                             | tests/harness                                             | tools.md   | Code and PRD answer /report; tools.md names /doc.                                                    |
+| FR-23 | Shipped | src/tools/registry.ts                                                         | tests/contract                                            | tools.md   | None.                                                                                                |
+| FR-24 | Shipped | src/tools/core/index.ts                                                       | tests/harness                                             | tools.md   | None.                                                                                                |
+| FR-39 | Partial | src/media/turn-media.ts, src/media/link-intake.ts, src/media/link-segments.ts | tests/contract/media*.test.ts, tests/replay/media.test.ts | models.md  | An attached video carries no duration, so its length limit is not checked; linked videos are capped. |
+| FR-44 | Shipped | src/tools/lessons/index.ts                                                    | tests/harness                                             | tools.md   | None.                                                                                                |
+| FR-25 | Partial | src/tools/registry.ts                                                         | tests/contract                                            | tools.md   | Seam built; no server enabled and startup lives elsewhere.                                           |
 
 ## Memory
 
@@ -85,11 +85,11 @@ from this page after an audit.
 
 ## Models
 
-| ID    | Status  | Main Code Paths                                       | Test Paths    | TRD Module | Gap                                                             |
-| ----- | ------- | ----------------------------------------------------- | ------------- | ---------- | --------------------------------------------------------------- |
-| FR-32 | Partial | src/models/api-runner.ts, src/models/routed-client.ts | tests/harness | models.md  | Both runners exist; the benchmark-backed default is unrecorded. |
-| FR-33 | Shipped | src/models/routed-client.ts                           | tests/harness | models.md  | None.                                                           |
-| FR-45 | Planned | —                                                     | —             | models.md  | No /think prefix, per-chat switch, or effort override shown.    |
+| ID    | Status  | Main Code Paths                                        | Test Paths                 | TRD Module | Gap                                                             |
+| ----- | ------- | ------------------------------------------------------ | -------------------------- | ---------- | --------------------------------------------------------------- |
+| FR-32 | Partial | src/models/api-runner.ts, src/models/routed-client.ts  | tests/harness              | models.md  | Both runners exist; the benchmark-backed default is unrecorded. |
+| FR-33 | Shipped | src/models/routed-client.ts                            | tests/harness              | models.md  | None.                                                           |
+| FR-45 | Shipped | src/turn/pipeline.ts, src/app.ts, src/settings/keys.ts | tests/replay/think.test.ts | models.md  | None.                                                           |
 
 ## Records And Test Harness
 
