@@ -90,6 +90,7 @@ The primary key is `(level, scope, key)`. Deleting a row at a level restores inh
 | `features.photos`        | Boolean                                                                                  | `true`                  |
 | `features.media`         | Boolean                                                                                  | `true`                  |
 | `features.memory`        | Boolean: memory for this chat ([Memory](memory.md#per-chat-switch))                      | `true`                  |
+| `features.think`         | Boolean: `/think` runs one turn at deeper effort ([Models](models.md#deeper-thinking))   | `true`                  |
 | `features.context`       | Boolean: replay the chat log as context ([Prompt Engine](prompt-engine.md#live-context)) | `true`                  |
 | `context.maxMessages`    | Integer 0 to 100: chat-log messages replayed per turn                                    | `40`                    |
 | `memory.pageMessages`    | Integer 5 to 50: messages that close a memory episode                                    | `25`                    |
