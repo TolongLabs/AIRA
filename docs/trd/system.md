@@ -74,6 +74,10 @@ Each request is one of four kinds, decided in this order (measured on the stagin
   Flags File). The patch `name-call-from-core` makes the gateway's group check also wake on those names for that
   chat. It also wakes on every message in a chat whose entry has `free: true`. The patch `name-call-only-from-core` stops
   the global `mention_patterns` from waking a WhatsApp chat, so a chat with name call off never shows typing for a name.
+- **A leading timestamp is removed.** With `message_timestamps` on, the gateway starts each message with
+  `[Tue 2026-11-17 05:45:50 -05] `, on the same line as the first note. Measured on the live gateway, 17 Nov 2026:
+  the core then missed that note, a quote or a file, and stored the timestamp as an earlier message. The core
+  removes a bracketed timestamp of that form at the start of any line before a marker, before it reads the notes.
 - **Quotes and media are notes before the marker.** The gateway writes what it knows about a message as bracketed
   notes just before that message's marker. The core takes them out of the message text and keeps what they carry:
 
@@ -84,6 +88,13 @@ Each request is one of four kinds, decided in this order (measured on the stagin
   | `[The user sent an image~`, `[The user sent an image but`                  | The picture's path on the host, after `image_url:`                        |
   | `[The user sent a voice message`                                           | The voice note's path on the host, when the gateway did not transcribe it |
   | `[The user sent an audio file`, `a video`, `a document`, `a text document` | The file's path on the host, after `saved at:`                            |
+
+  An image can also arrive inline. When the gateway judges the model able to see, it sends the newest message as
+  content parts: one text part, then one `image_url` part per picture. The text part ends with one line per picture,
+  `[Image attached at: <host path>]`, after the message text. The core reads those lines as image attachments and
+  removes them from the text. It takes them only from the end of the text, and at most one for each `image_url` part
+  in the request: those lines stand where a member's own text stands, and a member cannot add a content part. The
+  `image_url` parts themselves are not read; the file is read from its path like any other.
 
   The quote is stored with its message in `session_message` (`quote`, `quote_mid`, `quote_of_aira`), never in the
   message text: memory and mood read the text only, so a quoted member's words never count as the sender's. The
