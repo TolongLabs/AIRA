@@ -162,7 +162,10 @@ storage:
 backup:
   everyMin: 15 # Interval between snapshots
   keepDays: 14 # How long verified snapshots stay on the data volume
-  offsite: 'off' # The off-host repository. off until a destination is set
+  offsite:
+    kind: 'off' # off, rest or s3. off until a destination is set
+    checkEveryHours: 24 # Interval between restic check runs
+    staleAlertMin: 60 # Age of the newest good off-host run that raises an alert
 
 # Owned by docs/trd/storage.md
 archive:

@@ -22,6 +22,7 @@ export const FAILURE_KINDS = [
   'storage_error',
   'storage_low_space',
   'backup_failed',
+  'backup_stale',
   'internal'
 ] as const
 

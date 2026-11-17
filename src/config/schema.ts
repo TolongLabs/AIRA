@@ -32,6 +32,35 @@ const absoluteDir = z
   })
 const gatewayDir = z.strictObject({ host: absoluteDir, container: absoluteDir })
 
+const offsiteObject = z
+  .strictObject({
+    kind: z.enum(['off', 'rest', 's3']).default('off'),
+    repository: z.string().optional(),
+    checkEveryHours: count.default(24),
+    staleAlertMin: count.default(60)
+  })
+  .superRefine((offsite, context) => {
+    if (offsite.kind === 'off') return
+    if (!offsite.repository || offsite.repository.trim() === '') {
+      context.addIssue({
+        code: 'custom',
+        path: ['repository'],
+        message: `must be set when kind is ${offsite.kind}`
+      })
+      return
+    }
+    const prefix = `${offsite.kind}:`
+    if (!offsite.repository.startsWith(prefix) || offsite.repository.length <= prefix.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['repository'],
+        message: `must start with ${prefix}`
+      })
+    }
+  })
+
+const offsiteSchema = z.preprocess((value) => (value === 'off' ? { kind: 'off' } : value), offsiteObject)
+
 export const configSchema = z.strictObject({
   research: z
     .strictObject({
@@ -240,7 +269,7 @@ export const configSchema = z.strictObject({
   backup: z.strictObject({
     everyMin: count,
     keepDays: count,
-    offsite: z.string().min(1)
+    offsite: offsiteSchema.prefault({})
   }),
   archive: z.strictObject({
     enabled: onOff

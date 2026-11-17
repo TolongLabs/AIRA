@@ -93,6 +93,46 @@ describe('media in config.yml', () => {
       /gatewayDirs/
     )
   })
+  it('reads the repository backup.offsite settings and rejects mismatched prefixes', () => {
+    const config = loadConfig('config.yml')
+    expect(config.backup.offsite).toEqual({ kind: 'off', checkEveryHours: 24, staleAlertMin: 60 })
+
+    const replaceOffsite = (yamlBlock: string) => source.replace(/ {2}offsite:\n(?: {4}.*\n)*/, yamlBlock)
+    expect(
+      parseConfig(
+        replaceOffsite("  offsite:\n    kind: 'rest'\n    repository: 'rest:http://offsite.invalid:8000/aira'\n")
+      ).backup.offsite
+    ).toEqual({
+      kind: 'rest',
+      repository: 'rest:http://offsite.invalid:8000/aira',
+      checkEveryHours: 24,
+      staleAlertMin: 60
+    })
+    expect(
+      parseConfig(replaceOffsite("  offsite:\n    kind: 's3'\n    repository: 's3:https://r2.invalid/bucket/aira'\n"))
+        .backup.offsite
+    ).toEqual({
+      kind: 's3',
+      repository: 's3:https://r2.invalid/bucket/aira',
+      checkEveryHours: 24,
+      staleAlertMin: 60
+    })
+    expect(() => parseConfig(replaceOffsite("  offsite:\n    kind: 'rest'\n"))).toThrow(/backup\.offsite\.repository/)
+    expect(() =>
+      parseConfig(replaceOffsite("  offsite:\n    kind: 'rest'\n    repository: 's3:wrong-prefix'\n"))
+    ).toThrow(/backup\.offsite\.repository/)
+    expect(() =>
+      parseConfig(replaceOffsite("  offsite:\n    kind: 's3'\n    repository: 'rest:wrong-prefix'\n"))
+    ).toThrow(/backup\.offsite\.repository/)
+  })
+
+  it('an old string offsite value still parses as off', () => {
+    const legacy = source.replace(/ {2}offsite:\n(?: {4}.*\n)*/, "  offsite: 'off'\n")
+    expect(parseConfig(legacy).backup.offsite).toEqual({ kind: 'off', checkEveryHours: 24, staleAlertMin: 60 })
+    expect(() => parseConfig(source.replace(/ {2}offsite:\n(?: {4}.*\n)*/, "  offsite: 'invalid'\n"))).toThrow(
+      /backup\.offsite/
+    )
+  })
 })
 
 describe('deploy/compose.yml', () => {
