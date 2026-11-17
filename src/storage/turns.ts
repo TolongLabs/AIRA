@@ -131,6 +131,21 @@ export interface CloseTurnInput {
   also?: (db: Db) => void
 }
 
+function settleTurnMessages(db: Db, input: { turnId: string; reply?: string; replyMid?: string }, at: string): void {
+  if (input.reply !== undefined) {
+    db.prepare(
+      `INSERT INTO session_message (chat_id, turn_id, role, content, created_at)
+       SELECT chat_id, turn_id, 'assistant', ?, ? FROM turn WHERE turn_id = ?`
+    ).run(input.reply, at, input.turnId)
+  }
+  db.prepare(
+    `UPDATE inbound_message
+     SET state = CASE WHEN ? = 0 THEN 'dropped' WHEN ? IS NULL OR mid = ? THEN 'answered' ELSE 'dropped' END,
+         closed_at = ?
+     WHERE turn_id = ? AND state = 'received'`
+  ).run(input.reply === undefined ? 0 : 1, input.replyMid ?? null, input.replyMid ?? null, at, input.turnId)
+}
+
 /**
  * Closes a running turn, stores its reply and closes its inbound messages, in one transaction.
  * Returns false and writes nothing when the turn is not running. Only after this returns true is the reply
@@ -146,19 +161,39 @@ export function closeTurn(storage: Storage, input: CloseTurnInput, now: Clock = 
       .prepare("UPDATE turn SET state = ?, ended_at = ? WHERE turn_id = ? AND state = 'running'")
       .run(input.state, at, input.turnId)
     if (closed.changes !== 1) return false
-    if (input.reply !== undefined) {
-      db.prepare(
-        `INSERT INTO session_message (chat_id, turn_id, role, content, created_at)
-         SELECT chat_id, turn_id, 'assistant', ?, ? FROM turn WHERE turn_id = ?`
-      ).run(input.reply, at, input.turnId)
-    }
-    db.prepare(
-      `UPDATE inbound_message
-       SET state = CASE WHEN ? = 0 THEN 'dropped' WHEN ? IS NULL OR mid = ? THEN 'answered' ELSE 'dropped' END,
-           closed_at = ?
-       WHERE turn_id = ? AND state = 'received'`
-    ).run(input.reply === undefined ? 0 : 1, input.replyMid ?? null, input.replyMid ?? null, at, input.turnId)
+    settleTurnMessages(db, input, at)
     input.also?.(db)
+    return true
+  })
+}
+
+export interface FailTurnInput {
+  turnId: string
+  reply?: string
+  replyMid?: string
+  /** When false, leaves inbound messages in `received` so a gateway retry can run the turn again. */
+  closeInbound?: boolean
+  also?: (db: Db, stage: string) => void
+}
+
+/**
+ * Closes a running turn as failed in one small transaction and passes its reached stage to `also`.
+ * Returns false and writes nothing when no running turn exists for `turnId`.
+ */
+export function closeTurnAsFailed(storage: Storage, input: FailTurnInput, now: Clock = wallClock): boolean {
+  return storage.tx((db) => {
+    const sql = "SELECT stage FROM turn WHERE turn_id = ? AND state = 'running'"
+    const row = db.prepare(sql).get(input.turnId) as { stage: string } | undefined
+    if (!row) return false
+    const at = isoNow(now)
+    db.prepare("UPDATE turn SET state = 'failed', ended_at = ? WHERE turn_id = ? AND state = 'running'").run(
+      at,
+      input.turnId
+    )
+    if (input.closeInbound ?? true) {
+      settleTurnMessages(db, input, at)
+    }
+    input.also?.(db, row.stage)
     return true
   })
 }

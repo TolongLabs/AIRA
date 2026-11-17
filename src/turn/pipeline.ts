@@ -32,7 +32,7 @@ import {
 } from '../settings/chats.js'
 import { type Resolved, resolveSettings } from '../settings/settings.js'
 import { type Db, type Storage, isoNow } from '../storage/database.js'
-import { advanceTurn, closeTurn, openTurn, receiveInbound } from '../storage/turns.js'
+import { advanceTurn, closeTurn, closeTurnAsFailed, openTurn, receiveInbound } from '../storage/turns.js'
 import type { Alerter } from './alerts.js'
 import { type DeliveryKind, type DeliverySettings, mayDeliver } from './deliver.js'
 import type {
@@ -119,7 +119,7 @@ interface Waiter {
   command?: boolean
   /** The files the gateway saved for this message. Kept in memory: a restart answers from the text alone. */
   attachments?: Attachment[]
-  resolvers: ((reply: TurnReply) => void)[]
+  settlers: { resolve: (reply: TurnReply) => void; reject: (error: unknown) => void }[]
 }
 
 interface ChatQueue {
@@ -672,6 +672,23 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     const turnId = newId()
     const newest = batch[batch.length - 1] as Waiter
     const log = logger.child({ turnId, module: 'turn' })
+    const defaultErrorLine = (): string | undefined => {
+      try {
+        const raw = storage.read((db) =>
+          db.prepare("SELECT value FROM setting WHERE level = 'global' AND key = 'character'").pluck().get()
+        )
+        if (typeof raw !== 'string') return undefined
+        const characterId: unknown = JSON.parse(raw)
+        if (typeof characterId !== 'string') return undefined
+        return deps.packs().packs.get(characterId)?.lines.error
+      } catch {
+        return undefined
+      }
+    }
+    let opened = false
+    let outcome: Outcome | undefined
+    let shouldReject = false
+    let rejectError: unknown
     let reply: TurnReply = { content: '', turnId, replayed: false }
     try {
       // 1. Receive: the opening turn record.
@@ -687,6 +704,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         },
         now
       )
+      opened = true
       log.info('turn.received', { chatId: chat.chatId, messages: batch.length })
 
       const timing = storage.read(
@@ -699,7 +717,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
             .get(turnId) as { received_at: string; arrived_at: string | null }
       )
       const arrivedAt = timing.arrived_at ?? timing.received_at
-      let outcome: Outcome = {
+      let currentOutcome: Outcome = {
         state: 'failed',
         fields: {
           arrivedAt,
@@ -710,31 +728,43 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         calls: [],
         stamps: []
       }
+      outcome = currentOutcome
       try {
-        outcome = await modelRecordContext.run({ turnId }, () => execute(turnId, chat, batch, outcome))
+        currentOutcome = await modelRecordContext.run({ turnId }, () => execute(turnId, chat, batch, currentOutcome))
+        outcome = currentOutcome
       } catch (error) {
         // An uncaught exception ends the turn with the pack's error line. The process stays up.
         log.error('turn.uncaught', { error })
-        outcome.failures.push({ stage: 'internal', kind: 'internal', error, handledBy: 'line:error' })
-        outcome.state = 'failed'
-        outcome.fields.outcome = 'failed'
-        outcome.fields.failureKind = 'internal'
-        outcome.content = outcome.context?.character.lines.error
+        const fallbackLine = currentOutcome.context?.character.lines.error ?? defaultErrorLine()
+        currentOutcome.failures.push({
+          stage: 'internal',
+          kind: 'internal',
+          error,
+          handledBy: fallbackLine === undefined ? 'unavailable' : 'line:error'
+        })
+        currentOutcome.state = 'failed'
+        currentOutcome.fields.outcome = 'failed'
+        currentOutcome.fields.failureKind = 'internal'
+        currentOutcome.content = fallbackLine
+        if (fallbackLine === undefined) {
+          shouldReject = true
+          rejectError = error
+        }
       }
 
       // 8. Return: store the reply and close the turn record in one transaction. Only then is it sent.
-      const content = outcome.state === 'declined' ? undefined : outcome.content
-      outcome.fields.replyChars = content?.length ?? 0
+      const content = currentOutcome.state === 'declined' ? undefined : currentOutcome.content
+      currentOutcome.fields.replyChars = content?.length ?? 0
       const returnedAt = now()
-      outcome.fields.totalMs = Math.max(0, returnedAt.getTime() - Date.parse(arrivedAt))
-      outcome.fields.toolMs = storage.read((db) =>
+      currentOutcome.fields.totalMs = Math.max(0, returnedAt.getTime() - Date.parse(arrivedAt))
+      currentOutcome.fields.toolMs = storage.read((db) =>
         Number(db.prepare('SELECT COALESCE(SUM(duration_ms), 0) FROM tool_call WHERE turn_id = ?').pluck().get(turnId))
       )
-      const modelCalls = outcome.calls.filter((call) => call.role !== 'media')
+      const modelCalls = currentOutcome.calls.filter((call) => call.role !== 'media')
       for (const [index, call] of modelCalls.entries()) {
         if (!call.failureKind) continue
         const next = modelCalls[index + 1]
-        outcome.failures.push({
+        currentOutcome.failures.push({
           stage: 'run',
           kind: call.failureKind,
           error: call.error ?? new Error(call.failureKind),
@@ -742,88 +772,148 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
             ? next.role === call.role && next.transport === call.transport
               ? 'retry'
               : 'fallback'
-            : `line:${LINE_FOR[call.failureKind] ?? (outcome.fields.outcome === 'failed' ? 'error' : 'fallback')}`
+            : `line:${LINE_FOR[call.failureKind] ?? (currentOutcome.fields.outcome === 'failed' ? 'error' : 'fallback')}`
         })
       }
-      const closed = closeTurn(
-        storage,
-        {
-          turnId,
-          state: outcome.state,
-          reply: content,
-          replyMid: newest.mid,
-          also: (db) => {
-            for (const [stage, at] of outcome.stamps) markStage(db, turnId, stage, () => at)
-            markStage(db, turnId, 'returned', () => returnedAt)
-            updateTurnRecord(db, turnId, outcome.fields)
-            if (outcome.context?.kind === 'command') {
-              db.prepare("UPDATE turn SET kind = 'command' WHERE turn_id = ?").run(turnId)
-            }
-            for (const call of outcome.calls) {
-              recordModelCall(db, {
-                turnId,
-                role: call.role,
-                model: call.model,
-                transport: call.transport,
-                attempt: call.attempt,
-                startedAt: call.startedAt,
-                durationMs: call.durationMs,
-                inputTokens: call.usage?.inputTokens,
-                outputTokens: call.usage?.outputTokens,
-                cachedTokens: call.usage?.cachedTokens,
-                costUsd: call.costUsd,
-                failureKind: call.failureKind
-              })
-            }
-            for (const failure of outcome.failures) recordFailure(db, { turnId, ...failure }, deps.redactor, now)
-            if (outcome.state === 'failed' && outcome.diagnostics) {
-              saveDiagnostics(db, { turnId, ...outcome.diagnostics }, now)
-            }
-            if (outcome.state !== 'declined' && outcome.content && outcome.researchDelivery) {
-              const delivered = outcome.researchDelivery
-              db.prepare(
-                `UPDATE research_job SET delivered_at = ?, report_file_id = coalesce(?, report_file_id),
-                offer = ?, offer_expires_at = ?, updated_at = ? WHERE job_id = ? AND chat_id = ? AND delivered_at IS NULL`
-              ).run(
-                isoNow(now),
-                delivered.fileId ?? null,
-                delivered.openOffer ? 'open' : 'none',
-                delivered.openOffer
-                  ? new Date(now().getTime() + (deps.research?.offerMinutes ?? 30) * 60000).toISOString()
-                  : null,
-                isoNow(now),
-                delivered.jobId,
-                chat.chatId
-              )
-            }
-            if (outcome.state === 'delivered' && outcome.context) deps.hooks?.onDelivered?.(db, outcome.context)
-          }
-        },
-        now
-      )
-      if (closed && outcome.researchDelivery) deps.onScheduleChange?.()
-      if (closed) reply = { content: content ?? '', turnId, replayed: false }
-      for (const failure of outcome.failures) {
+      const writeTurnClose = (db: Db) => {
+        for (const [stage, at] of currentOutcome.stamps) markStage(db, turnId, stage, () => at)
+        markStage(db, turnId, 'returned', () => returnedAt)
+        updateTurnRecord(db, turnId, currentOutcome.fields)
+        if (currentOutcome.context?.kind === 'command') {
+          db.prepare("UPDATE turn SET kind = 'command' WHERE turn_id = ?").run(turnId)
+        }
+        for (const call of currentOutcome.calls) {
+          recordModelCall(db, {
+            turnId,
+            role: call.role,
+            model: call.model,
+            transport: call.transport,
+            attempt: call.attempt,
+            startedAt: call.startedAt,
+            durationMs: call.durationMs,
+            inputTokens: call.usage?.inputTokens,
+            outputTokens: call.usage?.outputTokens,
+            cachedTokens: call.usage?.cachedTokens,
+            costUsd: call.costUsd,
+            failureKind: call.failureKind
+          })
+        }
+        for (const failure of currentOutcome.failures) recordFailure(db, { turnId, ...failure }, deps.redactor, now)
+        if (currentOutcome.state === 'failed' && currentOutcome.diagnostics) {
+          saveDiagnostics(db, { turnId, ...currentOutcome.diagnostics }, now)
+        }
+        if (currentOutcome.state !== 'declined' && currentOutcome.content && currentOutcome.researchDelivery) {
+          const delivered = currentOutcome.researchDelivery
+          db.prepare(
+            `UPDATE research_job SET delivered_at = ?, report_file_id = coalesce(?, report_file_id),
+            offer = ?, offer_expires_at = ?, updated_at = ? WHERE job_id = ? AND chat_id = ? AND delivered_at IS NULL`
+          ).run(
+            isoNow(now),
+            delivered.fileId ?? null,
+            delivered.openOffer ? 'open' : 'none',
+            delivered.openOffer
+              ? new Date(now().getTime() + (deps.research?.offerMinutes ?? 30) * 60000).toISOString()
+              : null,
+            isoNow(now),
+            delivered.jobId,
+            chat.chatId
+          )
+        }
+        if (currentOutcome.state === 'delivered' && currentOutcome.context) {
+          deps.hooks?.onDelivered?.(db, currentOutcome.context)
+        }
+      }
+      const closed = shouldReject
+        ? closeTurnAsFailed(storage, { turnId, closeInbound: false, also: writeTurnClose }, now)
+        : closeTurn(
+            storage,
+            {
+              turnId,
+              state: currentOutcome.state,
+              reply: content,
+              replyMid: newest.mid,
+              also: writeTurnClose
+            },
+            now
+          )
+      if (!shouldReject) {
+        if (closed && currentOutcome.researchDelivery) deps.onScheduleChange?.()
+        if (closed) reply = { content: content ?? '', turnId, replayed: false }
+      }
+      for (const failure of currentOutcome.failures) {
         log.warn('turn.failure', { stage: failure.stage, kind: failure.kind, error: failure.error })
       }
       log.info('turn.returned', {
-        state: outcome.state,
-        outcome: outcome.fields.outcome,
+        state: currentOutcome.state,
+        outcome: currentOutcome.fields.outcome,
         chars: reply.content.length,
         arrivedAt,
-        queueMs: outcome.fields.queueMs,
-        mediaMs: outcome.fields.mediaMs,
-        toolMs: outcome.fields.toolMs,
-        totalMs: outcome.fields.totalMs
+        queueMs: currentOutcome.fields.queueMs,
+        mediaMs: currentOutcome.fields.mediaMs,
+        toolMs: currentOutcome.fields.toolMs,
+        totalMs: currentOutcome.fields.totalMs
       })
     } catch (error) {
-      // Storage failed around the turn. Nothing was acknowledged, so nothing is sent.
+      // Storage failed around the turn. Run one small transaction to record it; if that fails too, reject so the gateway retries.
       log.error('turn.storage_failed', { error })
+      const intentionalEmpty = outcome?.state === 'declined' || outcome?.fields.failureKind === 'binding_invalid'
+      const fallbackLine = intentionalEmpty
+        ? undefined
+        : (outcome?.context?.character.lines.error ?? defaultErrorLine())
+      if (!opened || (!intentionalEmpty && fallbackLine === undefined)) {
+        shouldReject = true
+        rejectError = error
+      }
+      if (opened) {
+        try {
+          const closed = closeTurnAsFailed(
+            storage,
+            {
+              turnId,
+              reply: fallbackLine,
+              replyMid: newest.mid,
+              closeInbound: !shouldReject,
+              also: (db, stage) => {
+                updateTurnRecord(db, turnId, { outcome: 'failed', failureKind: 'storage_error' })
+                recordFailure(
+                  db,
+                  {
+                    turnId,
+                    stage,
+                    kind: 'storage_error',
+                    error,
+                    handledBy: shouldReject ? 'unavailable' : intentionalEmpty ? 'no_reply' : 'line:error'
+                  },
+                  deps.redactor,
+                  now
+                )
+              }
+            },
+            now
+          )
+          if (!closed) {
+            shouldReject = true
+            rejectError = error
+          } else if (!shouldReject) {
+            reply = { content: fallbackLine ?? '', turnId, replayed: false }
+          }
+        } catch (fallbackError) {
+          log.error('turn.storage_fallback_failed', { error: fallbackError })
+          shouldReject = true
+          rejectError = fallbackError
+        }
+      }
+    }
+    if (shouldReject) {
+      for (const waiter of batch) {
+        for (const settler of waiter.settlers) settler.reject(rejectError)
+      }
+      return
     }
     // One reply goes out, to the newest message. The messages merged into the turn get nothing.
     for (const waiter of batch) {
       const answer = waiter === newest ? reply : { content: '', turnId, replayed: false }
-      for (const resolve of waiter.resolvers) resolve(answer)
+      for (const settler of waiter.settlers) settler.resolve(answer)
     }
   }
 
@@ -850,7 +940,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     })
   }
 
-  function enqueue(chat: Chat, waiter: Omit<Waiter, 'resolvers'>): Promise<TurnReply> {
+  function enqueue(chat: Chat, waiter: Omit<Waiter, 'settlers'>): Promise<TurnReply> {
     let queue = queues.get(chat.chatId)
     if (!queue) {
       queue = { chat, pending: [] }
@@ -858,10 +948,10 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     }
     queue.chat = chat
     const target = queue
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const same = target.pending.find((item) => item.mid === waiter.mid)
-      if (same) same.resolvers.push(resolve)
-      else target.pending.push({ ...waiter, resolvers: [resolve] })
+      if (same) same.settlers.push({ resolve, reject })
+      else target.pending.push({ ...waiter, settlers: [{ resolve, reject }] })
       if (target.current) return
       // Before a turn starts, messages that arrive within batchMs of each other form one turn.
       const at = now().getTime()
