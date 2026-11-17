@@ -208,6 +208,10 @@ tool's result in plain words: a list for `/help`, `/list` and `/reminders`, one 
 - A failed schedule-file rewrite warns `reminder_schedule_sync_failed` and leaves the committed row. The next change
   or start-up reconciliation rewrites the file.
 - `send_photo` downloads at most 5 MB. It accepts only jpeg, png, webp and gif, and refuses a non-image as invalid.
+- `send_photo` finds candidates through the search provider's image search. With Exa it is one search call that asks
+  for each result's main image and up to 3 image links per result; candidates keep result order, the main image first,
+  and only `https` URLs with an image extension or an image content type are tried, at most 3, until one downloads
+  within the limits. With no image search, `send_photo` answers `unavailable`.
 - `research_start` refuses a second concurrent job per chat. A topic that names a pdf or a report presets the PDF want.
 - `report_pdf` carries its own 25-second timeout, above the 15-second default.
 - Media watching is not a tool. It runs at intake. See [Models](models.md#media-watching).
