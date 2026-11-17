@@ -626,6 +626,103 @@ describe('the memory worker (steps 4 to 10)', () => {
     expect(itemsOf(storage, chatId).map((item) => item.key)).toEqual(['likes.drink', 'home.town'])
     expect(itemsOf(storage, other).map((item) => item.key)).toEqual(['likes.drink'])
   })
+
+  it('a job queued before memory is switched off writes nothing', async () => {
+    for (const level of ['chat', 'type', 'global'] as const) {
+      const { storage, chatId, now } = scene()
+      closeDueEpisodes(storage, { idleMs: 1, maxMessages: 25 }, now)
+      const cursorBefore = storage.read((db) => db.prepare('SELECT * FROM memory_cursor WHERE chat_id = ?').get(chatId))
+      setSetting(
+        storage,
+        {
+          level,
+          scope: level === 'global' ? '' : level === 'type' ? 'group' : chatId,
+          key: 'features.memory',
+          value: false,
+          actor: 'test'
+        },
+        now
+      )
+      const model = scriptedModel(() => good)
+      const judge = scriptedJudge()
+      const alerts: AlertKind[] = []
+      const worker = createMemoryWorker({
+        storage,
+        config: memoryConfig,
+        client: model,
+        judge,
+        logger: quietLogger,
+        alerter: { raise: (kind) => alerts.push(kind) > 0 },
+        now
+      })
+
+      expect(await worker.tick()).toBe('skipped')
+      expect(model.calls).toBe(0)
+      expect(judge.admitted).toBe(0)
+      expect(itemsOf(storage, chatId)).toEqual([])
+      expect(storage.read((db) => db.prepare('SELECT state, last_error FROM memory_job').get())).toEqual({
+        state: 'done',
+        last_error: null
+      })
+      expect(storage.read((db) => db.prepare('SELECT * FROM memory_cursor WHERE chat_id = ?').get(chatId))).toEqual(
+        cursorBefore
+      )
+      expect(storage.read((db) => db.prepare("SELECT * FROM failure WHERE stage = 'memory'").all())).toEqual([])
+      expect(alerts).toEqual([])
+      expect(eventsOf(storage, chatId)).toEqual([{ step: 'job', outcome: 'skipped', op: null, reason: 'memory_off' }])
+      expect(await worker.tick()).toBe('idle')
+    }
+  })
+
+  it('a job of a chat with memory on still runs', async () => {
+    const { storage, chatId, now } = scene()
+    closeDueEpisodes(storage, { idleMs: 1, maxMessages: 25 }, now)
+    setSetting(storage, { level: 'chat', scope: chatId, key: 'features.memory', value: true, actor: 'test' }, now)
+    const model = scriptedModel(() => good)
+    const worker = createMemoryWorker({
+      storage,
+      config: memoryConfig,
+      client: model,
+      judge: scriptedJudge(),
+      logger: quietLogger,
+      now
+    })
+
+    expect(await worker.tick()).toBe('done')
+    expect(model.calls).toBe(1)
+    expect(itemsOf(storage, chatId).map((item) => item.key)).toEqual(['likes.drink', 'home.town', null])
+    expect(storage.read((db) => db.prepare('SELECT state FROM memory_job').pluck().get())).toBe('done')
+    expect(await worker.tick()).toBe('idle')
+  })
+
+  it('applies nothing when memory is switched off while the job runs', async () => {
+    const { storage, chatId, now } = scene()
+    closeDueEpisodes(storage, { idleMs: 1, maxMessages: 25 }, now)
+    const cursorBefore = storage.read((db) => db.prepare('SELECT * FROM memory_cursor WHERE chat_id = ?').get(chatId))
+    const model = scriptedModel(() => {
+      setSetting(storage, { level: 'chat', scope: chatId, key: 'features.memory', value: false, actor: 'test' }, now)
+      return good
+    })
+    const worker = createMemoryWorker({
+      storage,
+      config: memoryConfig,
+      client: model,
+      judge: scriptedJudge(),
+      logger: quietLogger,
+      now
+    })
+
+    expect(await worker.tick()).toBe('skipped')
+    expect(itemsOf(storage, chatId)).toEqual([])
+    expect(storage.read((db) => db.prepare('SELECT state, last_error FROM memory_job').get())).toEqual({
+      state: 'done',
+      last_error: null
+    })
+    expect(storage.read((db) => db.prepare('SELECT * FROM memory_cursor WHERE chat_id = ?').get(chatId))).toEqual(
+      cursorBefore
+    )
+    expect(eventsOf(storage, chatId)).toEqual([{ step: 'job', outcome: 'skipped', op: null, reason: 'memory_off' }])
+  })
 })
 
 describe('forget, after review', () => {

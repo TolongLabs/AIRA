@@ -4,6 +4,8 @@ import { type ModelClient, ModelError } from '../models/types.js'
 import type { Logger } from '../records/logger.js'
 import { type Redactor, createRedactor } from '../records/redact.js'
 import { endJobRun, recordFailure, startJobRun } from '../records/turn-record.js'
+import { getChat } from '../settings/chats.js'
+import { resolveSetting } from '../settings/settings.js'
 import type { Db, Storage } from '../storage/database.js'
 import { type Job, completeJob, failJob, leaseNextJob } from '../storage/leases.js'
 import type { Alerter } from '../turn/alerts.js'
@@ -58,6 +60,11 @@ class Terminal extends Error {
   constructor(readonly code: string) {
     super(code)
   }
+}
+
+function memoryEnabled(storage: Storage, chatId: string): boolean {
+  const chat = getChat(storage, chatId)
+  return !chat || resolveSetting(storage, chat, 'features.memory').value !== false
 }
 
 export function createMemoryWorker(options: MemoryWorkerOptions): MemoryWorker {
@@ -130,6 +137,11 @@ export function createMemoryWorker(options: MemoryWorkerOptions): MemoryWorker {
       : `${operation.op} the fact "${operation.key}" about ${label}: ${operation.value ?? ''}`
 
   const run = async (job: Job): Promise<TickResult> => {
+    const skipped = (step: Event['step'], reason: string): TickResult =>
+      finish(job, [{ step, outcome: 'skipped', reason }]) ? 'skipped' : 'lost'
+
+    if (!memoryEnabled(storage, job.chatId)) return skipped('job', 'memory_off')
+
     let payload: EpisodePayload
     try {
       payload = JSON.parse(job.payload) as EpisodePayload
@@ -137,8 +149,6 @@ export function createMemoryWorker(options: MemoryWorkerOptions): MemoryWorker {
       throw new Terminal('invalid_payload')
     }
     const { messages, epoch } = readEpisode(job, payload)
-    const skipped = (step: Event['step'], reason: string): TickResult =>
-      finish(job, [{ step, outcome: 'skipped', reason }]) ? 'skipped' : 'lost'
 
     if (epoch !== payload.forgetEpoch) return skipped('job', 'forget_barrier')
     // A job never ends as done on a part of its episode.
@@ -197,6 +207,8 @@ export function createMemoryWorker(options: MemoryWorkerOptions): MemoryWorker {
       if (reason === undefined) summary = text
       else events.push({ step: 'verify', outcome: 'rejected', op: 'summary', reason })
     }
+
+    if (!memoryEnabled(storage, job.chatId)) return skipped('job', 'memory_off')
 
     let barrier = false
     const done = finish(job, [], (db) => {
