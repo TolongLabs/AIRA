@@ -1,7 +1,7 @@
 import type { Config } from '../config/schema.js'
 import { buildSystemBlocks, estimateTokens, loadHarnessRules } from '../prompt/builder.js'
 import { FACE_LIMIT, LENGTH_CHARS } from '../prompt/shape.js'
-import { type Mood, type Pack, loadPacks } from './loader.js'
+import { loadPacks, type Mood, type Pack } from './loader.js'
 
 export interface PackCheck {
   id: string

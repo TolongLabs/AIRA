@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { ftsQuery } from '../../memory/recall.js'
-import { type Db, type Storage, isoNow } from '../../storage/database.js'
+import { type Db, isoNow, type Storage } from '../../storage/database.js'
 
 type Clock = () => Date
 const wallClock: Clock = () => new Date()
@@ -397,7 +397,7 @@ export function setGloss(
 export function extractLinks(body: string, selfKey: string): { title: string; key: string }[] {
   const seen = new Set<string>()
   const links: { title: string; key: string }[] = []
-  const re = /\[\[([^\[\]]{1,120})\]\]/g
+  const re = /\[\[([^[\]]{1,120})\]\]/g
   for (const match of body.matchAll(re)) {
     const raw = (match[1] ?? '').trim()
     if (raw.length === 0 || raw.length > 120) continue

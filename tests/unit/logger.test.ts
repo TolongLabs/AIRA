@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { type LogLevel, createLogger } from '../../src/records/logger.js'
-import { type RedactorSecrets, createRedactor, secretsFromEnv, shapeOf } from '../../src/records/redact.js'
+import { createLogger, type LogLevel } from '../../src/records/logger.js'
+import { createRedactor, type RedactorSecrets, secretsFromEnv, shapeOf } from '../../src/records/redact.js'
 
 function capture(level: LogLevel = 'debug', secrets: RedactorSecrets = []) {
   const lines: Record<string, unknown>[] = []

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { StorageError, openDatabase } from '../../src/storage/database.js'
+import { openDatabase, StorageError } from '../../src/storage/database.js'
 import { tmpDir, tmpStorage } from '../support/tmp.js'
 
 const TURN = `INSERT INTO turn (turn_id, chat_id, sender_id, kind, state, stage, received_at)

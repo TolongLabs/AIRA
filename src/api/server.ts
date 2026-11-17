@@ -1,9 +1,9 @@
 import { timingSafeEqual } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
-import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http'
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { extname, resolve, sep } from 'node:path'
 import type { Logger } from '../records/logger.js'
-import { type SiteApiDeps, dispatchGet, isKnownRoute } from './routes.js'
+import { dispatchGet, isKnownRoute, type SiteApiDeps } from './routes.js'
 import { dispatchWrite, hostAllowed, isWriteRoute, originAllowed } from './writes.js'
 
 // The core's private HTTP API for the owner site (docs/trd/site.md#serving-the-api).

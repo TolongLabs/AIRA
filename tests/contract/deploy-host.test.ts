@@ -10,10 +10,10 @@ import {
   writeInstallEnv
 } from '../../scripts/deploy-host.js'
 import {
+  createRealOps,
   DOCKER_PULL_ATTEMPTS,
   DOCKER_PULL_TIMEOUT_MS,
-  SYNTHETIC_TURN_TIMEOUT_MS,
-  createRealOps
+  SYNTHETIC_TURN_TIMEOUT_MS
 } from '../../scripts/updater/ops.js'
 import type { DeployRecord } from '../../scripts/updater/update.js'
 import { tmpDir } from '../support/tmp.js'

@@ -267,7 +267,7 @@ const HISTORY_SPANS: Record<string, readonly [string, string]> = {
 
 const BARE_TICKER = /^[a-z0-9]{1,6}$/
 const TT_TICKER = /^[a-z]{1,5}$/
-const YAHOO_RSS_SYMBOL = /^[A-Za-z0-9.^=\-]{1,12}$/
+const YAHOO_RSS_SYMBOL = /^[A-Za-z0-9.^=-]{1,12}$/
 const TERM_TAIL =
   /\s+(?:index|composite|corporation|corp\.?|company|holdings?|group|berhad|bhd\.?|limited|ltd\.?|inc\.?|plc|llc|nv|sa|ag|co\.?|cryptocurrency|\d{2,4})\.?$/i
 const NEWS_JUNK =

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type PullRequest, checkPrHeader } from '../../scripts/pr-header.js'
+import { checkPrHeader, type PullRequest } from '../../scripts/pr-header.js'
 
 const FULL_BODY = `<!-- template comment -->
 

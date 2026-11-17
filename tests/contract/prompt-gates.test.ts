@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type Mood, loadPack, loadPacks } from '../../src/character/loader.js'
+import { loadPack, loadPacks, type Mood } from '../../src/character/loader.js'
 import { loadConfig } from '../../src/config/loader.js'
 import { buildSystemBlocks, createPromptBuilder, estimateTokens, loadHarnessRules } from '../../src/prompt/builder.js'
 import { FACE_LIMIT, LENGTH_CHARS } from '../../src/prompt/shape.js'

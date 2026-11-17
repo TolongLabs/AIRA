@@ -696,7 +696,7 @@ describe('the gateway endpoint', () => {
     const core = await startTestCore({ runner })
     core.activate(CHAT)
     // The gateway resends text the core never received (it was down), before the marker of the next message.
-    const body = (mid: string, content: string) => ({
+    const body = (_mid: string, content: string) => ({
       messages: [{ role: 'user', content }],
       tools: [{ type: 'function', function: { name: 'gateway_tool' } }]
     })

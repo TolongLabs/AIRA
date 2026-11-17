@@ -1,7 +1,8 @@
-import type { SocialPlatform, SocialPostTarget } from '../urls.js'
+import type { SocialPostTarget } from '../urls.js'
 import type { runYtDlp } from '../yt-dlp.js'
 
-export type { SocialReply, ReplyLookup } from '../types.js'
+export type { ReplyLookup, SocialReply } from '../types.js'
+
 import type { ReplyLookup } from '../types.js'
 
 export interface ReplyFetchContext {

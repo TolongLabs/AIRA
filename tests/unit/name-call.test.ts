@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type NameCallPack, matchesName, resolveNames } from '../../src/turn/name-call.js'
+import { matchesName, type NameCallPack, resolveNames } from '../../src/turn/name-call.js'
 
 const pack: NameCallPack = {
   card: {

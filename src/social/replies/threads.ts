@@ -1,4 +1,4 @@
-import { THREADS_PAGE_HEADERS, parseThreadsPage } from '../threads.js'
+import { parseThreadsPage, THREADS_PAGE_HEADERS } from '../threads.js'
 import { failed, found, rankReplies } from './common.js'
 import type { ReplyFetcher } from './types.js'
 

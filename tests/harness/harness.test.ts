@@ -1,12 +1,12 @@
 import { readFileSync } from 'node:fs'
-import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http'
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { type ModelClient, ModelError, type ModelRequest, type ModelResponse } from '../../src/models/types.js'
 import { tmpDir } from '../support/tmp.js'
-import { BUBBLE_BREAK, FakeGateway, type GatewayMessage, buildRequest, parseContent } from './gateway.js'
-import { RecordingMissError, createRecordingClient, hashRequest } from './recordings.js'
-import { ScenarioError, loadScenario, parseScenario, scenarioIds, scenarioMessages } from './scenario.js'
+import { BUBBLE_BREAK, buildRequest, FakeGateway, type GatewayMessage, parseContent } from './gateway.js'
+import { createRecordingClient, hashRequest, RecordingMissError } from './recordings.js'
+import { loadScenario, parseScenario, ScenarioError, scenarioIds, scenarioMessages } from './scenario.js'
 
 const servers: Server[] = []
 

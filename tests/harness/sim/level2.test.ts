@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { tmpDir } from '../../support/tmp.js'
-import { type FakeBridge, createFakeBridge } from '../bridge.js'
+import { createFakeBridge, type FakeBridge } from '../bridge.js'
 import type { MessagesResult, SimChat, SimInfo } from './backend.js'
 import { type Level2, startLevel2 } from './level2.js'
 import { type SimServer, startSimServer } from './server.js'

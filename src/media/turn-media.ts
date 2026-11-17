@@ -1,7 +1,7 @@
 import type { Attachment } from '../gateway/request.js'
 import type { SocialPost } from '../social/types.js'
 import type { ModelCallRecord } from '../turn/types.js'
-import { type GatewayDir, type MediaUnreadable, loadGatewayFile } from './files.js'
+import { type GatewayDir, loadGatewayFile, type MediaUnreadable } from './files.js'
 import type { MediaReading, MediaWatcher } from './gemini-watcher.js'
 import { mediaBlock, readMedia, sanitizeMediaText } from './intake.js'
 import type { MediaKind, MediaLimits } from './limits.js'

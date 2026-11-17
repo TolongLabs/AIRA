@@ -188,7 +188,7 @@ function inlineImages(text: string, parts: number): { text: string; attachments:
 }
 
 /** A display name right before a marker. A note holds a colon or a quote mark; a name holds neither. */
-const SENDER_NAME = /\[([^\[\]\n:"]{1,40})\]\s*$/
+const SENDER_NAME = /\[([^[\]\n:"]{1,40})\]\s*$/
 
 /** Splits the text before a marker into the previous message's text and the notes for the next message. */
 function splitNotes(segment: string): Notes {

@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto'
 import {
   existsSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   utimesSync,
@@ -12,7 +12,7 @@ import {
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { createLogger } from '../../src/records/logger.js'
-import { type Storage, StorageError, openDatabase } from '../../src/storage/database.js'
+import { openDatabase, type Storage, StorageError } from '../../src/storage/database.js'
 import { createDiskGuard } from '../../src/storage/disk-guard.js'
 import { putFile, sweepFiles, writeFileAtomic } from '../../src/storage/files.js'
 import {

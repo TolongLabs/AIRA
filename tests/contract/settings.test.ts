@@ -9,8 +9,8 @@ import {
   setChatLabel,
   setChatStatus
 } from '../../src/settings/chats.js'
-import { SETTING_KEYS, definitionFor } from '../../src/settings/keys.js'
-import { SettingError, resolveSetting, resolveSettings, setSetting, unsetSetting } from '../../src/settings/settings.js'
+import { definitionFor, SETTING_KEYS } from '../../src/settings/keys.js'
+import { resolveSetting, resolveSettings, SettingError, setSetting, unsetSetting } from '../../src/settings/settings.js'
 import type { Storage } from '../../src/storage/database.js'
 import { tmpStorage } from '../support/tmp.js'
 

@@ -1,7 +1,7 @@
 import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { type GatewayDir, contentTypeOf, loadGatewayFile, mapGatewayPath } from '../../src/media/files.js'
+import { contentTypeOf, type GatewayDir, loadGatewayFile, mapGatewayPath } from '../../src/media/files.js'
 import { tmpDir } from '../support/tmp.js'
 
 // Finding and reading the file a gateway note names (docs/trd/models.md#media-watching). The host paths here are

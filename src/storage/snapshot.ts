@@ -2,9 +2,9 @@ import { randomUUID } from 'node:crypto'
 import { closeSync, fsyncSync, mkdirSync, openSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import Database from 'better-sqlite3'
-import { type Redactor, createRedactor } from '../records/redact.js'
+import { createRedactor, type Redactor } from '../records/redact.js'
 import { endJobRun, recordFailure, startJobRun } from '../records/turn-record.js'
-import { type Db, type Storage, isoNow } from './database.js'
+import { type Db, isoNow, type Storage } from './database.js'
 import { insertFailure } from './failures.js'
 
 // Verified local snapshots (docs/trd/storage.md#snapshots-and-the-off-host-copy).

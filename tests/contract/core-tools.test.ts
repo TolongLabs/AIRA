@@ -8,21 +8,20 @@ import { RenderError } from '../../src/render/render.js'
 import { type NoteDocument, noteDocumentSchema } from '../../src/render/types.js'
 import { ensureChat, setChatStatus } from '../../src/settings/chats.js'
 import { resolveSettings, setSetting } from '../../src/settings/settings.js'
-import type { Storage } from '../../src/storage/database.js'
 import { openTurn, receiveInbound } from '../../src/storage/turns.js'
 import { CORE_TOOL_NAMES, registerCoreTools } from '../../src/tools/core/index.js'
 import { INTAKE_REFUSAL } from '../../src/tools/core/web.js'
 import {
+  createFetchPagePort,
+  isForbiddenUrl,
   type MemoryPort,
   type PagePort,
   type PostPort,
   type SchedulePort,
   type SearchPort,
-  type ToolPorts,
-  createFetchPagePort,
-  isForbiddenUrl
+  type ToolPorts
 } from '../../src/tools/ports.js'
-import { type ToolRegistry, createToolRegistry } from '../../src/tools/registry.js'
+import { createToolRegistry } from '../../src/tools/registry.js'
 import type { TurnContext } from '../../src/turn/types.js'
 import { tmpDir, tmpStorage } from '../support/tmp.js'
 

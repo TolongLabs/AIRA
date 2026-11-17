@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { ModelClient } from '../models/types.js'
 import { type ReportDocument, reportDocumentSchema } from '../render/types.js'
-import { type PagePort, type SearchPort, isForbiddenUrl } from '../tools/ports.js'
+import { isForbiddenUrl, type PagePort, type SearchPort } from '../tools/ports.js'
 
 const MAX_QUERIES = 6
 const MAX_KEY_FINDINGS = 7

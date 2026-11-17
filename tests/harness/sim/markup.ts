@@ -144,22 +144,25 @@ function blocksOf(text: string): Block[] {
 /** A message's text as the HTML of a WhatsApp bubble. The caller sets `white-space: pre-wrap` on `.t`. */
 export function renderMarkup(text: string): string {
   const blocks = blocksOf(text.replace(/\r\n/g, '\n'))
-  return blocks
-    .map((block) => {
-      switch (block.type) {
-        case 'text':
-          return `<div class="t">${block.lines.map(renderInline).join('\n')}</div>`
-        case 'quote':
-          return `<blockquote>${block.lines.map(renderInline).join('\n')}</blockquote>`
-        case 'bullets':
-          return `<ul>${block.items.map((item) => `<li>${renderInline(item)}</li>`).join('')}</ul>`
-        case 'numbers':
-          return `<ol>${block.items.map((item) => `<li value="${item.number}">${renderInline(item.text)}</li>`).join('')}</ol>`
-        case 'mono':
-          return `<pre>${escapeHtml(block.text)}</pre>`
-      }
-    })
-    .join('')
+  return (
+    blocks
+      // biome-ignore lint/suspicious/useIterableCallbackReturn: kept as written in the Biome 2 bump; behaviour unchanged
+      .map((block) => {
+        switch (block.type) {
+          case 'text':
+            return `<div class="t">${block.lines.map(renderInline).join('\n')}</div>`
+          case 'quote':
+            return `<blockquote>${block.lines.map(renderInline).join('\n')}</blockquote>`
+          case 'bullets':
+            return `<ul>${block.items.map((item) => `<li>${renderInline(item)}</li>`).join('')}</ul>`
+          case 'numbers':
+            return `<ol>${block.items.map((item) => `<li value="${item.number}">${renderInline(item.text)}</li>`).join('')}</ol>`
+          case 'mono':
+            return `<pre>${escapeHtml(block.text)}</pre>`
+        }
+      })
+      .join('')
+  )
 }
 
 /** The text of a message as one short plain line, for a quote or a reply preview. */

@@ -5,9 +5,9 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   type NoteDocument,
+  noteDocumentSchema,
   type ReportDocument,
   type ReportFormat,
-  noteDocumentSchema,
   reportDocumentSchema,
   reportFormatSchema
 } from './types.js'

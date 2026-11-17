@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 import { loadConfig } from '../src/config/loader.js'
 import { openReader } from '../src/storage/database.js'
-import { type ResticRunner, buildResticEnv, createSecretScrubber, defaultResticRun } from '../src/storage/offsite.js'
+import { buildResticEnv, createSecretScrubber, defaultResticRun, type ResticRunner } from '../src/storage/offsite.js'
 
 // Restores an off-host restic snapshot into an empty folder, checks SQLite integrity, and prints row counts
 // (docs/trd/storage.md#snapshots-and-the-off-host-copy).

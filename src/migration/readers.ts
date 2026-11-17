@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { LegacyRecord } from './legacy.js'
 
@@ -80,6 +80,7 @@ export function readOldBrain(root: string, now: Date = new Date()): ExportResult
       const source = `${kind}/whatsapp/${folder}/memories.jsonl`
       readFileSync(facts, 'utf8')
         .split('\n')
+        // biome-ignore lint/suspicious/useIterableCallbackReturn: kept as written in the Biome 2 bump; behaviour unchanged
         .forEach((raw, index) => {
           if (raw.trim() === '') return
           let entry: Record<string, unknown>

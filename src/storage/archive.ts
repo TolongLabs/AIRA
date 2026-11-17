@@ -1,6 +1,6 @@
 import { mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { type RetentionConfig, type RetentionResult, pruneRecords } from '../records/retention.js'
+import { pruneRecords, type RetentionConfig, type RetentionResult } from '../records/retention.js'
 import type { Storage } from './database.js'
 
 // Daily retention export to Parquet (docs/trd/storage.md#analytics-and-the-archive).

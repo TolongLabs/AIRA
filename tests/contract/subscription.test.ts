@@ -7,7 +7,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createBreaker } from '../../src/models/breaker.js'
 import { createSubscriptionRunner, renderPrompt, renderSystem } from '../../src/models/subscription-runner.js'
-import { type ToolServer, createToolServer } from '../../src/models/tool-server.js'
+import { createToolServer, type ToolServer } from '../../src/models/tool-server.js'
 import { ModelError } from '../../src/models/types.js'
 import { createLogger } from '../../src/records/logger.js'
 import type { OfferedTool, RunResult, TurnContext, TurnRunner } from '../../src/turn/types.js'

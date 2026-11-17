@@ -1,5 +1,5 @@
 import type { ToolPorts } from '../ports.js'
-import { type ToolRegistry, registryDepsOf } from '../registry.js'
+import { registryDepsOf, type ToolRegistry } from '../registry.js'
 import { helpTool, listTool } from './describe.js'
 import { forgetTool, historySearchTool, lingoNoteTool, noteTool, recallTool } from './memory.js'
 import { setMuteTool } from './mute.js'

@@ -3,12 +3,12 @@ import type { CleanedReply, ReplyCleaner } from '../turn/types.js'
 import { parseBlocks } from './blocks.js'
 import { joinContent, splitBubbles } from './bubbles.js'
 import {
+  buildFooter,
   CODE_REPLY_NOTE_LINE,
+  capitaliseParagraphs,
   LIST_COMMAND_TOOLS,
   RESEARCH_MAX_CHARS,
-  RESEARCH_TOOLS,
-  buildFooter,
-  capitaliseParagraphs
+  RESEARCH_TOOLS
 } from './footer.js'
 import { renderWhatsApp } from './render.js'
 

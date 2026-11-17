@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { type Storage, isoNow } from '../storage/database.js'
+import { isoNow, type Storage } from '../storage/database.js'
 import { SettingError } from './settings.js'
 
 // Chats and identities (docs/trd/data.md#chats-and-identities).

@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
-import { readFileSync, readdirSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { type Storage, StorageError, isoNow } from './database.js'
+import { isoNow, type Storage, StorageError } from './database.js'
 
 // Numbered SQL files, applied in order, each in one transaction, each recorded with a checksum
 // (docs/trd/storage.md#migrations).

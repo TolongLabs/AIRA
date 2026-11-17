@@ -1,17 +1,17 @@
 import { EventEmitter } from 'node:events'
-import { chmodSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { describe, expect, it } from 'vitest'
 import { loadConfig, parseConfig } from '../../src/config/loader.js'
 import {
+  countPdfPages,
+  isTypstAvailable,
   MAX_TYPST_OUTPUT_BYTES,
   RenderError,
   type RenderProcess,
-  type RenderRunOptions,
   type RenderRunner,
-  countPdfPages,
-  isTypstAvailable,
+  type RenderRunOptions,
   renderNote,
   renderReport
 } from '../../src/render/render.js'

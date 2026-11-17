@@ -3,14 +3,14 @@ import { join } from 'node:path'
 import { activeFact, addNote, applyOperation, lingoKey, normaliseKey, setLingo, setSource } from '../memory/store.js'
 import { MAX_VALUE_CHARS, RESERVED_KEY_PREFIXES } from '../memory/types.js'
 import { ensureSubject, getChatByWaId } from '../settings/chats.js'
-import { type Storage, openDatabase } from '../storage/database.js'
+import { openDatabase, type Storage } from '../storage/database.js'
 import {
   type BackupManifest,
-  type ReadResult,
-  type SourceRef,
   backupSources,
   manifestOf,
-  readLegacyExport
+  type ReadResult,
+  readLegacyExport,
+  type SourceRef
 } from './legacy.js'
 
 // The one-time memory migration (docs/trd/memory.md#migration): back up, read, map, dry run, review, import.

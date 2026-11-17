@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { setSetting } from '../../settings/settings.js'
-import { type Storage, isoNow } from '../../storage/database.js'
+import { isoNow, type Storage } from '../../storage/database.js'
 import type { ToolDefinition } from '../types.js'
 
 const setMuteSchema = z.strictObject({

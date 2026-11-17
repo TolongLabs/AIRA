@@ -4,22 +4,22 @@ import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  DOCKER_PULL_TIMEOUT_MS,
-  DOCKER_TIMEOUT_MS,
-  KILL_GRACE_MS,
-  SYNTHETIC_TURN_TIMEOUT_MS,
-  type SpawnFn,
   createRealOps,
   createSpawnRun,
-  execChecked
+  DOCKER_PULL_TIMEOUT_MS,
+  DOCKER_TIMEOUT_MS,
+  execChecked,
+  KILL_GRACE_MS,
+  type SpawnFn,
+  SYNTHETIC_TURN_TIMEOUT_MS
 } from '../../scripts/updater/ops.js'
 import {
   type DeployRecord,
-  type Release,
-  type UpdaterConfig,
-  type UpdaterOps,
   isNewer,
-  runUpdate
+  type Release,
+  runUpdate,
+  type UpdaterConfig,
+  type UpdaterOps
 } from '../../scripts/updater/update.js'
 import { tmpDir } from '../support/tmp.js'
 

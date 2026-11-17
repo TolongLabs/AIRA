@@ -101,7 +101,7 @@ function isFooterLine(line: string): boolean {
 const SKIP_START = /^(?:```|`|https?:\/\/|www\.|\/[a-z]|@)/i
 /** A list is left as written, so its items keep one style. */
 const LIST_START = /^\s*(?:[-*•]|\d+[.)])\s/
-const LEADING = /^[\s*_~>"'“‘(\[\-•·]*(?:\p{Extended_Pictographic}️?\s*)*[\s*_~>"'“‘(\[\-•·]*/u
+const LEADING = /^[\s*_~>"'“‘([\-•·]*(?:\p{Extended_Pictographic}️?\s*)*[\s*_~>"'“‘([\-•·]*/u
 
 /** Capitalises the first letter of a bubble, unless it starts with code, a link, a command or a mention. */
 export function capitaliseBubble(bubble: string): string {

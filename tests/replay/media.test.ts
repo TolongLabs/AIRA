@@ -166,7 +166,7 @@ describe('the configured media model', () => {
       const part = body.contents[0]?.parts[0]?.inline_data
       calls.push({
         url,
-        key: (init?.headers as Record<string, string>)['x-goog-api-key'],
+        key: (init!.headers as Record<string, string>)['x-goog-api-key'],
         mime: part?.mime_type ?? '',
         data: part?.data ?? ''
       })
