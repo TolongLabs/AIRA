@@ -123,7 +123,6 @@ render:
 
 turn:
   batchMs: 1500 # Window that merges quick messages
-  mediaWaitMs: 8000 # Wait for a caption after a bare photo
 
 # Owned by docs/trd/reliability.md
 shutdown:
@@ -142,12 +141,6 @@ records:
 # Owned by docs/trd/records.md
 log:
   level: 'info' # Minimum log level
-
-# Owned by docs/trd/deployment.md
-deploy:
-  checkEveryMin: 15 # How often the host looks for a release
-  waitForIdleMs: 120000 # Longest wait for a running turn
-  healthTimeoutMs: 60000 # Longest wait for the new image to be ready
 
 # Owned by docs/trd/deployment.md
 gateway:
