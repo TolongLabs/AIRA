@@ -11,17 +11,20 @@ const count = z.number().int().positive()
 const price = z.number().nonnegative().default(0)
 /** Claude's effort levels, for the `anthropic` provider and the subscription program (docs/trd/models.md). */
 export const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
-const modelTarget = z.strictObject({
-  provider: z.string(),
-  model: z.string(),
-  baseUrl: z.string(),
-  // Sent per provider (docs/trd/models.md#providers-and-effort). Empty: the model's own default.
-  effort: z.string().default(''),
-  // US dollars per million tokens. Used for the spend cap when the provider's response reports no cost.
-  usdPerMTokIn: price,
-  usdPerMTokOut: price,
-  usdPerMTokCached: price
-})
+const modelTarget = (deepEffortDefault: string) =>
+  z.strictObject({
+    provider: z.string(),
+    model: z.string(),
+    baseUrl: z.string(),
+    // Sent per provider (docs/trd/models.md#providers-and-effort). Empty: the model's own default.
+    effort: z.string().default(''),
+    // Effort on a `/think` turn (docs/trd/models.md#deeper-thinking). Empty: the role's normal effort.
+    deepEffort: z.string().default(deepEffortDefault),
+    // US dollars per million tokens. Used for the spend cap when the provider's response reports no cost.
+    usdPerMTokIn: price,
+    usdPerMTokOut: price,
+    usdPerMTokCached: price
+  })
 
 /** An absolute path with no `..`, and never the root: a pair that maps `/` would let any path through. */
 const absoluteDir = z
@@ -150,8 +153,8 @@ export const configSchema = z.strictObject({
   llm: z
     .strictObject({
       transport: z.enum(['api', 'subscription']),
-      main: modelTarget,
-      fallback: modelTarget,
+      main: modelTarget('high'),
+      fallback: modelTarget('max'),
       turnDeadlineMs: ms,
       maxRetries: z.number().int().min(0),
       breakerMs: ms,
@@ -177,12 +180,14 @@ export const configSchema = z.strictObject({
       for (const role of ['main', 'fallback'] as const) {
         const target = llm[role]
         const claude = target.provider === 'anthropic' || (role === 'main' && llm.transport === 'subscription')
-        if (claude && !claudeEffort(target.effort)) {
-          context.addIssue({
-            code: 'custom',
-            path: [role, 'effort'],
-            message: `must be empty or one of ${CLAUDE_EFFORTS.join(', ')}`
-          })
+        for (const field of ['effort', 'deepEffort'] as const) {
+          if (claude && !claudeEffort(target[field])) {
+            context.addIssue({
+              code: 'custom',
+              path: [role, field],
+              message: `must be empty or one of ${CLAUDE_EFFORTS.join(', ')}`
+            })
+          }
         }
       }
     }),

@@ -20,7 +20,11 @@ import {
 
 export interface ApiRunnerOptions {
   /** Builds the client for one turn. `onCall` receives every attempt, for the model_call records. */
-  clientFor: (onCall: (record: ModelCallRecord) => void, onSpendError?: (error: unknown) => void) => ModelClient
+  clientFor: (
+    onCall: (record: ModelCallRecord) => void,
+    onSpendError?: (error: unknown) => void,
+    think?: boolean
+  ) => ModelClient
   /** The model id asked of the client. A routed client replaces it per role. */
   model: string
   limits: { maxCallsPerTurn: number; timeBudgetMs: number }
@@ -226,10 +230,14 @@ export function createApiRunner(options: ApiRunnerOptions): TurnRunner {
         system,
         messages,
         tools,
-        client: options.clientFor((record) => {
-          calls.push(record)
-          onCall?.(record)
-        }, onSpendError),
+        client: options.clientFor(
+          (record) => {
+            calls.push(record)
+            onCall?.(record)
+          },
+          onSpendError,
+          Boolean(context.think)
+        ),
         signal,
         turnId: context.turnId,
         toolCalls: 0,

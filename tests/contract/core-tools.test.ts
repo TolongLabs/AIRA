@@ -657,12 +657,15 @@ describe('core tools', () => {
     const helpRes = await registry.call('help', {}, ctx, { callId: 'c-help', source: 'command' })
     expect(helpRes.ok).toBe(true)
     if (helpRes.ok) {
-      const cmds = (helpRes.data as { commands: { command: string }[] }).commands.map((c) => c.command)
+      const data = helpRes.data as { commands: { command: string }[]; think?: boolean }
+      const cmds = data.commands.map((c) => c.command)
       expect(cmds).toContain('/help')
       expect(cmds).toContain('/mute')
       expect(cmds).toContain('/unmute')
       expect(cmds).toContain('/doc')
       expect(cmds).not.toContain('/report')
+      expect(cmds).not.toContain('/think')
+      expect(data.think).toBe(true)
     }
 
     const listRes = await registry.call('list', {}, ctx, { callId: 'c-list-tools', source: 'command' })

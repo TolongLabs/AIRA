@@ -144,7 +144,8 @@ function modelClient(
   target: Config['llm']['main'],
   key: string | undefined,
   role: string,
-  override?: ModelClient
+  override?: ModelClient,
+  effort = target.effort
 ): ModelClient | undefined {
   if (override) return override
   if (target.model === '' || target.baseUrl === '') return undefined
@@ -154,9 +155,9 @@ function modelClient(
   // A role with no key is switched off (docs/trd/models.md#roles). The caller decides whether that stops start-up.
   if (key === undefined || key === '') return undefined
   if (target.provider === 'anthropic') {
-    return createAnthropicClient({ baseUrl: target.baseUrl, apiKey: key, effort: target.effort, prices: target })
+    return createAnthropicClient({ baseUrl: target.baseUrl, apiKey: key, effort, prices: target })
   }
-  return createOpenAiClient({ baseUrl: target.baseUrl, apiKey: key, effort: target.effort, prices: target })
+  return createOpenAiClient({ baseUrl: target.baseUrl, apiKey: key, effort, prices: target })
 }
 
 export async function createApp(options: AppOptions): Promise<App> {
@@ -213,21 +214,41 @@ export async function createApp(options: AppOptions): Promise<App> {
 
     // Models: one loop, one tool set. A fallback changes the model and nothing else.
     const subscription = config.llm.transport === 'subscription'
-    const main = modelClient(config.llm.main, env['LLM_API_KEY'], 'main', options.clients?.main)
-    if (!main && !subscription) {
+    type Target = { client: ModelClient; model: string; effort: string }
+    type RoleTargets = { normal: Target; deep: Target }
+    const buildRole = (
+      targetConfig: Config['llm']['main'],
+      key: string | undefined,
+      role: string,
+      override?: ModelClient
+    ): RoleTargets | undefined => {
+      const normalClient = modelClient(targetConfig, key, role, override, targetConfig.effort)
+      if (!normalClient) return undefined
+      const deepEffort = targetConfig.deepEffort !== '' ? targetConfig.deepEffort : targetConfig.effort
+      const deepClient =
+        override || deepEffort === targetConfig.effort
+          ? normalClient
+          : (modelClient(targetConfig, key, role, undefined, deepEffort) as ModelClient)
+      return {
+        normal: { client: normalClient, model: targetConfig.model, effort: targetConfig.effort },
+        deep: { client: deepClient, model: targetConfig.model, effort: deepEffort }
+      }
+    }
+    const mainRole = buildRole(config.llm.main, env['LLM_API_KEY'], 'main', options.clients?.main)
+    if (!mainRole && !subscription) {
       throw new ConfigError('llm.main needs a model, a baseUrl and LLM_API_KEY in the environment')
     }
-    const fallback = modelClient(
+    const fallbackRole = buildRole(
       config.llm.fallback,
       env['LLM_FALLBACK_API_KEY'],
       'fallback',
       options.clients?.fallback
     )
-    for (const [role, client] of [
-      ['main', main],
-      ['fallback', fallback]
+    for (const [role, target] of [
+      ['main', mainRole],
+      ['fallback', fallbackRole]
     ] as const) {
-      if (!client && config.llm[role].model !== '') logger.warn('model_role.off', { role, reason: 'no_key' })
+      if (!target && config.llm[role].model !== '') logger.warn('model_role.off', { role, reason: 'no_key' })
     }
     const breaker = createBreaker({
       breakerMs: config.llm.breakerMs,
@@ -235,14 +256,13 @@ export async function createApp(options: AppOptions): Promise<App> {
       onOpen: (role) => alerter.raise('breaker_open', { role })
     })
     const limits = { maxCallsPerTurn: config.tools.maxCallsPerTurn, timeBudgetMs: config.tools.timeBudgetMs }
-    type Target = { client: ModelClient; model: string }
     /** The API runner on one model, with an optional second model behind it. */
-    const apiRunner = (first: Target, second: Target | undefined, roleBreaker: Breaker): TurnRunner =>
+    const apiRunner = (first: RoleTargets, second: RoleTargets | undefined, roleBreaker: Breaker): TurnRunner =>
       createApiRunner({
-        clientFor: (onCall, onSpendError) =>
+        clientFor: (onCall, onSpendError, think) =>
           createRoutedClient({
-            main: first,
-            fallback: second,
+            main: think ? first.deep : first.normal,
+            fallback: second ? (think ? second.deep : second.normal) : undefined,
             config,
             breaker: roleBreaker,
             storage,
@@ -263,17 +283,15 @@ export async function createApp(options: AppOptions): Promise<App> {
             onAuthFailure: (role) => alerter.raise('model_auth', { role }),
             now
           }),
-        model: first.model,
+        model: first.normal.model,
         limits,
         now
       })
-    const mainTarget = main ? { client: main, model: config.llm.main.model } : undefined
-    const fallbackTarget = fallback ? { client: fallback, model: config.llm.fallback.model } : undefined
 
     let runner: TurnRunner
     let fallbackBreaker: Breaker | undefined
     if (!subscription) {
-      runner = apiRunner(mainTarget as Target, fallbackTarget, breaker)
+      runner = apiRunner(mainRole as RoleTargets, fallbackRole, breaker)
     } else {
       // The program on the host runs the loop and calls the tools through the core's tool server. The fallback
       // model answers on the API runner, with its own breaker: the two limits it guards are different accounts.
@@ -283,22 +301,23 @@ export async function createApp(options: AppOptions): Promise<App> {
       const toolServer = createToolServer({ limits, logger: logger.child({ module: 'tool_server' }), now })
       await toolServer.listen(config.llm.subscription.toolServerPort)
       closers.push(() => toolServer.close())
-      fallbackBreaker = fallbackTarget ? createBreaker({ breakerMs: config.llm.breakerMs, now }) : undefined
+      fallbackBreaker = fallbackRole ? createBreaker({ breakerMs: config.llm.breakerMs, now }) : undefined
       runner = createSubscriptionRunner({
         subscription: config.llm.subscription,
         model: config.llm.main.model,
         effort: config.llm.main.effort,
+        deepEffort: config.llm.main.deepEffort,
         runnerToken,
         toolServer,
         breaker,
-        fallback: fallbackTarget && fallbackBreaker ? apiRunner(fallbackTarget, undefined, fallbackBreaker) : undefined,
+        fallback: fallbackRole && fallbackBreaker ? apiRunner(fallbackRole, undefined, fallbackBreaker) : undefined,
         onAuthFailure: (role) => alerter.raise('model_auth', { role }),
         logger: logger.child({ module: 'subscription' }),
         now
       })
     }
     // Memory extraction needs a model behind a key: the main one, or on the subscription transport the fallback.
-    const extractionTarget = mainTarget ?? fallbackTarget
+    const extractionTarget = mainRole?.normal ?? fallbackRole?.normal
 
     // The hosted judge, when its model and key are set. Without it the mood comes from rules and memory admits nothing.
     const judgeKey = env['TYPESAFE_API_KEY']
@@ -401,6 +420,7 @@ export async function createApp(options: AppOptions): Promise<App> {
                 role: 'main',
                 model: extractionTarget.model,
                 transport: 'api',
+                effort: extractionTarget.effort,
                 attempt: 1,
                 startedAt,
                 durationMs: Math.max(0, now().getTime() - startedAt.getTime()),
@@ -426,6 +446,7 @@ export async function createApp(options: AppOptions): Promise<App> {
               role: 'main',
               model: response.model,
               transport: 'api',
+              effort: extractionTarget.effort,
               attempt: 1,
               startedAt,
               durationMs: Math.max(0, now().getTime() - startedAt.getTime()),
@@ -571,7 +592,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         config,
         client: createRoutedClient({
           main: extractionTarget,
-          fallback: extractionTarget === mainTarget ? fallbackTarget : undefined,
+          fallback: extractionTarget === mainRole?.normal ? fallbackRole?.normal : undefined,
           config,
           breaker,
           storage,
@@ -757,9 +778,9 @@ export async function createApp(options: AppOptions): Promise<App> {
         ready: () => ready,
         activeTurns: () => turns.active(),
         roles: () => ({
-          main: { configured: Boolean(mainTarget) || subscription, breakerOpen: breaker.isOpen('main') },
+          main: { configured: Boolean(mainRole) || subscription, breakerOpen: breaker.isOpen('main') },
           fallback: {
-            configured: Boolean(fallbackTarget),
+            configured: Boolean(fallbackRole),
             breakerOpen: subscription ? (fallbackBreaker?.isOpen('main') ?? false) : breaker.isOpen('fallback')
           },
           judge: { configured: Boolean(moodJudge || memoryJudge), breakerOpen: false },

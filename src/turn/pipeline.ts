@@ -110,6 +110,8 @@ export interface TurnService {
 
 /** A message that holds a slash command anywhere, by the parser's own shape. An unknown name runs alone too. */
 const COMMAND_TEXT = /(?:^|[ \t\r\n])\/[a-z][a-z0-9]*(?=$|\s|[.,!?;:](?=\s|$))/i
+/** Leading `/think` prefix (docs/trd/models.md#deeper-thinking). First word only, any case. */
+const THINK_PREFIX = /^\s*\/think(?:\s+|$)/i
 
 interface Waiter {
   mid: string
@@ -117,6 +119,8 @@ interface Waiter {
   scheduled?: DeliveryKind
   /** The text starts with a slash command. Such a message is never merged with another one. */
   command?: boolean
+  /** True when `/think` stood first and `features.think` is enabled for the chat. */
+  think?: boolean
   /** The files the gateway saved for this message. Kept in memory: a restart answers from the text alone. */
   attachments?: Attachment[]
   settlers: { resolve: (reply: TurnReply) => void; reject: (error: unknown) => void }[]
@@ -250,6 +254,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       outcome.fields.outcome = 'failed'
       return outcome
     }
+    const think = batch.some((waiter) => waiter.think === true) && settings['features.think']?.value !== false
     const delivery: DeliveryKind = newest.scheduled ?? { kind: 'reply' }
     const context: TurnContext = {
       turnId,
@@ -259,7 +264,8 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       settings,
       kind: newest.scheduled ? 'scheduled' : 'reply',
       delivery,
-      deadline: now().getTime() + config.llm.turnDeadlineMs
+      deadline: now().getTime() + config.llm.turnDeadlineMs,
+      ...(think ? { think: true } : {})
     }
     outcome.context = context
     outcome.fields.characterId = pack.id
@@ -414,6 +420,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       run = codeRun(result.text, result.receipts)
       Object.assign(outcome.fields, built.record, { receipts: result.receipts } satisfies TurnRecordFields)
     } else {
+      if (think) outcome.fields.think = true
       // The files members sent, and at most one supported link, are read before the model runs. A failure never ends
       // the turn: the prompt carries a note, and the failure is recorded.
       const mediaOn = !researchRow && !handover && settings['features.media']?.value !== false
@@ -796,7 +803,8 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
             outputTokens: call.usage?.outputTokens,
             cachedTokens: call.usage?.cachedTokens,
             costUsd: call.costUsd,
-            failureKind: call.failureKind
+            failureKind: call.failureKind,
+            effort: call.effort
           })
         }
         for (const failure of currentOutcome.failures) recordFailure(db, { turnId, ...failure }, deps.redactor, now)
@@ -975,9 +983,11 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     const settings = resolveSettings(storage, chat)
     const characterId = settings['character']?.value
     const pack = typeof characterId === 'string' ? deps.packs().packs.get(characterId) : undefined
+    const thinkPrefix = THINK_PREFIX.exec(request.text)
+    const strippedText = thinkPrefix ? request.text.slice(thinkPrefix[0].length) : request.text
     const selfIds = new Set((config.gateway?.selfIds ?? []).map((id) => id.replace(/@.*$/, '')))
     let mentionsSelf = false
-    const text = request.text.replace(/@(\d{6,20})\b/g, (_, number: string) => {
+    const text = strippedText.replace(/@(\d{6,20})\b/g, (_, number: string) => {
       if (selfIds.has(number)) {
         mentionsSelf = true
         return `@${pack?.card.displayName ?? 'you'}`
@@ -1017,7 +1027,8 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       },
       undefined,
       request.attachments,
-      COMMAND_TEXT.test(request.text) || offerAnswer(request.text) !== undefined
+      COMMAND_TEXT.test(request.text) || offerAnswer(request.text) !== undefined,
+      thinkPrefix !== null && settings['features.think']?.value !== false
     )
   }
 
@@ -1032,7 +1043,8 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     onNew: (db: Db) => void,
     afterNew?: () => void,
     attachments?: Attachment[],
-    command?: boolean
+    command?: boolean,
+    think?: boolean
   ): Promise<TurnReply> {
     for (let round = 0; round < 3; round++) {
       const status = receiveInbound(storage, { ...key, onNew }, now)
@@ -1051,6 +1063,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         senderId: key.senderId,
         ...(scheduled ? { scheduled } : {}),
         ...(command ? { command } : {}),
+        ...(think ? { think } : {}),
         ...(attachments && attachments.length > 0 ? { attachments } : {})
       })
     }

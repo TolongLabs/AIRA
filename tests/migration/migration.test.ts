@@ -206,7 +206,7 @@ describe('add first, remove later', () => {
       ).run()
     })
 
-    expect(applyMigrations(storage, migrations)).toEqual([11])
+    expect(applyMigrations(storage, [...before11, ...migration11])).toEqual([11])
     expect(() => storage.check()).not.toThrow()
 
     const preserved = storage.read((db) =>

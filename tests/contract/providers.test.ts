@@ -423,11 +423,17 @@ describe('effort in config.yml', () => {
   const config = parseConfig(readFileSync('config.yml', 'utf8'))
 
   it('carries the launch models', () => {
-    expect(config.llm.main).toMatchObject({ provider: 'anthropic', model: 'claude-haiku-5-5', effort: 'medium' })
+    expect(config.llm.main).toMatchObject({
+      provider: 'anthropic',
+      model: 'claude-haiku-5-5',
+      effort: 'medium',
+      deepEffort: 'high'
+    })
     expect(config.llm.fallback).toMatchObject({
       provider: 'openai-compatible',
       model: 'deepseek-ai/DeepSeek-V4.1-Flash-1017',
-      effort: 'high'
+      effort: 'high',
+      deepEffort: 'max'
     })
   })
 
@@ -438,6 +444,28 @@ describe('effort in config.yml', () => {
     expect(withMain({ effort: 'xhigh' }).success).toBe(true)
     expect(withMain({ provider: 'openai-compatible', effort: 'none' }).success).toBe(true)
     expect(withMain({ provider: 'openai-compatible', effort: 'none' }, 'subscription').success).toBe(false)
+  })
+
+  it('an invalid deepEffort for an anthropic role is refused at start-up', () => {
+    const withMain = (main: Partial<typeof config.llm.main>, transport = config.llm.transport) =>
+      configSchema.safeParse({ ...config, llm: { ...config.llm, transport, main: { ...config.llm.main, ...main } } })
+    const withFallback = (fallback: Partial<typeof config.llm.fallback>) =>
+      configSchema.safeParse({ ...config, llm: { ...config.llm, fallback: { ...config.llm.fallback, ...fallback } } })
+
+    expect(withMain({ deepEffort: 'none' }).success).toBe(false)
+    expect(withMain({ deepEffort: 'ultra' }).success).toBe(false)
+    expect(withMain({ deepEffort: '' }).success).toBe(true)
+    expect(withMain({ deepEffort: 'xhigh' }).success).toBe(true)
+    expect(withMain({ provider: 'openai-compatible', deepEffort: 'none' }, 'subscription').success).toBe(false)
+    expect(withMain({ provider: 'openai-compatible', deepEffort: 'none' }).success).toBe(true)
+
+    expect(withFallback({ provider: 'anthropic', deepEffort: 'none' }).success).toBe(false)
+    expect(withFallback({ provider: 'anthropic', deepEffort: 'max' }).success).toBe(true)
+    expect(withFallback({ provider: 'anthropic', deepEffort: '' }).success).toBe(true)
+    expect(withFallback({ provider: 'openai-compatible', deepEffort: 'none' }).success).toBe(true)
+    expect(() =>
+      parseConfig(readFileSync('config.yml', 'utf8').replace("deepEffort: 'high'", "deepEffort: 'bad'"))
+    ).toThrow(/deepEffort/)
   })
 })
 
@@ -476,5 +504,43 @@ describe('the subscription runner', () => {
       ['claude-haiku-5-5', 'medium'],
       ['claude-haiku-5-5', 'xhigh']
     ])
+  })
+
+  it('passes deepEffort on a think turn and falls back to normal effort when deepEffort is empty', async () => {
+    const payloads: Record<string, unknown>[] = []
+    const fakeFetch = (async (_url: string, init: RequestInit) => {
+      payloads.push(JSON.parse(String(init.body)))
+      throw new Error('stop here')
+    }) as typeof fetch
+    const toolServer = {
+      open: () => ({ token: 'ab'.repeat(16), end: () => {} })
+    } as unknown as Parameters<typeof createSubscriptionRunner>[0]['toolServer']
+    for (const [effort, deepEffort, think] of [
+      ['medium', 'high', false],
+      ['medium', 'high', true],
+      ['low', '', true]
+    ] as const) {
+      const runner = createSubscriptionRunner({
+        subscription: { runnerUrl: 'http://127.0.0.1:9', toolServerUrl: 'http://127.0.0.1:9883' },
+        model: 'claude-haiku-5-5',
+        effort,
+        deepEffort,
+        runnerToken: 'r'.repeat(32),
+        toolServer,
+        breaker: createBreaker({ breakerMs: 60_000 }),
+        logger: createLogger({ level: 'error', module: 'sub-test', sink: () => {} }),
+        fetch: fakeFetch
+      })
+      await runner
+        .run({
+          system: [{ name: 'core', text: 'x' }],
+          messages: [{ role: 'user', content: 'hi' }],
+          tools: [],
+          context: { turnId: 't', chat: { chatId: 'c_test' }, ...(think ? { think: true } : {}) } as TurnContext,
+          signal: new AbortController().signal
+        })
+        .catch(() => undefined)
+    }
+    expect(payloads.map((payload) => payload['effort'])).toEqual(['medium', 'high', 'low'])
   })
 })

@@ -49,18 +49,21 @@ describe('settings resolution', () => {
     expect(resolved.muted).toEqual({ value: false, level: 'default' })
     expect(resolved['features.memory']).toEqual({ value: true, level: 'default' })
     expect(resolved['features.context']).toEqual({ value: true, level: 'default' })
+    expect(resolved['features.think']).toEqual({ value: true, level: 'default' })
     expect(resolved['context.maxMessages']).toEqual({ value: 40, level: 'default' })
     expect(resolved['memory.pageMessages']).toEqual({ value: 25, level: 'default' })
     expect(resolved['tools.maxPerMessage']).toEqual({ value: 3, level: 'default' })
     expect(resolved['report.defaultFormat']).toEqual({ value: 'pdf', level: 'default' })
   })
 
-  it('accepts only boolean values for the memory switch', () => {
+  it('accepts only boolean values for the memory and think switches', () => {
     const storage = tmpStorage()
-    for (const value of ['false', 0, 1, null, {}]) {
-      expect(() =>
-        setSetting(storage, { level: 'global', scope: '', key: 'features.memory', value, actor: 'test' })
-      ).toThrow(SettingError)
+    for (const key of ['features.memory', 'features.think']) {
+      for (const value of ['false', 0, 1, null, {}]) {
+        expect(() => setSetting(storage, { level: 'global', scope: '', key, value, actor: 'test' })).toThrow(
+          SettingError
+        )
+      }
     }
     expect(count(storage, 'setting')).toBe(0)
   })

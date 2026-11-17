@@ -13,6 +13,15 @@ describe('direct command answers', () => {
       tz
     )
     expect(text).toBe('Commands in this chat:\n- **/remind** Sets a reminder.')
+
+    const withThink = renderDirect(
+      'help',
+      ok({ commands: [{ command: '/remind', usage: '/remind', description: 'Sets a reminder.' }], think: true }),
+      tz
+    )
+    expect(withThink).toBe(
+      'Commands in this chat:\n- **/remind** Sets a reminder.\nStart a message with /think to think harder on one turn.'
+    )
   })
 
   it('names tools and features in words, never as ids', () => {

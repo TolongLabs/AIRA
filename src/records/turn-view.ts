@@ -72,7 +72,7 @@ function listVal(value: unknown): string {
 export function formatTurn(view: TurnView): string {
   const t = view.turn
   const lines = [
-    `turn ${val(t['turn_id'])} ${val(t['kind'])} ${val(t['state'])} outcome=${val(t['outcome'])}`,
+    `turn ${val(t['turn_id'])} ${val(t['kind'])} ${val(t['state'])} outcome=${val(t['outcome'])}${t['think'] === 1 ? ' think=true' : ''}`,
     `chat=${val(t['chat_id'])} sender=${val(t['sender_id'])} character=${val(t['character_id'])}`,
     `mood=${val(t['mood'])} (${val(t['mood_source'])})`,
     `model: transport=${val(t['transport'])} role=${val(t['role'])} model=${val(t['model'])} attempts=${val(t['attempts'])} in=${val(t['input_tokens'])} out=${val(t['output_tokens'])} cached=${val(t['cached_tokens'])} cost=${val(t['cost_usd'])}`,
@@ -95,7 +95,7 @@ export function formatTurn(view: TurnView): string {
     events.push({
       time,
       seq: seq++,
-      line: `  ${val(row['started_at'])} model role=${val(row['role'])} model=${val(row['model'])} transport=${val(row['transport'])} attempt=${val(row['attempt'])} duration=${val(row['duration_ms'])}ms in=${val(row['input_tokens'])} out=${val(row['output_tokens'])} cost=${val(row['cost_usd'])} failure=${val(row['failure_kind'])}`
+      line: `  ${val(row['started_at'])} model role=${val(row['role'])} model=${val(row['model'])} transport=${val(row['transport'])} effort=${val(row['effort'])} attempt=${val(row['attempt'])} duration=${val(row['duration_ms'])}ms in=${val(row['input_tokens'])} out=${val(row['output_tokens'])} cost=${val(row['cost_usd'])} failure=${val(row['failure_kind'])}`
     })
   }
 

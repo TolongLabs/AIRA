@@ -61,6 +61,8 @@ export interface TurnRecordFields {
   cleaningSteps?: string[]
   /** Which chain limit ended the tool chain, if one did. */
   chainLimit?: 'calls' | 'time'
+  /** True when `/think` raised effort for this turn. */
+  think?: boolean
 }
 
 const FIELD_COLUMN: Record<keyof TurnRecordFields, string> = {
@@ -93,7 +95,8 @@ const FIELD_COLUMN: Record<keyof TurnRecordFields, string> = {
   attachments: 'attachments',
   receipts: 'receipts',
   cleaningSteps: 'cleaning_steps',
-  chainLimit: 'chain_limit'
+  chainLimit: 'chain_limit',
+  think: 'think'
 }
 
 const JSON_FIELDS = new Set<keyof TurnRecordFields>(['recalledIds', 'attachments', 'receipts', 'cleaningSteps'])
@@ -106,7 +109,7 @@ export function updateTurnRecord(db: Db, turnId: string, fields: TurnRecordField
     const value = fields[key]
     if (value === undefined) continue
     sets.push(`${FIELD_COLUMN[key]} = ?`)
-    values.push(JSON_FIELDS.has(key) ? JSON.stringify(value) : value)
+    values.push(JSON_FIELDS.has(key) ? JSON.stringify(value) : typeof value === 'boolean' ? (value ? 1 : 0) : value)
   }
   if (sets.length === 0) {
     return db.prepare('SELECT 1 FROM turn WHERE turn_id = ?').get(turnId) !== undefined
@@ -124,6 +127,7 @@ export function recordModelCall(
     role: string
     model: string
     transport: string
+    effort?: string
     attempt: number
     startedAt: Date
     durationMs: number
@@ -134,12 +138,13 @@ export function recordModelCall(
     failureKind?: FailureKind
   }
 ): number {
+  const effort = call.effort && call.effort !== '' ? call.effort : null
   const result = db
     .prepare(
       `INSERT INTO model_call (
-         turn_id, job_id, role, model, transport, attempt, started_at, duration_ms,
+         turn_id, job_id, role, model, transport, effort, attempt, started_at, duration_ms,
          input_tokens, output_tokens, cached_tokens, cost_usd, failure_kind
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       call.turnId ?? null,
@@ -147,6 +152,7 @@ export function recordModelCall(
       call.role,
       call.model,
       call.transport,
+      effort,
       call.attempt,
       call.startedAt.toISOString(),
       call.durationMs,

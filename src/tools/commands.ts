@@ -74,14 +74,17 @@ export function renderDirect(
   if ((tool === 'research_start' || tool === 'report_pdf') && typeof data['text'] === 'string') return data['text']
   if (tool === 'help' && Array.isArray(data['commands'])) {
     const rows = data['commands'] as { command: string; usage: string; description?: string }[]
-    if (rows.length === 0) return 'No commands are switched on in this chat.'
-    const lines = [
-      'Commands in this chat:',
-      ...rows.map((row) => `- **${row.command}** ${row.description ?? ''}`.trimEnd())
-    ]
+    if (rows.length === 0 && data['think'] !== true) return 'No commands are switched on in this chat.'
+    const lines =
+      rows.length === 0
+        ? ['No commands are switched on in this chat.']
+        : ['Commands in this chat:', ...rows.map((row) => `- **${row.command}** ${row.description ?? ''}`.trimEnd())]
     const max = data['maxPerMessage']
     if (typeof max === 'number' && max > 1) {
       lines.push(`Up to ${max} commands per message.`)
+    }
+    if (data['think'] === true) {
+      lines.push('Start a message with /think to think harder on one turn.')
     }
     return lines.join('\n')
   }

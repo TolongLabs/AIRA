@@ -61,6 +61,7 @@ llm:
     model: 'claude-haiku-5-5' # Launch model until the benchmark in #28
     baseUrl: 'https://api.anthropic.com' # Main model endpoint URL
     effort: 'medium' # low, medium, high, xhigh or max. Empty: the model's default
+    deepEffort: 'high' # Effort on a /think turn. Empty: the role's normal effort
     usdPerMTokIn: 0.1 # Price of input tokens, used when the provider reports no cost
     usdPerMTokOut: 0.5 # Price of output tokens
     usdPerMTokCached: 0.01 # Price of cached input tokens
@@ -69,6 +70,7 @@ llm:
     model: 'deepseek-ai/DeepSeek-V4.1-Flash-1017' # On ModelScope, about one credit per call
     baseUrl: 'https://api-inference.modelscope.ai/v1' # The key works on the .ai endpoint only
     effort: 'high' # Sent as reasoning_effort: none (thinking off), low, high or max
+    deepEffort: 'max' # Effort on a /think turn. Empty: the role's normal effort
     usdPerMTokIn: 0 # Paid in ModelScope credit, not dollars, so not in the spend cap
     usdPerMTokOut: 0 # Price of output tokens
     usdPerMTokCached: 0 # Price of cached input tokens

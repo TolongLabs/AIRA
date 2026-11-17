@@ -4,9 +4,15 @@ import type { Breaker } from './breaker.js'
 import { addSpend, spendState } from './spend.js'
 import { type ModelClient, ModelError, type ModelRequest, type ModelResponse } from './types.js'
 
+export interface RoutedTarget {
+  client: ModelClient
+  model: string
+  effort?: string
+}
+
 export interface RoutedClientOptions {
-  main: { client: ModelClient; model: string }
-  fallback?: { client: ModelClient; model: string }
+  main: RoutedTarget
+  fallback?: RoutedTarget
   config: { llm: { maxRetries: number; monthlyBudgetUsd: number } }
   breaker: Breaker
   storage: Storage
@@ -51,7 +57,7 @@ export function createRoutedClient(options: RoutedClientOptions): ModelClient {
 
   const callTarget = async (
     role: 'main' | 'fallback',
-    target: { client: ModelClient; model: string },
+    target: RoutedTarget,
     baseRequest: ModelRequest,
     attemptState: { count: number },
     signal?: AbortSignal
@@ -68,12 +74,14 @@ export function createRoutedClient(options: RoutedClientOptions): ModelClient {
       const attempt = attemptState.count
       const startedAt = now()
       const request: ModelRequest = { ...baseRequest, role, model: target.model }
+      const effort = target.effort && target.effort !== '' ? target.effort : undefined
 
       try {
         const response = await target.client.call(request, signal)
         options.onCall?.({
           role,
           model: target.model,
+          ...(effort ? { effort } : {}),
           transport: options.transport,
           attempt,
           startedAt,
@@ -104,6 +112,7 @@ export function createRoutedClient(options: RoutedClientOptions): ModelClient {
         options.onCall?.({
           role,
           model: target.model,
+          ...(effort ? { effort } : {}),
           transport: options.transport,
           attempt,
           startedAt,
