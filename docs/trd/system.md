@@ -29,15 +29,15 @@ How the processes fit together, what the gateway and the core promise each other
 The gateway calls `POST /v1/chat/completions` on the core. The shapes below were measured on the pinned, patched
 gateway with a fake bridge and a fake core (spikes S-1 to S-3, 16 Nov 2026).
 
-| Direction | Field                        | Meaning                                                                                                                                   |
-| --------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Request   | Headers                      | OpenAI client headers only. No chat, sender or message id travels in a header.                                                            |
-| Request   | Scope marker                 | `[HERMES-SCOPE v1 platform= kind= chat= sender= mid=]` before each user message's text, with `qid=` added when the message quotes another |
-| Request   | `messages`                   | The gateway's transcript. The core reads only the newest user content from it.                                                            |
-| Request   | `stream`                     | `true` for a chat turn, with `stream_options.include_usage`. The core answers in the shape asked for                                      |
-| Request   | `tools`, system message      | The gateway's own prompt and tool schemas. The core ignores both, except that `tools` tells a turn from a chore                           |
-| Response  | `choices[0].message.content` | The cleaned reply text, with bubble breaks and attachment lines, or `NO_REPLY`. See below                                                 |
-| Response  | HTTP status                  | Always 200 with a deliverable reply. Failures become an in-character line.                                                                |
+| Direction | Field                        | Meaning                                                                                                                                                                                                       |
+| --------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Request   | Headers                      | OpenAI client headers only. No chat, sender or message id travels in a header.                                                                                                                                |
+| Request   | Scope marker                 | `[HERMES-SCOPE v1 platform= kind= chat= sender= mid=]` before each user message's text, with `qid=` added when the message quotes another                                                                     |
+| Request   | `messages`                   | The gateway's transcript. The core reads only the newest user content from it.                                                                                                                                |
+| Request   | `stream`                     | `true` for a chat turn, with `stream_options.include_usage`. The core answers in the shape asked for                                                                                                          |
+| Request   | `tools`, system message      | The gateway's own prompt and tool schemas. The core ignores both, except that `tools` tells a turn from a chore                                                                                               |
+| Response  | `choices[0].message.content` | The cleaned reply text, with bubble breaks and attachment lines, or `NO_REPLY`. See below                                                                                                                     |
+| Response  | HTTP status                  | 200 with a deliverable reply or `NO_REPLY`. A request the core cannot parse gets 400. A turn that throws before headers go out gets 500, and after headers go out the connection drops so the gateway retries |     |
 
 Each request is one of four kinds, decided in this order (measured on the staging gateway, 16 Nov 2026):
 
@@ -47,6 +47,20 @@ Each request is one of four kinds, decided in this order (measured on the stagin
 | Chat turn | `tools` and a scope marker in the newest user content        | Runs a turn                                                                  |
 | Scheduled | `tools`, no marker, and the core's scheduled tag in the text | Runs a scheduled turn. See [Scheduled Turns](#scheduled-turns)               |
 | Unmarked  | `tools`, no marker and no tag                                | `NO_REPLY`, no model call, a `gateway_unmarked` record and an operator alert |
+
+![One gateway request and its reply: parse the scope marker, route the four request kinds, and return JSON or SSE](../diagrams/gateway-request.svg)
+
+- **Code lives in `src/gateway/`.** `server.ts` serves the endpoint, `request.ts` parses the request, and
+  `response.ts` writes the reply.
+- **Body limit.** The core reads at most 20 MiB per request and destroys the connection past that limit. The limit
+  is an injectable server option.
+- **Health.** `GET /health` reports readiness and the active turn count. It returns 503 while the core is not ready.
+  Any other route returns 404.
+- **`stream` is literal.** Only `stream: true` with `stream_options.include_usage: true` enables streaming and the
+  usage event. Any other value gets plain JSON or no usage event.
+- **Reply shape.** The model name is `aira`. A stream sends an assistant chunk, a stop chunk, an optional usage
+  chunk, then `DONE`. Missing token counts are sent as zero. Blank content is sent as `NO_REPLY`.
+- **Auxiliary default.** A chore with no configured answer text gets the fixed text `Chat`.
 
 - **Identity comes from the scope marker.** The gateway's scope stamp patch writes it when `WHATSAPP_SCOPE_STAMP=1`.
   It is off on the live gateway today and is switched on at cutover. The marker's `mid` is the gateway message id
@@ -119,7 +133,8 @@ Each request is one of four kinds, decided in this order (measured on the stagin
   because the gateway compresses and rewrites it. A user message is stored in the window, with its message id, in
   the transaction that records its arrival. A turn claims the messages it answers when it opens, and its reply is
   ordered after them. So a message that arrives while a turn runs is answered by the next turn, and a turn that was
-  interrupted leaves its messages for the turn that runs again.
+  interrupted leaves its messages for the turn that runs again. A turn claims only unanswered rows up to its newest
+  message id. Rows of an interrupted turn can be claimed again. Later rows stay for a later turn.
 - **A marker in message text changes nothing.** Message text is the user's, so it can hold a forged marker. When
   the newest user content holds more than one marker, all of them must name the same platform, kind, chat and
   sender, or the request is refused. A forged marker can then change only the forger's own message id.
@@ -131,8 +146,8 @@ Each request is one of four kinds, decided in this order (measured on the stagin
   to it. The gateway forwards a group message only when it mentions AIRA, replies to AIRA, or the chat is set to free
   response, and only from an allowed group. So the core treats every group message it receives as addressed.
   Measured with all five cases.
-- The core never returns an error status for a model or tool failure. An error status is reserved for a request the
-  core cannot parse, which is a deployment fault.
+- The core returns an error status only as a deployment signal: 400 for a request it cannot parse, 500 for a turn
+  that throws, and 503 while it is not ready. Model and tool failures inside a turn become an in-character line.
 
 ### Scheduled Turns
 
@@ -141,12 +156,17 @@ it wants to a file, and a host reconciler makes the gateway's schedule match.
 
 - **The core writes the wanted jobs.** At start-up and after every reminder change, the core writes its active
   reminders to `gateway/schedule.json` on the data volume, atomically: per reminder its id, the chat's WhatsApp id and
-  its next due time. The reminder's text is never in the file or in a gateway job.
+  its next due time. The file also carries completed or failed research jobs with no delivery time, tagged as research
+  rather than as reminders. Code lives in `src/gateway/schedule.ts`. The reminder's text is never in the file or in a
+  gateway job.
 - **The reconciler makes them so.** `deploy/gateway/schedule.py` runs every minute on the host, in the gateway's own
   environment, and changes jobs only through the gateway's `cron.jobs` functions and their lock. Each wanted reminder
   is one one-time job named `aira:<reminder>:<due>`, whose text is the tag
-  `[AIRA-SCHEDULED v1 kind=reminder id=<reminder> due=<due>]`, with the due time in UTC as `YYYYMMDDTHHMMSSZ`. It creates the missing ones and removes `aira:` jobs no longer
-  wanted. A missing or unreadable file changes nothing. A due time already past is scheduled one minute ahead.
+  `[AIRA-SCHEDULED v1 kind=reminder id=<reminder> due=<due>]`, with the due time in UTC as `YYYYMMDDTHHMMSSZ`. A wanted
+  research row becomes one one-time job with the text `[AIRA-SCHEDULED v1 kind=research id=<job>]`. It creates the
+  missing ones and removes `aira:` jobs no longer
+  wanted. A missing, unreadable or invalid file changes nothing: the whole file is rejected and no job changes. A job
+  due now or within one minute is scheduled one minute after the reconciler's current time.
 - **A set or cancel takes effect within a minute.** A job that still fires after a cancel finds its reminder
   cancelled and sends nothing.
 
@@ -235,21 +255,26 @@ and declares them in `<hostDataDir>/gateway/chats.json`, which the gateway reads
 - `free` is `true` for a group with `freeResponse` on; the gateway then answers every message there, as the site shows.
 - The gateway reads the file again when its modification time changes, so a change on the site applies to the next
   reply without a restart. A missing or unreadable file means no voice and no reactions anywhere.
+- **Code lives in `src/gateway/chat-flags.ts` and `deploy/gateway/brain/chatflags.py`.** The reader caches the parsed
+  chats map and reloads it only when the file's size or modification time changes. No function raises.
 - The same write refreshes `<hostDataDir>/gateway/unavailable.txt` when the global default character changes.
+
+![Declared files between the core and the gateway: the schedule file, the chat flags file, and the helpers that read them](../diagrams/gateway-files.svg)
 
 ### Gateway Helper Modules
 
-Three gateway patches import a small Python module by name from `HERMES_HOME/scripts`. Today that folder is the old
+Four gateway patches import a small Python module by name from `HERMES_HOME/scripts`. Today that folder is the old
 core's code. AIRA ships its own versions in `deploy/gateway/brain/` and installs them over the old ones at cutover,
 keeping the originals for rollback.
 
-| Module            | Used By Patch                           | AIRA's Version Does                                                                                                                                     |
-| ----------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `brain.bubbles`   | `aira-bubbles`, `aira-bubble-interrupt` | Splits the content at the core's bubble breaks only, returns the typing pause per bubble, and keeps the "wait" or "stop" check                          |
-| `brain.failure`   | `aira-failure-line`                     | Returns the unavailable line the core last wrote to `<hostDataDir>/gateway/unavailable.txt`, or a fixed neutral line                                    |
-| `brain.reactions` | `aira-reactions`, `passive-reactions`   | Decides and posts a passive emoji reaction to a member's message in a chat with `reactions: true`, using per-chat odds, deduplication and bounded state |
+| Module            | Used By Patch                            | AIRA's Version Does                                                                                                                                     |
+| ----------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `brain.bubbles`   | `aira-bubbles`, `aira-bubble-interrupt`  | Splits the content at the core's bubble breaks only, returns the typing pause per bubble, and keeps the "wait" or "stop" check                          |
+| `brain.failure`   | `aira-failure-line`                      | Returns the unavailable line the core last wrote to `<hostDataDir>/gateway/unavailable.txt`, or a fixed neutral line                                    |
+| `brain.chatflags` | `voice-from-core`, `name-call-from-core` | Reads `chats.json` with a size and time cache and answers voice, reaction, name and free-response checks                                                |
+| `brain.reactions` | `aira-reactions`, `passive-reactions`    | Decides and posts a passive emoji reaction to a member's message in a chat with `reactions: true`, using per-chat odds, deduplication and bounded state |
 
-- **Only these two files are replaced.** The other `brain` modules some patches import stay as they are. The patches
+- **Only these four files are replaced.** The other `brain` modules some patches import stay as they are. The patches
   call `for_chat`, `typing_pause`, `is_interrupt` and `receipts_of` in `brain.bubbles`, and `for_failed_turn` and
   `for_exception` in `brain.failure`. Each name keeps its signature.
 - **Bubbles do not depend on the chat.** After cutover the core answers every chat and splits every reply itself, so
@@ -257,7 +282,8 @@ keeping the originals for rollback.
 - **An interrupt drops the rest.** When a member writes only "wait" or "stop" while bubbles go out, the bubbles not
   yet sent are dropped, receipt lines included. The turn record keeps every receipt.
 - **The failure line finds the data volume by `AIRA_HOST_DATA_DIR`** in the gateway's `.env`, set at cutover. Unset,
-  or with no readable line, the chat gets the fixed neutral line. Raw error text never reaches a chat.
+  or with no readable line, the chat gets the fixed neutral line. Raw error text never reaches a chat. An interrupted
+  turn or a content-policy block is not a failure and gets no line. The line is cut at 500 characters.
 - **Passive reactions are hardened in `brain.reactions` and `brain.chatflags`.** `chatflags.reaction_chance` reads
   `reactionChance` from `chats.json` (clamped `0` to `1`, default `0.33`), and `AIRA_REACTION_CHANCE` is only the
   fallback when the file has none. `brain.reactions` keeps a bounded 512-entry LRU of decided message ids so two call
@@ -265,6 +291,14 @@ keeping the originals for rollback.
   chats, the bot's own messages, empty text, and `/` commands. Sends time out after 5 s and retry once after 1 s on a
   connection error or 5xx. Every outcome logs one line on `aira.reactions` (`debug` for decisions, `warning` for failed
   sends with error class and HTTP status only — never message text, an emoji key, or any id), and no function raises.
+- **The picker matches fixed categories in order.** The first matching rule wins: love, laugh, night, sad, worry,
+  food, win, then thanks. It strips links before matching, so a shop link earns no reaction. It never picks the same
+  emoji twice in a row for one category in one chat.
+- **The bridge send is loopback.** It posts to `http://127.0.0.1:<port>/react` with a 5 s timeout. The port comes from
+  `AIRA_BRIDGE_PORT` and defaults to 3000. Only ports 1 to 65535 are used.
+- **Reaction switches.** `AIRA_REACTIONS` enables the picker unless it is `0`, `off`, `no` or `false`.
+  `AIRA_REACTION_COOLDOWN` sets the per-chat quiet seconds and defaults to 180. `AIRA_REACTION_CHANCE` is only the
+  fallback when a chat has no valid chance and defaults to `0.33`.
 - The modules are Python's standard library only, for the gateway's Python 3.11. Their tests run in `bun run test`.
 
 Both versions were run on the staging gateway code with a fake bridge: three bubbles went out in order with typing
@@ -324,15 +358,16 @@ deploy/                 Dockerfile, compose file, host units
    character pack. A broken binding stops the turn with a record and an operator alert. See [Data](data.md).
 3. **Admit.** One turn runs per chat. Mute, quiet hours, permissions and the spend cap are checked here. See
    [Reliability](reliability.md).
-4. **Command Check.** If the text starts with a registered `/name`, the command handler runs and the turn skips to
-   step 8. See [Tools](tools.md).
+4. **Command Check.** A command can stand anywhere in the message. A single direct command is answered by code and
+   skips to step 8. Any other named command runs through the model loop with only its tool offered. See [Tools](tools.md).
 5. **Build.** The core reads the window, recalls memory, detects the mood, draws the reply shape and assembles the
    prompt. See [Prompt Engine](prompt-engine.md) and [Memory](memory.md).
 6. **Run.** The selected runner runs the loop. The model may call the tools offered for this chat. Retries and the
    fallback model stay inside the turn deadline. See [Models](models.md).
 7. **Clean.** The cleaning chain runs, the reply is rendered for WhatsApp and split into bubbles, and a sticker is
    chosen when the pack has one. See [Prompt Engine](prompt-engine.md).
-8. **Return.** The core returns the reply and attachments, stores the window, and closes the turn record. See
+8. **Return.** The core returns the reply and attachments and closes the turn record with the stored assistant reply.
+   The window rows were stored when the request arrived, not here. See
    [Records](records.md).
 9. **After.** Memory extraction is queued. It never delays the reply.
 
