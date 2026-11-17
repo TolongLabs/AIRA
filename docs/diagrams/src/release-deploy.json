@@ -1,0 +1,287 @@
+{
+  "diagram_type": "workflow",
+  "edges": [
+    {
+      "from": "push",
+      "label": "push to main",
+      "to": "check"
+    },
+    {
+      "from": "push",
+      "label": "same ref",
+      "to": "site"
+    },
+    {
+      "from": "push",
+      "label": "same ref",
+      "to": "scan"
+    },
+    {
+      "from": "push",
+      "label": "same ref",
+      "to": "image"
+    },
+    {
+      "from": "check",
+      "fromSide": "bottom",
+      "label": "needs",
+      "role": "branch",
+      "to": "deploy",
+      "toSide": "bottom"
+    },
+    {
+      "from": "scan",
+      "label": "needs",
+      "role": "branch",
+      "to": "deploy"
+    },
+    {
+      "from": "image",
+      "label": "needs",
+      "to": "deploy"
+    },
+    {
+      "from": "image",
+      "label": "reports",
+      "to": "imagesok"
+    },
+    {
+      "from": "deploy",
+      "label": "bun scripts/deploy-host.ts",
+      "to": "sequence"
+    },
+    {
+      "from": "sequence",
+      "label": "healthy + test turn",
+      "to": "verify"
+    },
+    {
+      "from": "verify",
+      "label": "pass",
+      "to": "deployed"
+    },
+    {
+      "from": "verify",
+      "label": "start, health or turn failed",
+      "role": "error",
+      "to": "rollback"
+    },
+    {
+      "from": "rollback",
+      "label": "previous image restarted",
+      "role": "return",
+      "to": "deployed"
+    },
+    {
+      "from": "push",
+      "label": "same push",
+      "to": "please"
+    },
+    {
+      "from": "please",
+      "label": "release commit",
+      "to": "promote"
+    }
+  ],
+  "lanes": [
+    {
+      "id": "ci",
+      "label": "GitHub Actions"
+    },
+    {
+      "id": "host",
+      "label": "Self-Hosted Runner (aira-dev2)"
+    },
+    {
+      "id": "rel",
+      "label": "Release"
+    }
+  ],
+  "mainPath": ["push", "image", "deploy", "sequence", "verify", "deployed"],
+  "meta": {
+    "output": ".archify/release-deploy.html",
+    "quality_profile": "showcase",
+    "title": "Release And Deploy Path",
+    "repository": {
+      "url": "https://github.com/TolongLabs/AIRA",
+      "provider": "github",
+      "revision": "163a320e5dfeaf636ffe3e4e4c389470d9567d35"
+    }
+  },
+  "nodes": [
+    {
+      "col": 0,
+      "id": "push",
+      "label": "Push to main",
+      "lane": "ci",
+      "sources": [
+        {
+          "path": ".github/workflows/ci.yml"
+        }
+      ],
+      "sublabel": "one merge at a time",
+      "type": "external"
+    },
+    {
+      "col": 1,
+      "id": "check",
+      "label": "check",
+      "lane": "ci",
+      "sources": [
+        {
+          "path": ".github/workflows/ci.yml"
+        }
+      ],
+      "sublabel": "typecheck, lint, tests",
+      "type": "backend"
+    },
+    {
+      "col": 1,
+      "id": "site",
+      "label": "site",
+      "lane": "ci",
+      "sources": [
+        {
+          "path": ".github/workflows/ci.yml"
+        }
+      ],
+      "sublabel": "site typecheck + build",
+      "type": "frontend",
+      "yOffset": 72
+    },
+    {
+      "col": 1,
+      "id": "scan",
+      "label": "scan",
+      "lane": "ci",
+      "sources": [
+        {
+          "path": ".github/workflows/ci.yml"
+        }
+      ],
+      "sublabel": "gitleaks history only",
+      "type": "security",
+      "yOffset": 144
+    },
+    {
+      "col": 2,
+      "id": "image",
+      "label": "image",
+      "lane": "ci",
+      "sources": [
+        {
+          "path": ".github/workflows/ci.yml"
+        }
+      ],
+      "sublabel": "pushes sha-7 and edge",
+      "type": "backend"
+    },
+    {
+      "col": 3,
+      "id": "imagesok",
+      "label": "images-ok",
+      "lane": "ci",
+      "sources": [
+        {
+          "path": ".github/workflows/ci.yml"
+        }
+      ],
+      "sublabel": "re-reports image result",
+      "type": "backend"
+    },
+    {
+      "col": 3,
+      "id": "deploy",
+      "label": "deploy job",
+      "lane": "host",
+      "sources": [
+        {
+          "path": ".github/workflows/ci.yml"
+        }
+      ],
+      "sublabel": "production env, serial",
+      "type": "backend"
+    },
+    {
+      "col": 4,
+      "id": "sequence",
+      "label": "runDeployHost",
+      "lane": "host",
+      "sources": [
+        {
+          "path": "scripts/deploy-host.ts"
+        }
+      ],
+      "sublabel": "idle, snapshot, pull, env, up",
+      "type": "backend"
+    },
+    {
+      "col": 5,
+      "id": "verify",
+      "label": "health + synthetic turn",
+      "lane": "host",
+      "sources": [
+        {
+          "path": "scripts/deploy-host.ts"
+        }
+      ],
+      "sublabel": "waits, then one test turn",
+      "type": "backend"
+    },
+    {
+      "col": 5,
+      "id": "deployed",
+      "label": "deployed",
+      "lane": "host",
+      "sources": [
+        {
+          "path": "scripts/deploy-host.ts"
+        }
+      ],
+      "sublabel": "record + ntfy, prune old",
+      "type": "backend",
+      "yOffset": 72
+    },
+    {
+      "col": 5,
+      "id": "rollback",
+      "label": "previous image",
+      "lane": "host",
+      "sources": [
+        {
+          "path": "scripts/deploy-host.ts"
+        }
+      ],
+      "sublabel": "no data restored",
+      "type": "backend",
+      "yOffset": 144
+    },
+    {
+      "col": 1,
+      "id": "please",
+      "label": "release-please",
+      "lane": "rel",
+      "sources": [
+        {
+          "path": ".github/workflows/release.yml"
+        }
+      ],
+      "sublabel": "version pull request",
+      "type": "backend"
+    },
+    {
+      "col": 4,
+      "id": "promote",
+      "label": "promote",
+      "lane": "rel",
+      "sources": [
+        {
+          "path": ".github/workflows/release.yml"
+        }
+      ],
+      "sublabel": "re-tags vX.Y.Z, vX.Y, stable",
+      "type": "backend"
+    }
+  ],
+  "schema_version": 2
+}

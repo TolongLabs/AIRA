@@ -14,15 +14,17 @@ The existing owner site, revamped as the chatbot's console, with a character stu
 
 ## Scope Of The Revamp
 
-| Page                   | Change                                                                                           |
-| ---------------------- | ------------------------------------------------------------------------------------------------ |
-| Chats                  | Rebuilt on the settings hierarchy. Shows each chat, its resolved settings and their source level |
-| Settings               | Rebuilt for global and chat-type defaults, model roles, and feature defaults                     |
-| Studio                 | New. Create and edit character packs                                                             |
-| Dashboard              | Rebuilt on turn records: latency, failures, cost, fallback rate, service health                  |
-| Library, Graph         | Rebuilt on memory items, per chat                                                                |
-| Reminders              | The scheduled-message page, limited to chatbot reminders                                         |
-| Markets, Notices, Send | Kept as they are. Only the shared shell changes with the rest of the site                        |
+| Page                   | Change                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------ |
+| Chats                  | Rebuilt on the settings hierarchy, with resolved settings and source levels    |
+| Studio                 | Planned, not built. No studio page or character write route exists yet (FR-41) |
+| Settings               | Kept as it is. Posts to the legacy API; no global or chat-type level editor    |
+| Dashboard              | Kept as it is. Reads the legacy `/api/dashboard`, not turn records             |
+| Library, Graph         | Kept as they are. Read the legacy API, not the core's `/api/memory`            |
+| Reminders              | Kept as it is. The Cron page reads the legacy `/api/cron` job list             |
+| Markets, Notices, Send | Kept as they are. Only the shared shell changes with the rest of the site      |
+
+![Which client and API each site page uses](../diagrams/site-pages.svg)
 
 Every page follows the design contract's shell, palette, type system and shared components. A new component is
 added to the contract before it is used.
@@ -30,24 +32,22 @@ added to the contract before it is used.
 ## Core API
 
 Served by the core on the private network. Every route requires the site token. Every write goes through the same
-validation as start-up and is logged to `setting_change`.
+validation as start-up and is logged to `setting_change`. This is every route the core serves. No character write,
+sticker, preview or memory forget route exists.
 
-| Method And Path                        | Purpose                                                           |
-| -------------------------------------- | ----------------------------------------------------------------- |
-| `GET /api/chats`                       | Chats with their resolved settings and source levels              |
-| `PUT /api/chats/:id/status`            | Switch one chat on (`active`) or off (`pending`)                  |
-| `GET /api/settings?level=&scope=`      | Raw values at one level                                           |
-| `PUT /api/settings`                    | Set or clear one key at one level                                 |
-| `GET /api/characters`                  | Packs, with validation state and prompt size                      |
-| `GET /api/characters/:id`              | One pack's files                                                  |
-| `PUT /api/characters/:id`              | Save a pack. Validates first; an invalid pack is not saved        |
-| `POST /api/characters/:id/stickers`    | Upload an image. Converts it to sticker format                    |
-| `POST /api/characters/:id/preview`     | Assemble the prompt for a sample turn and return it with its size |
-| `GET /api/memory?chat=`                | Memory items for one chat                                         |
-| `POST /api/memory/:id/forget`          | Forget one item                                                   |
-| `GET /api/turns`, `GET /api/turns/:id` | Turn records                                                      |
-| `GET /api/report`                      | Latency, failure, cost and fallback figures                       |
-| `GET /api/health`                      | Core, gateway, runner and model role status                       |
+| Method | Path                    | Purpose                                           | Access | Handler             |
+| ------ | ----------------------- | ------------------------------------------------- | ------ | ------------------- |
+| `GET`  | `/api/health`           | Readiness, version, active turns, per-role status | Read   | `src/api/routes.ts` |
+| `GET`  | `/api/chats`            | Chats with resolved settings and source levels    | Read   | `src/api/routes.ts` |
+| `PUT`  | `/api/chats/:id/status` | Switch one chat on (`active`) or off (`pending`)  | Write  | `src/api/writes.ts` |
+| `GET`  | `/api/settings`         | Raw values at one level (`level`, `scope`)        | Read   | `src/api/routes.ts` |
+| `PUT`  | `/api/settings`         | Set or clear one key at one level                 | Write  | `src/api/writes.ts` |
+| `GET`  | `/api/characters`       | Loaded packs, plus the packs that failed to load  | Read   | `src/api/routes.ts` |
+| `GET`  | `/api/tools`            | Tools grouped by feature, with modes and commands | Read   | `src/api/routes.ts` |
+| `GET`  | `/api/turns`            | Newest turn rows, newest first                    | Read   | `src/api/routes.ts` |
+| `GET`  | `/api/turns/:id`        | One turn with its model, tool and failure rows    | Read   | `src/api/routes.ts` |
+| `GET`  | `/api/report`           | Latency, failure, cost and fallback figures       | Read   | `src/api/routes.ts` |
+| `GET`  | `/api/memory`           | One chat's memory items (`chat` is required)      | Read   | `src/api/routes.ts` |
 
 - Requests are JSON with a declared content type. Other content types are refused.
 - The Origin and Host headers are checked on every write.
@@ -59,24 +59,29 @@ validation as start-up and is logged to `setting_change`.
 - The core serves the API on its own port, `site.port` (default 9890), never on the gateway's port. The compose file
   publishes it on the host's private-network address only, `AIRA_SITE_BIND`. While the new core runs beside the old
   one, that address is loopback.
-- Every route needs `Authorization: Bearer <SITE_TOKEN>`. `SITE_TOKEN` is a secret of at least 32 characters in
-  `.env`, compared in constant time. With no token set, the API does not start and the core logs why; the gateway
-  endpoint is not affected.
-- Answers are JSON. A missing or wrong token gets 401, a bad query 400, an unknown id 404, a write that is not JSON 415. An error body is `{ "error": "<reason code>" }` and never holds message text.
+- The server is built only when `SITE_TOKEN` holds at least 32 characters. A shorter token or an unset one means no
+  API server at all, and the core logs `site_api.no_token` with reason `too_short` or `unset`. The gateway endpoint
+  is not affected.
+- Every route needs `Authorization: Bearer <SITE_TOKEN>`, compared in constant time. A missing or wrong token gets 401. Only the two write paths accept a non-`GET` method. A wrong method gets 405 `method_not_allowed`, and a path
+  the API does not know gets 404.
+- Answers are JSON. A bad query gets 400, an unknown id 404, a body over 16 KB 413 `body_too_large`, and a write
+  that is not JSON 415. An error body is `{ "error": "<reason code>" }` and never holds message text.
+
+![One site API request, from token check to record](../diagrams/site-api.svg)
 
 ### Read Routes
 
-| Route                 | Answer                                                                                                                                                                                                     |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/health`     | `status` (`ready` or `starting`), `version`, `activeTurns`, and per model role whether it is configured and whether its breaker is open                                                                    |
-| `GET /api/chats`      | `chats`: each chat's id, WhatsApp id, type, label, status, and every setting key with its value and the level it came from                                                                                 |
-| `GET /api/settings`   | With `level` and `scope`: the raw values set at that one level                                                                                                                                             |
-| `GET /api/turns`      | The newest turn records, newest first, at most `limit` (default 50, at most 200), optionally for one `chat` and `before` a time. Records only: no message text                                             |
-| `GET /api/turns/:id`  | One turn record with its model calls, tool calls and failure records                                                                                                                                       |
-| `GET /api/report`     | The figures of `bun run report`: latency, failures, cost and fallback rate                                                                                                                                 |
-| `GET /api/memory`     | With `chat` (required): that chat's memory items: id, kind, subject, key, value, status, updated time                                                                                                      |
-| `GET /api/characters` | `characters`: each loaded pack's id, display name, source (`repository` or `data`) and languages. `faults`: each pack that did not load, with its id and reason. Prompt size comes with the studio (FR-41) |
-| `GET /api/tools`      | `features`: tools grouped by feature `key`, each with `name`, `mode` (`implicit`, `explicit` or `both`) and slash-prefixed `commands`, read from the registry                                              |
+| Route                 | Answer                                                                                                                                                                                                                                                    |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/health`     | `status` (`ready` or `starting`), `version`, `activeTurns`, and per model role whether it is configured and whether its breaker is open                                                                                                                   |
+| `GET /api/chats`      | `chats`: each chat's id, WhatsApp id, type, label, status, and every setting key with its value and the level it came from                                                                                                                                |
+| `GET /api/settings`   | With `level` and `scope`: the raw values set at that one level. A bad level or scope gets 400                                                                                                                                                             |
+| `GET /api/turns`      | The newest turn rows, newest first, at most `limit` (default 50, at most 200), optionally for one `chat` and `before` a time. A `limit` outside 1 to 200 gets 400 `invalid_limit`; a `before` that is not an ISO-8601 timestamp gets 400 `invalid_before` |
+| `GET /api/turns/:id`  | One turn row with its model calls, tool calls and failure rows. The id is URL-decoded; a malformed escape gets 400 `invalid_turn_id`                                                                                                                      |
+| `GET /api/report`     | The figures of `bun run report`, always over the last 7 days, read from the newest verified snapshot. With no snapshot it gets 404 `no_snapshot`                                                                                                          |
+| `GET /api/memory`     | With `chat` (required, else 400): that chat's memory items: id, kind, subject, key, value, status, updated time                                                                                                                                           |
+| `GET /api/characters` | `characters`: each loaded pack's id, display name, source (`repository` or `data`) and languages. `faults`: each pack that did not load, with its id and reason                                                                                           |
+| `GET /api/tools`      | `features`: tools grouped by feature `key`, each with `name`, `mode` (`implicit`, `explicit` or `both`) and slash-prefixed `commands`, read from the registry                                                                                             |
 
 ### Write Routes
 
@@ -85,18 +90,22 @@ validation as start-up and is logged to `setting_change`.
 | `PUT /api/chats/:id/status` | `{ "status": "active" }` or `"pending"`                              | `chatId`, `status`, and `changed` true or false |
 | `PUT /api/settings`         | `{ "level", "scope", "key", "value" }`; `value: null` clears the row | `level`, `scope`, `key`, `value`, `changed`     |
 
-- A write needs `Content-Type: application/json` (else 415) and a body of at most 16 KB that the route's schema
-  accepts (else 400). An unknown chat gets 404.
+- A write needs `Content-Type: application/json` (else 415) and a body of at most 16 KB (else 413 `body_too_large`)
+  that the route's schema accepts (else 400). Only `PUT` is accepted on a write path (else 405). An unknown chat
+  gets 404. A chat id in a path is URL-decoded; a malformed escape gets 400 `invalid_chat_id`.
 - `Host` must be an IP address or `localhost`, with a port. Any other name gets 403 `host_refused`, so a page that
   rebinds its own name to the private address cannot reach the API.
 - A request that carries `Origin` gets 403 `origin_refused` unless that origin is the API's own (`http://` and the
   request's `Host`) or is listed in `site.allowedOrigins`, which is empty by default. A request from a server, with
   no `Origin`, relies on the token.
 - A setting is checked as start-up checks it: a known key, a valid scope for its level, a value its schema accepts
-  (else 400 `invalid_setting`), and for `character` a pack that is loaded (else 400 `unknown_character`). A chat
-  scope that does not exist gets 404. Clearing a value restores inheritance from the level above.
+  (else 400 `invalid_setting`), and for `character` a pack that is loaded (else 400 `unknown_character`; the pack
+  loader's message never reaches the client). A chat scope that does not exist gets 404. Clearing a value restores
+  inheritance from the level above.
 - Every applied change writes a `setting_change` row with actor `site`. Setting the status a chat already has
-  changes nothing and writes no row.
+  changes nothing and writes no row. A write that changed something also calls `onWrite`, which rewrites the
+  gateway's `chats.json` flags; a write that changed nothing rewrites nothing. Writing the global `character` key
+  also rewrites the gateway's unavailable line for that pack.
 
 The site is the owner's console on the private network, so it may show a chat's WhatsApp id. Record tables and logs
 still never hold one.
@@ -108,18 +117,15 @@ still never hold one.
   type, or set here.
 - Setting a value writes one row at the chosen level. Clearing it deletes the row and restores inheritance.
 - Feature switches are listed as a group with their inherited state.
-- A change that would bind a chat to an invalid pack is refused with the validator's message.
+- A change that binds a chat to a pack that is not loaded is refused with 400 `unknown_character`.
 
 ## Character Studio
 
-1. **List.** Packs with a validity badge and prompt size.
-2. **Edit.** Forms for the card, the mood list (rules, guidance, openers, endings, faces) and the fixed lines.
-3. **Stickers.** Upload per mood. The preview shows the converted sticker.
-4. **Validate.** The same validator as start-up runs on every save and shows each problem beside its field.
-5. **Preview.** The assembled prompt for a sample message, with the token count against the ceiling.
-6. **Use.** A valid pack appears in the character choice on the Chats and Settings pages.
-
-A pack that a chat is bound to cannot be deleted. A save that would make a bound pack invalid is refused.
+Planned, not built (FR-41). No studio page exists in the site build, and the core has no character write, sticker
+or preview route. The only character surface is a read: `GET /api/characters` lists each loaded pack's id, display
+name, source and languages, plus the packs that failed to load with their reasons. The Chats page uses that list
+for the character choice. What FR-41 still needs: a studio page, a pack save route with the start-up validator, a
+sticker upload route, and a prompt preview route.
 
 ## Writes That Send Or Restart
 
@@ -128,15 +134,26 @@ chatbot pages have no control that sends a message to a chat or restarts a servi
 
 ## Build
 
-The site builds with Vite in CI and ships inside the release image. Built output is not committed.
+The site builds with Vite in CI and ships inside the release image. Built output is not committed. The build is
+multi-page, not a single-page app: nine entries (`index`, `markets`, `graph`, `library`, `cron`, `chats`,
+`settings`, `notices`, `send`), one shared shell, and no studio entry. The chatbot client (`site/src/lib/core.ts`)
+exposes five calls (`tools`, `chats`, `characters`, `setStatus`, `setSetting`) and keeps the site token in local
+storage under its own key (see below), retrying once on 401.
 
 ## Serving The Site
 
-- The core serves the built site on the site API's port, under `/app/`. `/` redirects to `/app/`. Only files of
-  the build are served; any other path outside `/api/` gets 404.
+- The core serves the built site on the site API's port, under `/app/`. `/` redirects to `/app/`. Only the nine
+  built file types (`.html`, `.js`, `.css`, `.json`, `.svg`, `.png`, `.webp`, `.ico`, `.woff2`) are served, and only
+  `GET` and `HEAD` are accepted; anything else gets 404 or 405. Files under `/app/assets/` carry an immutable
+  year-long cache header; every other file is `no-cache`. Every answer carries `x-content-type-options: nosniff`
+  and `referrer-policy: no-referrer`.
 - The site's files hold no data, so they need no token. Every `/api/` route still does.
-- The browser keeps the token as the existing site does: the first 401 asks for it once, it is kept in the
-  browser's local storage, and it is sent as `Authorization: Bearer` on every call. It never goes in a URL.
+- The browser keeps two independent tokens. The chatbot client keeps the core's token under `aira-site-token`;
+  every owner-tool page keeps the legacy token under `tolongai-token`. The first 401 asks for the token once, it is
+  kept in the browser's local storage, and it is sent as `Authorization: Bearer` on every call. It never goes in a
+  URL.
+- On load the legacy client migrates an old `mirai-token` or `memento-token` into `tolongai-token`, and the shell
+  migrates `mirai-theme` into `tolongai-theme`.
 - A page calls the API on its own origin, so a browser write carries the API's own `Origin` and is accepted.
-- Until cutover the owner-tool pages (Markets, Notices, Send and the old dashboard) keep their API on the old site.
-  Served by the core, they show their error state. How they reach their API after cutover is decided with #24.
+- The Chats page is the only page on the core's API. Dashboard, Settings, Library, Graph, Cron, Markets, Notices
+  and Send keep the legacy API. How the owner-tool pages reach their API after cutover is decided with #24.
