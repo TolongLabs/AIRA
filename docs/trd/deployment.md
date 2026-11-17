@@ -159,9 +159,6 @@ by the new core since cutover exist only in the new database; the rollback recor
 
 ## Configuration
 
-| Key                      | Default | Effect                                                         |
-| ------------------------ | ------- | -------------------------------------------------------------- |
-| `deploy.checkEveryMin`   | 15      | Not read; the timer unit sets 15 minutes                       |
-| `deploy.waitForIdleMs`   | 120000  | Not read; the deploy uses `AIRA_WAIT_FOR_IDLE_MS`              |
-| `deploy.healthTimeoutMs` | 60000   | Not read; the deploy uses `AIRA_HEALTH_TIMEOUT_MS`             |
-| `gateway.hostDataDir`    | empty   | The data volume's path on the host. Start-up fails while empty |
+| Key                   | Default | Effect                                                         |
+| --------------------- | ------- | -------------------------------------------------------------- |
+| `gateway.hostDataDir` | empty   | The data volume's path on the host. Start-up fails while empty |

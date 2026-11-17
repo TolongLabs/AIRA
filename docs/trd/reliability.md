@@ -45,8 +45,8 @@ starts at once when the running turn ends: its messages have waited already.
   its own turn: the queue splits the pending batch before and after each command, and a turn claims only the
   messages up to its newest one.
 - Attachments stay on their waiter in memory and are read after the batch starts. A restart answers from the stored
-  text but loses the attachment reference. There is no photo-specific wait: `turn.mediaWaitMs` is accepted by the
-  config schema but the turn pipeline does not read it.
+  text but loses the attachment reference. There is no photo-specific wait: a caption sent after a bare photo merges
+  through the batching window above.
 
 ### Repeat Requests
 
