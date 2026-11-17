@@ -5,12 +5,15 @@ import type { Storage } from '../../storage/database.js'
 import { putFile } from '../../storage/files.js'
 import type { TurnContext } from '../../turn/types.js'
 import { type ToolPorts, isForbiddenUrl } from '../ports.js'
-import type { ToolDefinition } from '../types.js'
+import type { ToolDefinition, ToolFailure } from '../types.js'
 
 function alreadyReadAtIntake(url: string, context: Pick<TurnContext, 'intakeUrls'>): boolean {
   const canonical = parseSocialPostUrl(url)?.canonicalUrl
   return canonical !== undefined && (context.intakeUrls?.includes(canonical) ?? false)
 }
+
+const MAX_PHOTO_BYTES = 5_000_000
+const MAX_PHOTO_CANDIDATES = 3
 
 const IMAGE_EXTENSIONS: Record<string, string> = {
   'image/jpeg': '.jpg',
@@ -136,52 +139,67 @@ export function sendPhotoTool(storage: Storage, ports: ToolPorts): ToolDefinitio
         return { ok: false, kind: 'unavailable', reason: 'photo search is not set up' }
       }
 
-      let firstUrl: string | undefined
+      let candidates: { url: string }[]
       try {
-        const images = await ports.search.images(args.query, context.signal)
-        firstUrl = images[0]?.url
+        candidates = await ports.search.images(args.query, context.signal)
       } catch (error) {
         return { ok: false, kind: 'error', reason: 'photo search failed', cause: error }
       }
-      if (!firstUrl) {
+      if (candidates.length === 0) {
         return { ok: false, kind: 'unavailable', reason: 'no photo found' }
       }
-      if (isForbiddenUrl(firstUrl)) {
-        return { ok: false, kind: 'refused', reason: 'forbidden address' }
-      }
 
-      let downloaded: { data: Buffer; contentType: string }
-      try {
-        downloaded = await ports.page.download(firstUrl, context.signal, 5_000_000)
-      } catch (error) {
-        return { ok: false, kind: 'error', reason: 'photo download failed', cause: error }
-      }
-
-      const mime = downloaded.contentType.split(';')[0]?.trim().toLowerCase() ?? ''
-      if (!mime.startsWith('image/')) {
-        return { ok: false, kind: 'invalid', reason: 'downloaded file is not an image' }
-      }
-      const ext = IMAGE_EXTENSIONS[mime] ?? '.jpg'
-      const stored = putFile(
-        storage,
-        ports.filesDir,
-        {
-          data: downloaded.data,
-          ext,
-          kind: 'photo'
-        },
-        context.now
-      )
-
-      const { data } = context.commit(() => ({
-        data: { attached: true },
-        receipt: {
-          kind: 'photo.found',
-          target: stored.sha256,
-          state: { attachment: stored.path }
+      let lastFailure: ToolFailure | undefined
+      for (const candidate of candidates.slice(0, MAX_PHOTO_CANDIDATES)) {
+        if (isForbiddenUrl(candidate.url)) {
+          lastFailure = { ok: false, kind: 'refused', reason: 'forbidden address' }
+          if (context.signal.aborted) break
+          continue
         }
-      }))
-      return { ok: true, data }
+
+        let downloaded: { data: Buffer; contentType: string }
+        try {
+          downloaded = await ports.page.download(candidate.url, context.signal, MAX_PHOTO_BYTES)
+        } catch (error) {
+          lastFailure = { ok: false, kind: 'error', reason: 'photo download failed', cause: error }
+          if (context.signal.aborted) break
+          continue
+        }
+
+        const mime = downloaded.contentType.split(';')[0]?.trim().toLowerCase() ?? ''
+        const ext = IMAGE_EXTENSIONS[mime]
+        if (!ext) {
+          lastFailure = { ok: false, kind: 'invalid', reason: 'downloaded file is not an image' }
+          continue
+        }
+        if (downloaded.data.length > MAX_PHOTO_BYTES) {
+          lastFailure = { ok: false, kind: 'invalid', reason: 'photo exceeds size limit' }
+          continue
+        }
+
+        const stored = putFile(
+          storage,
+          ports.filesDir,
+          {
+            data: downloaded.data,
+            ext,
+            kind: 'photo'
+          },
+          context.now
+        )
+
+        const { data } = context.commit(() => ({
+          data: { attached: true },
+          receipt: {
+            kind: 'photo.found',
+            target: stored.sha256,
+            state: { attachment: stored.path }
+          }
+        }))
+        return { ok: true, data }
+      }
+
+      return lastFailure ?? { ok: false, kind: 'unavailable', reason: 'no photo found' }
     }
   }
 }

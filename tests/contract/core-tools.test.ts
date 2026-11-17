@@ -334,6 +334,144 @@ describe('core tools', () => {
     expect(badPhoto).toMatchObject({ ok: false, kind: 'invalid' })
   })
 
+  it('send_photo tries the next candidate when the first is not an image', async () => {
+    const fakes = makeFakePorts()
+    const downloaded: string[] = []
+    const { filesDir, registry, makeCtx } = setup({
+      search: {
+        ...fakes.search,
+        async images() {
+          return [{ url: 'https://example.com/page.html' }, { url: 'https://example.com/photo.webp' }]
+        }
+      },
+      page: {
+        ...fakes.page,
+        async download(url) {
+          downloaded.push(url)
+          if (url.endsWith('.html')) {
+            return { data: Buffer.from('<html></html>'), contentType: 'text/html; charset=utf-8' }
+          }
+          return { data: Buffer.from('webp-bytes'), contentType: 'image/webp' }
+        }
+      }
+    })
+
+    const res = await registry.call('send_photo', { query: 'cat' }, makeCtx(), {
+      callId: 'c-photo-fallback',
+      source: 'model'
+    })
+    expect(downloaded).toEqual(['https://example.com/page.html', 'https://example.com/photo.webp'])
+    expect(res).toMatchObject({
+      ok: true,
+      data: { attached: true },
+      receipt: { kind: 'photo.found' }
+    })
+    if (res.ok) {
+      const attachment = res.receipt?.state?.attachment as string
+      expect(attachment).toMatch(/\.webp$/)
+      expect(existsSync(join(filesDir, attachment))).toBe(true)
+    }
+  })
+
+  it('send_photo answers unavailable when the search has no images', async () => {
+    const fakes = makeFakePorts()
+    const downloadSpy = vi.fn(fakes.page.download)
+    const { registry, makeCtx } = setup({
+      search: {
+        ...fakes.search,
+        async images() {
+          return []
+        }
+      },
+      page: {
+        ...fakes.page,
+        download: downloadSpy
+      }
+    })
+
+    const res = await registry.call('send_photo', { query: 'nothing' }, makeCtx(), {
+      callId: 'c-photo-empty',
+      source: 'model'
+    })
+    expect(res).toEqual({ ok: false, kind: 'unavailable', reason: 'no photo found' })
+    expect(downloadSpy).not.toHaveBeenCalled()
+  })
+
+  it('send_photo tries at most 3 candidates, enforces image types and size, and keeps refusals', async () => {
+    const fakes = makeFakePorts()
+    const attempted: string[] = []
+    const capped = setup({
+      search: {
+        ...fakes.search,
+        async images() {
+          return [
+            { url: 'https://example.com/1.svg' },
+            { url: 'https://example.com/2.jpg' },
+            { url: 'https://example.com/3.html' },
+            { url: 'https://example.com/4.png' }
+          ]
+        }
+      },
+      page: {
+        ...fakes.page,
+        async download(url) {
+          attempted.push(url)
+          if (url.endsWith('1.svg')) return { data: Buffer.from('<svg/>'), contentType: 'image/svg+xml' }
+          if (url.endsWith('2.jpg')) throw new Error('404')
+          if (url.endsWith('3.html')) return { data: Buffer.from('nope'), contentType: 'text/html' }
+          return { data: Buffer.from('ok'), contentType: 'image/png' }
+        }
+      }
+    })
+    const cappedRes = await capped.registry.call('send_photo', { query: 'cap' }, capped.makeCtx(), {
+      callId: 'c-photo-cap3',
+      source: 'model'
+    })
+    expect(attempted).toEqual(['https://example.com/1.svg', 'https://example.com/2.jpg', 'https://example.com/3.html'])
+    expect(cappedRes).toMatchObject({ ok: false, kind: 'invalid' })
+
+    const downloadRefusedSpy = vi.fn(fakes.page.download)
+    const refused = setup({
+      search: {
+        ...fakes.search,
+        async images() {
+          return [{ url: 'http://127.0.0.1/secret.png' }]
+        }
+      },
+      page: {
+        ...fakes.page,
+        download: downloadRefusedSpy
+      }
+    })
+    const refusedRes = await refused.registry.call('send_photo', { query: 'local' }, refused.makeCtx(), {
+      callId: 'c-photo-refused',
+      source: 'model'
+    })
+    expect(refusedRes).toEqual({ ok: false, kind: 'refused', reason: 'forbidden address' })
+    expect(downloadRefusedSpy).not.toHaveBeenCalled()
+
+    const oversized = setup({
+      search: {
+        ...fakes.search,
+        async images() {
+          return [{ url: 'https://example.com/huge.jpg' }, { url: 'https://example.com/small.gif' }]
+        }
+      },
+      page: {
+        ...fakes.page,
+        async download(url) {
+          if (url.endsWith('huge.jpg')) return { data: Buffer.alloc(5_000_001), contentType: 'image/jpeg' }
+          return { data: Buffer.from('GIF89a'), contentType: 'image/gif' }
+        }
+      }
+    })
+    const oversizedRes = await oversized.registry.call('send_photo', { query: 'gif' }, oversized.makeCtx(), {
+      callId: 'c-photo-size',
+      source: 'model'
+    })
+    expect(oversizedRes).toMatchObject({ ok: true, data: { attached: true }, receipt: { kind: 'photo.found' } })
+  })
+
   it('read_page: refuses a URL read at intake as "already read at intake"; works when intake did not read it', async () => {
     const seenPages: string[] = []
     const { storage, registry, makeCtx } = setup({

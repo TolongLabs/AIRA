@@ -4,6 +4,8 @@ const EXA_SEARCH_URL = 'https://api.exa.ai/search'
 const DEFAULT_TIMEOUT_MS = 10_000
 const NUM_RESULTS = 5
 const MAX_SNIPPET_CHARS = 300
+const IMAGE_LINKS_PER_RESULT = 3
+const MAX_IMAGE_CANDIDATES = 10
 
 function collapseWhitespace(text: string): string {
   return text.replace(/\s+/g, ' ').trim()
@@ -23,7 +25,7 @@ function firstSnippet(highlights: unknown): string {
   return ''
 }
 
-function mapResults(raw: unknown): { title: string; url: string; snippet: string }[] {
+function readResults(raw: unknown): unknown[] {
   if (!raw || typeof raw !== 'object') {
     throw new Error('exa search failed (malformed)')
   }
@@ -31,6 +33,11 @@ function mapResults(raw: unknown): { title: string; url: string; snippet: string
   if (!Array.isArray(results)) {
     throw new Error('exa search failed (malformed)')
   }
+  return results
+}
+
+function mapResults(raw: unknown): { title: string; url: string; snippet: string }[] {
+  const results = readResults(raw)
   const mapped: { title: string; url: string; snippet: string }[] = []
   for (const entry of results) {
     if (!entry || typeof entry !== 'object') continue
@@ -42,46 +49,106 @@ function mapResults(raw: unknown): { title: string; url: string; snippet: string
   return mapped
 }
 
+function toHttpsUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  if (trimmed.length === 0) return undefined
+  try {
+    const parsed = new URL(trimmed)
+    return parsed.protocol === 'https:' && parsed.hostname.length > 0 ? trimmed : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function mapImageCandidates(raw: unknown): { url: string }[] {
+  const results = readResults(raw)
+  const seen = new Set<string>()
+  const candidates: { url: string }[] = []
+  const add = (value: unknown): void => {
+    if (candidates.length >= MAX_IMAGE_CANDIDATES) return
+    const url = toHttpsUrl(value)
+    if (!url || seen.has(url)) return
+    seen.add(url)
+    candidates.push({ url })
+  }
+
+  for (const entry of results) {
+    if (entry && typeof entry === 'object') {
+      add((entry as { image?: unknown }).image)
+    }
+  }
+  for (const entry of results) {
+    if (!entry || typeof entry !== 'object') continue
+    const extras = (entry as { extras?: unknown }).extras
+    if (!extras || typeof extras !== 'object') continue
+    const imageLinks = (extras as { imageLinks?: unknown }).imageLinks
+    if (Array.isArray(imageLinks)) {
+      for (const link of imageLinks) add(link)
+    }
+  }
+  return candidates
+}
+
 export function createExaSearchPort(options: { apiKey: string; fetch?: typeof fetch; timeoutMs?: number }): SearchPort {
   const fetchFn = options.fetch ?? fetch
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
 
+  async function postSearch(body: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
+    if (signal.aborted) {
+      throw new Error('exa search failed (aborted)')
+    }
+    const combined = AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+    let response: Response
+    try {
+      response = await fetchFn(EXA_SEARCH_URL, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': options.apiKey
+        },
+        body: JSON.stringify(body),
+        signal: combined
+      })
+    } catch (cause) {
+      const kind = signal.aborted ? 'aborted' : combined.aborted ? 'timeout' : 'network'
+      throw new Error(`exa search failed (${kind})`, { cause })
+    }
+    if (!response.ok) {
+      throw new Error(`exa search failed (${response.status})`)
+    }
+    try {
+      return await response.json()
+    } catch (cause) {
+      throw new Error('exa search failed (invalid_json)', { cause })
+    }
+  }
+
   return {
     async search(query, signal) {
-      if (signal.aborted) {
-        throw new Error('exa search failed (aborted)')
-      }
-      const combined = AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
-      let response: Response
-      try {
-        response = await fetchFn(EXA_SEARCH_URL, {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-api-key': options.apiKey
-          },
-          body: JSON.stringify({
-            query,
-            type: 'auto',
-            numResults: NUM_RESULTS,
-            contents: { highlights: true }
-          }),
-          signal: combined
-        })
-      } catch (cause) {
-        const kind = signal.aborted ? 'aborted' : combined.aborted ? 'timeout' : 'network'
-        throw new Error(`exa search failed (${kind})`, { cause })
-      }
-      if (!response.ok) {
-        throw new Error(`exa search failed (${response.status})`)
-      }
-      let data: unknown
-      try {
-        data = await response.json()
-      } catch (cause) {
-        throw new Error('exa search failed (invalid_json)', { cause })
-      }
+      const data = await postSearch(
+        {
+          query,
+          type: 'auto',
+          numResults: NUM_RESULTS,
+          contents: { highlights: true }
+        },
+        signal
+      )
       return mapResults(data)
+    },
+
+    async images(query, signal) {
+      const data = await postSearch(
+        {
+          query,
+          type: 'auto',
+          numResults: NUM_RESULTS,
+          contents: { extras: { imageLinks: IMAGE_LINKS_PER_RESULT } }
+        },
+        signal
+      )
+      return mapImageCandidates(data)
     }
   }
 }

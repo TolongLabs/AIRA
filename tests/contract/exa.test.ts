@@ -164,4 +164,93 @@ describe('createExaSearchPort', () => {
       results: [{ title: 'Exa Result', url: 'https://example.test/exa', snippet: 'Found via Exa.' }]
     })
   })
+
+  it('exa image search returns main images first, then image links, https only, deduplicated', async () => {
+    const seen: { url: string; method: string; headers: Headers; body: unknown }[] = []
+    const fakeFetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      seen.push({
+        url: String(url),
+        method: init?.method ?? 'GET',
+        headers: new Headers(init?.headers),
+        body: JSON.parse(String(init?.body))
+      })
+      return new Response(
+        JSON.stringify({
+          results: [
+            {
+              image: 'https://a.test/main-1.jpg',
+              extras: {
+                imageLinks: ['http://insecure.test/skip.jpg', 'https://a.test/main-1.jpg', 'https://a.test/link-1.png']
+              }
+            },
+            {
+              image: 'http://insecure.test/main-2.jpg',
+              extras: {
+                imageLinks: ['data:image/png;base64,AAA', 'https://b.test/link-2.webp', '/relative.jpg']
+              }
+            },
+            {
+              image: 'https://c.test/main-3.png',
+              extras: {
+                imageLinks: ['https://a.test/link-1.png', 'https://c.test/link-3.gif']
+              }
+            }
+          ]
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      )
+    }) as typeof fetch
+
+    const port = createExaSearchPort({ apiKey: 'exa-secret-key', fetch: fakeFetch })
+    const candidates = await port.images?.('sunset beach', new AbortController().signal)
+
+    expect(seen).toHaveLength(1)
+    expect(seen[0]?.url).toBe('https://api.exa.ai/search')
+    expect(seen[0]?.method).toBe('POST')
+    expect(seen[0]?.headers.get('content-type')).toBe('application/json')
+    expect(seen[0]?.headers.get('x-api-key')).toBe('exa-secret-key')
+    expect(seen[0]?.body).toEqual({
+      query: 'sunset beach',
+      type: 'auto',
+      numResults: 5,
+      contents: { extras: { imageLinks: 3 } }
+    })
+    expect(candidates).toEqual([
+      { url: 'https://a.test/main-1.jpg' },
+      { url: 'https://c.test/main-3.png' },
+      { url: 'https://a.test/link-1.png' },
+      { url: 'https://b.test/link-2.webp' },
+      { url: 'https://c.test/link-3.gif' }
+    ])
+  })
+
+  it('caps image search candidates at 10', async () => {
+    const fakeFetch = (async () =>
+      new Response(
+        JSON.stringify({
+          results: Array.from({ length: 5 }, (_, i) => ({
+            image: `https://example.test/main-${i}.jpg`,
+            extras: {
+              imageLinks: [
+                `https://example.test/link-${i}-1.jpg`,
+                `https://example.test/link-${i}-2.jpg`,
+                `https://example.test/link-${i}-3.jpg`
+              ]
+            }
+          }))
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      )) as typeof fetch
+
+    const port = createExaSearchPort({ apiKey: 'k', fetch: fakeFetch })
+    const candidates = await port.images?.('cats', new AbortController().signal)
+    expect(candidates).toHaveLength(10)
+    expect(candidates?.slice(0, 5)).toEqual([
+      { url: 'https://example.test/main-0.jpg' },
+      { url: 'https://example.test/main-1.jpg' },
+      { url: 'https://example.test/main-2.jpg' },
+      { url: 'https://example.test/main-3.jpg' },
+      { url: 'https://example.test/main-4.jpg' }
+    ])
+  })
 })
