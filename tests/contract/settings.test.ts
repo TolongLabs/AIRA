@@ -47,6 +47,7 @@ describe('settings resolution', () => {
     expect(resolved.replyLength).toEqual({ value: 'default', level: 'default' })
     expect(resolved.expressions).toEqual({ value: true, level: 'default' })
     expect(resolved.muted).toEqual({ value: false, level: 'default' })
+    expect(resolved['tools.maxPerMessage']).toEqual({ value: 3, level: 'default' })
   })
 
   it('resolves nearest level: chat overrides type, type overrides global, global overrides default', () => {
@@ -261,6 +262,31 @@ describe('settings validation and change log', () => {
     setSetting(storage, { level: 'type', scope: 'dm', key: 'mcp.calendar', value: true, actor: 's_admin' })
     expect(resolveSettings(storage, dm)['mcp.calendar']).toEqual({ value: true, level: 'type' })
     expect(resolveSettings(storage, group)['mcp.calendar']).toBeUndefined()
+  })
+
+  it('accepts tools.maxPerMessage from 1 to 8 (default 3) and rejects 0 and 9', () => {
+    const storage = tmpStorage()
+    const chat = ensureChat(storage, { waId: '0000000000@g.us', type: 'group' })
+
+    expect(resolveSetting(storage, chat, 'tools.maxPerMessage')).toEqual({ value: 3, level: 'default' })
+
+    for (const value of [1, 8]) {
+      setSetting(storage, { level: 'chat', scope: chat.chatId, key: 'tools.maxPerMessage', value, actor: 's_admin' })
+      expect(resolveSetting(storage, chat, 'tools.maxPerMessage')).toEqual({ value, level: 'chat' })
+    }
+
+    for (const bad of [0, 9, 2.5, '3']) {
+      expect(() =>
+        setSetting(storage, {
+          level: 'chat',
+          scope: chat.chatId,
+          key: 'tools.maxPerMessage',
+          value: bad,
+          actor: 's_admin'
+        })
+      ).toThrow(SettingError)
+    }
+    expect(resolveSetting(storage, chat, 'tools.maxPerMessage')).toEqual({ value: 8, level: 'chat' })
   })
 })
 

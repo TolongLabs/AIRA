@@ -374,3 +374,108 @@ describe('the whole service', () => {
     expect(existsSync(join(config.storage.path, 'aira.db'))).toBe(true)
   })
 })
+
+describe('per-chat tool call limit', () => {
+  const TEST_CHAT = '0000000000@g.us'
+  const TEST_SENDER = '0000000000@s.whatsapp.net'
+  const sendToTestChat = (gateway: FakeGateway, mid: string, text: string) =>
+    gateway.send({ chat: { waId: TEST_CHAT, kind: 'group' }, sender: TEST_SENDER, mid, text })
+  const activateTestChat = (app: App) => {
+    const chat = ensureChat(app.storage, { waId: TEST_CHAT, type: 'group' })
+    setChatStatus(app.storage, { chatId: chat.chatId, status: 'active', actor: 'test' })
+    return chat.chatId
+  }
+
+  it('defaults to 3 tool calls per message', async () => {
+    const model = queueModel([
+      { toolCalls: [{ id: 'c1', name: 'recall', args: { query: 'one' } }] },
+      { toolCalls: [{ id: 'c2', name: 'recall', args: { query: 'two' } }] },
+      { toolCalls: [{ id: 'c3', name: 'recall', args: { query: 'three' } }] },
+      { text: 'Stopped at three.', toolCalls: [{ id: 'c4', name: 'recall', args: { query: 'four' } }] }
+    ])
+    const { app, gateway } = await start(model)
+    const chatId = activateTestChat(app)
+    const delivery = await sendToTestChat(gateway, 'm-1', 'check memory')
+    expect(delivery.content).toContain('Stopped at three.')
+    expect(model.requests[2]?.tools.length).toBeGreaterThan(0)
+    expect(model.requests[3]?.tools).toEqual([])
+    const calls = app.storage.read((db) =>
+      db.prepare('SELECT tool FROM tool_call WHERE turn_id = ?').all(turn(app)['turn_id'])
+    )
+    expect(calls).toHaveLength(3)
+    expect(turn(app)).toMatchObject({ chat_id: chatId, chain_limit: 'calls' })
+  })
+
+  it('stops after one call when tools.maxPerMessage is 1', async () => {
+    const model = queueModel([
+      { toolCalls: [{ id: 'c1', name: 'recall', args: { query: 'one' } }] },
+      { text: 'Stopped at one.', toolCalls: [{ id: 'c2', name: 'recall', args: { query: 'two' } }] }
+    ])
+    const { app, gateway } = await start(model)
+    const chatId = activateTestChat(app)
+    setSetting(app.storage, { level: 'chat', scope: chatId, key: 'tools.maxPerMessage', value: 1, actor: 'test' })
+    const delivery = await sendToTestChat(gateway, 'm-1', 'check one thing')
+    expect(delivery.content).toContain('Stopped at one.')
+    expect(model.requests[0]?.tools.length).toBeGreaterThan(0)
+    expect(model.requests[1]?.tools).toEqual([])
+    const calls = app.storage.read((db) =>
+      db.prepare('SELECT tool FROM tool_call WHERE turn_id = ?').all(turn(app)['turn_id'])
+    )
+    expect(calls).toHaveLength(1)
+    expect(turn(app)).toMatchObject({ chat_id: chatId, chain_limit: 'calls' })
+  })
+
+  it('caps a higher per-chat setting at the config ceiling', async () => {
+    const model = queueModel([
+      { toolCalls: [{ id: 'c1', name: 'recall', args: { query: 'one' } }] },
+      { toolCalls: [{ id: 'c2', name: 'recall', args: { query: 'two' } }] },
+      { text: 'Capped at two.', toolCalls: [{ id: 'c3', name: 'recall', args: { query: 'three' } }] }
+    ])
+    const { app, gateway } = await start(model, {
+      config: (config) => {
+        config.tools.maxCallsPerTurn = 2
+      }
+    })
+    const chatId = activateTestChat(app)
+    setSetting(app.storage, { level: 'chat', scope: chatId, key: 'tools.maxPerMessage', value: 6, actor: 'test' })
+    const delivery = await sendToTestChat(gateway, 'm-1', 'check ceiling')
+    expect(delivery.content).toContain('Capped at two.')
+    expect(model.requests[1]?.tools.length).toBeGreaterThan(0)
+    expect(model.requests[2]?.tools).toEqual([])
+    const calls = app.storage.read((db) =>
+      db.prepare('SELECT tool FROM tool_call WHERE turn_id = ?').all(turn(app)['turn_id'])
+    )
+    expect(calls).toHaveLength(2)
+    expect(turn(app)).toMatchObject({ chat_id: chatId, chain_limit: 'calls' })
+  })
+
+  it('allows N commands to make N calls even when tools.maxPerMessage is 1', async () => {
+    const dueAt = new Date(Date.now() + 3_600_000).toISOString()
+    const model = queueModel([
+      {
+        toolCalls: [
+          { id: 'c1', name: 'reminder_set', args: { text: 'buy milk', dueAt } },
+          { id: 'c2', name: 'history_search', args: { query: 'tea' } },
+          { id: 'c3', name: 'recall', args: { query: 'tea' } }
+        ]
+      },
+      { text: 'All three commands ran.' }
+    ])
+    const { app, gateway } = await start(model)
+    const chatId = activateTestChat(app)
+    setSetting(app.storage, { level: 'chat', scope: chatId, key: 'tools.maxPerMessage', value: 1, actor: 'test' })
+    setSetting(app.storage, { level: 'chat', scope: chatId, key: 'commands.maxPerMessage', value: 3, actor: 'test' })
+    const delivery = await sendToTestChat(gateway, 'm-1', '/remind me to buy milk /history tea /recall tea')
+    expect(delivery.content).toContain('All three commands ran.')
+    expect(model.requests[1]?.tools).toEqual([])
+    const calls = app.storage.read((db) =>
+      db.prepare('SELECT tool, outcome FROM tool_call WHERE turn_id = ? ORDER BY rowid').all(turn(app)['turn_id'])
+    )
+    expect(calls).toEqual([
+      { tool: 'reminder_set', outcome: 'ok' },
+      { tool: 'history_search', outcome: 'ok' },
+      { tool: 'recall', outcome: 'ok' }
+    ])
+    expect(turn(app)).toMatchObject({ chat_id: chatId, chain_limit: 'calls' })
+  })
+})

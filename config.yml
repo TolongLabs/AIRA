@@ -19,7 +19,7 @@ format:
 
 # Owned by docs/trd/tools.md
 tools:
-  maxCallsPerTurn: 4 # Limit on tool calls in one turn
+  maxCallsPerTurn: 8 # Ceiling on tool calls in one turn; each chat sets its own below it
   timeBudgetMs: 15000 # Limit on total tool time in one turn
   defaultTimeoutMs: 15000 # Timeout when a tool sets none
 

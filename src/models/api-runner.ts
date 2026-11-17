@@ -37,6 +37,7 @@ interface LoopState {
   signal: AbortSignal
   turnId: string
   toolCalls: number
+  maxCalls: number
   toolMs: number
   chainLimit?: 'calls' | 'time'
   usage: ModelUsage
@@ -175,7 +176,7 @@ class SeamTool extends BaseTool {
   async runAsync({ args, toolContext }: RunAsyncToolRequest): Promise<unknown> {
     const { state, options } = this
     const now = options.now ?? (() => new Date())
-    if (state.toolCalls >= options.limits.maxCallsPerTurn) state.chainLimit ??= 'calls'
+    if (state.toolCalls >= state.maxCalls) state.chainLimit ??= 'calls'
     else if (state.toolMs >= options.limits.timeBudgetMs) state.chainLimit ??= 'time'
     if (state.chainLimit) {
       return { content: JSON.stringify({ error: 'refused', reason: 'the tool limit for this turn is reached' }) }
@@ -194,7 +195,7 @@ class SeamTool extends BaseTool {
       return { content: JSON.stringify({ error: 'error', reason: 'the tool failed' }) }
     } finally {
       state.toolMs += now().getTime() - started
-      if (state.toolCalls >= options.limits.maxCallsPerTurn) state.chainLimit ??= 'calls'
+      if (state.toolCalls >= state.maxCalls) state.chainLimit ??= 'calls'
       else if (state.toolMs >= options.limits.timeBudgetMs) state.chainLimit ??= 'time'
     }
   }
@@ -202,7 +203,7 @@ class SeamTool extends BaseTool {
 
 export function createApiRunner(options: ApiRunnerOptions): TurnRunner {
   return {
-    async run({ system, messages, tools, context, signal, firstTools }): Promise<RunResult> {
+    async run({ system, messages, tools, context, signal, firstTools, maxToolCalls }): Promise<RunResult> {
       const calls: ModelCallRecord[] = []
       const offeredNames = new Set(tools.map((tool) => tool.schema.name))
       const state: LoopState = {
@@ -213,6 +214,7 @@ export function createApiRunner(options: ApiRunnerOptions): TurnRunner {
         signal,
         turnId: context.turnId,
         toolCalls: 0,
+        maxCalls: Math.min(maxToolCalls ?? options.limits.maxCallsPerTurn, options.limits.maxCallsPerTurn),
         replays: new Map(),
         toolMs: 0,
         usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 },

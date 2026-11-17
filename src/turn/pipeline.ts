@@ -71,7 +71,10 @@ export interface TurnServiceDeps {
   /** Called after a firing changed a reminder, so the wanted-jobs file is written again. */
   onScheduleChange?: () => void
   storage: Storage
-  config: Pick<Config, 'turn' | 'llm' | 'records'> & { gateway?: Partial<Pick<Config['gateway'], 'jobs' | 'selfIds'>> }
+  config: Pick<Config, 'turn' | 'llm' | 'records'> & {
+    gateway?: Partial<Pick<Config['gateway'], 'jobs' | 'selfIds'>>
+    tools?: Partial<Pick<Config['tools'], 'maxCallsPerTurn'>>
+  }
   logger: Logger
   redactor: Redactor
   /** The loaded packs. A function, so a saved pack applies to the next turn. */
@@ -372,6 +375,14 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
 
       // 6. Run: one loop, inside the turn deadline.
       stage('run')
+      const rawMaxTools = settings['tools.maxPerMessage']?.value
+      const chatMaxTools =
+        typeof rawMaxTools === 'number' && Number.isInteger(rawMaxTools) && rawMaxTools >= 1 ? rawMaxTools : 3
+      const ceiling = config.tools?.maxCallsPerTurn
+      const maxToolCalls = Math.max(
+        ceiling === undefined ? chatMaxTools : Math.min(chatMaxTools, ceiling),
+        commands.length
+      )
       const abort = new AbortController()
       const timer = setTimeout(() => abort.abort(), Math.max(0, context.deadline - now().getTime()))
       try {
@@ -382,7 +393,8 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
             tools: deps.tools?.offered(context) ?? [],
             context,
             signal: abort.signal,
-            firstTools: commands.length > 0 ? commands.map((command) => command.tool) : undefined
+            firstTools: commands.length > 0 ? commands.map((command) => command.tool) : undefined,
+            maxToolCalls
           }),
           new Promise<never>((_, reject) =>
             abort.signal.addEventListener('abort', () =>

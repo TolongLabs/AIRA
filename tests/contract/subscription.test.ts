@@ -289,6 +289,40 @@ describe('the subscription transport', () => {
       session.end()
     })
 
+    it('uses per-turn maxToolCalls below the ceiling and caps higher values at the ceiling', async () => {
+      const { server, url } = await startToolServer({ maxCallsPerTurn: 2, timeBudgetMs: 10_000 })
+      const lowLog: { args: unknown; callId: string }[] = []
+      const lowSession = server.open({
+        turnId: 't-low',
+        tools: [makeTool('ping', lowLog)],
+        maxToolCalls: 1,
+        signal: new AbortController().signal
+      })
+      const lowClient = await mcpClient(url, lowSession.token)
+      expect((await lowClient.callTool({ name: 'ping', arguments: {} })).isError).toBeFalsy()
+      expect(lowSession.state.chainLimit).toBe('calls')
+      expect((await lowClient.callTool({ name: 'ping', arguments: {} })).isError).toBe(true)
+      expect(lowLog).toHaveLength(1)
+      await lowClient.close()
+      lowSession.end()
+
+      const capLog: { args: unknown; callId: string }[] = []
+      const capSession = server.open({
+        turnId: 't-cap',
+        tools: [makeTool('ping', capLog)],
+        maxToolCalls: 5,
+        signal: new AbortController().signal
+      })
+      const capClient = await mcpClient(url, capSession.token)
+      expect((await capClient.callTool({ name: 'ping', arguments: {} })).isError).toBeFalsy()
+      expect((await capClient.callTool({ name: 'ping', arguments: {} })).isError).toBeFalsy()
+      expect(capSession.state.chainLimit).toBe('calls')
+      expect((await capClient.callTool({ name: 'ping', arguments: {} })).isError).toBe(true)
+      expect(capLog).toHaveLength(2)
+      await capClient.close()
+      capSession.end()
+    })
+
     it('enforces the time limit and sets chainLimit', async () => {
       let clock = 0
       const { server, url } = await startToolServer({ maxCallsPerTurn: 10, timeBudgetMs: 100 }, () => new Date(clock))
@@ -532,6 +566,39 @@ describe('the subscription transport', () => {
       const payload = JSON.parse(result.text) as { tools: string[]; calls: { name: string }[] }
       expect(payload.tools).toEqual(['search', 'note'])
       expect(payload.calls.map((c) => c.name)).toEqual(['search', 'note'])
+    })
+
+    it('forwards maxToolCalls to the tool server and stops at the per-turn limit', async () => {
+      const { server, url } = await startToolServer({ maxCallsPerTurn: 8, timeBudgetMs: 10_000 })
+      const searchLog: { args: unknown; callId: string }[] = []
+      const noteLog: { args: unknown; callId: string }[] = []
+      const runner = createSubscriptionRunner({
+        subscription: { runnerUrl, toolServerUrl: url },
+        model: '',
+        effort: '',
+        runnerToken: RUNNER_TOKEN,
+        toolServer: server,
+        breaker: createBreaker({ breakerMs: 60_000 }),
+        logger: createLogger({ level: 'error', module: 'sub-test' })
+      })
+
+      const result = await runner.run({
+        system: [{ name: 'core', text: 'Rules:\n- search: look up\n- note: save' }],
+        messages: [{ role: 'user', content: 'CALL search {"q":"tea"}\nCALL note {"q":"green"}' }],
+        tools: [makeTool('search', searchLog), makeTool('note', noteLog)],
+        context: makeContext('turn-limit-1'),
+        signal: new AbortController().signal,
+        maxToolCalls: 1
+      })
+
+      expect(result.chainLimit).toBe('calls')
+      expect(searchLog).toHaveLength(1)
+      expect(noteLog).toHaveLength(0)
+      const payload = JSON.parse(result.text) as { calls: { name: string; isError: boolean }[] }
+      expect(payload.calls.map((c) => ({ name: c.name, isError: c.isError }))).toEqual([
+        { name: 'search', isError: false },
+        { name: 'note', isError: true }
+      ])
     })
   })
 

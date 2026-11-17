@@ -111,6 +111,8 @@ export interface TurnRunner {
      * The model fills their arguments, or asks one question and calls nothing.
      */
     firstTools?: string[]
+    /** Maximum tool calls this turn may make (never above the deployment ceiling in the runner). */
+    maxToolCalls?: number
   }): Promise<RunResult>
 }
 
