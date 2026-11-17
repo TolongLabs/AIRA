@@ -575,11 +575,10 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       !COMMAND_TEXT.test(text) &&
       pack !== undefined
     ) {
-      const resolvedNames = resolveNames(settings, pack)
-      const packNames = [pack.card.displayName, ...(pack.card.aliases ?? [])]
-      const calledByName = matchesName(text, resolvedNames) || matchesName(text, packNames)
-      const nameCallAllowed = settings['nameCall']?.value === true && matchesName(text, resolvedNames)
-      if (calledByName && !nameCallAllowed) {
+      // Nothing else woke the gateway for this message, so it came in on a name pattern. The gateway's patterns
+      // cover every character's names, so the text may name another character: only the chat's own names count.
+      const nameCallAllowed = settings['nameCall']?.value === true && matchesName(text, resolveNames(settings, pack))
+      if (!nameCallAllowed) {
         logger.info('turn.name_call_off', { chatId: chat.chatId })
         return { content: 'NO_REPLY', replayed: true }
       }

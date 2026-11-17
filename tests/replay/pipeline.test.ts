@@ -757,7 +757,7 @@ describe('names, mentions and name calls in a group', () => {
       })
     })
     core.activate(CHAT)
-    await core.gateway.send(named('m-1', 'hello all', '123456@lid', 'Alice'))
+    await core.gateway.send(named('m-1', '@0000000 hello all', '123456@lid', 'Alice'))
     await core.gateway.send(named('m-2', '@0000000 ask @123456 and @1234567 about lunch', '1234567@lid', 'Bob'))
     const sent = JSON.stringify(runner.inputs[1]?.messages)
     expect(sent).toContain('@Example ask @Alice and @Bob about lunch')
@@ -786,5 +786,25 @@ describe('names, mentions and name calls in a group', () => {
     setSetting(core.storage, { level: 'chat', scope: chatId, key: 'nameCall', value: true, actor: 'test' })
     expect((await core.gateway.send(named('m-3', 'example, you there?', '123456@lid', 'Alice'))).content).toBe('here')
     expect(runner.inputs).toHaveLength(2)
+  })
+
+  it('stays silent for another character name, whether name calls are on or off', async () => {
+    // The gateway wakes on every character's names, so a group bound to one pack can receive the other's name.
+    const runner = scriptedRunner(() => 'here')
+    const core = await startTestCore({
+      runner,
+      config: testConfig((config) => {
+        config.gateway.selfIds = [SELF]
+      })
+    })
+    const chatId = core.activate(CHAT)
+    expect(
+      (await core.gateway.send(named('m-1', 'otherbot where is my reminder', '123456@lid', 'Alice'))).content
+    ).toBe('NO_REPLY')
+    setSetting(core.storage, { level: 'chat', scope: chatId, key: 'nameCall', value: true, actor: 'test' })
+    expect((await core.gateway.send(named('m-2', 'otherbot are you there', '123456@lid', 'Alice'))).content).toBe(
+      'NO_REPLY'
+    )
+    expect(runner.inputs).toHaveLength(0)
   })
 })
