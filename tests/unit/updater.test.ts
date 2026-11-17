@@ -342,6 +342,30 @@ describe('createRealOps', () => {
     vi.restoreAllMocks()
   })
 
+  it('retries a pull that stalls once, and the deploy goes on', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    let pulls = 0
+    const ops = createRealOps(
+      baseOptions({
+        run: async (_command, args, _env, options) => {
+          if (args[0] !== 'pull') return { code: 0, stdout: '', stderr: '' }
+          pulls += 1
+          if (pulls > 1) return { code: 0, stdout: '', stderr: '' }
+          return new Promise((resolve) => {
+            options?.signal?.addEventListener('abort', () => resolve({ code: 1, stdout: '', stderr: 'killed' }), {
+              once: true
+            })
+          })
+        }
+      })
+    )
+    const pulled = ops.pull('sha-1234567')
+    await vi.advanceTimersByTimeAsync(DOCKER_PULL_TIMEOUT_MS + 6_000)
+    await expect(pulled).resolves.toBeUndefined()
+    expect(pulls).toBe(2)
+  })
+
   function makeFakeSpawn(ignoreSigterm = false) {
     const killed: (NodeJS.Signals | number | undefined)[] = []
     const spawnFn: SpawnFn = () => {
@@ -547,7 +571,7 @@ describe('createRealOps', () => {
     const compliant = makeFakeSpawn(false)
     const compliantRun = createSpawnRun(compliant.spawnFn)
     const pullPromise = execChecked(compliantRun, 'docker', ['pull', 'ghcr.io/tolonglabs/aira:sha-1234567'])
-    const pullRejection = expect(pullPromise).rejects.toThrow(/docker pull timed out after 480s/)
+    const pullRejection = expect(pullPromise).rejects.toThrow(/docker pull timed out after 180s/)
 
     await vi.advanceTimersByTimeAsync(DOCKER_PULL_TIMEOUT_MS - 1)
     expect(compliant.killed).toEqual([])

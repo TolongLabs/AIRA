@@ -9,7 +9,12 @@ import {
   updateEnvContent,
   writeInstallEnv
 } from '../../scripts/deploy-host.js'
-import { DOCKER_PULL_TIMEOUT_MS, SYNTHETIC_TURN_TIMEOUT_MS, createRealOps } from '../../scripts/updater/ops.js'
+import {
+  DOCKER_PULL_ATTEMPTS,
+  DOCKER_PULL_TIMEOUT_MS,
+  SYNTHETIC_TURN_TIMEOUT_MS,
+  createRealOps
+} from '../../scripts/updater/ops.js'
 import type { DeployRecord } from '../../scripts/updater/update.js'
 import { tmpDir } from '../support/tmp.js'
 
@@ -279,8 +284,11 @@ describe('runDeployHost', () => {
     }
 
     const resultPromise = runDeployHost(ops, defaultConfig)
-    await vi.advanceTimersByTimeAsync(DOCKER_PULL_TIMEOUT_MS)
+    for (let attempt = 0; attempt < DOCKER_PULL_ATTEMPTS; attempt += 1) {
+      await vi.advanceTimersByTimeAsync(DOCKER_PULL_TIMEOUT_MS + 6_000)
+    }
     const result = await resultPromise
+    expect(commands.filter((args) => args[0] === 'pull')).toHaveLength(DOCKER_PULL_ATTEMPTS)
 
     expect(result).toEqual({
       action: 'failed',
