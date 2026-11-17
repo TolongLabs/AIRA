@@ -16,12 +16,12 @@ Packs are read from two places. A pack on the data volume wins over one in the r
 
 Real character packs are private. They never enter the repository, the release image, test fixtures or recordings.
 
-| File        | Holds                                                                                                          | Required |
-| ----------- | -------------------------------------------------------------------------------------------------------------- | -------- |
-| `card.yml`  | Id, display name, aliases, languages, core identity, speech rules, default reply length, tool footer           | Yes      |
-| `moods.yml` | The mood list: key, detection rules, tone guidance, openers, endings, faces, beats; face groups and beat lines | Yes      |
-| `lines.yml` | Fixed lines for errors, limits, refusals, busy, unreadable media and unavailable                               | Yes      |
-| `stickers/` | Expression images per mood, already converted to WhatsApp sticker format                                       | No       |
+| File        | Holds                                                                                                                                                                                                                                         | Required |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `card.yml`  | Id, display name, aliases, languages, core identity, speech rules, default reply length, tool footer                                                                                                                                          | Yes      |
+| `moods.yml` | The mood list: key, detection rules, tone guidance, openers, endings, faces, beats; face groups and beat lines                                                                                                                                | Yes      |
+| `lines.yml` | Fixed lines for errors, limits, refusals, busy, unreadable media, unavailable, and the optional research lines (`researchStarted`, `researchTopic`, `researchBusy`, `researchFailed`, `offerPdf`; a pack without them gets neutral fallbacks) | Yes      |
+| `stickers/` | Expression images per mood, already converted to WhatsApp sticker format                                                                                                                                                                      | No       |
 
 - A pack that fails validation is not loaded. A chat bound to it stops with an operator alert. It never falls back to
   another character (PRD FR-9).

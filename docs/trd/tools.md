@@ -154,24 +154,26 @@ tool's result in plain words: a list for `/help`, `/list` and `/reminders`, one 
 
 ### Core
 
-| Tool              | Does                                       | Mode     | Command            | Kind        | Feature Switch       |
-| ----------------- | ------------------------------------------ | -------- | ------------------ | ----------- | -------------------- |
-| `recall`          | Searches what AIRA remembers in this chat  | both     | `/recall`          | Skill-style | none                 |
-| `note`            | Writes one fact into this chat's memory    | both     | `/remember`        | Skill-style | none                 |
-| `forget`          | Forgets one named fact                     | both     | `/forget`          | Skill-style | none                 |
-| `history_search`  | Searches what was said in this chat before | both     | `/history`         | Skill-style | none                 |
-| `web_search`      | Searches the web                           | both     | `/search`          | Skill-style | `features.search`    |
-| `read_page`       | Opens and reads one web page               | both     | `/read`            | Skill-style | `features.search`    |
-| `read_post`       | Opens one social post with its media       | both     | `/read`            | Skill-style | `features.social`    |
-| `send_photo`      | Finds one real photo and sends it          | both     | `/photo`           | Skill-style | `features.photos`    |
-| `reminder_set`    | Creates one reminder                       | both     | `/remind`          | Skill-style | `features.reminders` |
-| `reminder_list`   | Lists this chat's reminders                | both     | `/reminders`       | Direct      | `features.reminders` |
-| `reminder_cancel` | Cancels one reminder                       | both     | `/cancel`          | Skill-style | `features.reminders` |
-| `set_mute`        | Stops or resumes proactive messages        | both     | `/mute`, `/unmute` | Direct      | none                 |
-| `make_report`     | Writes one long answer as a document       | both     | `/report`          | Skill-style | `features.reports`   |
-| `lingo_note`      | Files what one of this chat's words means  | implicit | none               |             | none                 |
-| `help`            | Lists the commands this chat may use       | explicit | `/help`            | Direct      | none                 |
-| `list`            | Lists the tools and features switched on   | explicit | `/list`            | Direct      | none                 |
+| Tool              | Does                                            | Mode     | Command            | Kind        | Feature Switch       |
+| ----------------- | ----------------------------------------------- | -------- | ------------------ | ----------- | -------------------- |
+| `recall`          | Searches what AIRA remembers in this chat       | both     | `/recall`          | Skill-style | none                 |
+| `note`            | Writes one fact into this chat's memory         | both     | `/remember`        | Skill-style | none                 |
+| `forget`          | Forgets one named fact                          | both     | `/forget`          | Skill-style | none                 |
+| `history_search`  | Searches what was said in this chat before      | both     | `/history`         | Skill-style | none                 |
+| `web_search`      | Searches the web                                | both     | `/search`          | Skill-style | `features.search`    |
+| `read_page`       | Opens and reads one web page                    | both     | `/read`            | Skill-style | `features.search`    |
+| `read_post`       | Opens one social post with its media            | both     | `/read`            | Skill-style | `features.social`    |
+| `send_photo`      | Finds one real photo and sends it               | both     | `/photo`           | Skill-style | `features.photos`    |
+| `reminder_set`    | Creates one reminder                            | both     | `/remind`          | Skill-style | `features.reminders` |
+| `reminder_list`   | Lists this chat's reminders                     | both     | `/reminders`       | Direct      | `features.reminders` |
+| `reminder_cancel` | Cancels one reminder                            | both     | `/cancel`          | Skill-style | `features.reminders` |
+| `set_mute`        | Stops or resumes proactive messages             | both     | `/mute`, `/unmute` | Direct      | none                 |
+| `make_report`     | Writes one long answer as a document            | both     | `/report`          | Skill-style | `features.reports`   |
+| `research_start`  | Starts a research job ([Research](research.md)) | explicit | `/research`        | Direct      | `features.research`  |
+| `report_pdf`      | Renders the open offer's findings as a PDF      | explicit | `/pdf`             | Direct      | `features.research`  |
+| `lingo_note`      | Files what one of this chat's words means       | implicit | none               |             | none                 |
+| `help`            | Lists the commands this chat may use            | explicit | `/help`            | Direct      | none                 |
+| `list`            | Lists the tools and features switched on        | explicit | `/list`            | Direct      | none                 |
 
 - `/read` routes by the address: a social post or a YouTube video goes to `read_post`, anything else to `read_page`.
 - `read_page` reads through Exa's contents endpoint, with a live crawl when Exa has no copy, so a page that refuses
