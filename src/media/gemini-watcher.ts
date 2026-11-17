@@ -7,12 +7,24 @@ export interface MediaReading {
   transcript?: string
 }
 
+export interface WatchUrlSource {
+  url: string
+  mimeType?: string
+  startSec?: number
+  endSec?: number
+}
+
+export interface WatchResult {
+  reading: MediaReading
+  usage: ModelUsage
+  costUsd: number
+  model: string
+}
+
 /** The media model. It rejects with a ModelError (src/models/types.ts) on any failure. */
 export interface MediaWatcher {
-  watch(
-    file: MediaFile,
-    signal: AbortSignal
-  ): Promise<{ reading: MediaReading; usage: ModelUsage; costUsd: number; model: string }>
+  watch(file: MediaFile, signal: AbortSignal): Promise<WatchResult>
+  watchUrl?(source: WatchUrlSource, signal: AbortSignal): Promise<WatchResult>
 }
 
 export interface GeminiWatcherOptions {
@@ -76,28 +88,47 @@ function errorForStatus(status: number, bodyText: string, apiKey: string): Model
   return new ModelError(kind, message)
 }
 
-/** The request body for one file. Pure. */
-export function toGenerateContentBody(file: MediaFile): Record<string, unknown> {
+function requestBodyFor(mediaPart: Record<string, unknown>, lowResolution = false): Record<string, unknown> {
   return {
     contents: [
       {
         role: 'user',
-        parts: [
-          {
-            inline_data: {
-              mime_type: file.contentType,
-              data: file.data.toString('base64')
-            }
-          },
-          { text: WATCHER_INSTRUCTION }
-        ]
+        parts: [mediaPart, { text: WATCHER_INSTRUCTION }]
       }
     ],
     generationConfig: {
       temperature: 0,
-      responseMimeType: 'application/json'
+      responseMimeType: 'application/json',
+      ...(lowResolution ? { mediaResolution: 'MEDIA_RESOLUTION_LOW' } : {})
     }
   }
+}
+
+/** The request body for one file. Pure. */
+export function toGenerateContentBody(file: MediaFile): Record<string, unknown> {
+  return requestBodyFor({
+    inline_data: {
+      mime_type: file.contentType,
+      data: file.data.toString('base64')
+    }
+  })
+}
+
+/** The request body for one video URL, with optional start and end offsets at low media resolution. Pure. */
+export function toGenerateContentUrlBody(source: WatchUrlSource): Record<string, unknown> {
+  const videoMetadata: Record<string, string> = {}
+  if (source.startSec !== undefined) videoMetadata['start_offset'] = `${Math.max(0, Math.floor(source.startSec))}s`
+  if (source.endSec !== undefined) videoMetadata['end_offset'] = `${Math.max(0, Math.floor(source.endSec))}s`
+  return requestBodyFor(
+    {
+      file_data: {
+        file_uri: source.url,
+        mime_type: source.mimeType ?? 'video/mp4'
+      },
+      ...(Object.keys(videoMetadata).length > 0 ? { video_metadata: videoMetadata } : {})
+    },
+    true
+  )
 }
 
 /** The reading from one response body. Throws ModelError('malformed') when it has none. Pure. */
@@ -174,68 +205,75 @@ export function createGeminiWatcher(options: GeminiWatcherOptions): MediaWatcher
   const endpoint = `${baseUrl}/models/${options.model}:generateContent`
   const fetchFn = options.fetch ?? globalThis.fetch
 
+  async function callModel(body: Record<string, unknown>, signal: AbortSignal): Promise<WatchResult> {
+    if (signal.aborted) {
+      throw new ModelError('transient', 'aborted')
+    }
+
+    let response: Response
+    try {
+      response = await fetchFn(endpoint, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-goog-api-key': options.apiKey
+        },
+        body: JSON.stringify(body),
+        signal
+      })
+    } catch (err) {
+      if (isAbortError(err, signal)) {
+        throw new ModelError('transient', 'aborted', { cause: err })
+      }
+      const message = sanitizeMessage(err instanceof Error ? err.message : 'network error', options.apiKey)
+      throw new ModelError('transient', message, { cause: err })
+    }
+
+    if (!response.ok) {
+      let bodyText = ''
+      try {
+        bodyText = await response.text()
+      } catch (err) {
+        if (isAbortError(err, signal)) {
+          throw new ModelError('transient', 'aborted', { cause: err })
+        }
+      }
+      throw errorForStatus(response.status, bodyText, options.apiKey)
+    }
+
+    let rawText: string
+    try {
+      rawText = await response.text()
+    } catch (err) {
+      if (isAbortError(err, signal)) {
+        throw new ModelError('transient', 'aborted', { cause: err })
+      }
+      const message = sanitizeMessage(err instanceof Error ? err.message : 'failed to read response', options.apiKey)
+      throw new ModelError('transient', message, { cause: err })
+    }
+
+    let json: unknown
+    try {
+      json = JSON.parse(rawText)
+    } catch (cause) {
+      throw new ModelError('malformed', 'response body is not valid JSON', { cause })
+    }
+
+    const { reading, usage } = fromGenerateContentBody(json)
+    return {
+      reading,
+      usage,
+      costUsd: 0,
+      model: options.model
+    }
+  }
+
   return {
-    async watch(file, signal) {
-      if (signal.aborted) {
-        throw new ModelError('transient', 'aborted')
-      }
-
-      let response: Response
-      try {
-        response = await fetchFn(endpoint, {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-goog-api-key': options.apiKey
-          },
-          body: JSON.stringify(toGenerateContentBody(file)),
-          signal
-        })
-      } catch (err) {
-        if (isAbortError(err, signal)) {
-          throw new ModelError('transient', 'aborted', { cause: err })
-        }
-        const message = sanitizeMessage(err instanceof Error ? err.message : 'network error', options.apiKey)
-        throw new ModelError('transient', message, { cause: err })
-      }
-
-      if (!response.ok) {
-        let bodyText = ''
-        try {
-          bodyText = await response.text()
-        } catch (err) {
-          if (isAbortError(err, signal)) {
-            throw new ModelError('transient', 'aborted', { cause: err })
-          }
-        }
-        throw errorForStatus(response.status, bodyText, options.apiKey)
-      }
-
-      let rawText: string
-      try {
-        rawText = await response.text()
-      } catch (err) {
-        if (isAbortError(err, signal)) {
-          throw new ModelError('transient', 'aborted', { cause: err })
-        }
-        const message = sanitizeMessage(err instanceof Error ? err.message : 'failed to read response', options.apiKey)
-        throw new ModelError('transient', message, { cause: err })
-      }
-
-      let json: unknown
-      try {
-        json = JSON.parse(rawText)
-      } catch (cause) {
-        throw new ModelError('malformed', 'response body is not valid JSON', { cause })
-      }
-
-      const { reading, usage } = fromGenerateContentBody(json)
-      return {
-        reading,
-        usage,
-        costUsd: 0,
-        model: options.model
-      }
+    watch(file, signal) {
+      return callModel(toGenerateContentBody(file), signal)
+    },
+    watchUrl(source, signal) {
+      return callModel(toGenerateContentUrlBody(source), signal)
     }
   }
 }

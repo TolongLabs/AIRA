@@ -4,7 +4,7 @@ import type { LineKind } from '../character/schema.js'
 import type { Config } from '../config/schema.js'
 import type { Attachment, GatewayRequest } from '../gateway/request.js'
 import { compactDue } from '../gateway/schedule.js'
-import { type TurnMedia, mediaPromptText, mediaToRead } from '../media/turn-media.js'
+import { type TurnMedia, type TurnMediaResult, mediaPromptText, mediaToRead } from '../media/turn-media.js'
 import { ModelError } from '../models/types.js'
 import type { FailureKind } from '../records/kinds.js'
 import type { Logger } from '../records/logger.js'
@@ -300,15 +300,53 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       }
       Object.assign(outcome.fields, built.record, { receipts: result.receipts } satisfies TurnRecordFields)
     } else {
-      // The files members sent are read before the model runs. A file that cannot be read never ends the turn:
-      // the prompt carries a note, and the failure is recorded.
+      // The files members sent, and at most one supported link, are read before the model runs. A failure never ends
+      // the turn: the prompt carries a note, and the failure is recorded.
+      const mediaOn = settings['features.media']?.value !== false
+      const socialOn = settings['features.social']?.value !== false
       const files = mediaToRead(batch.map((waiter) => waiter.attachments ?? []))
-      if (deps.media && files.length > 0) {
-        stage('media')
-        const read = await deps.media.read(files, context.deadline)
-        input.media = mediaPromptText(read, pack.lines.unreadableMedia)
-        outcome.calls.push(...read.calls)
-        for (const item of read.unreadable) {
+      const newestFirst = [...input.pending].reverse()
+      const linkTexts = [
+        ...newestFirst.map((message) => message.content),
+        ...newestFirst.flatMap((message) => (message.quote?.text ? [message.quote.text] : []))
+      ].filter((entry) => entry.trim().length > 0)
+      const skipLinks = commands.some((command) => command.tool === 'read_post' || command.tool === 'read_page')
+      const shouldReadLinks = deps.media !== undefined && !skipLinks && (mediaOn || socialOn) && linkTexts.length > 0
+
+      if (deps.media && (files.length > 0 || shouldReadLinks)) {
+        const combined: TurnMediaResult = { readings: [], unreadable: [], calls: [] }
+        let enteredMediaStage = false
+        const enterMediaStage = () => {
+          if (!enteredMediaStage) {
+            enteredMediaStage = true
+            stage('media')
+          }
+        }
+        if (files.length > 0) {
+          enterMediaStage()
+          const fileRead = await deps.media.read(files, context.deadline, { enabled: mediaOn })
+          combined.readings.push(...fileRead.readings)
+          combined.unreadable.push(...fileRead.unreadable)
+          combined.calls.push(...fileRead.calls)
+        }
+        if (shouldReadLinks) {
+          const linkRead = await deps.media.readLink(
+            linkTexts,
+            context.deadline,
+            { media: mediaOn, social: socialOn },
+            enterMediaStage
+          )
+          combined.readings.push(...linkRead.readings)
+          if (linkRead.links && linkRead.links.length > 0) {
+            combined.links = [...(combined.links ?? []), ...linkRead.links]
+          }
+          combined.unreadable.push(...linkRead.unreadable)
+          combined.calls.push(...linkRead.calls)
+        }
+        const promptText = mediaPromptText(combined, pack.lines.unreadableMedia)
+        if (promptText.length > 0) input.media = promptText
+        outcome.calls.push(...combined.calls)
+        for (const item of combined.unreadable) {
           outcome.failures.push({
             stage: 'media',
             kind: 'media_unreadable',
@@ -316,7 +354,9 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
             handledBy: 'line:unreadableMedia'
           })
         }
-        if (read.calls.some((call) => call.failureKind === 'auth')) deps.alerter.raise('model_auth', { role: 'media' })
+        if (combined.calls.some((call) => call.failureKind === 'auth')) {
+          deps.alerter.raise('model_auth', { role: 'media' })
+        }
       }
       built = await deps.prompt.build(input)
       Object.assign(outcome.fields, built.record)
