@@ -29,8 +29,8 @@ is copied off the host and brought back.
 
 - No durable state lives in process memory, in a text or JSON file, or in a temporary folder.
 - `cache/` has a size cap and is the first thing emptied when space runs low. Nothing reads it as a source of truth.
-  **Not built yet:** no size cap is enforced; `storage.cacheMaxMb` is schema-checked but no storage code reads it
-  (`src/config/schema.ts:235`). The guard empties `cache/` below the warn level today.
+  The disk guard enforces the cap on each check: when `cache/` holds more than `storage.cacheMaxMb`, it deletes the
+  oldest files first until it is under 90% of the cap, and logs `storage.cache_trimmed` with the bytes freed.
 - All of these sit on one data volume on the host's local disk. The database is never placed on a network file
   system.
 
@@ -271,5 +271,3 @@ The Restart and Migration suites run in CI on every change. See [Test Harness](h
 
 Deployment values are validated against strict schemas in `src/config/schema.ts`, which also requires
 `storage.criticalFreeMb` below `storage.minFreeMb`.
-**Not built yet:** `storage.cacheMaxMb` buys no cap; it is validated but has no runtime consumer
-(`src/config/schema.ts:235`).
