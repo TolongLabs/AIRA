@@ -184,6 +184,9 @@ media folders.
    for the turn, the newest first. A bare photo and the caption that follows it merge into one turn
    ([Reliability](reliability.md#batching)), so the caption's message is not the only one that counts. Files past
    those limits are not read and are not recorded as failures. A turn that runs a direct command reads nothing.
+   The files of a quoted message count as files of the message that quotes it: a member who replies to a picture or
+   a video, AIRA's own included, gets it watched, within the same limits. The gateway's bridge downloads the quoted
+   file and names it in that message's notes ([System](system.md#gateway-contract)).
 2. **Where from.** `media.gatewayDirs` lists `host` and `container` folder pairs. A path from a note is read only if,
    after `..` is resolved and every symlink is followed, it lies under one of the `host` folders. It is then opened
    at the same place under the paired `container` folder. A symlink that leaves the mounted folder, a path outside
