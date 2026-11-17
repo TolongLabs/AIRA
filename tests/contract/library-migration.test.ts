@@ -450,6 +450,35 @@ describe('library migration', () => {
     expect(lookupWord(storage, '未登録語')).toEqual([])
   })
 
+  it('a line lists its words as wiki links, as the old library writes them', () => {
+    const dir = tmpDir('aira-lib-links-')
+    writeMd(dir, 'vocab/moon.md', '---\ntitle: 月\ngloss_en: moon\n---\n')
+    writeMd(dir, 'grammar/while.md', '---\ntitle: 〜ながら\nexplanation: while doing\n---\n')
+    writeMd(
+      dir,
+      'songs/band/moon-song.md',
+      [
+        '---',
+        'title: Moon Song',
+        'artist: Band',
+        'lines:',
+        '  - i: 1',
+        '    ja: 月を見ながら',
+        '    vocab:',
+        "      - '[[月]]'",
+        "      - '[[〜ながら|while]]'",
+        '---',
+        ''
+      ].join('\n')
+    )
+    const storage = tmpStorage()
+    const real = applyLibraryImport(storage, planLibraryImport(dir), { now: () => NOW })
+    expect(real.seen).toBe(2)
+    const song = getSong(storage, 'Moon Song', 'Band')
+    if (!song || song === 'ambiguous') throw new Error('expected song')
+    expect(song.words.map((w) => w.word).sort()).toEqual(['〜ながら', '月'])
+  })
+
   it('the report never holds file contents', () => {
     const dir = tmpDir('aira-lib-secret-')
     const secrets = [
