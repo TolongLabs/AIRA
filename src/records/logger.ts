@@ -54,12 +54,20 @@ function serialise(value: unknown, redactor: Redactor, seen: WeakSet<object>): u
   return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, serialise(inner, redactor, seen)]))
 }
 
+/** A variable whose name marks it as a secret. Masking every value hid ordinary words such as `check` (#159). */
+const SECRET_NAME = /(KEY|TOKEN|SECRET|PASSWORD|PASS|CREDENTIALS?)$/i
+
+/** The values of the environment variables that hold secrets, for a logger built without its own redactor. */
+export function secretEnvValues(env: NodeJS.ProcessEnv): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [name, value] of Object.entries(env)) {
+    if (typeof value === 'string' && value !== '' && SECRET_NAME.test(name)) out[name] = value
+  }
+  return out
+}
+
 export function createLogger(options: LoggerOptions): Logger {
-  const redactor =
-    options.redactor ??
-    createRedactor({
-      secrets: Object.values(process.env).filter((value): value is string => typeof value === 'string')
-    })
+  const redactor = options.redactor ?? createRedactor({ secrets: secretEnvValues(process.env) })
   const sink = options.sink ?? ((line: string) => void process.stdout.write(line + '\n'))
   const now = options.now ?? (() => new Date())
 
