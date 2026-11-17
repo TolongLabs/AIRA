@@ -1,0 +1,193 @@
+{
+  "diagram_type": "workflow",
+  "edges": [
+    {
+      "from": "request",
+      "id": "e1",
+      "label": "resolve",
+      "to": "resolve"
+    },
+    {
+      "from": "resolve",
+      "id": "e2",
+      "label": "read rows",
+      "to": "read"
+    },
+    {
+      "from": "read",
+      "id": "e3",
+      "label": "rows",
+      "to": "check"
+    },
+    {
+      "from": "check",
+      "id": "e4",
+      "label": "gaps remain",
+      "to": "fallback"
+    },
+    {
+      "from": "fallback",
+      "id": "e5",
+      "label": "resolved",
+      "to": "resolved"
+    },
+    {
+      "from": "request",
+      "id": "e6",
+      "label": "set or unset",
+      "to": "write"
+    },
+    {
+      "from": "write",
+      "id": "e7",
+      "label": "validate",
+      "to": "checks"
+    },
+    {
+      "bias": 0.25,
+      "from": "checks",
+      "id": "e8",
+      "label": "valid",
+      "to": "tx"
+    },
+    {
+      "from": "tx",
+      "id": "e9",
+      "label": "logged",
+      "to": "applied"
+    }
+  ],
+  "lanes": [
+    {
+      "id": "caller",
+      "label": "Site And Commands"
+    },
+    {
+      "id": "core",
+      "label": "Settings Module"
+    },
+    {
+      "id": "store",
+      "label": "SQLite"
+    }
+  ],
+  "mainPath": ["request", "resolve", "read", "check", "fallback", "resolved"],
+  "meta": {
+    "output": ".archify/settings-resolution.html",
+    "quality_profile": "showcase",
+    "title": "Settings Resolution And Update",
+    "repository": {
+      "url": "https://github.com/TolongLabs/AIRA",
+      "provider": "github",
+      "revision": "163a320e5dfeaf636ffe3e4e4c389470d9567d35"
+    }
+  },
+  "nodes": [
+    {
+      "col": 0,
+      "id": "request",
+      "label": "Read or write request",
+      "lane": "caller",
+      "sublabel": "resolve, set or unset",
+      "type": "frontend"
+    },
+    {
+      "col": 1,
+      "id": "resolve",
+      "label": "resolveSettings",
+      "lane": "core",
+      "sources": [
+        {
+          "label": "nearest level wins",
+          "path": "src/settings/settings.ts",
+          "line": 38
+        }
+      ],
+      "sublabel": "chat, type, then global",
+      "type": "backend"
+    },
+    {
+      "col": 2,
+      "id": "read",
+      "label": "Read setting rows",
+      "lane": "store",
+      "sublabel": "chat, type, global order",
+      "type": "database"
+    },
+    {
+      "col": 3,
+      "id": "check",
+      "label": "definitionFor and parse",
+      "lane": "core",
+      "sources": [
+        {
+          "label": "unknown or bad rows skipped",
+          "path": "src/settings/settings.ts",
+          "line": 57
+        }
+      ],
+      "sublabel": "unknown or bad rows skipped",
+      "type": "backend"
+    },
+    {
+      "col": 4,
+      "id": "fallback",
+      "label": "Built-in defaults",
+      "lane": "core",
+      "sublabel": "or unset when none",
+      "type": "backend"
+    },
+    {
+      "col": 5,
+      "id": "resolved",
+      "label": "Values with levels",
+      "lane": "caller",
+      "sublabel": "site shows each level",
+      "type": "frontend"
+    },
+    {
+      "col": 1,
+      "id": "write",
+      "label": "setSetting, unsetSetting",
+      "lane": "core",
+      "sources": [
+        {
+          "label": "one transaction per write",
+          "path": "src/settings/settings.ts",
+          "line": 120
+        }
+      ],
+      "sublabel": "validate then write",
+      "type": "backend",
+      "yOffset": 110
+    },
+    {
+      "col": 2,
+      "id": "checks",
+      "label": "Scope and schema checks",
+      "lane": "core",
+      "sublabel": "unknown keys rejected",
+      "type": "backend",
+      "yOffset": 110
+    },
+    {
+      "col": 3,
+      "id": "tx",
+      "label": "One transaction",
+      "lane": "store",
+      "sublabel": "upsert and setting_change",
+      "type": "database",
+      "yOffset": 110
+    },
+    {
+      "col": 4,
+      "id": "applied",
+      "label": "Next turn applies it",
+      "lane": "caller",
+      "sublabel": "no restart needed",
+      "type": "frontend",
+      "yOffset": 110
+    }
+  ],
+  "schema_version": 2
+}

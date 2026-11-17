@@ -12,7 +12,8 @@ The SQLite file, its tables, the settings hierarchy, and which file owns which k
 | Chat setting       | SQLite `setting`                      | The site, or a command         | A chat's character             |
 | Everything durable | SQLite                                | The core only                  | Memory, records                |
 
-`config.yml` is validated at start-up against one schema. An unknown key or a wrong type stops start-up.
+`config.yml` is validated at start-up against one schema. An unknown key or a wrong type stops start-up. The loader
+is `src/config/loader.ts` and the schema is `src/config/schema.ts`, which also requires the host data volume path.
 
 ## The Database
 
@@ -33,6 +34,8 @@ copied is specified in [Persistence](storage.md). This module owns what the tabl
 | `chat_state`                                                                   | Runtime state by chat and character: last opener, sticker                                                    | [Prompt Engine](prompt-engine.md) |
 | `inbound_message`, `schema_migration`, `backup_run`, `file`                    | Inbound requests by chat and gateway message id, applied migrations, snapshot runs, files on the data volume | [Persistence](storage.md)         |
 
+![The data model: every table by domain, with columns, keys and foreign keys](../diagrams/data-erd.svg)
+
 ### Chats And Identities
 
 Record tables and logs never hold a WhatsApp id. Code maps each one to an internal id at the door.
@@ -43,6 +46,12 @@ Record tables and logs never hold a WhatsApp id. Code maps each one to an intern
   migration or an operator command sets a chat `active`.
 - **Subject.** `identity` maps each WhatsApp id of a person to one `subject_id`. A sender seen for the first time
   gets a new subject. Two ids of one person are joined by the site or the migration, never by a model.
+- **Ids.** A new chat id starts with `c_` and a new subject id with `s_`, each followed by 12 lowercase hex
+  characters from 6 random bytes. They never change, and record tables use them instead of WhatsApp ids.
+- **Display names.** The gateway's display name for a sender is kept on the identity, for names in the prompt and in
+  mentions. The change log never stores a WhatsApp id or a label.
+
+Chats, subjects and display names live in `src/settings/chats.ts`.
 
 ## Settings Hierarchy
 
@@ -101,16 +110,32 @@ The primary key is `(level, scope, key)`. Deleting a row at a level restores inh
 | `footerEmoji`            | One emoji, at most 8 characters                                                          | unset: the card's icon  |
 | `mcp.<server id>`        | Boolean                                                                                  | `false`                 |
 
+**Not built yet:** `report.defaultFormat` is not in the settings registry, so a write to it is rejected as unknown
+(`src/settings/keys.ts`).
+
 Each optional chat feature is one `features.*` key. A tool or behaviour names the key that enables it.
+
+The `mcp.<server id>` keys are dynamic: the part after `mcp.` holds 1 to 32 lowercase letters, digits, `_` or `-`.
+Every such key defaults to `false`.
+
+The registry is `src/settings/keys.ts`. It is the only list that decides which keys exist: an unknown key is
+rejected at write time and at read time.
 
 ### Resolution Rules
 
 - `resolve(chat)` returns every key with its value and the level it came from. The site shows that level.
 - A value that fails its schema is rejected at write time. The store never holds an invalid value.
+- A stored row that is not valid JSON, or that fails its key's schema, is skipped at read time. Resolution falls
+  through to the less-specific level, then to the built-in default. A bad row never reaches a turn.
 - A `character` that names a missing or invalid pack makes the binding invalid. The chat stops and the operator is
   alerted. Resolution never substitutes another character.
 - Every write goes through one function that validates, writes and logs the change in one transaction.
 - A change applies to the next turn. No restart is needed.
+
+Resolution, writes and removal live in `src/settings/settings.ts`.
+
+![How a chat setting resolves through global, type and chat levels, and how a site write is validated and
+logged](../diagrams/settings-resolution.svg)
 
 ## Migration From The Old Store
 
