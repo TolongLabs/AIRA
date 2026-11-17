@@ -69,6 +69,22 @@ A role's `provider` decides the request shape. Both providers serve both roles.
 - The subscription runner passes `llm.main.effort` to the program as `--effort`, and `medium` when it is empty,
   which is Claude Haiku 5.5's own default.
 
+### Deeper Thinking
+
+A member asks for one deeper turn by starting the message with `/think` (PRD FR-45).
+
+- **Prefix.** `/think` as the first word of the newest message, in any case, followed by a space or the end of the
+  message. Code removes it before the text is stored or reaches the model. Anywhere else in a message it is ordinary
+  text. It is not a tool command and is not listed by `/help` as one; `/help` names it in one line.
+- **Effort.** That turn runs the main role at `llm.main.deepEffort` (default `high`) and the fallback at
+  `llm.fallback.deepEffort` (default `max`), each checked against its provider's list as `effort` is. Empty means
+  the role's normal `effort`. The subscription runner passes `deepEffort` as `--effort`. Memory, the judge and media
+  keep their own settings.
+- **Switch.** `features.think` (default on) turns the prefix on per chat. Off: the prefix is removed and the turn runs
+  at normal effort, so the member's text still reads naturally.
+- **Record.** The turn record stores the effort each model call used and `think: true` when the prefix raised it.
+- Raising effort without the prefix, from reply-shape signals, is not built (FR-45 optional part).
+
 ### Turn State Of A Provider
 
 A thinking model returns state that must come back with the next request of the same loop: Claude's thinking
