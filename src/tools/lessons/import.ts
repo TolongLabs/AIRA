@@ -9,6 +9,7 @@ import { extractLinks, keyOf, songKeyOf } from './store.js'
 // Pure planner reads the source into a plan with a report; the applier writes in one transaction and never overwrites.
 
 export type FolderName = 'vocab' | 'grammar' | 'songs' | 'artists'
+const WIKI_LINK = /^\s*\[\[([^\]|]+)(?:\|[^\]]*)?\]\]\s*$/
 const FOLDERS: readonly FolderName[] = ['vocab', 'grammar', 'songs', 'artists']
 
 const MAX_TITLE_CHARS = 120
@@ -418,7 +419,8 @@ function parseSongLine(
         rejections.push({ folder: 'songs', file, reason: 'invalid_line_vocab', position: pos })
         return undefined
       }
-      const wKey = keyOf(v)
+      // The old library writes a line's words as wiki links, `[[word]]` or `[[word|shown text]]`.
+      const wKey = keyOf(WIKI_LINK.exec(v)?.[1] ?? v)
       if (wKey !== '' && !seenKeys.has(wKey)) {
         seenKeys.add(wKey)
         vocabKeys.push(wKey)
