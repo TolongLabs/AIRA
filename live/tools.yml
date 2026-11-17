@@ -1,0 +1,15 @@
+name: tools
+description: Invented messages that a real model must answer by calling a tool
+cases:
+  - prompt: search the web for the tallest mountain in Borneo and tell me its height
+    expect: { tools: [web_search] }
+  - prompt: look up who won the most recent Formula 1 world championship
+    expect: { tools: [web_search] }
+  - prompt: read https://example.com and tell me what the page says
+    expect: { tools: [read_page, web_search] }
+  - prompt: remind me to drink water in 2 hours
+    expect: { tools: [reminder_set] }
+  - prompt: what reminders do I have right now?
+    expect: { tools: [reminder_list] }
+  - prompt: find out when the next total solar eclipse is visible from Asia
+    expect: { tools: [web_search] }

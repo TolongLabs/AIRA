@@ -122,25 +122,30 @@ export async function sendBenchRequest(
 
 export interface ChatSession {
   /** Sends one message as one invented member of one invented chat, and returns what came back. */
-  send(
-    text: string
-  ): Promise<{ content: string; ms: number; turn: Record<string, unknown> | undefined; toolCalls: number }>
+  send(text: string): Promise<{
+    content: string
+    ms: number
+    turn: Record<string, unknown> | undefined
+    toolCalls: number
+    /** The names of the tools the turn called, in call order. */
+    tools: string[]
+  }>
   close(): Promise<void>
 }
 
 type TurnRow = Record<string, unknown>
 
-function readNewestTurn(app: App): { turn: TurnRow | undefined; toolCalls: number } {
+function readNewestTurn(app: App): { turn: TurnRow | undefined; toolCalls: number; tools: string[] } {
   return app.storage.read((db) => {
     const sql = 'SELECT * FROM turn ORDER BY received_at DESC, rowid DESC LIMIT 1'
     const turn = db.prepare(sql).get() as TurnRow | undefined
     if (!turn || typeof turn['turn_id'] !== 'string') {
-      return { turn: undefined, toolCalls: 0 }
+      return { turn: undefined, toolCalls: 0, tools: [] }
     }
-    const row = db.prepare('SELECT COUNT(*) AS n FROM tool_call WHERE turn_id = ?').get(turn['turn_id']) as {
-      n: number
-    }
-    return { turn, toolCalls: row.n }
+    const rows = db.prepare('SELECT tool FROM tool_call WHERE turn_id = ? ORDER BY id').all(turn['turn_id']) as {
+      tool: string
+    }[]
+    return { turn, toolCalls: rows.length, tools: rows.map((row) => row.tool) }
   })
 }
 
@@ -218,9 +223,9 @@ export async function openChatSession(options: {
         const ms = Math.round(performance.now() - start)
         const newest = readNewestTurn(app)
         // A request that opened no turn must not be reported with the numbers of the turn before it.
-        if (newest.turn?.['turn_id'] === lastTurnId) return { content, ms, turn: undefined, toolCalls: 0 }
+        if (newest.turn?.['turn_id'] === lastTurnId) return { content, ms, turn: undefined, toolCalls: 0, tools: [] }
         lastTurnId = newest.turn?.['turn_id']
-        return { content, ms, turn: newest.turn, toolCalls: newest.toolCalls }
+        return { content, ms, turn: newest.turn, toolCalls: newest.toolCalls, tools: newest.tools }
       },
       async close() {
         try {

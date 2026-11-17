@@ -26,6 +26,7 @@
     "turn": "tsx scripts/turn.ts",
     "report": "tsx scripts/report.ts",
     "bench": "tsx scripts/bench.ts",
+    "live": "tsx scripts/live.ts",
     "chat": "tsx scripts/chat.ts",
     "sim": "tsx scripts/sim.ts",
     "pack:check": "tsx scripts/pack-check.ts",
