@@ -27,6 +27,8 @@ Each diagram has a JSON source in `src/` and a committed SVG beside this file. D
 | `turn-record`         | Turn Record Lifecycle                        | `docs/trd/records.md`                       |
 | `report-render`       | Report Render, From Document To PDF          | `docs/trd/research.md`                      |
 | `research-job`        | Research Job, From Command To PDF Offer      | `docs/trd/research.md`                      |
+| `quoted-media`        | Quoted Media Watch                           | `docs/trd/models.md`                        |
+| `youtube-watch`       | YouTube Segment Watch                        | `docs/trd/models.md`                        |
 | `cleaning-chain`      | Reply Cleaning Chain, Bubbles and Sticker    | `docs/trd/prompt-engine.md`                 |
 | `data-erd`            | AIRA Data Model                              | `docs/trd/data.md`                          |
 | `forget-barrier`      | Forget Barrier                               | `docs/trd/memory.md`                        |
