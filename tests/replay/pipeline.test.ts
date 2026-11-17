@@ -1013,6 +1013,8 @@ describe('intake footer kinds and URLs in pipeline', () => {
     const r3 = await core.gateway.send(msg('m-3', 'read https://x.com/u/status/99'))
     expect(runner.inputs[2]?.context.intakeKinds).toEqual(['media_post'])
     expect(runner.inputs[2]?.context.intakeUrls).toEqual(['https://x.com/i/status/99'])
+    // Text alone does not close the link: read_post still returns the replies and the media.
+    expect(runner.inputs[2]?.context.intakeWatchedUrls).toEqual([])
     expect(r3.content).toBe('Here is what i saw\n\n_🛠️ read a post_\n_🔗 x.com_')
 
     mode = 'unreadable'
