@@ -76,6 +76,7 @@ validation as start-up and is logged to `setting_change`.
 | `GET /api/report`     | The figures of `bun run report`: latency, failures, cost and fallback rate                                                                                                                                 |
 | `GET /api/memory`     | With `chat` (required): that chat's memory items: id, kind, subject, key, value, status, updated time                                                                                                      |
 | `GET /api/characters` | `characters`: each loaded pack's id, display name, source (`repository` or `data`) and languages. `faults`: each pack that did not load, with its id and reason. Prompt size comes with the studio (FR-41) |
+| `GET /api/tools`      | `features`: tools grouped by feature `key`, each with `name`, `mode` (`implicit`, `explicit` or `both`) and slash-prefixed `commands`, read from the registry                                              |
 
 ### Write Routes
 
@@ -102,6 +103,7 @@ still never hold one.
 
 ## Hierarchy Editing
 
+- Feature switches show registry-derived Implicit, Explicit or Both chips, with hover and keyboard-focus tooltips.
 - The Chats page shows, for each key, the resolved value and a marker: inherited from global, inherited from chat
   type, or set here.
 - Setting a value writes one row at the chosen level. Clearing it deletes the row and restores inheritance.
