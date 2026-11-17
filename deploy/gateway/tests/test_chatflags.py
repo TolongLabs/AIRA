@@ -118,6 +118,36 @@ class ChatFlagsTest(unittest.TestCase):
             self.assertEqual(chatflags.names(group_names), [])
             self.assertFalse(chatflags.free(group_names))
 
+    def test_names_and_free_stay_off_for_wrong_version_false_values_and_other_flags(self):
+        group_a = "12345678901@g.us"
+        group_b = "123456789012@g.us"
+
+        with self.env(self.dir.name):
+            self.assertEqual(chatflags.names(None), [])
+            self.assertFalse(chatflags.free(None))
+            self.assertEqual(chatflags.names(""), [])
+            self.assertFalse(chatflags.free(""))
+
+            self.file.write_text(
+                json.dumps({"version": 2, "chats": {group_a: {"names": ["Aira"], "free": True}}}),
+                encoding="utf-8",
+            )
+            os.utime(self.file, ns=(8_500_000_000, 8_500_000_000))
+            self.assertEqual(chatflags.names(group_a), [])
+            self.assertFalse(chatflags.free(group_a))
+
+            self.write_flags(
+                {
+                    group_a: {"voice": "all", "reactions": True, "free": False, "names": ["   ", ""]},
+                    group_b: {"voice": "all"},
+                },
+                mtime_ns=9_000_000_000,
+            )
+            self.assertEqual(chatflags.names(group_a), [])
+            self.assertFalse(chatflags.free(group_a))
+            self.assertEqual(chatflags.names(group_b), [])
+            self.assertFalse(chatflags.free(group_b))
+
     def test_reaction_chance_reads_clamps_defaults_and_never_raises(self):
         group_a = "0000000000@g.us"
         group_b = "12345678901@g.us"
