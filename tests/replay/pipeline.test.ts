@@ -1,12 +1,21 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { createReplyCleaner } from '../../src/format/clean.js'
 import { scheduledTag } from '../../src/gateway/schedule.js'
+import type { TurnMedia } from '../../src/media/turn-media.js'
+import { createLogger } from '../../src/records/logger.js'
+import { createRedactor } from '../../src/records/redact.js'
 import { setSetting } from '../../src/settings/settings.js'
+import type { SocialPost } from '../../src/social/types.js'
 import type { Storage } from '../../src/storage/database.js'
+import { createCommandRouter } from '../../src/tools/commands.js'
+import { registerCoreTools } from '../../src/tools/core/index.js'
+import { createToolRegistry } from '../../src/tools/registry.js'
 import type { GatewayMessage } from '../harness/gateway.js'
 import { loadScenario, scenarioIds, scenarioMessages } from '../harness/scenario.js'
 import { addPack, modelError, scriptedRunner, startTestCore, testConfig } from '../support/core.js'
+import { tmpDir } from '../support/tmp.js'
 
 // The turn pipeline, driven through the fake gateway over HTTP (docs/trd/harness.md#principle).
 
@@ -792,5 +801,184 @@ describe('names, mentions and name calls in a group', () => {
     core.activate(CHAT)
     expect((await core.gateway.send(named('m-1', 'oi', '123456@lid', 'Alice'))).content).toBe('here')
     expect(runner.inputs).toHaveLength(1)
+  })
+})
+
+describe('intake footer kinds and URLs in pipeline', () => {
+  const makePost = (platform: SocialPost['platform'], canonicalUrl: string): SocialPost => ({
+    platform,
+    id: 'id1',
+    canonicalUrl,
+    target: { platform, id: 'id1' } as SocialPost['target'],
+    authorHandle: 'user',
+    authorName: 'User',
+    createdAt: null,
+    text: 'post text',
+    quotedText: '',
+    quotedAuthorHandle: '',
+    photoCount: 0,
+    videoCount: 0,
+    imageUrl: null,
+    externalTitle: '',
+    replyCount: null,
+    durationSec: null,
+    video: null
+  })
+
+  it('a YouTube link whose watch failed adds no footer kind and stays open to read_page', async () => {
+    const runner = scriptedRunner(() => 'here is the page')
+    const media: TurnMedia = {
+      async read() {
+        return { readings: [], unreadable: [], calls: [] }
+      },
+      async readLink() {
+        return {
+          readings: [],
+          links: [{ post: makePost('youtube', 'https://www.youtube.com/watch?v=yt404'), mediaKind: 'video' }],
+          unreadable: [{ kind: 'YouTube video', reason: 'unreadable' }],
+          calls: []
+        }
+      }
+    }
+    const config = testConfig()
+    const core = await startTestCore({ runner, config, deps: { media, cleaner: createReplyCleaner(config) } })
+    core.activate(CHAT)
+    await core.gateway.send(msg('m-1', 'explain https://youtu.be/yt404'))
+    expect(runner.inputs[0]?.context.intakeKinds).toEqual([])
+    expect(runner.inputs[0]?.context.intakeUrls).toEqual([])
+  })
+
+  it('pipeline: intakeKinds and intakeUrls follow combined readings and links', async () => {
+    const runner = scriptedRunner(() => 'here is what i saw')
+    let mode: 'files_and_yt' | 'social_image' | 'social_text' | 'unreadable' = 'files_and_yt'
+    const media: TurnMedia = {
+      async read() {
+        if (mode === 'unreadable') {
+          return { readings: [], unreadable: [{ kind: 'image', reason: 'too large' }], calls: [] }
+        }
+        if (mode === 'files_and_yt') {
+          return {
+            readings: [
+              { kind: 'image', reading: { description: 'An image.' } },
+              { kind: 'video', reading: { description: 'A video.' } }
+            ],
+            unreadable: [{ kind: 'document', reason: 'missing' }],
+            calls: []
+          }
+        }
+        return { readings: [], unreadable: [], calls: [] }
+      },
+      async readLink() {
+        if (mode === 'files_and_yt') {
+          return {
+            readings: [],
+            links: [
+              {
+                post: makePost('youtube', 'https://www.youtube.com/watch?v=yt123'),
+                mediaKind: 'video',
+                reading: { description: 'A YouTube clip.' }
+              }
+            ],
+            unreadable: [],
+            calls: []
+          }
+        }
+        if (mode === 'social_image') {
+          return {
+            readings: [],
+            links: [
+              {
+                post: makePost('x', 'https://x.com/i/status/42'),
+                mediaKind: 'image',
+                reading: { description: 'A post photo.' }
+              }
+            ],
+            unreadable: [],
+            calls: []
+          }
+        }
+        if (mode === 'social_text') {
+          return {
+            readings: [],
+            links: [{ post: makePost('x', 'https://x.com/i/status/99') }],
+            unreadable: [],
+            calls: []
+          }
+        }
+        return { readings: [], unreadable: [{ kind: 'X link', reason: 'link' }], calls: [] }
+      }
+    }
+
+    const config = testConfig()
+    const core = await startTestCore({
+      runner,
+      config,
+      deps: {
+        media,
+        cleaner: createReplyCleaner(config)
+      }
+    })
+    core.activate(CHAT)
+
+    const r1 = await core.gateway.send({
+      ...msg('m-1', 'check https://youtu.be/yt123'),
+      media: [{ kind: 'image', path: '/host/a.jpg' }]
+    })
+    expect(runner.inputs[0]?.context.intakeKinds).toEqual(['media_image', 'media_video', 'media_youtube'])
+    expect(runner.inputs[0]?.context.intakeUrls).toEqual(['https://www.youtube.com/watch?v=yt123'])
+    expect(r1.content).toBe('Here is what i saw\n\n_🛠️ looked at an image · watched a video_\n_🔗 youtube.com_')
+
+    mode = 'social_image'
+    const r2 = await core.gateway.send(msg('m-2', 'look https://x.com/u/status/42'))
+    expect(runner.inputs[1]?.context.intakeKinds).toEqual(['media_image'])
+    expect(runner.inputs[1]?.context.intakeUrls).toEqual(['https://x.com/i/status/42'])
+    expect(r2.content).toBe('Here is what i saw\n\n_🛠️ looked at an image_\n_🔗 x.com_')
+
+    mode = 'social_text'
+    const r3 = await core.gateway.send(msg('m-3', 'read https://x.com/u/status/99'))
+    expect(runner.inputs[2]?.context.intakeKinds).toEqual(['media_post'])
+    expect(runner.inputs[2]?.context.intakeUrls).toEqual(['https://x.com/i/status/99'])
+    expect(r3.content).toBe('Here is what i saw\n\n_🛠️ read a post_\n_🔗 x.com_')
+
+    mode = 'unreadable'
+    const r4 = await core.gateway.send({
+      ...msg('m-4', 'broken https://x.com/u/status/1'),
+      media: [{ kind: 'image', path: '/host/bad.jpg' }]
+    })
+    expect(runner.inputs[3]?.context.intakeKinds).toEqual([])
+    expect(runner.inputs[3]?.context.intakeUrls).toEqual([])
+    expect(r4.content).toBe('Here is what i saw')
+  })
+
+  it('gives a direct command no footer even when createReplyCleaner is wired with toolsOk', async () => {
+    const config = testConfig()
+    const runner = scriptedRunner(() => 'unused')
+    const core = await startTestCore({ runner, config })
+    const registry = createToolRegistry({
+      storage: core.storage,
+      config: { tools: { defaultTimeoutMs: 500 } },
+      logger: createLogger({ level: 'error', module: 'pipeline-test', sink: () => {} }),
+      redactor: createRedactor()
+    })
+    registerCoreTools(registry, { filesDir: tmpDir('aira-files-') })
+
+    const cmdCore = await startTestCore({
+      runner,
+      config,
+      deps: {
+        commands: createCommandRouter(registry),
+        tools: registry,
+        cleaner: createReplyCleaner(
+          config,
+          () => registry.toolNames(),
+          () => ['help'],
+          () => []
+        )
+      }
+    })
+    cmdCore.activate(CHAT)
+    const delivery = await cmdCore.gateway.send(msg('m-cmd', '/help'))
+    expect(delivery.content).toContain('Commands in this chat:')
+    expect(delivery.content).not.toContain('_🛠️')
   })
 })

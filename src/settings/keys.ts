@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { footerEmojiSchema } from '../character/schema.js'
 import { reportFormatSchema } from '../render/types.js'
 
 // Registry of setting keys and their schemas (docs/trd/data.md#setting-keys).
@@ -116,14 +117,7 @@ export const SETTING_KEYS: Record<string, SettingDefinition> = {
   'tools.maxPerMessage': { schema: z.number().int().min(1).max(8), default: 3 },
   'features.owner': { schema: z.boolean(), default: false },
   footerEmoji: {
-    schema: z
-      .string()
-      .min(1)
-      .max(8)
-      .refine(
-        (value) => /\p{Extended_Pictographic}/u.test(value) && !/[\p{L}\p{N}\s]/u.test(value),
-        'must be one emoji'
-      )
+    schema: footerEmojiSchema
   }
 }
 

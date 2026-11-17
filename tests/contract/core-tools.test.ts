@@ -332,6 +332,77 @@ describe('core tools', () => {
     expect(badPhoto).toMatchObject({ ok: false, kind: 'invalid' })
   })
 
+  it('read_page: refuses a URL read at intake as "already read at intake"; works when intake did not read it', async () => {
+    const seenPages: string[] = []
+    const { storage, registry, makeCtx } = setup({
+      page: {
+        async read(url) {
+          seenPages.push(url)
+          return { title: `Title of ${url}`, text: 'Body' }
+        },
+        async download() {
+          return { data: Buffer.from(''), contentType: 'text/plain' }
+        }
+      }
+    })
+    const ctx = makeCtx()
+    ctx.intakeUrls = ['https://x.com/i/status/1']
+
+    const refused = await registry.call('read_page', { url: 'https://twitter.com/user/status/1' }, ctx, {
+      callId: 'c-rp-refused',
+      source: 'model'
+    })
+    expect(refused).toEqual({ ok: false, kind: 'refused', reason: 'already read at intake' })
+    expect(seenPages).toEqual([])
+    expect(registry.takeSources(ctx.turnId)).toEqual([])
+    expect(
+      storage.read((db) => db.prepare('SELECT outcome FROM tool_call WHERE turn_id = ?').pluck().get(ctx.turnId))
+    ).toBe('refused')
+
+    const allowed = await registry.call('read_page', { url: 'https://example.com/article' }, ctx, {
+      callId: 'c-rp-ok',
+      source: 'model'
+    })
+    expect(allowed).toEqual({ ok: true, data: { title: 'Title of https://example.com/article', text: 'Body' } })
+    expect(seenPages).toEqual(['https://example.com/article'])
+    expect(registry.takeSources(ctx.turnId)).toEqual(['https://example.com/article'])
+  })
+
+  it('read_post: refuses a YouTube short link whose canonical URL was read at intake', async () => {
+    const seenPosts: string[] = []
+    const { registry, makeCtx } = setup({
+      post: {
+        async read(url) {
+          seenPosts.push(url)
+          return { author: 'chan', text: `Post ${url}`, media: [] }
+        }
+      }
+    })
+    const ctx = makeCtx()
+    ctx.intakeUrls = ['https://www.youtube.com/watch?v=dQw4w9WgXcQ']
+
+    const shortRefused = await registry.call('read_post', { url: 'https://youtu.be/dQw4w9WgXcQ?t=15' }, ctx, {
+      callId: 'c-rpost-yt-short',
+      source: 'model'
+    })
+    expect(shortRefused).toEqual({ ok: false, kind: 'refused', reason: 'already read at intake' })
+
+    const shortsRefused = await registry.call('read_post', { url: 'https://www.youtube.com/shorts/dQw4w9WgXcQ' }, ctx, {
+      callId: 'c-rpost-yt-shorts',
+      source: 'model'
+    })
+    expect(shortsRefused).toEqual({ ok: false, kind: 'refused', reason: 'already read at intake' })
+    expect(seenPosts).toEqual([])
+    expect(registry.takeSources(ctx.turnId)).toEqual([])
+
+    const otherOk = await registry.call('read_post', { url: 'https://youtu.be/otherVideo99' }, ctx, {
+      callId: 'c-rpost-other',
+      source: 'model'
+    })
+    expect(otherOk).toMatchObject({ ok: true })
+    expect(seenPosts).toEqual(['https://youtu.be/otherVideo99'])
+  })
+
   it('reminders: set, list, cancel, isolation and failure cases', async () => {
     const fakes = makeFakePorts()
     const now = () => new Date('2026-11-16T00:00:00.000Z')

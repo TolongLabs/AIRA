@@ -1,14 +1,16 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { request as httpRequest } from 'node:http'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { hostAllowed, originAllowed } from '../../src/api/writes.js'
+import { buildFooter } from '../../src/format/footer.js'
 import { applyOperation } from '../../src/memory/store.js'
 import { ModelError } from '../../src/models/types.js'
 import { ensureChat } from '../../src/settings/chats.js'
 import { setSetting } from '../../src/settings/settings.js'
 import { type Answer, CHAT, msg, queueModel, startApp } from '../support/app.js'
+import { addPack } from '../support/core.js'
 import { tmpDir } from '../support/tmp.js'
 
 const TOKEN = 'test-site-token-0123456789abcdefghijklmn' // 40 invented characters
@@ -469,19 +471,256 @@ describe('serving the site', () => {
   })
 })
 
+function writeFooter(siteUrl: string, id: string, body: unknown, method = 'PUT') {
+  return fetch(`${siteUrl}/api/characters/${id}/footer`, {
+    method,
+    headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+}
+
+function addCleanDataPack(dataDir: string, id: string, comment?: string): string {
+  addPack(dataDir, id)
+  const cardPath = join(dataDir, 'characters', id, 'card.yml')
+  const raw = readFileSync(cardPath, 'utf8').replace(/\ntoolFooter:[\s\S]*$/, '\n')
+  writeFileSync(cardPath, comment ? `# ${comment}\n${raw}` : raw, 'utf8')
+  return cardPath
+}
+
 describe('site API characters', () => {
   it('lists the loaded packs with their names and sources, and the packs that did not load', async () => {
     const { siteUrl } = await startWithSite()
     const res = await apiFetch(siteUrl, '/api/characters', { token: TOKEN })
     expect(res.status).toBe(200)
     const body = (await res.json()) as {
-      characters: { id: string; displayName: string; source: string; languages: string[] }[]
+      characters: { id: string; displayName: string; source: string; languages: string[]; toolFooter: unknown }[]
       faults: unknown[]
+      footerKinds: { kind: string; defaultLabel: string }[]
     }
     expect(body.characters.map((pack) => pack.id)).toContain('example')
     const example = body.characters.find((pack) => pack.id === 'example')
     expect(example?.source).toBe('repository')
     expect(typeof example?.displayName).toBe('string')
     expect(Array.isArray(body.faults)).toBe(true)
+    expect(Array.isArray(body.footerKinds)).toBe(true)
+  })
+
+  it('site-api: GET /api/characters lists toolFooter per pack and footerKinds with defaults', async () => {
+    const { dataDir, siteUrl } = await startWithSite()
+    addCleanDataPack(dataDir, 'custom')
+    const res = await apiFetch(siteUrl, '/api/characters', { token: TOKEN })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      characters: {
+        id: string
+        source: string
+        toolFooter: { icon?: string; labels?: Record<string, string> }
+      }[]
+      footerKinds: { kind: string; defaultLabel: string }[]
+    }
+    const example = body.characters.find((c) => c.id === 'example')
+    expect(example?.toolFooter).toEqual({
+      labels: {
+        media_video: 'watched a video',
+        media_youtube: 'watched a video',
+        media_image: 'looked at an image',
+        media_audio: 'listened to audio',
+        media_document: 'read a document',
+        media_post: 'read a post'
+      }
+    })
+    const custom = body.characters.find((c) => c.id === 'custom')
+    expect(custom?.source).toBe('data')
+    expect(custom?.toolFooter).toEqual({})
+
+    const kinds = body.footerKinds.map((entry) => entry.kind)
+    expect(kinds).toEqual([...kinds].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)))
+    expect(body.footerKinds).toEqual(
+      expect.arrayContaining([
+        { kind: 'media_video', defaultLabel: 'watched a video' },
+        { kind: 'media_youtube', defaultLabel: 'watched a video' },
+        { kind: 'research_start', defaultLabel: 'started research' },
+        { kind: 'report_pdf', defaultLabel: 'made a PDF' },
+        { kind: 'web_search', defaultLabel: 'searched the web' },
+        { kind: 'market_quote', defaultLabel: 'used market quote' }
+      ])
+    )
+  })
+
+  it('site-api: PUT footer sets a label, writes one setting_change row of target pack, and the next packs() sees it', async () => {
+    const { app, dataDir, siteUrl } = await startWithSite()
+    const cardPath = addCleanDataPack(dataDir, 'custom', 'keep this comment')
+
+    const res = await writeFooter(siteUrl, 'custom', {
+      icon: '🧪',
+      labels: { media_video: '  watched a clip  ' }
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({
+      id: 'custom',
+      toolFooter: { icon: '🧪', labels: { media_video: 'watched a clip' } },
+      changed: true
+    })
+
+    const changes = app.storage.read((db) =>
+      db
+        .prepare(
+          "SELECT target, actor, level, scope, key, old_value, new_value FROM setting_change WHERE target = 'pack' ORDER BY id"
+        )
+        .all()
+    )
+    expect(changes).toEqual([
+      {
+        target: 'pack',
+        actor: 'site',
+        level: null,
+        scope: 'custom',
+        key: 'toolFooter.icon',
+        old_value: null,
+        new_value: '"🧪"'
+      },
+      {
+        target: 'pack',
+        actor: 'site',
+        level: null,
+        scope: 'custom',
+        key: 'toolFooter.labels.media_video',
+        old_value: null,
+        new_value: '"watched a clip"'
+      }
+    ])
+
+    const pack = app.packs().packs.get('custom')
+    expect(pack?.card.toolFooter).toEqual({ icon: '🧪', labels: { media_video: 'watched a clip' } })
+    expect(readFileSync(cardPath, 'utf8')).toContain('# keep this comment')
+  })
+
+  it('site-api: PUT footer with null removes the key and the default applies', async () => {
+    const { app, dataDir, siteUrl } = await startWithSite()
+    const cardPath = addCleanDataPack(dataDir, 'custom')
+
+    expect(
+      (await writeFooter(siteUrl, 'custom', { icon: '🧪', labels: { media_video: 'watched a clip' } })).status
+    ).toBe(200)
+
+    const clearOne = await writeFooter(siteUrl, 'custom', { labels: { media_video: null } })
+    expect(clearOne.status).toBe(200)
+    expect(await clearOne.json()).toEqual({
+      id: 'custom',
+      toolFooter: { icon: '🧪' },
+      changed: true
+    })
+    expect(readFileSync(cardPath, 'utf8')).not.toContain('labels:')
+
+    const clearIcon = await writeFooter(siteUrl, 'custom', { icon: null })
+    expect(clearIcon.status).toBe(200)
+    expect(await clearIcon.json()).toEqual({
+      id: 'custom',
+      toolFooter: {},
+      changed: true
+    })
+    expect(readFileSync(cardPath, 'utf8')).not.toContain('toolFooter:')
+
+    const pack = app.packs().packs.get('custom')
+    expect(pack?.card.toolFooter).toBeUndefined()
+    expect(buildFooter(['media_video'], pack?.card.toolFooter)).toBe('_🛠️ watched a video_')
+  })
+
+  it('site-api: PUT footer on a repository pack is 409 pack_read_only', async () => {
+    const { siteUrl } = await startWithSite()
+    const res = await writeFooter(siteUrl, 'example', { labels: { web_search: 'looked online' } })
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ error: 'pack_read_only' })
+  })
+
+  it('site-api: PUT footer on an unparseable card.yml is 409 pack_unparseable and leaves the file byte-identical', async () => {
+    const { dataDir, siteUrl } = await startWithSite()
+    const cardPath = addCleanDataPack(dataDir, 'broken')
+    const brokenBytes = Buffer.from('id: [unclosed\n# secret parser line\n', 'utf8')
+    writeFileSync(cardPath, brokenBytes)
+
+    const res = await writeFooter(siteUrl, 'broken', { labels: { web_search: 'looked online' } })
+    expect(res.status).toBe(409)
+    const text = await res.text()
+    expect(JSON.parse(text)).toEqual({ error: 'pack_unparseable' })
+    expect(text).not.toContain('secret parser line')
+    expect(readFileSync(cardPath).equals(brokenBytes)).toBe(true)
+
+    const invalidSchemaBytes = Buffer.from('id: broken\ndisplayName: Broken\n', 'utf8')
+    writeFileSync(cardPath, invalidSchemaBytes)
+    const res2 = await writeFooter(siteUrl, 'broken', { labels: { web_search: 'looked online' } })
+    expect(res2.status).toBe(409)
+    expect(await res2.json()).toEqual({ error: 'pack_unparseable' })
+    expect(readFileSync(cardPath).equals(invalidSchemaBytes)).toBe(true)
+  })
+
+  it('site-api: PUT footer with an unknown kind is 400 unknown_footer_kind', async () => {
+    const { dataDir, siteUrl } = await startWithSite()
+    addCleanDataPack(dataDir, 'custom')
+    const res = await writeFooter(siteUrl, 'custom', { labels: { no_such_tool: 'did something' } })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'unknown_footer_kind' })
+  })
+
+  it('site-api: an unchanged PUT returns changed false and writes no row', async () => {
+    const { app, dataDir, siteUrl } = await startWithSite()
+    addCleanDataPack(dataDir, 'custom')
+
+    expect((await writeFooter(siteUrl, 'custom', { icon: '🧪', labels: { web_search: 'searched' } })).status).toBe(200)
+    const countBefore = app.storage.read((db) =>
+      Number(db.prepare("SELECT count(*) FROM setting_change WHERE target = 'pack'").pluck().get())
+    )
+
+    const repeat = await writeFooter(siteUrl, 'custom', { icon: '🧪', labels: { web_search: 'searched' } })
+    expect(repeat.status).toBe(200)
+    expect(await repeat.json()).toEqual({
+      id: 'custom',
+      toolFooter: { icon: '🧪', labels: { web_search: 'searched' } },
+      changed: false
+    })
+
+    const noop = await writeFooter(siteUrl, 'custom', {})
+    expect(noop.status).toBe(200)
+    expect(await noop.json()).toMatchObject({ changed: false })
+
+    const countAfter = app.storage.read((db) =>
+      Number(db.prepare("SELECT count(*) FROM setting_change WHERE target = 'pack'").pluck().get())
+    )
+    expect(countAfter).toBe(countBefore)
+  })
+
+  it('rejects invalid footer values, unknown packs, bad escapes, wrong methods and rolls back failed loadPack', async () => {
+    const { app, dataDir, siteUrl } = await startWithSite()
+    const cardPath = addCleanDataPack(dataDir, 'custom')
+
+    expect((await writeFooter(siteUrl, 'missing_pack', { icon: '🧪' })).status).toBe(404)
+    expect((await writeFooter(siteUrl, '%ZZ', { icon: '🧪' })).status).toBe(400)
+    expect((await writeFooter(siteUrl, 'custom', { icon: '🧪' }, 'POST')).status).toBe(405)
+
+    for (const badBody of [
+      { icon: 'not-emoji' },
+      { icon: '🛠️_' },
+      { labels: { web_search: 'has_underscore' } },
+      { labels: { web_search: 'line1\nline2' } },
+      { labels: { web_search: '   ' } },
+      { labels: { web_search: 'a'.repeat(41) } }
+    ]) {
+      const badRes = await writeFooter(siteUrl, 'custom', badBody)
+      expect(badRes.status, JSON.stringify(badBody)).toBe(400)
+      expect(await badRes.json()).toEqual({ error: 'invalid_footer' })
+    }
+
+    // Mismatched folder id passes cardSchema in step 2 but throws in step 6 loadPack -> rollback.
+    const mismatched = readFileSync(cardPath, 'utf8').replace(/^id: custom$/m, 'id: other')
+    writeFileSync(cardPath, mismatched, 'utf8')
+    const rollbackRes = await writeFooter(siteUrl, 'custom', { icon: '🧪' })
+    expect(rollbackRes.status).toBe(400)
+    expect(await rollbackRes.json()).toEqual({ error: 'invalid_footer' })
+    expect(readFileSync(cardPath, 'utf8')).toBe(mismatched)
+    expect(
+      app.storage.read((db) =>
+        Number(db.prepare("SELECT count(*) FROM setting_change WHERE target = 'pack'").pluck().get())
+      )
+    ).toBe(0)
   })
 })

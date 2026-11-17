@@ -27,6 +27,10 @@ export interface TurnContext {
   commandTool?: string
   /** Read sources of a completed research job, supplied by code for its footer. */
   researchSources?: string[]
+  /** Footer kinds read at intake before the model ran: files first, then the link. */
+  intakeKinds?: string[]
+  /** Canonical URLs of links read at intake, so web tools do not open them again. */
+  intakeUrls?: string[]
 }
 
 export interface WindowMessage {

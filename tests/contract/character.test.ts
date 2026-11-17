@@ -2,7 +2,7 @@ import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { PackError, loadPack, loadPacks } from '../../src/character/loader.js'
-import { LINE_KINDS } from '../../src/character/schema.js'
+import { LINE_KINDS, cardSchema } from '../../src/character/schema.js'
 import { stickerHostPath, writeUnavailableLine } from '../../src/character/unavailable.js'
 import { tmpDir } from '../support/tmp.js'
 
@@ -233,6 +233,54 @@ describe('character pack loader', () => {
     )
     const pack = loadPack(dir, 'data')
     expect(pack.moods.get('neutral')?.stickers).toEqual(['wave.webp'])
+  })
+
+  it('character: a label with "_" or a line break fails cardSchema; the example pack still loads', () => {
+    const baseCard = {
+      id: 'example',
+      displayName: 'Example',
+      languages: ['en'],
+      coreIdentity: 'You are Example.',
+      speechRules: ['Be brief.'],
+      defaultReplyLength: 'short' as const
+    }
+
+    for (const bad of [
+      'bad_label',
+      'bad*label',
+      'bad~label',
+      'bad`label',
+      '<bad>',
+      'line1\nline2',
+      'line1\rline2',
+      'tab\tlabel',
+      '   ',
+      'a'.repeat(41)
+    ]) {
+      expect(cardSchema.safeParse({ ...baseCard, toolFooter: { labels: { web_search: bad } } }).success, bad).toBe(
+        false
+      )
+    }
+
+    for (const badIcon of ['abc', '🛠️_', '🛠️ a', '']) {
+      expect(cardSchema.safeParse({ ...baseCard, toolFooter: { icon: badIcon } }).success, badIcon).toBe(false)
+    }
+
+    const trimmed = cardSchema.parse({
+      ...baseCard,
+      toolFooter: { icon: '🧪', labels: { web_search: '  searched the web  ' } }
+    })
+    expect(trimmed.toolFooter).toEqual({ icon: '🧪', labels: { web_search: 'searched the web' } })
+
+    const example = loadPack('characters/example', 'repository')
+    expect(example.card.toolFooter?.labels).toEqual({
+      media_video: 'watched a video',
+      media_youtube: 'watched a video',
+      media_image: 'looked at an image',
+      media_audio: 'listened to audio',
+      media_document: 'read a document',
+      media_post: 'read a post'
+    })
   })
 })
 

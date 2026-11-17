@@ -3,6 +3,24 @@ import { z } from 'zod'
 export const PACK_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/
 export const MOOD_KEY = /^[a-z][a-z0-9_]{0,31}$/
 export const STICKER_FILE = /^[a-z0-9][a-z0-9_-]*\.webp$/
+export const FOOTER_KEY = /^[a-z][a-z0-9_]{0,63}$/
+export const FOOTER_FORBIDDEN_CHARS = /[_*~`<>\r\n\p{Cc}]/u
+
+/** Shared validation for chat `footerEmoji` and pack `toolFooter.icon`. */
+export function isFooterEmoji(value: string): boolean {
+  return (
+    /\p{Extended_Pictographic}/u.test(value) && !/[\p{L}\p{N}\s]/u.test(value) && !FOOTER_FORBIDDEN_CHARS.test(value)
+  )
+}
+
+export const footerEmojiSchema = z.string().min(1).max(8).refine(isFooterEmoji, 'must be one emoji')
+
+export const footerLabelSchema = z
+  .string()
+  .refine((value) => !FOOTER_FORBIDDEN_CHARS.test(value), {
+    message: 'must not contain _, *, ~, `, <, > or control characters'
+  })
+  .pipe(z.string().trim().min(1).max(40))
 
 /** Every line kind the core can send. The validator requires each one in lines.yml. */
 export const LINE_KINDS = [
@@ -32,8 +50,8 @@ export const cardSchema = z.strictObject({
   /** The tool footer's icon and labels, keyed by tool name (docs/trd/prompt-engine.md#tool-footer). */
   toolFooter: z
     .strictObject({
-      icon: z.string().min(1).max(8).optional(),
-      labels: z.record(z.string().regex(/^[a-z][a-z0-9_]{0,63}$/), z.string().min(1).max(40)).optional()
+      icon: footerEmojiSchema.optional(),
+      labels: z.record(z.string().regex(FOOTER_KEY), footerLabelSchema).optional()
     })
     .optional()
 })

@@ -7,6 +7,7 @@ import {
   type CoreCharacter,
   type CoreChat,
   type CoreToolFeature,
+  type FooterKindInfo,
   type Resolved,
   type SourceLevel,
   core,
@@ -578,7 +579,8 @@ function ChatRow({
   toolFeatures,
   onChanged,
   open,
-  onToggle
+  onToggle,
+  focusRequest
 }: {
   chat: CoreChat
   toolFeatures: CoreToolFeature[]
@@ -587,12 +589,20 @@ function ChatRow({
   /** Kept by the page, so a chat that moves between On and Off stays open. */
   open: boolean
   onToggle: () => void
+  focusRequest?: { chatId: string; tab: SectionKey; seq: number } | null
 }) {
   const [tab, setTab] = useState<SectionKey>('character')
   const [busy, setBusy] = useState(false)
   const name = chat.label || midTrunc(chat.waId, 28)
   const character = valueOf<string | undefined>(chat, 'character', undefined)
   const pack = characters.find((c) => c.id === character)
+
+  useEffect(() => {
+    if (focusRequest && focusRequest.chatId === chat.chatId) {
+      setTab(focusRequest.tab)
+      document.getElementById(`chat-${chat.chatId}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [focusRequest, chat.chatId])
 
   const run = async (work: () => Promise<{ changed: boolean }>, done: string): Promise<boolean> => {
     setBusy(true)
@@ -619,7 +629,7 @@ function ChatRow({
   ]
 
   return (
-    <div className="border-b border-line last:border-b-0">
+    <div id={`chat-${chat.chatId}`} className="border-b border-line last:border-b-0">
       <button
         type="button"
         aria-expanded={open}
@@ -1003,6 +1013,7 @@ function Group({
   onChanged: () => void
   openId: string | null
   setOpenId: (id: string | null) => void
+  focusRequest: { chatId: string; tab: SectionKey; seq: number } | null
 }) {
   if (!chats.length) return null
   return (
@@ -1027,6 +1038,335 @@ function Group({
   )
 }
 
+const FOOTER_FORBIDDEN = /[_*~`<>\r\n\p{Cc}]/u
+
+function footerLabelProblem(value: string): string | null {
+  if (FOOTER_FORBIDDEN.test(value)) return 'Must not contain _, *, ~, `, <, > or control characters.'
+  const trimmed = value.trim()
+  if (trimmed.length === 0) return 'Enter 1 to 40 characters.'
+  if (trimmed.length > 40) return 'At most 40 characters.'
+  return null
+}
+
+function FooterLabelRow({
+  packId,
+  kind,
+  defaultLabel,
+  packValue,
+  readOnly,
+  busy,
+  onSave
+}: {
+  packId: string
+  kind: string
+  defaultLabel: string
+  packValue?: string
+  readOnly: boolean
+  busy: boolean
+  onSave: (kind: string, value: string | null) => Promise<boolean>
+}) {
+  const [draft, setDraft] = useState(packValue ?? '')
+  const [error, setError] = useState<string | null>(null)
+  const isSet = packValue !== undefined
+
+  useEffect(() => {
+    setDraft(packValue ?? '')
+    setError(null)
+  }, [packValue])
+
+  const trimmed = draft.trim()
+  const dirty = trimmed !== (packValue ?? '')
+
+  async function submit() {
+    const problem = footerLabelProblem(draft)
+    if (problem) {
+      setError(problem)
+      return
+    }
+    setError(null)
+    await onSave(kind, trimmed)
+  }
+
+  return (
+    <div className="flex flex-col gap-2 border-b border-line-2 py-3 last:border-b-0">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="font-mono text-[0.74rem] text-ink">{kind}</span>
+        <span className={cn('text-[0.75rem]', isSet ? 'text-accent' : 'text-faint')}>
+          {isSet ? 'set in pack' : 'default'}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          value={draft}
+          readOnly={readOnly}
+          disabled={readOnly || busy}
+          placeholder={defaultLabel}
+          aria-label={`${packId} ${kind} label`}
+          aria-invalid={error ? true : undefined}
+          autoComplete="off"
+          spellCheck={false}
+          className="min-w-0 flex-1 basis-52"
+          onChange={(e) => {
+            setDraft(e.target.value)
+            if (error) setError(null)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !readOnly) {
+              e.preventDefault()
+              void submit()
+            }
+          }}
+        />
+        {!readOnly && (
+          <Button size="sm" disabled={busy || !dirty || trimmed === ''} onClick={() => void submit()}>
+            Save
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={readOnly || busy || !isSet}
+          onClick={() => {
+            setError(null)
+            void onSave(kind, null)
+          }}
+        >
+          Clear
+        </Button>
+      </div>
+      {error && (
+        <p role="alert" className="m-0 text-[0.8rem] text-down">
+          {error}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function PackFooterPanel({
+  pack,
+  footerKinds,
+  chats,
+  onChanged,
+  onOpenChat
+}: {
+  pack: CoreCharacter
+  footerKinds: FooterKindInfo[]
+  chats: CoreChat[]
+  onChanged: () => void
+  onOpenChat: (chatId: string) => void
+}) {
+  const readOnly = pack.source !== 'data'
+  const [open, setOpen] = useState(!readOnly)
+  const [busy, setBusy] = useState(false)
+  const packIcon = pack.toolFooter?.icon
+  const [iconDraft, setIconDraft] = useState(packIcon ?? '')
+
+  useEffect(() => {
+    setIconDraft(packIcon ?? '')
+  }, [packIcon])
+
+  const boundChats = useMemo(
+    () => chats.filter((c) => valueOf<string | undefined>(c, 'character', undefined) === pack.id),
+    [chats, pack.id]
+  )
+
+  const overrideCount = (packIcon !== undefined ? 1 : 0) + Object.keys(pack.toolFooter?.labels ?? {}).length
+
+  async function savePatch(patch: { icon?: string | null; labels?: Record<string, string | null> }, msg: string) {
+    setBusy(true)
+    try {
+      const res = await core.setFooter(pack.id, patch)
+      toast(res.changed ? msg : 'Nothing changed.')
+      onChanged()
+      return true
+    } catch (error) {
+      toast(reasonText(error), false)
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const trimmedIcon = iconDraft.trim()
+  const iconDirty = trimmedIcon !== (packIcon ?? '')
+
+  return (
+    <Card className="overflow-hidden p-0">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full min-w-0 cursor-pointer items-center gap-3 border-0 bg-transparent px-4 py-3 text-left focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+      >
+        <ChevronRight
+          aria-hidden
+          className={cn(
+            'size-4 shrink-0 text-faint transition-transform duration-150',
+            open && 'rotate-90 text-accent'
+          )}
+        />
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-baseline gap-2">
+            <b className="truncate font-serif text-[1.05rem] font-medium">{pack.displayName}</b>
+            <span className="shrink-0 font-mono text-[0.68rem] text-muted">{pack.id}</span>
+            <Badge tone={readOnly ? 'off' : 'accent'}>{readOnly ? 'built in · read only' : 'data pack'}</Badge>
+          </span>
+        </span>
+        <span className="hidden shrink-0 font-mono text-[0.68rem] text-faint sm:inline">
+          {overrideCount === 0 ? 'all defaults' : `${overrideCount} set in pack`}
+        </span>
+      </button>
+
+      {open && (
+        <div className="border-t border-line">
+          <div className="flex flex-col gap-2 border-b border-line-2 px-4 py-4">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className="font-mono text-[0.68rem] font-medium tracking-[0.14em] text-muted uppercase">
+                Footer icon
+              </span>
+              <span className={cn('text-[0.75rem]', packIcon !== undefined ? 'text-accent' : 'text-faint')}>
+                {packIcon !== undefined ? 'set in pack' : 'default'}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                value={iconDraft}
+                readOnly={readOnly}
+                disabled={readOnly || busy}
+                placeholder="🛠️"
+                aria-label={`${pack.id} footer icon`}
+                autoComplete="off"
+                className="w-24"
+                onChange={(e) => setIconDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !readOnly && iconDirty && trimmedIcon !== '') {
+                    e.preventDefault()
+                    void savePatch({ icon: trimmedIcon }, 'Saved footer icon.')
+                  }
+                }}
+              />
+              {!readOnly && (
+                <Button
+                  size="sm"
+                  disabled={busy || !iconDirty || trimmedIcon === ''}
+                  onClick={() => void savePatch({ icon: trimmedIcon }, 'Saved footer icon.')}
+                >
+                  Save
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={readOnly || busy || packIcon === undefined}
+                onClick={() => void savePatch({ icon: null }, 'Cleared footer icon.')}
+              >
+                Clear
+              </Button>
+              <p className="m-0 min-w-0 flex-1 basis-56 text-[0.8rem] text-faint">
+                A chat’s <span className="font-mono text-[0.74rem] text-muted">footerEmoji</span> wins over this icon.
+                {boundChats.length > 0 ? ' Chats using this pack: ' : ' No chats use this pack yet.'}
+                {boundChats.map((chat, index) => {
+                  const chatName = chat.label || midTrunc(chat.waId, 24)
+                  const override = chat.settings['footerEmoji']?.value
+                  return (
+                    <span key={chat.chatId}>
+                      {index > 0 ? ', ' : ''}
+                      <a
+                        href={`#chat-${chat.chatId}`}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          onOpenChat(chat.chatId)
+                        }}
+                        className="text-accent underline underline-offset-2 hover:no-underline"
+                      >
+                        {chatName}
+                        {typeof override === 'string' ? ` (${override})` : ''}
+                      </a>
+                    </span>
+                  )
+                })}
+                {boundChats.length > 0 ? '.' : ''}
+              </p>
+            </div>
+          </div>
+
+          <div className="px-4 py-2">
+            {footerKinds.map((entry) => (
+              <FooterLabelRow
+                key={entry.kind}
+                packId={pack.id}
+                kind={entry.kind}
+                defaultLabel={entry.defaultLabel}
+                packValue={pack.toolFooter?.labels?.[entry.kind]}
+                readOnly={readOnly}
+                busy={busy}
+                onSave={(kind, value) =>
+                  savePatch(
+                    { labels: { [kind]: value } },
+                    value === null ? 'Cleared footer label.' : 'Saved footer label.'
+                  )
+                }
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </Card>
+  )
+}
+
+function PersonaFooter({
+  characters,
+  footerKinds,
+  chats,
+  loading,
+  error,
+  onChanged,
+  onOpenChat
+}: {
+  characters: CoreCharacter[]
+  footerKinds: FooterKindInfo[]
+  chats: CoreChat[]
+  loading: boolean
+  error?: string
+  onChanged: () => void
+  onOpenChat: (chatId: string) => void
+}) {
+  const ordered = useMemo(
+    () =>
+      [...characters].sort((a, b) => (a.source === b.source ? a.id.localeCompare(b.id) : a.source === 'data' ? -1 : 1)),
+    [characters]
+  )
+
+  return (
+    <Section title="Tool footer">
+      {loading && characters.length === 0 ? (
+        <div className="flex items-center gap-2 text-muted">
+          <Spinner /> loading…
+        </div>
+      ) : error ? (
+        <Empty>{error}</Empty>
+      ) : ordered.length === 0 ? (
+        <Empty>No character pack is loaded.</Empty>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {ordered.map((pack) => (
+            <PackFooterPanel
+              key={pack.id}
+              pack={pack}
+              footerKinds={footerKinds}
+              chats={chats}
+              onChanged={onChanged}
+              onOpenChat={onOpenChat}
+            />
+          ))}
+        </div>
+      )}
+    </Section>
+  )
+}
+
 export default function ChatsPage() {
   const chats = useCore(core.chats)
   const packs = useCore(core.characters)
@@ -1035,8 +1375,21 @@ export default function ChatsPage() {
   const on = useMemo(() => all.filter((c) => c.status === 'active'), [all])
   const off = useMemo(() => all.filter((c) => c.status === 'pending'), [all])
   const characters = packs.data?.characters ?? []
+  const footerKinds = packs.data?.footerKinds ?? []
   const [openId, setOpenId] = useState<string | null>(null)
-  const shared = { toolFeatures: tools.data?.features ?? [], characters, onChanged: chats.reload, openId, setOpenId }
+  const [focusRequest, setFocusRequest] = useState<{ chatId: string; tab: SectionKey; seq: number } | null>(null)
+  const openChatFooter = useCallback((chatId: string) => {
+    setOpenId(chatId)
+    setFocusRequest((prev) => ({ chatId, tab: 'reply', seq: (prev?.seq ?? 0) + 1 }))
+  }, [])
+  const shared = {
+    toolFeatures: tools.data?.features ?? [],
+    characters,
+    onChanged: chats.reload,
+    openId,
+    setOpenId,
+    focusRequest
+  }
 
   return (
     <Shell
@@ -1071,6 +1424,15 @@ export default function ChatsPage() {
           </p>
         ) : null}
       </Section>
+      <PersonaFooter
+        characters={characters}
+        footerKinds={footerKinds}
+        chats={all}
+        loading={packs.loading}
+        error={packs.error}
+        onChanged={packs.reload}
+        onOpenChat={openChatFooter}
+      />
       <Toaster />
     </Shell>
   )
