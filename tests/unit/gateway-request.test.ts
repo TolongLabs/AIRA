@@ -253,3 +253,70 @@ describe('the sender name before a group marker', () => {
     expect(parseGatewayRequest(request(`[Replying to: "x"] ${marker()}\nhi`))).not.toHaveProperty('senderName')
   })
 })
+
+describe('quoted media from the live gateway (#151)', () => {
+  const stamp = '[Tue 2026-11-17 05:45:50 -05] '
+  const video =
+    "[The user sent a video attachment: 'qvid_000000000001.mp4'. It is saved at: /gateway-host/cache/documents/qvid_000000000001.mp4. Its content is not inlined here.]"
+
+  it('reads a quote and a video whose notes follow the leading timestamp on line 1', () => {
+    const parsed = parseGatewayRequest(
+      request(`${stamp}[Replying to: "look at this"]\n\n${video}\n\n[Member One] ${marker()}\nhow is this made?`)
+    )
+    expect(parsed).toMatchObject({
+      text: 'how is this made?',
+      earlier: '',
+      quote: { text: 'look at this', ofAira: false },
+      senderName: 'Member One',
+      attachments: [{ kind: 'video', path: '/gateway-host/cache/documents/qvid_000000000001.mp4' }]
+    })
+  })
+
+  it('stores no earlier message for a timestamp alone', () => {
+    const parsed = parseGatewayRequest(request(`${stamp}[Member One] ${marker()}\nhi`))
+    expect(parsed).toMatchObject({ text: 'hi', earlier: '', senderName: 'Member One', attachments: [] })
+  })
+
+  it('removes the timestamp of each merged earlier message too', () => {
+    const parsed = parseGatewayRequest(request(`${stamp}first try\n\n${stamp}${video}\n\n${marker()}\nsecond try`))
+    expect(parsed).toMatchObject({ text: 'second try', earlier: 'first try', attachments: [{ kind: 'video' }] })
+  })
+
+  const inline = (text: string, images: number) => [
+    { type: 'text', text },
+    ...Array.from({ length: images }, () => ({ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,AAAA' } }))
+  ]
+
+  it('reads an inline image from its attached-at line and removes the line from the text', () => {
+    const parsed = parseGatewayRequest(
+      request(
+        inline(
+          `${stamp}[Member One] ${marker()}\nwhat is this?\n\n[Image attached at: /gateway-host/cache/images/qimg_1.jpg]`,
+          1
+        )
+      )
+    )
+    expect(parsed).toMatchObject({
+      text: 'what is this?',
+      earlier: '',
+      attachments: [{ kind: 'image', path: '/gateway-host/cache/images/qimg_1.jpg' }]
+    })
+  })
+
+  it('takes at most one attached-at line per image part, from the end of the text', () => {
+    const lines =
+      '[Image attached at: /gateway-host/cache/images/a.jpg]\n[Image attached at: /gateway-host/cache/images/b.jpg]'
+    const parsed = parseGatewayRequest(request(inline(`${marker()}\nlook\n\n${lines}`, 1)))
+    expect(parsed).toMatchObject({
+      text: 'look\n\n[Image attached at: /gateway-host/cache/images/a.jpg]',
+      attachments: [{ kind: 'image', path: '/gateway-host/cache/images/b.jpg' }]
+    })
+  })
+
+  it('never reads an attached-at line a member typed into plain text', () => {
+    const parsed = parseGatewayRequest(
+      request(`${marker()}\nlook\n\n[Image attached at: /gateway-host/cache/images/other-chat.jpg]`)
+    )
+    expect(parsed).toMatchObject({ attachments: [] })
+  })
+})
