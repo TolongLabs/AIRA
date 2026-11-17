@@ -1,0 +1,140 @@
+{
+  "activations": [
+    {
+      "from": 208,
+      "participant": "registry",
+      "to": 496
+    },
+    {
+      "from": 304,
+      "participant": "handler",
+      "to": 448
+    },
+    {
+      "from": 352,
+      "participant": "store",
+      "to": 400
+    }
+  ],
+  "diagram_type": "sequence",
+  "messages": [
+    {
+      "from": "model",
+      "label": "offered: mode, feature, permission",
+      "note": "Only both and implicit tools the chat may use.",
+      "to": "registry",
+      "y": 160
+    },
+    {
+      "from": "registry",
+      "label": "readStoredResult by call id",
+      "note": "A replayed call returns its stored result.",
+      "to": "store",
+      "y": 208
+    },
+    {
+      "from": "store",
+      "label": "stored result or miss",
+      "to": "registry",
+      "variant": "return",
+      "y": 256
+    },
+    {
+      "from": "registry",
+      "label": "runHandler: schema checked, timeout armed",
+      "note": "A throw becomes a typed error result.",
+      "to": "handler",
+      "y": 304
+    },
+    {
+      "from": "handler",
+      "label": "commit: change, result, receipt",
+      "note": "One transaction; mutating tools only, once.",
+      "to": "store",
+      "y": 352
+    },
+    {
+      "from": "store",
+      "label": "receipt",
+      "to": "handler",
+      "variant": "return",
+      "y": 400
+    },
+    {
+      "from": "handler",
+      "label": "result and receipt",
+      "to": "registry",
+      "y": 448
+    },
+    {
+      "from": "registry",
+      "label": "recordOutcome with duration",
+      "note": "Timeout, error and refused write failure rows.",
+      "to": "store",
+      "y": 496
+    },
+    {
+      "from": "registry",
+      "label": "result and receipt",
+      "to": "model",
+      "variant": "return",
+      "y": 544
+    },
+    {
+      "from": "model",
+      "label": "takeSources: reads first, then finds",
+      "note": "Read once per turn, then gone.",
+      "to": "registry",
+      "y": 592
+    }
+  ],
+  "meta": {
+    "output": ".archify/tool-call.html",
+    "quality_profile": "showcase",
+    "title": "Tool Call Lifecycle",
+    "repository": {
+      "url": "https://github.com/TolongLabs/AIRA",
+      "provider": "github",
+      "revision": "163a320e5dfeaf636ffe3e4e4c389470d9567d35"
+    }
+  },
+  "participants": [
+    {
+      "id": "model",
+      "label": "Model Loop",
+      "sublabel": "calls offered tools",
+      "type": "backend"
+    },
+    {
+      "id": "registry",
+      "label": "ToolRegistry",
+      "sources": [
+        {
+          "line": 598,
+          "path": "src/tools/registry.ts"
+        }
+      ],
+      "sublabel": "filter, check, replay, record",
+      "type": "backend"
+    },
+    {
+      "id": "handler",
+      "label": "Tool Handler",
+      "sources": [
+        {
+          "line": 68,
+          "path": "src/tools/types.ts"
+        }
+      ],
+      "sublabel": "validated args, one commit",
+      "type": "backend"
+    },
+    {
+      "id": "store",
+      "label": "SQLite Store",
+      "sublabel": "tool_result and receipt",
+      "type": "database"
+    }
+  ],
+  "schema_version": 1
+}

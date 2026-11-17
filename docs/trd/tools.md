@@ -22,6 +22,8 @@ Each tool is defined once, in `src/tools/`.
 The prompt text about tools, the leak guard's name list and `/help` are all generated from the registry. No second
 list is maintained by hand.
 
+![One tool call, from offering to receipt and outcome](../diagrams/tool-call.svg)
+
 ## Atomic Tools
 
 A tool does one thing, and that thing happens fully or not at all.
@@ -76,6 +78,8 @@ Two limits end the chain. The first one reached wins.
 A turn with N commands may make at least N calls. The turn record notes which limit was reached, in `chain_limit`. Both
 defaults are tuned from benchmark results.
 
+Only `timeout`, `error` and `refused` outcomes write failure rows. `invalid` and `unavailable` results do not.
+
 ## Receipts
 
 A tool with `mutates: true` returns a receipt: what changed, where, and the new state. The handler makes its
@@ -93,6 +97,8 @@ tool and says the rest in their own words.
 ```text
 /remind i have a mtg ltr at 6pm, ping me by then
 ```
+
+![How a /command anywhere in a message becomes a direct answer or a skill-style model turn](../diagrams/command-routing.svg)
 
 ### Detection
 
@@ -117,7 +123,7 @@ tool and says the rest in their own words.
 
 | Kind        | Steps                                                                                                                                                                                             | Model Call |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| Direct      | Code runs the handler and answers from a pack template                                                                                                                                            | None       |
+| Direct      | Code runs the handler and answers in plain words from the tool's result                                                                                                                           | None       |
 | Skill-style | The model receives the free text and only the named tool, and must fill its arguments. Code validates them, runs the handler and issues the receipt. The model then writes the reply in character | One        |
 
 ### Rules For Skill-Style Commands
@@ -146,11 +152,14 @@ A character pack has no template for a command answer yet, so code writes the an
 tool's result in plain words: a list for `/help`, `/list` and `/reminders`, one fixed sentence for `/mute` and
 `/unmute`. The answer still passes the cleaning chain and the bubble splitter.
 
-- `/help` lists each command with a plain one-line text written for members, never the description the model reads. `/list` names the tools and features switched on, in
+- `/help` lists each command with a plain one-line text written for members, never the description the model reads. A
+  command with no plain entry of its own (such as `/lyrics`, `/song` or `/word`) falls back to the first sentence of
+  its model description. `/list` names the tools and features switched on, in
   words, not tool ids. `/reminders` lists each reminder's text and due time, shown in `format.timeZone` (default
   `Asia/Kuala_Lumpur`) as a weekday, date and time, with the repeat when there is one. No internal id is shown.
 - An answer never shows a raw field name, an internal id or a UTC timestamp. Pack templates for these answers
   are a later change to the pack contract.
+- `/research` and `/pdf` pass the handler's character-line text through instead of a fixed sentence.
 
 ## Tool Set
 
@@ -178,6 +187,9 @@ tool's result in plain words: a list for `/help`, `/list` and `/reminders`, one 
 | `list`            | Lists the tools and features switched on                                   | explicit | `/list`            | Direct      | none                 |
 
 - `/read` routes by the address: a social post or a YouTube video goes to `read_post`, anything else to `read_page`.
+- **Not built yet:** `make_report` answers to `/report` and always writes a `.md` file. It takes no format argument,
+  so PDF output is not built (src/tools/core/report.ts:33).
+- `make_report` caps the title at 120 characters and the body at 50,000 characters.
 - `read_page` reads through Exa's contents endpoint, with a live crawl when Exa has no copy, so a page that refuses
   plain fetches (such as openai.com, measured 403) still reads. A plain fetch is the fallback when Exa is off or fails.
   The text is clipped to `search.pageMaxChars` and labelled untrusted.
@@ -188,6 +200,16 @@ tool's result in plain words: a list for `/help`, `/list` and `/reminders`, one 
 - The gateway's schedule fires reminders. `reminder_set` and `reminder_cancel` change the `reminder` row in one
   transaction and then rewrite the core's wanted-jobs file. A host reconciler makes the gateway's jobs match it within
   a minute. See [Scheduled Turns](system.md#scheduled-turns).
+- `recall` returns 8 items and `history_search` 10. A query caps at 200 characters and note text at 500 characters.
+- `note` is checked by the judge port before the commit, outside any transaction.
+- `forget` with only a query removes nothing. It returns candidates and still commits a forget-barrier receipt.
+- `reminder_set` needs a future ISO due time and text of at most 500 characters. `reminder_cancel` only cancels the
+  sender's own active reminder. Another chat's id reads as nonexistent.
+- A failed schedule-file rewrite warns `reminder_schedule_sync_failed` and leaves the committed row. The next change
+  or start-up reconciliation rewrites the file.
+- `send_photo` downloads at most 5 MB. It accepts only jpeg, png, webp and gif, and refuses a non-image as invalid.
+- `research_start` refuses a second concurrent job per chat. A topic that names a pdf or a report presets the PDF want.
+- `report_pdf` carries its own 25-second timeout, above the 15-second default.
 - Media watching is not a tool. It runs at intake. See [Models](models.md#media-watching).
 
 ### Search Provider
@@ -202,6 +224,9 @@ character.
   never shows the key or the provider's message.
 - With `exa` set and no key in the environment, start-up logs `search.off` and the tool stays unavailable. The rest
   of the core is not affected.
+- A fetch guard wraps every page and post read. It refuses non-http(s) addresses, credentials, localhost and private
+  or link-local IPs. The page fetch re-checks DNS after each redirect, follows at most 3 redirects, and caps bodies
+  at 2 MB and text at 8,000 characters.
 
 ### Social Post Reader
 
@@ -242,6 +267,8 @@ by the link-intake work order):
 
 Built after the core set, behind `features.lessons`. A chat with the switch off is offered none of these tools.
 Their data is specified in [Lessons Data Model](#lessons-data-model).
+
+![The lessons and library tools, grouped by feature, and the store they share](../diagrams/lessons-tools.svg)
 
 | Tool             | Does                                       | Mode     | Command   | Kind        |
 | ---------------- | ------------------------------------------ | -------- | --------- | ----------- |
@@ -290,10 +317,12 @@ the chat that searched.
   `gloss_set` fills in what one word or pattern means in one language. A `kind` column tells a word from a pattern.
 - **Links are written by code.** A note's body marks a link as `[[Title]]`. On `library_write`, code reads the marks
   and stores one `library_link` row for each. A link may name a title that has no note yet.
-- **Gaps are computed.** `library_gaps` lists link targets with no note and words with no meaning. It stores
-  nothing.
-- **Search follows one step.** `library_search` returns the notes that match by keyword, and the notes they link
-  to, within a result limit. It uses a full-text index kept in step by code, in the same transaction.
+- **Gaps are computed.** `library_gaps` lists up to 20 link targets with no note and words with no meaning. It
+  stores nothing.
+- **Lyrics fetch truncates.** The fetch cuts provider text to 200 lines and 500 characters per line, and flags the
+  result truncated.
+- **Search follows one step.** `library_search` returns up to 8 notes that match by keyword, and the notes they
+  link to. It uses a full-text index kept in step by code, in the same transaction.
 - **Lyrics come from a provider.** `lyrics_search` asks the lyrics provider and stores its results as candidates.
   `lyrics_fetch` takes the id of one stored candidate of this chat, never an address from the model. Lyrics text is
   untrusted and is labelled as such. With `lessons.lyricsProvider` set to `off`, both tools answer that lyrics are
@@ -338,18 +367,29 @@ working unchanged.
   its tool off. A write replaces the file atomically (write a temporary file, then rename) and keeps the old file's
   keys it does not own, so the host service that reads it never sees half a file.
 - A tool that changes a file commits its receipt only after the write succeeds. Receipts name the chat by its internal id.
+- `market_quote` takes up to 20 symbols. `market_news` defaults to 8 headlines, at most 15. `market_analyse` defaults
+  to a 1-year span with news. Provider calls carry `owner.timeoutMs`, 10 seconds by default, inside the tool's own
+  time limit, and news stays within 7 days. Short names resolve through ticker, index and coin alias tables before lookup.
+- Watchlists, alerts and positions are keyed by WhatsApp chat id in the host file, while receipts name the chat by its
+  internal id.
+- `claude_sessions` shows active sessions within 30 minutes by default, clamped to one day. A remote machine name is
+  refused without a query.
+- Machine names resolve through synonym, leading-word and possessive stripping plus substring match. An unclear name
+  matches nothing until the member picks one.
+- An empty `owner.marketsConfig` leaves the watch tools off. An empty `owner.claudeProjectsDir` leaves session
+  listing off, and an empty `owner.noticeRoutesFile` leaves the notice tools off.
 
 ### Changed From The Old Tool Set
 
-| Old Tool                        | Now                                                                                         |
-| ------------------------------- | ------------------------------------------------------------------------------------------- |
-| `cronjob`                       | Split into `reminder_set`, `reminder_list` and `reminder_cancel`                            |
-| `lyrics_prepare`                | Removed. It bundled several actions; the single tools replace it                            |
-| `lyrics_fetch`                  | Fetches only. It no longer sends a lesson by itself                                         |
-| `vision_analyze`                | Removed as a tool. Pictures are read at intake                                              |
-| `send_video`                    | Never existed. It was named in a list and registered nowhere                                |
-| `brain_*` names                 | Renamed as in the tables above                                                              |
-| Market and coding-session tools | Not decided. See the pending inputs in the [Product Requirements](../PRD.md#pending-inputs) |
+| Old Tool                        | Now                                                                                          |
+| ------------------------------- | -------------------------------------------------------------------------------------------- |
+| `cronjob`                       | Split into `reminder_set`, `reminder_list` and `reminder_cancel`                             |
+| `lyrics_prepare`                | Removed. It bundled several actions; the single tools replace it                             |
+| `lyrics_fetch`                  | Fetches only. It no longer sends a lesson by itself                                          |
+| `vision_analyze`                | Removed as a tool. Pictures are read at intake                                               |
+| `send_video`                    | Never existed. It was named in a list and registered nowhere                                 |
+| `brain_*` names                 | Renamed as in the tables above                                                               |
+| Market and coding-session tools | Ported into the core as atomic tools behind `features.owner`, in [Owner Tools](#owner-tools) |
 
 ### Faults This Design Removes
 
@@ -385,7 +425,8 @@ mcp:
 - A server's tool description is cut to one line of 500 characters before it enters the prompt.
 - A server process gets a minimal environment. It never receives the core's secrets.
 - Only allowlisted tools are registered, and only for the listed chats.
-- Results from an external server are untrusted text and are labelled as such in the prompt.
+- Results from an external server are untrusted text, cut to 8,000 characters and labelled with their server source
+  in the prompt.
 - An external tool cannot be made atomic by the core. Its calls count toward both limits, and its results never
   produce a receipt.
 - A server that fails to start, or times out, is marked unavailable. The turn continues without it.

@@ -1,0 +1,120 @@
+{
+  "diagram_type": "tree",
+  "layout": {
+    "direction": "right"
+  },
+  "meta": {
+    "output": ".archify/lessons-tools.html",
+    "quality_profile": "showcase",
+    "title": "Lessons Tool Map",
+    "repository": {
+      "url": "https://github.com/TolongLabs/AIRA",
+      "provider": "github",
+      "revision": "163a320e5dfeaf636ffe3e4e4c389470d9567d35"
+    }
+  },
+  "nodes": [
+    {
+      "id": "lessons",
+      "label": "Lessons and Library",
+      "sources": [
+        {
+          "line": 20,
+          "path": "src/tools/lessons/index.ts"
+        }
+      ],
+      "sublabel": "behind features.lessons"
+    },
+    {
+      "id": "lyrics",
+      "label": "Lyrics",
+      "parent": "lessons",
+      "sublabel": "provider search and fetch"
+    },
+    {
+      "id": "lyrics_search",
+      "label": "lyrics_search",
+      "parent": "lyrics",
+      "sources": [
+        {
+          "line": 52,
+          "path": "src/tools/lessons/songs.ts"
+        }
+      ],
+      "sublabel": "both, /lyrics"
+    },
+    {
+      "id": "lyrics_fetch",
+      "label": "lyrics_fetch",
+      "parent": "lyrics",
+      "sublabel": "implicit, chat candidates only"
+    },
+    {
+      "id": "songs",
+      "label": "Songs",
+      "parent": "lessons",
+      "sublabel": "filed study songs"
+    },
+    {
+      "id": "song_get",
+      "label": "song_get",
+      "parent": "songs",
+      "sublabel": "both, /song"
+    },
+    {
+      "id": "song_save",
+      "label": "song_save",
+      "parent": "songs",
+      "sublabel": "implicit, files lines and words"
+    },
+    {
+      "id": "words",
+      "label": "Words",
+      "parent": "lessons",
+      "sublabel": "vocabulary and meanings"
+    },
+    {
+      "id": "vocab_lookup",
+      "label": "vocab_lookup",
+      "parent": "words",
+      "sublabel": "both, /word"
+    },
+    {
+      "id": "gloss_set",
+      "label": "gloss_set",
+      "parent": "words",
+      "sublabel": "implicit, one language"
+    },
+    {
+      "id": "library",
+      "label": "Library",
+      "parent": "lessons",
+      "sublabel": "shared notes and links"
+    },
+    {
+      "id": "library_search",
+      "label": "library_search",
+      "parent": "library",
+      "sublabel": "implicit, 8 hits"
+    },
+    {
+      "id": "library_write",
+      "label": "library_write",
+      "parent": "library",
+      "sublabel": "implicit, files one node"
+    },
+    {
+      "id": "library_open",
+      "label": "library_open",
+      "parent": "library",
+      "sublabel": "implicit, reads one node"
+    },
+    {
+      "id": "library_gaps",
+      "label": "library_gaps",
+      "parent": "library",
+      "sublabel": "implicit, lists 20 gaps"
+    }
+  ],
+  "schema_version": 1
+}
