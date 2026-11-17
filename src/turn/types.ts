@@ -33,6 +33,8 @@ export interface TurnContext {
   intakeUrls?: string[]
   /** Text of the message(s) this turn answers, supplied by code. */
   messageText?: string
+  /** True when `/think` raised effort for this turn. */
+  think?: boolean
 }
 
 export interface WindowMessage {
@@ -87,6 +89,8 @@ export interface ModelCallRecord {
   role: string
   model: string
   transport: string
+  /** Effort sent for this call, when set. */
+  effort?: string
   attempt: number
   startedAt: Date
   durationMs: number

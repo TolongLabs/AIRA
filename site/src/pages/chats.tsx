@@ -58,6 +58,11 @@ const FEATURES: { key: string; label: string; hint: string }[] = [
   { key: 'features.social', label: 'Social posts', hint: 'Off: links to posts are not read.' },
   { key: 'features.photos', label: 'Photos', hint: 'Off: no photo is sent.' },
   { key: 'features.media', label: 'Media watching', hint: 'Off: pictures, audio and video are not read.' },
+  {
+    key: 'features.think',
+    label: 'Deeper thinking',
+    hint: 'Off: /think is removed and the turn runs at normal effort.'
+  },
   { key: 'features.reports', label: 'Reports', hint: 'Off: /doc is not offered.' },
   { key: 'features.proactive', label: 'Messages first', hint: 'Off: replies only when written to.' },
   { key: 'features.voice', label: 'Voice notes', hint: 'Off: replies are text.' },

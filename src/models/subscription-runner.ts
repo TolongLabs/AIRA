@@ -11,6 +11,8 @@ export interface SubscriptionRunnerOptions {
   model: string
   /** Empty: `medium`, Claude Haiku 5.5's own default (docs/trd/models.md#run-request). */
   effort: string
+  /** Effort on a `/think` turn. Empty means normal `effort`. */
+  deepEffort?: string
   /** The shared secret of the core and the host runner service. */
   runnerToken: string
   toolServer: ToolServer
@@ -126,6 +128,8 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
       let initModel: string | undefined
       let failure: ModelError | undefined
       let rawText = ''
+      const rawEffort = input.context.think && options.deepEffort ? options.deepEffort : options.effort
+      const effort = rawEffort === '' ? 'medium' : rawEffort
 
       try {
         const timeoutMs = Math.max(1000, input.context.deadline - startedAt.getTime())
@@ -141,7 +145,7 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
           timeoutMs
         }
         if (options.model !== '') payload['model'] = options.model
-        payload['effort'] = options.effort === '' ? 'medium' : options.effort
+        payload['effort'] = effort
 
         let response: Response
         try {
@@ -235,6 +239,7 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
               role: 'main',
               model,
               transport: 'subscription',
+              effort,
               attempt: 1,
               startedAt,
               durationMs,
@@ -273,6 +278,7 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
         role: 'main',
         model: initModel ?? (options.model || 'subscription'),
         transport: 'subscription',
+        effort,
         attempt: 1,
         startedAt,
         durationMs: Math.max(0, now().getTime() - startedAt.getTime()),

@@ -92,6 +92,7 @@ export const SETTING_KEYS: Record<string, SettingDefinition> = {
   'features.social': { schema: z.boolean(), default: true },
   'features.photos': { schema: z.boolean(), default: true },
   'features.media': { schema: z.boolean(), default: true },
+  'features.think': { schema: z.boolean(), default: true },
   'features.voice': { schema: z.boolean(), default: false },
   'features.lessons': { schema: z.boolean(), default: false },
   'features.research': { schema: z.boolean(), default: true },

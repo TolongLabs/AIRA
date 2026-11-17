@@ -22,8 +22,7 @@ const HELP_TEXT: Readonly<Record<string, string>> = {
   report: 'Writes a long answer as a document.',
   search: 'Searches the web.',
   read: 'Reads a web page.',
-  photo: 'Sends a photo.',
-  think: 'Thinks harder about one message.'
+  photo: 'Sends a photo.'
 }
 
 /** The first sentence of a model-facing description, for a command with no plain text of its own. */
@@ -53,7 +52,11 @@ export function helpTool(registry: ToolRegistry): ToolDefinition<z.infer<typeof 
       const rawMax = context.settings['commands.maxPerMessage']?.value
       const maxPerMessage =
         typeof rawMax === 'number' && Number.isInteger(rawMax) && rawMax >= 1 ? Math.min(rawMax, 5) : 1
-      return { ok: true, data: { commands, ...(maxPerMessage > 1 ? { maxPerMessage } : {}) } }
+      const think = context.settings['features.think']?.value !== false
+      return {
+        ok: true,
+        data: { commands, ...(maxPerMessage > 1 ? { maxPerMessage } : {}), ...(think ? { think: true } : {}) }
+      }
     }
   }
 }

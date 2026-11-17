@@ -25,15 +25,20 @@ const inAnHour = () => new Date(Date.now() + 3_600_000).toISOString()
 describe('direct commands', () => {
   it('/help lists the commands this chat may use, with no model call', async () => {
     const model = queueModel([{ text: 'must not be asked' }])
-    const { app, gateway } = await startApp(model)
+    const { app, gateway, chatId } = await startApp(model)
     const delivery = await gateway.send(msg('m-1', '/help'))
     expect(model.requests).toHaveLength(0)
     expect(delivery.content).toContain('/remind')
     expect(delivery.content).toContain('/mute')
+    expect(delivery.content).toContain('/think')
+    expect(delivery.content).not.toContain('- **/think**')
     expect(lastTurn(app)).toMatchObject({ kind: 'command', state: 'delivered', length_bypass: 'command_list' })
     expect(rows(app, 'SELECT tool, source, outcome FROM tool_call')).toEqual([
       { tool: 'help', source: 'command', outcome: 'ok' }
     ])
+
+    setSetting(app.storage, { level: 'chat', scope: chatId, key: 'features.think', value: false, actor: 'test' })
+    expect((await gateway.send(msg('m-2', '/help'))).content).not.toContain('/think')
   })
 
   it('replays a code-written answer labelled as code, and strips the label if the model copies it', async () => {
