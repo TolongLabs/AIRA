@@ -68,6 +68,7 @@ inserted once. A repeat resolves like this:
 | `tools.defaultTimeoutMs` | 15000   | One tool call                                                            |
 | `judge.timeoutMs`        | 1500    | One judge call on the reply path                                         |
 | `media.timeoutMs`        | 30000   | One media read, at most two thirds of the time left in the turn deadline |
+| `media.linkWatchMs`      | 12000   | All segment watches of one YouTube link, within the media timeout        |
 
 When the turn deadline passes, the runner is cancelled and the turn ends with the pack's slow line. The runner has
 its own per-turn deadline timer: it fires at the deadline, the run aborts with a transient failure, and the timer

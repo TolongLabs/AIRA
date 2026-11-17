@@ -229,9 +229,9 @@ media folders.
    read; `features.social` off means no post link is read. A YouTube video is sent to the media model as its own
    URL (`file_data`) at low media resolution (`MEDIA_RESOLUTION_LOW`), starting from its offset if any (the `t=`
    or `start=` parameter or a `#t=` fragment, in seconds or clock form), and watched for at
-   most `media.maxLinkVideoSeconds` (default 600) through `video_metadata` offsets (measured: a 3-minute video in 5 s,
-   about 19,000 tokens). A longer YouTube video is clipped, never refused, and the description the model receives says
-   it covers only the first part; a private or removed video fails with reason `unavailable`. A post's video is fetched
+   most `media.maxLinkVideoSeconds` (default 600) in segments, as rule 10 sets out (measured: a 3-minute video in
+   5 s, about 19,000 tokens). A longer YouTube video is clipped, never refused, and the description the model
+   receives says it covers only the first part; a private or removed video fails with reason `unavailable`. A post's video is fetched
    under the same size and `media.maxVideoSeconds` limits as a file, falling back to its image or text only. A failed
    link lookup adds an unreadable note with the platform and reason `link`; neither the note nor any log carries the
    URL. The result enters block 4 like a file's description, and failures follow rule 8. Ported from rokabot's media
@@ -243,7 +243,17 @@ media folders.
 9. **Record.** Every request to the media model is one `model_call` row with role `media`, with its tokens and its
    failure kind when it failed. Every unreadable file is one `failure` row with kind `media_unreadable`, stage
    `media`, handled by `line:unreadableMedia`, and a message with the kind of file and the reason, never the path.
-   The turn itself stays `delivered`. An `auth` failure of the media role also alerts the operator.
+   The turn itself stays `delivered`. An `auth` failure of the media role also alerts the operator. A YouTube
+   segment is its own request and its own `model_call` row. A segment that fails while another answers is one
+   `failure` row of kind `media_unreadable`, handled by `coverage:partial`, with no note in block 4.
+10. **Long YouTube videos.** A span longer than `media.linkSegmentSeconds` (180) is split: a first segment of
+    `media.linkFirstSegmentSeconds` (60), then segments of 180 s, a last segment under 30 s joining the one before,
+    and at most `media.maxLinkSegments` (4). All segments are watched at once, each with its own `video_metadata`
+    offsets and a frame rate of `media.linkFps` (0.25, one frame every 4 s, for spans up to 10 minutes), with no
+    retry. They share one budget, `media.linkWatchMs` (12,000), from the end of the lookup, never past the link
+    reader's timeout. Code merges the answered segments in order under clock labels, and the description names the
+    parts not watched. Only when every segment fails is the video unreadable. A video of unknown length is watched
+    for one segment from its start offset, and the description says so.
 
 ![How attached files and shared links are read at intake, with limits and refusals](../diagrams/media-intake.svg)
 
