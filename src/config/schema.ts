@@ -228,8 +228,7 @@ export const configSchema = z.strictObject({
     })
     .prefault({}),
   turn: z.strictObject({
-    batchMs: ms,
-    mediaWaitMs: ms
+    batchMs: ms
   }),
   shutdown: z.strictObject({
     graceMs: ms
@@ -244,11 +243,6 @@ export const configSchema = z.strictObject({
   }),
   log: z.strictObject({
     level: z.enum(['error', 'warn', 'info', 'debug'])
-  }),
-  deploy: z.strictObject({
-    checkEveryMin: count,
-    waitForIdleMs: ms,
-    healthTimeoutMs: ms
   }),
   gateway: z.strictObject({
     // The data volume's path on the host. Empty in the repository; requireDeployable refuses an empty value.

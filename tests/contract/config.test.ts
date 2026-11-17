@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
 import { ConfigError, loadConfig, parseConfig, requireDeployable } from '../../src/config/loader.js'
+import { createLogger } from '../../src/records/logger.js'
 
 const source = readFileSync('config.yml', 'utf8')
 
@@ -23,6 +24,27 @@ describe('config.yml', () => {
   it('stops on an unknown key', () => {
     expect(() => parseConfig(source + '\nsurprise:\n  key: 1\n')).toThrow(ConfigError)
     expect(() => parseConfig(source.replace('maxBubbles: 1', 'maxBubbles: 1\n  extra: 1'))).toThrow(/format/)
+    expect(() => parseConfig(source + '\ndeploy:\n  checkEveryMin: 15\n  extra: 1\n')).toThrow(ConfigError)
+    expect(() => parseConfig(source.replace('batchMs: 1500', 'batchMs: 1500\n  extra: 1'))).toThrow(/turn/)
+  })
+
+  it('an old config with turn.mediaWaitMs and deploy keys still loads, with one warning per key', () => {
+    const oldSource =
+      source.replace('batchMs: 1500', 'batchMs: 1500\n  mediaWaitMs: 8000') +
+      '\ndeploy:\n  checkEveryMin: 15\n  waitForIdleMs: 120000\n  healthTimeoutMs: 60000\n'
+    const logs: Record<string, unknown>[] = []
+    const logger = createLogger({ level: 'debug', module: 'config', sink: (line) => logs.push(JSON.parse(line)) })
+    const config = parseConfig(oldSource, { logger })
+    expect(config.turn).toEqual({ batchMs: 1500 })
+    expect('deploy' in config).toBe(false)
+    expect(logs).toHaveLength(4)
+    expect(logs.every((entry) => entry['level'] === 'warn' && entry['event'] === 'config.ignored_key')).toBe(true)
+    expect(logs.map((entry) => entry['key'])).toEqual([
+      'turn.mediaWaitMs',
+      'deploy.checkEveryMin',
+      'deploy.waitForIdleMs',
+      'deploy.healthTimeoutMs'
+    ])
   })
 
   it('stops on a wrong type and names the key', () => {

@@ -1,5 +1,14 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync
+} from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { createLogger } from '../../src/records/logger.js'
@@ -370,6 +379,145 @@ describe('disk guard', () => {
     const { guard: g, onAlert } = guard(storage, tmpDir(), { mb: 100 })
     expect(g.check().level).toBe('critical')
     expect(onAlert).toHaveBeenCalledOnce()
+  })
+
+  function cacheLogs() {
+    const logs: Record<string, unknown>[] = []
+    const logger = createLogger({ level: 'debug', module: 'storage', sink: (line) => logs.push(JSON.parse(line)) })
+    return { logs, logger }
+  }
+
+  function writeCacheFile(path: string, bytes: number, mtimeIso: string) {
+    writeFileSync(path, Buffer.alloc(bytes))
+    const at = new Date(mtimeIso)
+    utimesSync(path, at, at)
+  }
+
+  it('the cache over its cap is trimmed oldest first to under 90%', () => {
+    const dataDir = tmpDir()
+    const cacheDir = join(dataDir, 'cache')
+    mkdirSync(join(cacheDir, 'pages'), { recursive: true })
+    const chunk = 256_000
+    // Total = 1,280,000 bytes > 1 MiB (1,048,576); 90% = 943,718.4. Deleting the oldest 2 leaves 768,000 (< 90%).
+    writeCacheFile(join(cacheDir, 'oldest.bin'), chunk, '2026-01-01T00:00:00.000Z')
+    writeCacheFile(join(cacheDir, 'pages', 'second.bin'), chunk, '2026-01-02T00:00:00.000Z')
+    writeCacheFile(join(cacheDir, 'third.bin'), chunk, '2026-01-03T00:00:00.000Z')
+    writeCacheFile(join(cacheDir, 'pages', 'fourth.bin'), chunk, '2026-01-04T00:00:00.000Z')
+    writeCacheFile(join(cacheDir, 'newest.bin'), chunk, '2026-01-05T00:00:00.000Z')
+
+    const { logs, logger } = cacheLogs()
+    const onAlert = vi.fn()
+    const g = createDiskGuard({
+      dataDir,
+      minFreeMb: 2048,
+      criticalFreeMb: 512,
+      cacheMaxMb: 1,
+      logger,
+      onAlert,
+      freeMb: () => 5000
+    })
+
+    expect(g.check().level).toBe('ok')
+    expect(onAlert).not.toHaveBeenCalled()
+    expect(existsSync(join(cacheDir, 'oldest.bin'))).toBe(false)
+    expect(existsSync(join(cacheDir, 'pages', 'second.bin'))).toBe(false)
+    expect(existsSync(join(cacheDir, 'third.bin'))).toBe(true)
+    expect(existsSync(join(cacheDir, 'pages', 'fourth.bin'))).toBe(true)
+    expect(existsSync(join(cacheDir, 'newest.bin'))).toBe(true)
+
+    expect(logs).toHaveLength(1)
+    expect(logs[0]).toMatchObject({
+      level: 'info',
+      event: 'storage.cache_trimmed',
+      bytesFreed: chunk * 2,
+      fileCount: 2
+    })
+    const line = JSON.stringify(logs[0])
+    expect(line).not.toContain(cacheDir)
+    expect(line).not.toContain('oldest.bin')
+    expect(line).not.toContain('second.bin')
+  })
+
+  it('a cache under its cap is left alone', () => {
+    const dataDir = tmpDir()
+    const cacheDir = join(dataDir, 'cache')
+    mkdirSync(cacheDir, { recursive: true })
+    // 1,000,000 bytes is above 90% of 1 MiB (943,718.4) but under the 1 MiB cap (1,048,576).
+    writeCacheFile(join(cacheDir, 'a.bin'), 500_000, '2026-01-01T00:00:00.000Z')
+    writeCacheFile(join(cacheDir, 'b.bin'), 500_000, '2026-01-02T00:00:00.000Z')
+
+    const { logs, logger } = cacheLogs()
+    const g = createDiskGuard({
+      dataDir,
+      minFreeMb: 2048,
+      criticalFreeMb: 512,
+      cacheMaxMb: 1,
+      logger,
+      freeMb: () => 5000
+    })
+
+    expect(g.check().level).toBe('ok')
+    expect(existsSync(join(cacheDir, 'a.bin'))).toBe(true)
+    expect(existsSync(join(cacheDir, 'b.bin'))).toBe(true)
+    expect(logs).toEqual([])
+  })
+
+  it('trimming never follows a symlink out of cache/', () => {
+    const dataDir = tmpDir()
+    const cacheDir = join(dataDir, 'cache')
+    const outsideDir = tmpDir()
+    mkdirSync(cacheDir, { recursive: true })
+    mkdirSync(join(outsideDir, 'nested'), { recursive: true })
+
+    const outsideFile = join(outsideDir, 'secret.bin')
+    const outsideNestedFile = join(outsideDir, 'nested', 'keep.bin')
+    writeCacheFile(outsideFile, 700_000, '2026-01-01T00:00:00.000Z')
+    writeCacheFile(outsideNestedFile, 700_000, '2026-01-01T00:00:00.000Z')
+    symlinkSync(outsideFile, join(cacheDir, 'escape-file.bin'))
+    symlinkSync(join(outsideDir, 'nested'), join(cacheDir, 'escape-dir'))
+
+    // Symlinks to large external files alone must not trigger trimming.
+    writeCacheFile(join(cacheDir, 'tiny.bin'), 1024, '2026-01-02T00:00:00.000Z')
+    const { logs, logger } = cacheLogs()
+    const g = createDiskGuard({
+      dataDir,
+      minFreeMb: 2048,
+      criticalFreeMb: 512,
+      cacheMaxMb: 1,
+      logger,
+      freeMb: () => 5000
+    })
+    expect(g.check().level).toBe('ok')
+    expect(logs).toEqual([])
+    expect(existsSync(outsideFile)).toBe(true)
+    expect(existsSync(outsideNestedFile)).toBe(true)
+
+    // When real cache files exceed the cap, only real files are trimmed; external targets stay intact.
+    writeCacheFile(join(cacheDir, 'real-old.bin'), 600_000, '2026-01-03T00:00:00.000Z')
+    writeCacheFile(join(cacheDir, 'real-new.bin'), 600_000, '2026-01-04T00:00:00.000Z')
+    expect(g.check().level).toBe('ok')
+    expect(existsSync(outsideFile)).toBe(true)
+    expect(existsSync(outsideNestedFile)).toBe(true)
+    expect(existsSync(join(cacheDir, 'tiny.bin'))).toBe(false)
+    expect(existsSync(join(cacheDir, 'real-old.bin'))).toBe(false)
+    expect(existsSync(join(cacheDir, 'real-new.bin'))).toBe(true)
+    expect(logs).toEqual([
+      expect.objectContaining({ event: 'storage.cache_trimmed', bytesFreed: 601_024, fileCount: 2 })
+    ])
+
+    // If cache/ itself is a symlink outside, nothing outside is touched.
+    const symlinkDataDir = tmpDir()
+    symlinkSync(outsideDir, join(symlinkDataDir, 'cache'))
+    createDiskGuard({
+      dataDir: symlinkDataDir,
+      minFreeMb: 2048,
+      criticalFreeMb: 512,
+      cacheMaxMb: 1,
+      logger,
+      freeMb: () => 5000
+    }).check()
+    expect(existsSync(outsideFile)).toBe(true)
+    expect(existsSync(outsideNestedFile)).toBe(true)
   })
 })
 

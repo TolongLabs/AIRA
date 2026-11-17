@@ -39,7 +39,7 @@ export async function main(): Promise<void> {
   process.on('uncaughtException', onUncaughtException)
 
   try {
-    const config = loadConfig(process.env['AIRA_CONFIG'] ?? 'config.yml')
+    const config = loadConfig(process.env['AIRA_CONFIG'] ?? 'config.yml', { logger: boot })
     requireDeployable(config)
     const siteDir = resolve('site/dist')
     app = await createApp({

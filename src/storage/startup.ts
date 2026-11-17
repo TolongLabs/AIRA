@@ -77,6 +77,8 @@ export async function startStorage(options: StartOptions): Promise<StartedStorag
       dataDir: paths.root,
       minFreeMb: config.storage.minFreeMb,
       criticalFreeMb: config.storage.criticalFreeMb,
+      cacheMaxMb: config.storage.cacheMaxMb,
+      logger,
       freeMb: options.freeMb,
       now: options.now,
       onAlert: (state) => {
