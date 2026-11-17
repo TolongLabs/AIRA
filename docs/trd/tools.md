@@ -68,12 +68,13 @@ The model decides when to call a tool, which one, and how many, in a chain where
 
 Two limits end the chain. The first one reached wins.
 
-| Limit      | Key                     | Default | When It Is Reached                                                 |
-| ---------- | ----------------------- | ------- | ------------------------------------------------------------------ |
-| Call count | `tools.maxCallsPerTurn` | 4       | The tool list is withdrawn, and the model answers with what it has |
-| Tool time  | `tools.timeBudgetMs`    | 15000   | The same. A call in flight is cancelled at its own timeout         |
+| Limit      | Key                                                  | Default       | When It Is Reached                                                 |
+| ---------- | ---------------------------------------------------- | ------------- | ------------------------------------------------------------------ |
+| Call count | `tools.maxPerMessage` (cap: `tools.maxCallsPerTurn`) | 3 (ceiling 8) | The tool list is withdrawn, and the model answers with what it has |
+| Tool time  | `tools.timeBudgetMs`                                 | 15000         | The same. A call in flight is cancelled at its own timeout         |
 
-The turn record notes which limit was reached, in `chain_limit`. Both defaults are tuned from benchmark results.
+A turn with N commands may make at least N calls. The turn record notes which limit was reached, in `chain_limit`. Both
+defaults are tuned from benchmark results.
 
 ## Receipts
 
@@ -131,7 +132,8 @@ tool and says the rest in their own words.
   produce a question that lists them.
 - **Chaining is allowed after the named tool,** within the limits in [Implicit Calls](#implicit-calls). `/search`
   may go on to read a page.
-- A command counts as one tool call toward `tools.maxCallsPerTurn`.
+- A command counts as one tool call toward `tools.maxPerMessage` (capped by `tools.maxCallsPerTurn`). A turn with N
+  commands may make at least N calls.
 - **Until the named tool has been called, it is the only tool the model is offered.** A call to any other tool
   in that step is dropped. The model may instead ask its one question and call nothing.
 - **The model is shown what it must choose from.** Before the model fills the arguments of `/cancel` or `/forget`,
@@ -393,11 +395,11 @@ registry over that protocol so both runners use identical tools. See [Models](mo
 
 ## Configuration
 
-| Key                      | Default | Effect                               |
-| ------------------------ | ------- | ------------------------------------ |
-| `tools.maxCallsPerTurn`  | 4       | Limit on tool calls in one turn      |
-| `tools.timeBudgetMs`     | 15000   | Limit on total tool time in one turn |
-| `tools.defaultTimeoutMs` | 15000   | Timeout when a tool sets none        |
-| `search.provider`        | `off`   | Web search backend, or `off`         |
-| `mcp.servers`            | `[]`    | External tool servers                |
-| `lessons.lyricsProvider` | `off`   | The lyrics provider, or `off`        |
+| Key                      | Default | Effect                                                                           |
+| ------------------------ | ------- | -------------------------------------------------------------------------------- |
+| `tools.maxCallsPerTurn`  | 8       | Ceiling on tool calls in one turn; each chat sets `tools.maxPerMessage` below it |
+| `tools.timeBudgetMs`     | 15000   | Limit on total tool time in one turn                                             |
+| `tools.defaultTimeoutMs` | 15000   | Timeout when a tool sets none                                                    |
+| `search.provider`        | `off`   | Web search backend, or `off`                                                     |
+| `mcp.servers`            | `[]`    | External tool servers                                                            |
+| `lessons.lyricsProvider` | `off`   | The lyrics provider, or `off`                                                    |

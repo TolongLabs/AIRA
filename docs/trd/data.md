@@ -92,6 +92,7 @@ The primary key is `(level, scope, key)`. Deleting a row at a level restores inh
 | `reactions`              | Boolean: passive emoji reactions to members' messages                             | `false`                 |
 | `reactions.chance`       | Integer 0 to 100: percent chance to react when a rule trips                       | `33`                    |
 | `commands.maxPerMessage` | Integer 1 to 5: commands run from one message                                     | `1`                     |
+| `tools.maxPerMessage`    | Integer 1 to 8: tool calls one reply may make                                     | `3`                     |
 | `footerEmoji`            | One emoji, at most 8 characters                                                   | unset: the card's icon  |
 | `mcp.<server id>`        | Boolean                                                                           | `false`                 |
 
