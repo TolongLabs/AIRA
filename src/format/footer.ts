@@ -115,6 +115,14 @@ export function capitaliseParagraphs(text: string): string {
 }
 
 /**
+ * The label a code-written reply carries on replay, so the model does not take it for its own words and disown it.
+ * The cleaning chain removes it if the model ever copies it.
+ */
+export const CODE_REPLY_NOTE =
+  '[Code wrote this reply from stored data for a command. It is accurate; you did not write it.]'
+export const CODE_REPLY_NOTE_LINE = /^\[Code wrote this reply[^\]\n]*\]\s*$\n?/gm
+
+/**
  * The text of a stored reply as the model should see it on replay: no bubble breaks, no `MEDIA:` lines and no
  * footer lines.
  */

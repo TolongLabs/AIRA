@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import type { Pack } from '../character/loader.js'
-import { forReplay } from '../format/footer.js'
+import { CODE_REPLY_NOTE, forReplay } from '../format/footer.js'
 import type { ModelMessage, PromptBlock } from '../models/types.js'
 import { displayNames } from '../settings/chats.js'
 import type { Storage } from '../storage/database.js'
@@ -104,7 +104,8 @@ function formatMessages(input: TurnInput, names: Map<string, string> = new Map()
 
   for (const message of input.window) {
     if (message.role === 'assistant') {
-      messages.push({ role: 'assistant', content: forReplay(message.content) })
+      const replayed = forReplay(message.content)
+      messages.push({ role: 'assistant', content: message.byCode ? `${CODE_REPLY_NOTE}\n${replayed}` : replayed })
       continue
     }
     // A file sent with no caption has no text, and a model API refuses an empty message.
