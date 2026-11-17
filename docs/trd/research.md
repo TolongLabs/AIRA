@@ -42,11 +42,16 @@ command starts a job.
    to repair a findings object that failed validation.
 8. **Validate.** Code checks the findings: every cited source number exists, every source URL is one the job read,
    no section is empty, and the text fits the limits below. A source the job did not read is dropped, and a claim
-   left citing nothing is dropped with it.
-9. **Deliver.** The job stores the findings on its row, sets state `done`, and declares a one-time gateway job due at
-   once in `gateway/schedule.json`, tagged `[AIRA-SCHEDULED v1 kind=research id=<job id>]`, as reminders do
-   ([System](system.md#scheduled-turns)). The firing runs a `research` turn in the job's chat (see Delivery).
-10. **Limits.** A job that passes 120 s, or the monthly spend cap, stops and delivers what it has when it holds at
+   left citing nothing is dropped with it. A list longer than its limit is cut to the limit before the check, never
+   refused: queries to 6, key findings to 7, sections to 6, sources to 12, limitations to 4.
+9. **Schema sent to Claude.** Claude's structured output refuses length and count limits (measured, 17 Nov 2026:
+   HTTP 400 on `minItems` above 1, `maxItems`, `minLength` and `maxLength`). The Claude client sends the schema
+   without them; the zod schema still enforces every limit after parsing. A failed job records its error kind, a
+   redacted message, and a `model_call` row with the job id.
+10. **Deliver.** The job stores the findings on its row, sets state `done`, and declares a one-time gateway job due at
+    once in `gateway/schedule.json`, tagged `[AIRA-SCHEDULED v1 kind=research id=<job id>]`, as reminders do
+    ([System](system.md#scheduled-turns)). The firing runs a `research` turn in the job's chat (see Delivery).
+11. **Limits.** A job that passes 120 s, or the monthly spend cap, stops and delivers what it has when it holds at
     least one read source; else it fails with the `researchFailed` line.
 
 ## The Mold
