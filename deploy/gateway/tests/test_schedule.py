@@ -73,6 +73,17 @@ class ReconcileTest(unittest.TestCase):
         self.assertEqual((again["created"], again["removed"], again["kept"]), ([], [], ["aira:rem_a:20261117T080000Z"]))
         self.assertEqual([job["name"] for job in fake.jobs], ["news digest", "aira:rem_a:20261117T080000Z"])
 
+    def test_creates_a_research_job_and_refuses_a_mismatched_tag(self):
+        research = entry(rid="res_test", chat="0000000000@g.us")
+        research["text"] = "[AIRA-SCHEDULED v1 kind=research id=res_test]"
+        fake = FakeSchedule()
+        fake.run(self.wanted(research))
+        self.assertEqual(fake.created[0]["prompt"], research["text"])
+        self.assertEqual(fake.created[0]["origin"]["chat_id"], "0000000000@g.us")
+        self.assertEqual(fake.created[0]["repeat"], 1)
+        with self.assertRaises(schedule.BadFile):
+            self.wanted(dict(research, text="[AIRA-SCHEDULED v1 kind=research id=res_other]"))
+
     def test_removes_unwanted_and_completed_aira_jobs_and_no_other_job(self):
         fake = FakeSchedule([
             {"id": "j1", "name": "aira:rem_old:20261101T080000Z", "state": "scheduled"},

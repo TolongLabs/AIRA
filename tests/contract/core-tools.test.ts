@@ -137,10 +137,10 @@ function makeFakePorts() {
 }
 
 describe('core tools', () => {
-  it('registerCoreTools registers the exact sixteen tools in CORE_TOOL_NAMES', () => {
+  it('registerCoreTools registers the exact eighteen tools in CORE_TOOL_NAMES', () => {
     const { registry } = setup()
     expect(registry.toolNames()).toEqual([...CORE_TOOL_NAMES])
-    expect(CORE_TOOL_NAMES).toHaveLength(16)
+    expect(CORE_TOOL_NAMES).toHaveLength(18)
   })
 
   it('memory tools: note, recall, forget, history_search, lingo_note and chat isolation', async () => {

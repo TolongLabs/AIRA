@@ -6,6 +6,7 @@ export type DeliveryKind =
   | { kind: 'reply' }
   /** A reminder. `owner` is the subject who set it; `target` is the subject it is for. */
   | { kind: 'reminder'; owner: string; target: string }
+  | { kind: 'research'; jobId: string; owner: string }
   | { kind: 'proactive' }
   | { kind: 'routine' }
 
@@ -41,7 +42,7 @@ export function inQuietHours(quiet: DeliverySettings['quietHours'], now: Date): 
 }
 
 export function mayDeliver(settings: DeliverySettings, delivery: DeliveryKind, now: Date): DeliveryDecision {
-  if (delivery.kind === 'reply') return { allowed: true }
+  if (delivery.kind === 'reply' || delivery.kind === 'research') return { allowed: true }
   const quiet = inQuietHours(settings.quietHours, now)
   if (delivery.kind === 'reminder' && delivery.owner === delivery.target) {
     // A reminder a member set for themselves fires during quiet hours, but not during a mute they set.

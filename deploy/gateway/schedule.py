@@ -67,6 +67,9 @@ def read_wanted(path: Path) -> dict[str, dict]:
             raise BadFile(f"reminder {rid} has a due time with no zone")
         name = f"{PREFIX}{rid}:{compact(due)}"
         text = f"[AIRA-SCHEDULED v1 kind=reminder id={rid} due={compact(due)}]"
+        research_text = f"[AIRA-SCHEDULED v1 kind=research id={rid}]"
+        if entry.get("text") == research_text:
+            text = research_text
         if entry.get("name") != name or entry.get("text") != text:
             raise BadFile(f"reminder {rid} has a name or text the core would not write")
         wanted[name] = {"id": rid, "chat": chat, "due": due, "text": text}

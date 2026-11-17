@@ -33,6 +33,14 @@ const absoluteDir = z
 const gatewayDir = z.strictObject({ host: absoluteDir, container: absoluteDir })
 
 export const configSchema = z.strictObject({
+  research: z
+    .strictObject({
+      maxSearches: count.max(6).default(6),
+      maxPages: count.max(8).default(8),
+      deadlineMs: ms.max(120000).default(120000),
+      offerMinutes: count.default(30)
+    })
+    .default({ maxSearches: 6, maxPages: 8, deadlineMs: 120000, offerMinutes: 30 }),
   prompt: z.strictObject({
     maxSystemTokens: count
   }),

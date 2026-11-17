@@ -41,7 +41,8 @@ export interface Pack {
   }
   defaultMood: string
   moods: Map<string, Mood>
-  lines: Record<LineKind, string>
+  lines: Record<LineKind, string> &
+    Partial<Record<'researchStarted' | 'researchTopic' | 'researchBusy' | 'researchFailed' | 'offerPdf', string>>
 }
 
 function readAndValidate<T>(dir: string, file: string, schema: z.ZodType<T>, faults: string[]): T | undefined {

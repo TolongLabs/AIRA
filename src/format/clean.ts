@@ -546,14 +546,19 @@ export function createReplyCleaner(
         bubbleMaxChars: config.format.bubbleMaxChars,
         maxBubbles: config.format.maxBubbles,
         // A direct command runs no model and gets no footer.
-        toolsOk: toolsOk && run.calls.length > 0 ? toolsOk(context.turnId) : [],
+        toolsOk:
+          context.delivery?.kind === 'research'
+            ? ['web_search', 'read_page']
+            : toolsOk && run.calls.length > 0
+              ? toolsOk(context.turnId)
+              : [],
         ...(context.commandTool === undefined ? {} : { commandTool: context.commandTool }),
         ...(context.character.card.toolFooter ? { footer: context.character.card.toolFooter } : {}),
         footerOff: context.settings?.['features.toolFooter']?.value === false,
         ...(typeof context.settings?.['footerEmoji']?.value === 'string'
           ? { footerEmoji: context.settings['footerEmoji'].value }
           : {}),
-        sources: sources ? sources(context.turnId) : []
+        sources: context.researchSources ?? (sources ? sources(context.turnId) : [])
       })
     }
   }

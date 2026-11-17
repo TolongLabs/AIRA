@@ -1,5 +1,6 @@
 import { lookup as dnsLookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
+import type { ResearchOffers } from '../research/offer.js'
 import type { SocialReply } from '../social/types.js'
 import type { SocialPlatform } from '../social/urls.js'
 import type { Db } from '../storage/database.js'
@@ -71,6 +72,7 @@ export interface LyricsPort {
 }
 
 export interface ToolPorts {
+  research?: ResearchOffers
   memory?: MemoryPort
   search?: SearchPort
   lyrics?: LyricsPort

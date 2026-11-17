@@ -37,11 +37,28 @@ export function scheduleEntries(db: Db): ScheduleEntry[] {
        WHERE reminder.state = 'active' ORDER BY reminder.due_at, reminder.reminder_id`
     )
     .all() as { id: string; chat: string; due: string }[]
-  return rows.map((row) => ({
+  const reminders = rows.map((row) => ({
     ...row,
     name: `aira:${row.id}:${compactDue(row.due)}`,
     text: scheduledTag(row.id, row.due)
   }))
+  const research = db
+    .prepare(
+      `SELECT research_job.job_id AS id, chat.wa_id AS chat,
+    coalesce(research_job.ended_at, research_job.updated_at) AS due
+    FROM research_job JOIN chat ON chat.chat_id = research_job.chat_id
+    WHERE research_job.state IN ('done', 'failed') AND research_job.delivered_at IS NULL
+    ORDER BY due, research_job.job_id`
+    )
+    .all() as { id: string; chat: string; due: string }[]
+  return [
+    ...reminders,
+    ...research.map((row) => ({
+      ...row,
+      name: `aira:${row.id}:${compactDue(row.due)}`,
+      text: `[AIRA-SCHEDULED v1 kind=research id=${row.id}]`
+    }))
+  ]
 }
 
 /** Writes the wanted jobs to `<dataDir>/gateway/schedule.json`, atomically. Returns how many it wrote. */
