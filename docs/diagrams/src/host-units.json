@@ -1,0 +1,212 @@
+{
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Host",
+      "wraps": [
+        "updaterTimer",
+        "updaterSvc",
+        "runnerSvc",
+        "runner",
+        "schedPath",
+        "schedTimer",
+        "schedSvc",
+        "core",
+        "data",
+        "gateway"
+      ]
+    }
+  ],
+  "components": [
+    {
+      "col": 0,
+      "id": "updaterTimer",
+      "label": "aira-updater.timer",
+      "row": 0,
+      "sources": [
+        {
+          "path": "deploy/host/aira-updater.timer"
+        }
+      ],
+      "sublabel": "every 15 min",
+      "type": "backend"
+    },
+    {
+      "col": 1,
+      "id": "updaterSvc",
+      "label": "aira-updater.service",
+      "row": 0,
+      "size": [144, 72],
+      "sources": [
+        {
+          "path": "deploy/host/aira-updater.service"
+        }
+      ],
+      "sublabel": "release-driven update",
+      "type": "backend"
+    },
+    {
+      "col": 2,
+      "id": "core",
+      "label": "aira container",
+      "row": 0,
+      "sources": [
+        {
+          "path": "deploy/compose.yml"
+        }
+      ],
+      "sublabel": "core 9881, site 9890",
+      "type": "backend"
+    },
+    {
+      "col": 3,
+      "id": "gateway",
+      "label": "Hermes gateway",
+      "row": 0,
+      "sources": [
+        {
+          "path": "deploy/gateway/schedule.py"
+        }
+      ],
+      "sublabel": "bridge, sessions, cron",
+      "type": "messagebus"
+    },
+    {
+      "col": 0,
+      "id": "runnerSvc",
+      "label": "aira-runner.service",
+      "row": 1,
+      "sources": [
+        {
+          "path": "deploy/host/aira-runner.service"
+        }
+      ],
+      "sublabel": "always on",
+      "type": "backend"
+    },
+    {
+      "col": 1,
+      "id": "runner",
+      "label": "runner.mjs :9882",
+      "row": 1,
+      "sources": [
+        {
+          "path": "deploy/host-runner/runner.mjs"
+        }
+      ],
+      "sublabel": "spawns claude per request",
+      "type": "backend"
+    },
+    {
+      "col": 2,
+      "id": "data",
+      "label": "~/aira/data",
+      "row": 1,
+      "sources": [
+        {
+          "path": "deploy/compose.yml"
+        }
+      ],
+      "sublabel": "SQLite, snapshots, cache",
+      "type": "database"
+    },
+    {
+      "col": 0,
+      "id": "schedPath",
+      "label": "aira-schedule.path",
+      "row": 2,
+      "sources": [
+        {
+          "path": "deploy/host/aira-schedule.path"
+        }
+      ],
+      "sublabel": "on schedule.json change",
+      "type": "backend"
+    },
+    {
+      "col": 1,
+      "id": "schedTimer",
+      "label": "aira-schedule.timer",
+      "row": 2,
+      "sources": [
+        {
+          "path": "deploy/host/aira-schedule.timer"
+        }
+      ],
+      "sublabel": "every 1 min, safety net",
+      "type": "backend"
+    },
+    {
+      "col": 2,
+      "id": "schedSvc",
+      "label": "aira-schedule.service",
+      "row": 2,
+      "size": [144, 72],
+      "sources": [
+        {
+          "path": "deploy/host/aira-schedule.service"
+        }
+      ],
+      "sublabel": "schedule.py reconciler",
+      "type": "backend"
+    }
+  ],
+  "connections": [
+    {
+      "from": "updaterTimer",
+      "label": "triggers",
+      "to": "updaterSvc"
+    },
+    {
+      "from": "updaterSvc",
+      "label": "pulls and recreates",
+      "to": "core"
+    },
+    {
+      "from": "schedPath",
+      "label": "triggers",
+      "to": "schedSvc"
+    },
+    {
+      "from": "schedTimer",
+      "label": "triggers",
+      "to": "schedSvc"
+    },
+    {
+      "from": "schedSvc",
+      "label": "reconciles jobs",
+      "to": "gateway"
+    },
+    {
+      "from": "runnerSvc",
+      "label": "keeps running",
+      "to": "runner"
+    },
+    {
+      "from": "runner",
+      "label": "model calls",
+      "to": "core"
+    },
+    {
+      "from": "core",
+      "label": "writes",
+      "to": "data"
+    }
+  ],
+  "diagram_type": "architecture",
+  "layout": {
+    "cols": 4,
+    "mode": "grid"
+  },
+  "meta": {
+    "output": ".archify/host-units.html",
+    "quality_profile": "showcase",
+    "title": "Host Units And What They Run",
+    "repository": {
+      "url": "https://github.com/TolongLabs/AIRA",
+      "provider": "github",
+      "revision": "163a320e5dfeaf636ffe3e4e4c389470d9567d35"
+    }
+  },
+  "schema_version": 1
+}

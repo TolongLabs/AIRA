@@ -1,0 +1,141 @@
+{
+  "activations": [
+    {
+      "from": 180,
+      "participant": "server",
+      "to": 400
+    },
+    {
+      "from": 430,
+      "participant": "server",
+      "to": 640
+    }
+  ],
+  "diagram_type": "sequence",
+  "messages": [
+    {
+      "from": "browser",
+      "label": "GET /api/chats + Bearer SITE_TOKEN",
+      "note": "A missing or wrong token gets 401 unauthorized. A token under 32 chars means no API at all.",
+      "to": "server",
+      "y": 180
+    },
+    {
+      "from": "server",
+      "label": "dispatchGet",
+      "note": "An unknown path gets 404 not_found. A non-GET gets 405 method_not_allowed.",
+      "to": "routes",
+      "y": 244
+    },
+    {
+      "from": "routes",
+      "label": "storage.read",
+      "note": "Reads only. The report reads the newest snapshot instead of the live file.",
+      "to": "storage",
+      "y": 308
+    },
+    {
+      "from": "routes",
+      "label": "200 JSON",
+      "to": "browser",
+      "variant": "return",
+      "y": 372
+    },
+    {
+      "from": "browser",
+      "label": "PUT /api/settings + Host, Origin, JSON up to 16 KB",
+      "note": "Over 16 KB gets 413 body_too_large. A non-JSON type gets 415.",
+      "to": "server",
+      "y": 452
+    },
+    {
+      "from": "server",
+      "label": "hostAllowed + originAllowed",
+      "note": "A bad host gets 403 host_refused. A foreign origin gets 403 origin_refused.",
+      "to": "writes",
+      "y": 516
+    },
+    {
+      "from": "writes",
+      "label": "one tx: setSetting + setting_change row",
+      "note": "Null clears the row. A global character also rewrites the unavailable line.",
+      "to": "storage",
+      "y": 580
+    },
+    {
+      "from": "writes",
+      "label": "200 + changed flag",
+      "to": "browser",
+      "variant": "return",
+      "y": 644
+    }
+  ],
+  "meta": {
+    "output": ".archify/site-api.html",
+    "quality_profile": "showcase",
+    "title": "Site API Request",
+    "repository": {
+      "url": "https://github.com/TolongLabs/AIRA",
+      "provider": "github",
+      "revision": "163a320e5dfeaf636ffe3e4e4c389470d9567d35"
+    }
+  },
+  "participants": [
+    {
+      "id": "browser",
+      "label": "Site page",
+      "sources": [
+        {
+          "path": "site/src/lib/core.ts"
+        }
+      ],
+      "sublabel": "token in local storage",
+      "type": "frontend"
+    },
+    {
+      "id": "server",
+      "label": "createSiteApiServer",
+      "sources": [
+        {
+          "path": "src/api/server.ts"
+        }
+      ],
+      "sublabel": "token gate, then dispatch",
+      "type": "backend"
+    },
+    {
+      "id": "writes",
+      "label": "writes.ts",
+      "sources": [
+        {
+          "path": "src/api/writes.ts"
+        }
+      ],
+      "sublabel": "Host and Origin gates",
+      "type": "backend"
+    },
+    {
+      "id": "routes",
+      "label": "routes.ts",
+      "sources": [
+        {
+          "path": "src/api/routes.ts"
+        }
+      ],
+      "sublabel": "read handlers",
+      "type": "backend"
+    },
+    {
+      "id": "storage",
+      "label": "SQLite",
+      "sources": [
+        {
+          "path": "src/storage/database.ts"
+        }
+      ],
+      "sublabel": "one writer",
+      "type": "database"
+    }
+  ],
+  "schema_version": 1
+}

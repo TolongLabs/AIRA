@@ -1,0 +1,156 @@
+{
+  "diagram_type": "dataflow",
+  "flows": [
+    {
+      "from": "chats",
+      "label": "reads and writes",
+      "to": "coreClient"
+    },
+    {
+      "from": "coreClient",
+      "label": "Bearer aira-site-token",
+      "to": "coreApi",
+      "variant": "security"
+    },
+    {
+      "from": "ownerPages",
+      "label": "reads and writes",
+      "to": "legacyClient"
+    },
+    {
+      "from": "legacyClient",
+      "label": "Bearer tolongai-token",
+      "to": "legacyApi",
+      "variant": "security"
+    },
+    {
+      "from": "coreApi",
+      "label": "chats, settings, turns, memory",
+      "to": "sqlite"
+    }
+  ],
+  "meta": {
+    "output": ".archify/site-pages.html",
+    "quality_profile": "showcase",
+    "title": "Site Page To API Map",
+    "repository": {
+      "url": "https://github.com/TolongLabs/AIRA",
+      "provider": "github",
+      "revision": "163a320e5dfeaf636ffe3e4e4c389470d9567d35"
+    }
+  },
+  "nodes": [
+    {
+      "id": "chats",
+      "label": "ChatsPage",
+      "row": 0,
+      "sources": [
+        {
+          "path": "site/src/pages/chats.tsx"
+        }
+      ],
+      "stage": 0,
+      "sublabel": "rebuilt on the core",
+      "type": "frontend"
+    },
+    {
+      "id": "ownerPages",
+      "label": "Owner-tool pages",
+      "row": 1,
+      "sources": [
+        {
+          "path": "site/src/pages/dashboard.tsx"
+        },
+        {
+          "path": "site/src/pages/cron.tsx"
+        }
+      ],
+      "stage": 0,
+      "sublabel": "Dashboard, Settings, Library…",
+      "type": "frontend"
+    },
+    {
+      "id": "coreClient",
+      "label": "lib/core.ts",
+      "row": 0,
+      "sources": [
+        {
+          "path": "site/src/lib/core.ts"
+        }
+      ],
+      "stage": 1,
+      "sublabel": "5 calls, own token key",
+      "type": "backend"
+    },
+    {
+      "id": "legacyClient",
+      "label": "lib/api.ts",
+      "row": 1,
+      "sources": [
+        {
+          "path": "site/src/lib/api.ts"
+        }
+      ],
+      "stage": 1,
+      "sublabel": "old token key",
+      "type": "backend"
+    },
+    {
+      "id": "coreApi",
+      "label": "Core site API",
+      "row": 0,
+      "sources": [
+        {
+          "path": "src/api/routes.ts"
+        },
+        {
+          "path": "src/api/writes.ts"
+        }
+      ],
+      "stage": 2,
+      "sublabel": "/api/chats, settings, tools…",
+      "type": "backend"
+    },
+    {
+      "id": "legacyApi",
+      "label": "Legacy site API",
+      "row": 1,
+      "sources": [
+        {
+          "path": "site/src/lib/api.ts"
+        }
+      ],
+      "stage": 2,
+      "sublabel": "/api/dashboard, library… unchanged",
+      "type": "backend"
+    },
+    {
+      "id": "sqlite",
+      "label": "SQLite",
+      "row": 0,
+      "sources": [
+        {
+          "path": "src/storage/database.ts"
+        }
+      ],
+      "stage": 3,
+      "sublabel": "chats, settings, turns",
+      "type": "database"
+    }
+  ],
+  "schema_version": 1,
+  "stages": [
+    {
+      "label": "Site pages"
+    },
+    {
+      "label": "API clients"
+    },
+    {
+      "label": "APIs"
+    },
+    {
+      "label": "Stores"
+    }
+  ]
+}

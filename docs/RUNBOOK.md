@@ -1,46 +1,76 @@
 # Runbook
 
-Operational procedures for running AIRA on the host.
+Operational procedures for running AIRA on the host. The TRD modules own each contract; this page tells the
+operator what to run, in order.
 
-Status: nothing is deployed yet. This is a skeleton pointing to the TRD modules that specify each procedure.
+Status: the host deploys on every push to `main` through the self-hosted runner. See
+[`docs/trd/deployment.md`](trd/deployment.md).
+
+## Host Layout
+
+One install lives in `~/aira/`: the compose file, `.env` (mode 600), `config.yml` (mounted read-only), and the
+`data/` folder. The gateway reads the core's files from that folder. The full map is in
+[`docs/trd/deployment.md`](trd/deployment.md#host-layout).
+
+![The host units, what triggers them and what they run](diagrams/host-units.svg)
 
 ## Install
 
-Host layout, compose file, secrets and data volume setup are specified in [`docs/trd/deployment.md`](trd/deployment.md).
+Follow [`docs/trd/deployment.md`](trd/deployment.md#install). Confirm each step that changes the host first.
+Point `gateway.hostDataDir` at the data folder's absolute path. When the install folder is not `~/aira`, edit
+`deploy/host/aira-schedule.path` to match before enabling the units.
 
 ## Configure
 
-Configuration files, secrets, character packs and chat settings are specified in [`docs/trd/data.md`](trd/data.md).
+Configuration files, secrets, character packs and chat settings are specified in
+[`docs/trd/data.md`](trd/data.md). Change chat settings through the Chats page: each write validates like
+start-up, commits with a `setting_change` row, and applies on the next turn. To change the token, port or allowed
+origins, see the maintainer steps in [`docs/trd/site.md`](trd/site.md#write-routes). To allow a browser write from
+another origin, add it to `site.allowedOrigins`; a write with no `Origin` needs only the token.
 
 ## Deploy
 
-CI, release image publishing and the pull-based host updater are specified in
-[`docs/trd/deployment.md`](trd/deployment.md).
+Every merge to `main` builds an image and deploys it. The deploy waits for an idle turn, snapshots, pulls, rewrites
+`.env` in place, recreates the container, polls health and sends one synthetic turn. On failure it restarts the
+previous image; it never restores data. The full sequence is in
+[`docs/trd/deployment.md`](trd/deployment.md#deploy).
+
+![How one merge to main becomes a running container](diagrams/release-deploy.svg)
+
+To recover from a failed or half-finished deploy, read the append-only record: `deploys.jsonl` in the install
+folder for the CI deploy, or `/var/lib/aira/deploys.jsonl` for the timer path. `failed_before_start` means nothing
+was started; `rolled_back` means a start, health or turn check failed and the previous image was restarted. When
+the rollback itself failed, start the previous image by hand with its `AIRA_VERSION`.
 
 ## Health Check
 
-Start-up validation and the readiness health endpoint are specified in [`docs/trd/reliability.md`](trd/reliability.md)
-and [`docs/trd/site.md`](trd/site.md).
+Poll `GET /health` until ready. Start-up validation and the readiness endpoint are specified in
+[`docs/trd/reliability.md`](trd/reliability.md) and [`docs/trd/site.md`](trd/site.md). To change how long a deploy
+waits for idle or health, set `AIRA_WAIT_FOR_IDLE_MS` or `AIRA_HEALTH_TIMEOUT_MS` in the deploy environment; the
+`config.yml` keys of the same names have no effect.
 
 ## Backups
 
-Daily SQLite backups, retention and pre-deploy backups are specified in [`docs/trd/data.md`](trd/data.md).
+Snapshots, retention, the off-host copy and recovery are specified in
+[`docs/trd/storage.md`](trd/storage.md).
 
 ## Cutover
 
 The one-night cutover steps from the old core to the new core are specified in
-[`docs/trd/deployment.md`](trd/deployment.md).
+[`docs/trd/deployment.md`](trd/deployment.md#cutover). The shadow period did not run; NFR-8 still requires one.
 
 ## Rollback
 
 Rolling back to the old core and restoring gateway configuration are specified in
-[`docs/trd/deployment.md`](trd/deployment.md).
+[`docs/trd/deployment.md`](trd/deployment.md#rollback).
 
 ## Read a Turn Record
 
-Inspecting a turn record and generating summary reports are specified in [`docs/trd/records.md`](trd/records.md).
+Inspect one turn with `bun run turn`, and print latency, failure, cost and fallback figures with `bun run report`.
+The record format is specified in [`docs/trd/records.md`](trd/records.md).
 
 ## Common Failures
 
 Failure kinds, alerts and containment rules are specified in [`docs/trd/models.md`](trd/models.md),
-[`docs/trd/reliability.md`](trd/reliability.md) and [`docs/trd/records.md`](trd/records.md).
+[`docs/trd/reliability.md`](trd/reliability.md) and [`docs/trd/records.md`](trd/records.md). Operator alerts append
+to `alerts.jsonl` on the data volume and write a failure row.

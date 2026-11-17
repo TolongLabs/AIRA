@@ -5,15 +5,16 @@ one night.
 
 ## CI
 
-| Job       | Runs                                                                                                   | Trigger                     |
-| --------- | ------------------------------------------------------------------------------------------------------ | --------------------------- |
-| `check`   | Typecheck, lint, format, unit, contract and replay tests                                               | Every push and pull request |
-| `scan`    | Secret scan and the privacy scan for ids, numbers and names                                            | Every push and pull request |
-| `site`    | Site typecheck and build                                                                               | Every push and pull request |
-| `image`   | Builds the release image. On a push to `main` it pushes it as `sha-<7>` and `edge`                     | Every push and pull request |
-| `deploy`  | Deploys the pushed image on the host, through the self-hosted runner                                   | Push to `main` only         |
-| `release` | Version and changelog pull request from commit messages                                                | Push to `main`              |
-| `promote` | When a release pull request merges, tags the image the host already runs `vX.Y.Z`, `vX.Y` and `stable` | A release commit            |
+| Job         | Runs                                                                               | Trigger                     |
+| ----------- | ---------------------------------------------------------------------------------- | --------------------------- |
+| `check`     | Typecheck, lint, format, unit, contract and replay tests                           | Every push and pull request |
+| `scan`      | Secret scan of the repository history with gitleaks                                | Every push and pull request |
+| `site`      | Site typecheck and build                                                           | Every push and pull request |
+| `image`     | Builds the release image. On a push to `main` it pushes it as `sha-<7>` and `edge` | Every push and pull request |
+| `images-ok` | Re-reports the image result, so a skipped or failed build still fails the gate     | After `image`, always       |
+| `deploy`    | Deploys the pushed image on the host, through the self-hosted runner               | Push to `main` only         |
+| `release`   | Version and changelog pull request from commit messages                            | Push to `main`              |
+| `promote`   | Tags the image the host runs `vX.Y.Z`, `vX.Y` and `stable`                         | A release commit            |
 
 ## Release Image
 
@@ -36,14 +37,26 @@ The container's user has the same uid, so the core writes the data folder and th
 | Configuration       | `~/aira/config.yml`, copied from the repository at install with `gateway.hostDataDir` set, mounted read-only over the image's own                                                                           |
 | Data folder         | `~/aira/data/` (`AIRA_DATA_DIR`), bind-mounted at `/data`: the database, files, snapshots, archive and cache. See [Persistence](storage.md#stores)                                                          |
 | Data folder path    | `gateway.hostDataDir`: the data folder's absolute path on the host, where the gateway finds stickers, the unavailable line and the wanted-jobs file                                                         |
-| `gateway.selfIds`   | empty                                                                                                                                                                                                       | The bot's own WhatsApp ids, so a mention of the bot is told from a name call |
+| Bot's own ids       | `gateway.selfIds`: the bot's own WhatsApp ids, so a mention of the bot is told from a name call                                                                                                             |
 | Gateway media       | The gateway's `~/.hermes/cache/` and `~/.hermes/audio_cache/`, mounted read-only at `/gateway/cache` and `/gateway/audio_cache` (`AIRA_GATEWAY_CACHE`, `AIRA_GATEWAY_AUDIO_CACHE`). See [Install](#install) |
 | Gateway helpers     | AIRA's `brain.bubbles` and `brain.failure`, from `deploy/gateway/brain/`                                                                                                                                    |
 | Schedule reconciler | `deploy/gateway/schedule.py`, run by `aira-schedule.path` as soon as the core rewrites `gateway/schedule.json`, and each minute by `aira-schedule.timer` as a safety net, in the gateway's environment      |
 | Off-host copy       | An encrypted repository on another machine                                                                                                                                                                  |
 | Core port           | `127.0.0.1:${AIRA_PORT}`, published to loopback only. 9881 after cutover; a spare port beside the old core                                                                                                  |
 | Site API port       | `${AIRA_SITE_BIND}:${AIRA_SITE_PORT}`, the private-network address only; loopback beside the old core                                                                                                       |
-| Runner service      | A host unit, present only for the subscription transport                                                                                                                                                    |
+| Updater units       | `aira-updater.timer` (every 15 minutes, hard-coded in the unit) with `aira-updater.service`, for the release-driven timer path                                                                              |
+| Schedule units      | Path, timer and service units; the path unit watches a hard-coded folder (see below)                                                                                                                        |
+| Runner service      | Host unit for the subscription transport only (see below)                                                                                                                                                   |
+
+- The schedule path unit watches `%h/aira/data/gateway/schedule.json`, so an install folder other than `~/aira`
+  needs the unit edited. `aira-schedule.timer` ticks every minute as a safety net.
+- The runner service (`aira-runner.service`) needs `RUNNER_TOKEN` of at least 16 characters (else it exits 1), and
+  reads `RUNNER_PORT` (default 9882) and `RUNNER_PROGRAM` (default `claude`, or a JSON array). A run is refused
+  with 400 unless `tools.url` is a loopback http URL, `tools.token` is 16 to 128 hex characters, and `timeoutMs` is
+  between 1000 and 600000. A timed-out or disconnected run is stopped with SIGTERM, then SIGKILL after 2 s. See
+  [Models](models.md#run-request) for the run itself.
+
+![The host units, what triggers them and what they run](../diagrams/host-units.svg)
 
 ## Install
 
@@ -82,23 +95,34 @@ Run by the operator on the host, with each step that changes the host confirmed 
 A GitHub Actions runner on the host, labelled `aira-dev2`, takes the `deploy` job after `check`, `scan` and `image`
 pass on a push to `main`. Deploys run one at a time. Like rokabot's, every merge to `main` goes live.
 
-1. If a turn is in flight, wait up to `deploy.waitForIdleMs`.
-2. Take a verified snapshot of the database.
-3. Pull `sha-<7>`, write `AIRA_VERSION=sha-<7>` and `AIRA_IMAGE` to the install's `.env`, and recreate the container.
-   Start-up runs migrations inside a transaction.
-4. Poll the health endpoint until ready, up to `deploy.healthTimeoutMs`, and send one synthetic turn.
-5. On success: keep the previous image for rollback and remove older ones, then post the result to the host's ntfy.
-6. On failure: start the previous image, post the failure, and fail the job. No data is restored, because a migration
-   keeps the previous release working. See [Persistence](storage.md#migrations).
+![How one merge to main becomes a running container](../diagrams/release-deploy.svg)
 
-- **The repository is public.** The runner takes only the `deploy` job, which runs only on a push to `main`. Workflows
-  from forks and outside contributors need the owner's approval before they run, so no outside pull request can reach
-  the runner.
-- Steps 1, 2, 4 and 6 reuse the updater's operations in `scripts/updater`.
+1. If a turn is in flight, wait up to `AIRA_WAIT_FOR_IDLE_MS` (default 120000).
+2. Take a verified snapshot of the database. When no image runs yet, this step is skipped.
+3. Pull `sha-<7>`, rewrite `AIRA_VERSION` and `AIRA_IMAGE` in place in the install's `.env` (every other line kept;
+   a missing key is appended), and recreate the container. Start-up runs migrations inside a transaction.
+4. Poll the health endpoint until ready, up to `AIRA_HEALTH_TIMEOUT_MS` (default 60000), and send one synthetic
+   turn.
+5. On success: keep the previous image for rollback and remove older ones, append one JSON line (`from`, `to`,
+   `outcome`, `reason`) to `deploys.jsonl` in the install folder, then post the result to the host's ntfy. When
+   `AIRA_NTFY_URL` is unset no post is made, and the same text also goes to stderr.
+6. On failure: start the previous image, append the record, post the failure, and fail the job. No data is
+   restored, because a migration keeps the previous release working. See [Persistence](storage.md#migrations).
+
+- **The repository is public.** The runner takes only the `deploy` job, which runs only on a push to `main`. The
+  job runs inside the `production` GitHub environment and serialises on the `aira-deploy` concurrency group with
+  `cancel-in-progress: false`. Workflows from forks and outside contributors need the owner's approval before they
+  run, so no outside pull request can reach the runner.
+- The CI deploy runs its own sequence (`runDeployHost` in `scripts/deploy-host.ts`) and shares only the
+  `createRealOps` effect layer with the timer path (`runUpdate` in `scripts/updater`). The timer path records to
+  `/var/lib/aira/deploys.jsonl` by default and never deploys a release whose body carries a `manual` line: it
+  records `skipped_manual` instead.
 
 ## Shadow Period
 
-Before cutover, the new core runs beside the old one.
+Not run. Cutover went ahead without this period and without the staging rehearsal (decision 2026-11-17). NFR-8
+still requires a shadow period, so this section stays as the contract for one. Before cutover, the new core runs
+beside the old one.
 
 - The new core listens on a second loopback port. The old core keeps port 9881 and keeps answering every chat.
 - A tap copies each real gateway request to the new core (**Spike S-5**). The new core runs the full turn, including
@@ -137,7 +161,7 @@ by the new core since cutover exist only in the new database; the rollback recor
 
 | Key                      | Default | Effect                                                         |
 | ------------------------ | ------- | -------------------------------------------------------------- |
-| `deploy.checkEveryMin`   | 15      | How often the host looks for a release                         |
-| `deploy.waitForIdleMs`   | 120000  | Longest wait for a running turn                                |
-| `deploy.healthTimeoutMs` | 60000   | Longest wait for the new image to be ready                     |
+| `deploy.checkEveryMin`   | 15      | Not read; the timer unit sets 15 minutes                       |
+| `deploy.waitForIdleMs`   | 120000  | Not read; the deploy uses `AIRA_WAIT_FOR_IDLE_MS`              |
+| `deploy.healthTimeoutMs` | 60000   | Not read; the deploy uses `AIRA_HEALTH_TIMEOUT_MS`             |
 | `gateway.hostDataDir`    | empty   | The data volume's path on the host. Start-up fails while empty |
