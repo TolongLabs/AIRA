@@ -1,0 +1,58 @@
+{
+  "title": "Urban Microgrid Battery Storage Economics",
+  "question": "How do second-life EV batteries perform in neighborhood microgrids?",
+  "summary": "Field telemetry across three pilot districts shows repurposed electric vehicle battery packs lower peak distribution loads while maintaining predictable capacity retention over 24 months. Capital costs drop relative to virgin cells once thermal balancing and inverter integration are standardized.",
+  "keyFindings": [
+    {
+      "text": "Repurposed 400 kWh rack clusters reduced evening feeder peaks by 18% to 24% across mild and warm seasons.",
+      "sources": [1, 3]
+    },
+    {
+      "text": "分布式储能系统可将高峰电网负荷削减约百分之二十二，并提升社区供电韧性。",
+      "sources": [2]
+    },
+    {
+      "text": "Module sorting and state-of-health screening account for roughly one third of refurbishment labor cost.",
+      "sources": [1, 2]
+    }
+  ],
+  "sections": [
+    {
+      "heading": "Load Shifting and Cycling Behavior",
+      "body": "Pilot substations dispatched stored energy during the 18:00 to 22:00 tariff window using day-ahead load forecasts.\n\nOperators kept daily depth of discharge between 20% and 80% state of charge to curb accelerated cell aging.\n\n- Average round-trip AC efficiency reached 87.4% across all three feeders\n- Unplanned inverter trips stayed below two events per site per year\n- Active liquid cooling held cell temperature spread under 4 degrees Celsius",
+      "sources": [1, 3]
+    },
+    {
+      "heading": "Refurbishment Cost Structure",
+      "body": "Total installed cost depends heavily on incoming pack uniformity and local electrical inspection rules.\n\n- Automated impedance grading halved testing bench hours compared with manual cycling\n- Standardized rack enclosures cut field commissioning time to three days",
+      "sources": [2, 3]
+    }
+  ],
+  "limitations": [
+    "Field telemetry covers 24 months of operation rather than a full 10-year service life.",
+    "Cold-climate winter performance below minus 10 degrees Celsius was not sampled."
+  ],
+  "sources": [
+    {
+      "n": 1,
+      "title": "District Microgrid Storage Field Report",
+      "url": "https://example.com/reports/microgrid-storage-2026",
+      "domain": "example.com",
+      "accessedAt": "2026-11-10T08:30:00Z"
+    },
+    {
+      "n": 2,
+      "title": "Second-Life Pack Grading Benchmarks",
+      "url": "https://docs.example.com/energy/battery-grading",
+      "domain": "docs.example.com",
+      "accessedAt": "2026-11-10T08:32:00Z"
+    },
+    {
+      "n": 3,
+      "title": "Substation Peak Load Telemetry Summary",
+      "url": "https://data.example.com/pilots/feeder-peaks",
+      "domain": "data.example.com",
+      "accessedAt": "2026-11-10T08:35:00Z"
+    }
+  ]
+}

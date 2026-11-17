@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { reportFormatSchema } from '../render/types.js'
 
 // One schema for config.yml. Every object is strict: an unknown key stops start-up (docs/trd/data.md).
 // Each group is owned by the TRD module named beside it in config.yml.
@@ -167,6 +168,21 @@ export const configSchema = z.strictObject({
       maxReplies: z.number().int().min(1).max(50).default(5),
       maxReplyChars: z.number().int().min(1).default(280),
       ytDlpPath: z.string().min(1).default('yt-dlp')
+    })
+    .prefault({}),
+  // Report PDF renderer (docs/trd/research.md#the-renderer).
+  render: z
+    .strictObject({
+      // Path or command name of the Typst binary used to compile PDFs.
+      typstPath: z.string().min(1).default('typst'),
+      // Longest wait for one PDF compilation before it is killed.
+      timeoutMs: ms.default(20000),
+      // Maximum page count allowed for a rendered report PDF.
+      maxPages: count.default(30),
+      // Maximum byte size allowed for a rendered report PDF (5 MiB).
+      maxBytes: count.default(5242880),
+      // Default report layout and typography profile.
+      report: reportFormatSchema.prefault({})
     })
     .prefault({}),
   turn: z.strictObject({

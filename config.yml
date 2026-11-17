@@ -102,6 +102,20 @@ social:
   maxReplyChars: 280
   ytDlpPath: yt-dlp
 
+# Owned by docs/trd/research.md
+render:
+  typstPath: 'typst' # Typst CLI binary used to render report PDFs
+  timeoutMs: 20000 # Longest wait for one PDF render
+  maxPages: 30 # Maximum page count for a rendered report
+  maxBytes: 5242880 # Maximum file size in bytes (5 MiB) for a rendered report
+  report: # Default report format profile; per-chat overrides live in report.format
+    pageSize: 'A4' # Page size: A4 or Letter
+    accent: '#2f6fde' # Hex accent colour for headings and rules
+    fontSize: 10.5 # Body font size in points (9 to 12)
+    cover: true # Include a cover page before the summary
+    sourcesAppendix: true # Include the numbered sources appendix at the end
+    header: '' # Optional running header line
+
 turn:
   batchMs: 1500 # Window that merges quick messages
   mediaWaitMs: 8000 # Wait for a caption after a bare photo
