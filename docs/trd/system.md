@@ -63,13 +63,13 @@ Each request is one of four kinds, decided in this order (measured on the stagin
 - **Mentions are WhatsApp ids.** WhatsApp writes `@<number>` in the text for a mention. Before the text enters a
   turn, the core writes `@<display name>` for a known member, the bound character's name for an id listed in
   `gateway.selfIds`, and `@member` for any other number, so no WhatsApp id reaches the model or a reply.
-- **Name call.** At cutover the gateway's `mention_patterns` lists every character's name, whole word and in any
-  case, so a group message that names the character reaches the core. When such a message is neither a mention of
-  `gateway.selfIds` nor a reply to the bot, and the chat is not set to free response, the core answers only if the
-  chat's `nameCall` setting is on and the text holds one of the chat's names, and else returns `NO_REPLY`. The names
-  are the chat's `nameCall.names` when set, else the bound card's display name and its `aliases` (`AIRA` for the
-  default pack). A name matches as a whole word in any case, so `aira`, `Aira` and `AIRA` all match and `airasia`
-  does not. Typo matches are not used: they would wake on ordinary words and other people's names.
+- **Name call.** The gateway decides which group messages reach the core: a mention of the bot, a reply to it, a
+  message that starts with `/`, a chat with free response on, or one of the chat's names while its `nameCall` setting
+  is on. The core answers every group message it receives. The gateway removes the bot's own mention from the text, so
+  the core cannot tell a mention from a name and does not try. The names are the chat's `nameCall.names` when set,
+  else the bound card's display name and its `aliases` (`AIRA` for the default pack). A name matches as a whole word in
+  any case, so `aira`, `Aira` and `AIRA` all match and `airasia` does not. Typo matches are not used: they would wake
+  on ordinary words and other people's names.
 - **The gateway wakes on the chat's names.** The core writes each name-call chat's names into `chats.json` (see Chat
   Flags File). The patch `name-call-from-core` makes the gateway's group check also wake on those names for that
   chat. It also wakes on every message in a chat whose entry has `free: true`. The patch `name-call-only-from-core` stops
