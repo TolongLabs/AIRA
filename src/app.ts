@@ -629,6 +629,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       siteServer = createSiteApiServer({
         token: siteToken,
         allowedOrigins: config.site.allowedOrigins,
+        registry,
         packs,
         ...(options.siteDir ? { siteDir: options.siteDir } : {}),
         storage,

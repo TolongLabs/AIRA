@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { request as httpRequest } from 'node:http'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import { hostAllowed, originAllowed } from '../../src/api/writes.js'
 import { applyOperation } from '../../src/memory/store.js'
 import { ModelError } from '../../src/models/types.js'
@@ -39,7 +40,8 @@ describe('site API read routes', () => {
       '/api/turns/turn-missing',
       '/api/report',
       '/api/memory?chat=c_test',
-      '/api/characters'
+      '/api/characters',
+      '/api/tools'
     ]
     for (const path of paths) {
       const noToken = await apiFetch(siteUrl, path)
@@ -50,6 +52,41 @@ describe('site API read routes', () => {
       expect(wrongToken.status).toBe(401)
       expect(await wrongToken.json()).toEqual({ error: 'unauthorized' })
     }
+  })
+
+  it('lists registry tool metadata grouped by feature without exposing definitions', async () => {
+    const { app, siteUrl } = await startWithSite()
+    for (const mode of ['implicit', 'explicit', 'both'] as const) {
+      app.registry.register({
+        name: `site_${mode}`,
+        description: 'Private tool implementation detail',
+        schema: z.object({}),
+        mode,
+        feature: 'features.site_test',
+        mutates: false,
+        ...(mode === 'implicit'
+          ? {}
+          : { command: { names: [mode, `${mode}alias`], kind: 'skill' as const, usage: mode } }),
+        handler: () => ({ ok: true, data: {} })
+      })
+    }
+    const res = await apiFetch(siteUrl, '/api/tools', { token: TOKEN })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      features: { key: string; tools: { name: string; mode: string; commands: string[] }[] }[]
+    }
+    expect(body.features.find((feature) => feature.key === 'features.site_test')).toEqual({
+      key: 'features.site_test',
+      tools: [
+        { name: 'site_implicit', mode: 'implicit', commands: [] },
+        { name: 'site_explicit', mode: 'explicit', commands: ['/explicit', '/explicitalias'] },
+        { name: 'site_both', mode: 'both', commands: ['/both', '/bothalias'] }
+      ]
+    })
+    expect(body.features.flatMap((feature) => feature.tools).length).toBeGreaterThan(3)
+    expect(body.features.every((feature) => feature.key.length > 0)).toBe(true)
+    expect(body.features.flatMap((feature) => feature.tools).some((tool) => tool.name === 'help')).toBe(false)
+    expect(JSON.stringify(body)).not.toContain('Private tool implementation detail')
   })
 
   it('reports ready status and role configuration on /api/health', async () => {

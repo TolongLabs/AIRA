@@ -1,8 +1,17 @@
+import * as Tooltip from '@radix-ui/react-tooltip'
 import { ChevronRight, X } from 'lucide-react'
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { Shell } from '@/components/shell'
-import { Button, Card, Empty, Field, Input, Picker, Section, Segmented, Spinner, Toggle } from '@/components/ui'
-import { type CoreCharacter, type CoreChat, type Resolved, type SourceLevel, core, reasonText } from '@/lib/core'
+import { Badge, Button, Card, Empty, Field, Input, Picker, Section, Segmented, Spinner, Toggle } from '@/components/ui'
+import {
+  type CoreCharacter,
+  type CoreChat,
+  type CoreToolFeature,
+  type Resolved,
+  type SourceLevel,
+  core,
+  reasonText
+} from '@/lib/core'
 import { toast, Toaster } from '@/lib/hooks'
 import { cn, midTrunc } from '@/lib/utils'
 
@@ -58,6 +67,40 @@ const FEATURES: { key: string; label: string; hint: string }[] = [
     hint: "Markets and Claude Code sessions. For the owner's own chats."
   }
 ]
+
+function FeatureTools({ tools }: { tools: CoreToolFeature['tools'] }) {
+  const implicit = tools.some((tool) => tool.mode !== 'explicit')
+  const explicit = tools.some((tool) => tool.mode !== 'implicit')
+  if (!implicit && !explicit) return null
+  const label = implicit && explicit ? 'Both' : implicit ? 'Implicit' : 'Explicit'
+  const description = [
+    implicit && 'AIRA calls it on her own when a message needs it.',
+    explicit && 'Runs only when a member types the command, such as /remind.'
+  ]
+    .filter(Boolean)
+    .join(' ')
+  return (
+    <Tooltip.Provider delayDuration={0}>
+      <Tooltip.Root>
+        <Tooltip.Trigger asChild>
+          <button type="button" className="min-h-11 shrink-0 cursor-help border-0 bg-transparent p-0">
+            <Badge>{label}</Badge>
+          </button>
+        </Tooltip.Trigger>
+        <Tooltip.Portal>
+          <Tooltip.Content
+            side="top"
+            sideOffset={4}
+            collisionPadding={12}
+            className="z-50 max-w-[min(18rem,calc(100vw-24px))] rounded-card border border-line bg-card px-3 py-2 text-[0.82rem] leading-relaxed text-ink shadow-float"
+          >
+            {description}
+          </Tooltip.Content>
+        </Tooltip.Portal>
+      </Tooltip.Root>
+    </Tooltip.Provider>
+  )
+}
 
 function sourceText(level: SourceLevel, type: CoreChat['type']): string {
   switch (level) {
@@ -458,11 +501,13 @@ function FooterEmojiField({ chat, onSave }: { chat: CoreChat; onSave: (value: un
 function ChatRow({
   chat,
   characters,
+  toolFeatures,
   onChanged,
   open,
   onToggle
 }: {
   chat: CoreChat
+  toolFeatures: CoreToolFeature[]
   characters: CoreCharacter[]
   onChanged: () => void
   /** Kept by the page, so a chat that moves between On and Off stays open. */
@@ -756,13 +801,18 @@ function ChatRow({
               {tab === 'features' &&
                 FEATURES.map((f) => (
                   <SettingRow key={f.key} chat={chat} name={f.key} label={f.label} onClear={clear}>
-                    <Toggle
-                      checked={valueOf(chat, f.key, false)}
-                      disabled={busy}
-                      onChange={(v) => save(f.key, v)}
-                      label={f.label}
-                      hint={f.hint}
-                    />
+                    <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1">
+                      <div className="min-w-0 flex-1 basis-48">
+                        <Toggle
+                          checked={valueOf(chat, f.key, false)}
+                          disabled={busy}
+                          onChange={(v) => save(f.key, v)}
+                          label={f.label}
+                          hint={f.hint}
+                        />
+                      </div>
+                      <FeatureTools tools={toolFeatures.find((feature) => feature.key === f.key)?.tools ?? []} />
+                    </div>
                   </SettingRow>
                 ))}
               {tab === 'quiet' && (
@@ -825,6 +875,7 @@ function Group({
   title: string
   note: string
   chats: CoreChat[]
+  toolFeatures: CoreToolFeature[]
   characters: CoreCharacter[]
   onChanged: () => void
   openId: string | null
@@ -856,12 +907,13 @@ function Group({
 export default function ChatsPage() {
   const chats = useCore(core.chats)
   const packs = useCore(core.characters)
+  const tools = useCore(core.tools)
   const all = chats.data?.chats ?? []
   const on = useMemo(() => all.filter((c) => c.status === 'active'), [all])
   const off = useMemo(() => all.filter((c) => c.status === 'pending'), [all])
   const characters = packs.data?.characters ?? []
   const [openId, setOpenId] = useState<string | null>(null)
-  const shared = { characters, onChanged: chats.reload, openId, setOpenId }
+  const shared = { toolFeatures: tools.data?.features ?? [], characters, onChanged: chats.reload, openId, setOpenId }
 
   return (
     <Shell
@@ -888,6 +940,7 @@ export default function ChatsPage() {
             <Group title="Off" note={`${off.length} not answered until switched on`} chats={off} {...shared} />
           </div>
         )}
+        {tools.error && <p className="mt-4 text-[0.8rem] text-down">Tool call modes unavailable: {tools.error}</p>}
         {packs.data?.faults.length ? (
           <p className="mt-4 text-[0.8rem] text-down">
             {packs.data.faults.length} character pack{packs.data.faults.length === 1 ? '' : 's'} did not load:{' '}

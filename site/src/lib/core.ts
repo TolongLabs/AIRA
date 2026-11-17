@@ -33,6 +33,11 @@ export interface CoreCharacter {
   languages: string[]
 }
 
+export interface CoreToolFeature {
+  key: string
+  tools: { name: string; mode: 'implicit' | 'explicit' | 'both'; commands: string[] }[]
+}
+
 /** A refusal from the core, with its reason code. The body never holds message text. */
 export class CoreError extends Error {
   constructor(
@@ -71,6 +76,7 @@ function put<T>(path: string, body: unknown): Promise<T> {
 }
 
 export const core = {
+  tools: () => call<{ features: CoreToolFeature[] }>('/api/tools'),
   chats: () => call<{ chats: CoreChat[] }>('/api/chats'),
   characters: () => call<{ characters: CoreCharacter[]; faults: { id: string; reason: string }[] }>('/api/characters'),
   setStatus: (chatId: string, status: CoreChat['status']) =>
