@@ -1,0 +1,35 @@
+# Every issue has an owner; whoever opens it still picks the right person; this only catches a miss.
+
+name: assign-issues
+
+on:
+  issues:
+    types: [opened, reopened]
+
+permissions: {}
+
+jobs:
+  assign:
+    if: ${{ !github.event.issue.assignees[0] }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Assign owner if still unassigned
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          AUTHOR: ${{ github.event.issue.user.login }}
+          FALLBACK: ${{ vars.DEFAULT_ISSUE_ASSIGNEE || 'AlaskanTuna' }}
+        run: |
+          if [ "$(gh api "repos/$GH_REPO/issues/$ISSUE_NUMBER" --jq '.assignees | length')" -gt 0 ]; then
+            exit 0
+          fi
+          if gh api "repos/$GH_REPO/assignees/$AUTHOR" --silent 2>/dev/null; then
+            assignee="$AUTHOR"
+          else
+            assignee="$FALLBACK"
+          fi
+          gh api -X POST "repos/$GH_REPO/issues/$ISSUE_NUMBER/assignees" -f "assignees[]=$assignee" --silent
