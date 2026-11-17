@@ -1,0 +1,145 @@
+{
+  "diagram_type": "workflow",
+  "edges": [
+    {
+      "from": "text",
+      "id": "e1",
+      "label": "scan",
+      "to": "match"
+    },
+    {
+      "from": "match",
+      "id": "e2",
+      "label": "known name",
+      "to": "route"
+    },
+    {
+      "from": "route",
+      "id": "e3",
+      "label": "direct only",
+      "role": "branch",
+      "to": "direct"
+    },
+    {
+      "from": "route",
+      "id": "e4",
+      "label": "skill-style",
+      "to": "ctx"
+    },
+    {
+      "from": "ctx",
+      "id": "e5",
+      "label": "model fills args",
+      "to": "reply"
+    },
+    {
+      "from": "direct",
+      "id": "e6",
+      "label": "plain words",
+      "role": "branch",
+      "to": "reply"
+    }
+  ],
+  "lanes": [
+    {
+      "id": "chat",
+      "label": "Chat Message"
+    },
+    {
+      "id": "core",
+      "label": "Command Router"
+    }
+  ],
+  "mainPath": ["text", "match", "route", "ctx", "reply"],
+  "meta": {
+    "output": ".archify/command-routing.html",
+    "quality_profile": "showcase",
+    "title": "Command Detection and Routing",
+    "repository": {
+      "url": "https://github.com/TolongLabs/AIRA",
+      "provider": "github",
+      "revision": "163a320e5dfeaf636ffe3e4e4c389470d9567d35"
+    }
+  },
+  "nodes": [
+    {
+      "col": 0,
+      "id": "text",
+      "label": "Message Text",
+      "lane": "chat",
+      "sources": [
+        {
+          "line": 8,
+          "path": "src/tools/commands.ts"
+        }
+      ],
+      "sublabel": "scanned by COMMAND_TOKEN",
+      "type": "external"
+    },
+    {
+      "col": 1,
+      "id": "match",
+      "label": "match",
+      "lane": "core",
+      "sources": [
+        {
+          "line": 126,
+          "path": "src/tools/commands.ts"
+        }
+      ],
+      "sublabel": "known names, up to maxPerMessage",
+      "type": "backend"
+    },
+    {
+      "col": 2,
+      "id": "route",
+      "label": "route",
+      "lane": "core",
+      "sources": [
+        {
+          "line": 155,
+          "path": "src/tools/commands.ts"
+        }
+      ],
+      "sublabel": "/read address, direct or skill",
+      "type": "backend"
+    },
+    {
+      "col": 3,
+      "id": "direct",
+      "label": "runDirect",
+      "lane": "core",
+      "sources": [
+        {
+          "line": 173,
+          "path": "src/tools/commands.ts"
+        }
+      ],
+      "sublabel": "handler, renderDirect, no model",
+      "type": "backend"
+    },
+    {
+      "col": 4,
+      "id": "ctx",
+      "label": "contextFor",
+      "lane": "core",
+      "sources": [
+        {
+          "line": 186,
+          "path": "src/tools/commands.ts"
+        }
+      ],
+      "sublabel": "CONTEXT_TOOL: cancel, forget",
+      "type": "backend"
+    },
+    {
+      "col": 5,
+      "id": "reply",
+      "label": "One Reply",
+      "lane": "chat",
+      "sublabel": "/help rows via HELP_TEXT",
+      "type": "frontend"
+    }
+  ],
+  "schema_version": 2
+}
