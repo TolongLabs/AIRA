@@ -122,6 +122,7 @@ that makes a new decision.
 | 2026-11-16 | Migration 0006 is changed in place rather than followed by a migration that drops its tables.                                                                                   | No release holds it (`releasedVersion` 0), so no database has applied it. A drop would break the add-first rule for no gain.                                          |
 | 2026-11-16 | `judge.model` is `jev-latest`, TypeSafe's Jev. Its release date at the time is 22 October 2026; the memory thresholds are re-checked whenever the alias moves to a new release. | The owner chose Jev. TypeSafe lists no versioned id, only `jev-latest` and `jev-preview`, so the release date stands in for a version.                                |
 | 2026-11-17 | The old library's Markdown folder is imported by a script: dry run by default, one transaction on `--apply`, existing keys never overwritten, raw lyrics not imported.          | The owner approved reading the old library on 17 Nov. Never overwriting keeps words filed since cutover; raw lyrics are a cache, not study material.                  |
+| 2026-11-17 | The off-host copy is a restic repository: dev2 pushes to an append-only REST server on the owner's workstation; S3 or R2 later by changing the repository URL.                  | The owner chose the workstation for now, with a path to a bucket. Append-only keeps a stolen host key from deleting backups; restic encrypts on the host.             |
 
 ## Site
 
