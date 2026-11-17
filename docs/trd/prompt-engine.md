@@ -148,6 +148,9 @@ them alike and leaves the domains tappable.
   `features.toolFooter` switches the footer off, both lines.
 - The stored reply keeps the footer, so a repeated request returns the same message. When the window is replayed to
   the model, code removes both footer lines, bubble breaks and `MEDIA:` lines from assistant rows.
+- A reply that code wrote with no model call, such as a direct command's answer, is replayed with a one-line
+  label saying code wrote it from stored data. Without it the model took a `/help` list for its own words and
+  disowned it. The cleaning chain removes the label if the model copies it.
 
 ## WhatsApp Renderer
 
