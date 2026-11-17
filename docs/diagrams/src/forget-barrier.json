@@ -1,0 +1,39 @@
+{
+  "schema_version": 3,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Forget Barrier",
+    "quality_profile": "showcase",
+    "output": ".archify/forget-barrier.html"
+  },
+  "mainPath": ["active", "superseded", "forgotten"],
+  "states": [
+    { "id": "active", "type": "active", "label": "Active", "sublabel": "recalled" },
+    { "id": "superseded", "type": "neutral", "label": "Superseded", "sublabel": "older version kept" },
+    { "id": "forgotten", "type": "neutral", "label": "Forgotten", "sublabel": "value cleared" },
+    { "id": "upcoming", "type": "waiting", "label": "Upcoming", "sublabel": "until valid_until" },
+    { "id": "retired", "type": "neutral", "label": "Retired", "sublabel": "expired or retracted" }
+  ],
+  "transitions": [
+    { "id": "add", "from": "active", "to": "superseded", "label": "newer fact same slot" },
+    { "id": "clear-slot", "from": "superseded", "to": "forgotten", "label": "forget clears slot" },
+    { "id": "direct-forget", "from": "active", "to": "forgotten", "label": "forget by id" },
+    { "id": "future", "from": "active", "to": "upcoming", "label": "stated future change" },
+    { "id": "expire", "from": "upcoming", "to": "retired", "label": "time passes" },
+    { "id": "retract", "from": "active", "to": "retired", "label": "judged retraction" },
+    { "id": "forget-upcoming", "from": "upcoming", "to": "forgotten", "label": "forget clears slot" },
+    { "id": "forget-old", "from": "retired", "to": "forgotten", "label": "forget clears old rows" }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Barrier",
+      "items": ["Cursor moves, queued jobs end, epoch rises", "Running jobs apply nothing after it"]
+    },
+    {
+      "dot": "amber",
+      "title": "Cleared Copies",
+      "items": ["Key, value, old versions, episode summary", "Supporting message text and its quotes"]
+    }
+  ]
+}
