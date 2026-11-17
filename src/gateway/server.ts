@@ -1,10 +1,12 @@
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http'
+import type { FailureKind } from '../records/kinds.js'
 import type { Logger } from '../records/logger.js'
 import type { Redactor } from '../records/redact.js'
 import { recordFailure } from '../records/turn-record.js'
-import type { Storage } from '../storage/database.js'
+import { getChatByWaId } from '../settings/chats.js'
+import { type Storage, StorageError } from '../storage/database.js'
 import type { TurnService } from '../turn/pipeline.js'
-import { MalformedRequestError, parseGatewayRequest } from './request.js'
+import { type GatewayRequest, MalformedRequestError, parseGatewayRequest } from './request.js'
 import { NO_REPLY, openStream, writeReply } from './response.js'
 
 // The OpenAI-compatible endpoint the gateway calls (docs/trd/system.md#gateway-contract).
@@ -48,15 +50,84 @@ function readBody(request: IncomingMessage, limit: number): Promise<string> {
   })
 }
 
-function json(response: ServerResponse, status: number, body: unknown): void {
-  if (response.headersSent) return
-  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(body))
+function json(response: ServerResponse, status: number, body: unknown, log?: Logger): void {
+  if (response.headersSent || response.destroyed || response.writableEnded) return
+  try {
+    response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(body))
+  } catch (error) {
+    log?.error('gateway.write_failed', { error })
+    response.destroy()
+  }
 }
 
 export function createGatewayServer(options: GatewayServerOptions): Server {
   const { turns, storage, logger } = options
   const now = options.now ?? (() => new Date())
   const log = logger.child({ module: 'gateway' })
+
+  function sendReply(
+    response: ServerResponse,
+    reply: { id: string; content: string },
+    parsed: { stream: boolean; includeUsage: boolean }
+  ): void {
+    try {
+      writeReply(response, reply, { ...parsed, now })
+    } catch (error) {
+      log.error('gateway.write_failed', { error })
+      response.destroy()
+    }
+  }
+
+  function chatIdFor(parsed: GatewayRequest): string | undefined {
+    try {
+      if (parsed.type === 'turn') {
+        return getChatByWaId(storage, parsed.marker.chat)?.chatId ?? options.redactor.hash(parsed.marker.chat)
+      }
+      if (parsed.type === 'scheduled') {
+        const readChatId = (sql: string, id: string) =>
+          storage.read((db) => db.prepare(sql).pluck().get(id)) as string | undefined
+        if (parsed.kind === 'reminder') {
+          return readChatId('SELECT chat_id FROM reminder WHERE reminder_id = ?', parsed.reminderId)
+        }
+        if (parsed.kind === 'research') {
+          return readChatId('SELECT chat_id FROM research_job WHERE job_id = ?', parsed.jobId)
+        }
+      }
+    } catch {
+      return parsed.type === 'turn' ? options.redactor.hash(parsed.marker.chat) : undefined
+    }
+    return undefined
+  }
+
+  function recordTurnFailure(error: unknown, handledBy: string, meta: { chatId?: string; jobId?: string }): void {
+    log.error('gateway.turn_failed', {
+      ...(meta.chatId ? { chatId: meta.chatId } : {}),
+      ...(meta.jobId ? { jobId: meta.jobId } : {}),
+      error
+    })
+    const kind: FailureKind = error instanceof StorageError ? error.kind : 'internal'
+    try {
+      storage.tx((db) =>
+        recordFailure(
+          db,
+          {
+            ...(meta.jobId ? { jobId: meta.jobId } : {}),
+            stage: 'receive',
+            kind,
+            error,
+            handledBy
+          },
+          options.redactor,
+          now
+        )
+      )
+    } catch (storageError) {
+      log.error('gateway.turn_failure_not_recorded', {
+        ...(meta.chatId ? { chatId: meta.chatId } : {}),
+        error: storageError
+      })
+    }
+  }
 
   /** Nothing goes to a chat, and the record shows it: the gateway's own work, or a scope stamp that is off. */
   function answerUnmarked(
@@ -77,7 +148,7 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
     } catch (storageError) {
       log.error('gateway.unmarked_not_recorded', { error: storageError })
     }
-    writeReply(response, { id: 'unmarked', content: NO_REPLY }, { ...parsed, now })
+    sendReply(response, { id: 'unmarked', content: NO_REPLY }, parsed)
   }
 
   async function completions(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -100,13 +171,13 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
         log.error('gateway.malformed_not_recorded', { error: storageError })
       }
       const message = error instanceof MalformedRequestError ? error.message : 'the request body is not valid JSON'
-      json(response, 400, { error: { message, type: 'invalid_request_error' } })
+      json(response, 400, { error: { message, type: 'invalid_request_error' } }, log)
       return
     }
 
     if (parsed.type === 'auxiliary') {
       // A gateway chore: fixed text, no model call, no turn record.
-      writeReply(response, { id: 'auxiliary', content: options.auxiliaryText ?? 'Chat' }, { ...parsed, now })
+      sendReply(response, { id: 'auxiliary', content: options.auxiliaryText ?? 'Chat' }, parsed)
       return
     }
 
@@ -131,26 +202,29 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
           )
           return
         }
-        writeReply(response, { id: reply.turnId ?? 'none', content: reply.content }, { ...parsed, now })
+        sendReply(response, { id: reply.turnId ?? 'none', content: reply.content }, parsed)
         options.afterTurn?.()
       } catch (error) {
-        log.error('gateway.turn_failed', { error })
-        json(response, 500, { error: { message: 'the turn could not be handled', type: 'server_error' } })
+        const chatId = chatIdFor(parsed)
+        const jobId = parsed.kind === 'job' || parsed.kind === 'research' ? parsed.jobId : undefined
+        recordTurnFailure(error, 'status:500', { chatId, jobId })
+        json(response, 500, { error: { message: 'the turn could not be handled', type: 'server_error' } }, log)
       }
       return
     }
 
-    // The stream opens at once, so the gateway sees an answer in progress while the turn runs.
-    if (parsed.stream) openStream(response)
     try {
+      // The stream opens at once, so the gateway sees an answer in progress while the turn runs.
+      if (parsed.stream) openStream(response)
       const reply = await turns.handle(parsed)
-      writeReply(response, { id: reply.turnId ?? 'none', content: reply.content }, { ...parsed, now })
+      sendReply(response, { id: reply.turnId ?? 'none', content: reply.content }, parsed)
       options.afterTurn?.()
     } catch (error) {
       // Nothing was acknowledged. Dropping the connection makes the gateway send the same request again.
-      log.error('gateway.turn_failed', { error })
+      const chatId = chatIdFor(parsed)
+      recordTurnFailure(error, response.headersSent ? 'drop' : 'status:500', { chatId })
       if (response.headersSent) response.destroy()
-      else json(response, 500, { error: { message: 'the turn could not be handled', type: 'server_error' } })
+      else json(response, 500, { error: { message: 'the turn could not be handled', type: 'server_error' } }, log)
     }
   }
 
@@ -158,21 +232,30 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
     const path = (request.url ?? '').split('?')[0]
     if (request.method === 'GET' && path === '/health') {
       const ready = options.ready()
-      json(response, ready ? 200 : 503, {
-        ...options.health?.(),
-        status: ready ? 'ready' : 'starting',
-        activeTurns: turns.active()
-      })
+      json(
+        response,
+        ready ? 200 : 503,
+        {
+          ...options.health?.(),
+          status: ready ? 'ready' : 'starting',
+          activeTurns: turns.active()
+        },
+        log
+      )
       return
     }
     if (request.method === 'POST' && path === '/v1/chat/completions') {
       if (!options.ready()) {
-        json(response, 503, { error: { message: 'the core is not ready', type: 'server_error' } })
+        json(response, 503, { error: { message: 'the core is not ready', type: 'server_error' } }, log)
         return
       }
-      void completions(request, response)
+      void completions(request, response).catch((error: unknown) => {
+        log.error('gateway.request_failed', { error })
+        if (response.headersSent) response.destroy()
+        else json(response, 500, { error: { message: 'the request could not be handled', type: 'server_error' } }, log)
+      })
       return
     }
-    json(response, 404, { error: { message: 'not found', type: 'invalid_request_error' } })
+    json(response, 404, { error: { message: 'not found', type: 'invalid_request_error' } }, log)
   })
 }

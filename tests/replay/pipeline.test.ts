@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createReplyCleaner } from '../../src/format/clean.js'
 import { scheduledTag } from '../../src/gateway/schedule.js'
 import type { TurnMedia } from '../../src/media/turn-media.js'
@@ -8,7 +8,7 @@ import { createLogger } from '../../src/records/logger.js'
 import { createRedactor } from '../../src/records/redact.js'
 import { setSetting } from '../../src/settings/settings.js'
 import type { SocialPost } from '../../src/social/types.js'
-import type { Storage } from '../../src/storage/database.js'
+import type { Db, Storage } from '../../src/storage/database.js'
 import { createCommandRouter } from '../../src/tools/commands.js'
 import { registerCoreTools } from '../../src/tools/core/index.js'
 import { createToolRegistry } from '../../src/tools/registry.js'
@@ -46,6 +46,8 @@ const one = <T>(storage: Storage, sql: string, ...args: unknown[]) =>
   )
 const userText = (input: { messages: { role: string; content: string }[] }) =>
   input.messages.filter((message) => message.role === 'user').at(-1)?.content ?? ''
+
+afterEach(() => vi.restoreAllMocks())
 
 describe('a scripted conversation', () => {
   it('gets one reply per turn, with a full turn record for each', async () => {
@@ -712,6 +714,76 @@ describe('the gateway endpoint', () => {
       'saw: sent while the core was down\n\nsent after'
     )
     expect(one(core.storage, "SELECT count(*) FROM session_message WHERE role = 'user'")).toBe(2)
+  })
+
+  it('records gateway.turn_failed with chatId and a failure row when a turn or scheduled request rejects', async () => {
+    const core = await startTestCore()
+    const chatId = core.activate(CHAT)
+    const reminderId = addReminder(core.storage, chatId)
+    vi.spyOn(core.turns, 'handle').mockRejectedValueOnce(new Error('handle exploded'))
+    vi.spyOn(core.turns, 'handleScheduled').mockRejectedValueOnce(new Error('scheduled exploded'))
+
+    const turnResponse = await fetch(`${core.baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [
+          {
+            role: 'user',
+            content: `[HERMES-SCOPE v1 platform=whatsapp kind=group chat=${CHAT} sender=${ALICE} mid=m-fail]\nhello`
+          }
+        ],
+        tools: [{ type: 'function', function: { name: 'gateway_tool' } }]
+      })
+    })
+    expect(turnResponse.status).toBe(500)
+
+    const scheduledResponse = await fetch(`${core.baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: scheduledTag(reminderId, DUE) }],
+        tools: [{ type: 'function', function: { name: 'gateway_tool' } }]
+      })
+    })
+    expect(scheduledResponse.status).toBe(500)
+
+    const turnFailedLogs = core.logs.filter((entry) => entry['event'] === 'gateway.turn_failed')
+    expect(turnFailedLogs).toHaveLength(2)
+    expect(turnFailedLogs[0]).toMatchObject({ level: 'error', chatId })
+    expect(turnFailedLogs[1]).toMatchObject({ level: 'error', chatId })
+    expect(JSON.stringify(turnFailedLogs)).not.toContain(CHAT)
+    expect(rows(core.storage, 'SELECT stage, kind, handled_by, message FROM failure ORDER BY id')).toEqual([
+      { stage: 'receive', kind: 'internal', handled_by: 'status:500', message: 'handle exploded' },
+      { stage: 'receive', kind: 'internal', handled_by: 'status:500', message: 'scheduled exploded' }
+    ])
+  })
+
+  it('drops a streaming connection when closeTurn and its fallback both fail so the gateway retries', async () => {
+    const core = await startTestCore()
+    const chatId = core.activate(CHAT)
+    const origTx = core.storage.tx.bind(core.storage)
+    vi.spyOn(core.storage, 'tx').mockImplementation(((fn: (db: Db) => unknown) =>
+      origTx((db) => {
+        const result = fn(db)
+        const assistantCount = db
+          .prepare("SELECT count(*) FROM session_message WHERE role = 'assistant'")
+          .pluck()
+          .get() as number
+        const failedCount = db.prepare("SELECT count(*) FROM turn WHERE state = 'failed'").pluck().get() as number
+        if (assistantCount === 1 || failedCount === 1) {
+          throw new Error('storage down on close')
+        }
+        return result
+      })) as Storage['tx'])
+
+    const delivery = await core.gateway.send(msg('m-stream-fail', 'hello'))
+    expect(delivery.status).toBe('failed')
+    expect(delivery.attempts).toBe(6)
+    const turnFailedLogs = core.logs.filter((entry) => entry['event'] === 'gateway.turn_failed')
+    expect(turnFailedLogs.length).toBeGreaterThanOrEqual(1)
+    expect(turnFailedLogs[0]).toMatchObject({ level: 'error', chatId })
+    expect(rows(core.storage, 'SELECT stage, kind, handled_by FROM failure')).toEqual(
+      expect.arrayContaining([expect.objectContaining({ stage: 'receive', kind: 'internal', handled_by: 'drop' })])
+    )
   })
 })
 

@@ -18,7 +18,7 @@ import {
 import { runRecovery } from '../../src/storage/recovery.js'
 import { latestSnapshot, pruneSnapshots, takeSnapshot } from '../../src/storage/snapshot.js'
 import { dataPaths, startStorage } from '../../src/storage/startup.js'
-import { advanceTurn, closeTurn, openTurn, receiveInbound } from '../../src/storage/turns.js'
+import { advanceTurn, closeTurn, closeTurnAsFailed, openTurn, receiveInbound } from '../../src/storage/turns.js'
 import { tmpDir, tmpStorage } from '../support/tmp.js'
 
 const key = { chatId: 'chat-1', mid: 'm-1', senderId: 'sender-1' }
@@ -153,6 +153,27 @@ describe('inbound messages and turns', () => {
     const storage = tmpStorage()
     expect(() => closeTurn(storage, { turnId: 't', state: 'delivered' })).toThrow(StorageError)
     expect(() => closeTurn(storage, { turnId: 't', state: 'declined', reply: 'x' })).toThrow(StorageError)
+  })
+
+  it('closeTurnAsFailed passes reached stage and can leave inbound messages open for retry', () => {
+    const storage = tmpStorage()
+    expect(closeTurnAsFailed(storage, { turnId: 'missing' })).toBe(false)
+    receiveInbound(storage, key)
+    open(storage, 't-1')
+    advanceTurn(storage, 't-1', 'clean')
+    let reachedStage = ''
+    expect(
+      closeTurnAsFailed(storage, {
+        turnId: 't-1',
+        closeInbound: false,
+        also: (_, stage) => {
+          reachedStage = stage
+        }
+      })
+    ).toBe(true)
+    expect(reachedStage).toBe('clean')
+    expect(one(storage, "SELECT state FROM turn WHERE turn_id = 't-1'")).toBe('failed')
+    expect(receiveInbound(storage, key)).toEqual({ status: 'retry' })
   })
 })
 

@@ -70,7 +70,10 @@ function setup(
   return { storage, turns, logs, packs }
 }
 
-afterEach(() => vi.useRealTimers())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+})
 
 describe('attempt records and arrival latency', () => {
   it('keeps all three failed requests and their errors when the runner throws', async () => {
@@ -323,5 +326,119 @@ describe('attempt records and arrival latency', () => {
         stack: expect.stringContaining('Error: attachment store failed')
       }
     ])
+  })
+
+  it('closes the turn as failed with storage_error and returns the error line when closeTurn throws once', async () => {
+    const core = setup()
+    const origTx = core.storage.tx.bind(core.storage)
+    let threw = false
+    vi.spyOn(core.storage, 'tx').mockImplementation((fn) =>
+      origTx((db) => {
+        const result = fn(db)
+        if (
+          !threw &&
+          (db.prepare("SELECT count(*) FROM session_message WHERE role = 'assistant'").pluck().get() as number) === 1
+        ) {
+          threw = true
+          throw new Error('simulated closeTurn failure')
+        }
+        return result
+      })
+    )
+    const reply = await core.turns.handle(request('close-throws-once'))
+
+    expect(reply.content).not.toBe('')
+    expect(reply.content).not.toBe('NO_REPLY')
+    expect(reply.content).toBe(core.packs().packs.get('example')?.lines.error)
+    expect(rows(core.storage, 'SELECT turn_id, state, outcome, failure_kind FROM turn')).toEqual([
+      { turn_id: reply.turnId, state: 'failed', outcome: 'failed', failure_kind: 'storage_error' }
+    ])
+    expect(rows(core.storage, 'SELECT turn_id, stage, kind FROM failure')).toEqual([
+      { turn_id: reply.turnId, stage: 'clean', kind: 'storage_error' }
+    ])
+    expect(core.logs).toEqual(
+      expect.arrayContaining([expect.objectContaining({ event: 'turn.storage_failed', level: 'error' })])
+    )
+    const replayed = await core.turns.handle(request('close-throws-once'))
+    expect(replayed.content).toBe(reply.content)
+  })
+
+  it('rejects waiters when both closeTurn and the fallback close transaction fail', async () => {
+    const core = setup()
+    const origTx = core.storage.tx.bind(core.storage)
+    vi.spyOn(core.storage, 'tx').mockImplementation((fn) =>
+      origTx((db) => {
+        const result = fn(db)
+        const assistantCount = db
+          .prepare("SELECT count(*) FROM session_message WHERE role = 'assistant'")
+          .pluck()
+          .get() as number
+        const failedCount = db.prepare("SELECT count(*) FROM turn WHERE state = 'failed'").pluck().get() as number
+        if (assistantCount === 1 || failedCount === 1) {
+          throw new Error('persistent storage failure')
+        }
+        return result
+      })
+    )
+    await expect(core.turns.handle(request('close-throws-always'))).rejects.toThrow('persistent storage failure')
+    expect(core.logs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ event: 'turn.storage_failed', level: 'error' }),
+        expect.objectContaining({ event: 'turn.storage_fallback_failed', level: 'error' })
+      ])
+    )
+  })
+
+  it('falls back to the default pack error line and records one internal failure when packs() throws', async () => {
+    const basePacks = loadPacks({ repositoryDir: 'characters', dataDir: '/tmp/aira-no-private-packs' })
+    let calls = 0
+    const core = setup(
+      scriptedRunner(() => 'unused'),
+      0,
+      {
+        packs: () => {
+          calls += 1
+          // Call 1 runs during handle() mention replacement; call 2 runs inside execute() before context is built.
+          if (calls === 2) throw new Error('pack read failed')
+          return basePacks
+        }
+      }
+    )
+    const reply = await core.turns.handle(request('packs-throws'))
+
+    expect(reply.content).toBe(basePacks.packs.get('example')?.lines.error)
+    expect(rows(core.storage, 'SELECT turn_id, state, outcome, failure_kind FROM turn')).toEqual([
+      { turn_id: reply.turnId, state: 'failed', outcome: 'failed', failure_kind: 'internal' }
+    ])
+    expect(rows(core.storage, 'SELECT turn_id, stage, kind FROM failure')).toEqual([
+      { turn_id: reply.turnId, stage: 'internal', kind: 'internal' }
+    ])
+  })
+
+  it('rejects when no pack loads after an uncaught exception so the gateway can retry', async () => {
+    const basePacks = loadPacks({ repositoryDir: 'characters', dataDir: '/tmp/aira-no-private-packs' })
+    let broken = true
+    let calls = 0
+    const core = setup(
+      scriptedRunner(() => 'recovered reply'),
+      0,
+      {
+        packs: () => {
+          calls += 1
+          if (broken && calls >= 2) throw new Error('no packs available')
+          return basePacks
+        }
+      }
+    )
+    await expect(core.turns.handle(request('no-pack-retry'))).rejects.toThrow('no packs available')
+    expect(rows(core.storage, 'SELECT state, outcome, failure_kind FROM turn')).toEqual([
+      { state: 'failed', outcome: 'failed', failure_kind: 'internal' }
+    ])
+    expect(rows(core.storage, 'SELECT state FROM inbound_message')).toEqual([{ state: 'received' }])
+    expect(rows(core.storage, 'SELECT stage, kind FROM failure')).toEqual([{ stage: 'internal', kind: 'internal' }])
+
+    broken = false
+    const retried = await core.turns.handle(request('no-pack-retry'))
+    expect(retried.content).toBe('recovered reply')
   })
 })
