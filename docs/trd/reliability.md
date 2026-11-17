@@ -72,8 +72,11 @@ without a limit.
 
 ## Operator Alerts
 
-An alert is a message to the owner's own chat, sent through the gateway, plus a failure record. Alerts are rate
-limited per kind. Kinds: invalid pack or binding, auth failure on a model role, breaker open, memory job failed
+An alert is a durable JSON line appended to `alerts.jsonl` on the data volume, plus a failure record.
+The operator reads this file; direct delivery to the owner's chat is not configured. Each line contains only the
+alert kind and timestamp, never message text or identity. Alerts are rate limited per kind.
+Spend alerts are raised when a recorded call crosses 80% or 100% of the monthly budget. Unmarked gateway
+requests raise a binding alert. Start-up faults raise a deploy health alert when storage is available. Kinds: invalid pack or binding, auth failure on a model role, breaker open, memory job failed
 after its last retry, spend at 80% and 100%, migration or deploy health failure.
 
 ## Configuration
