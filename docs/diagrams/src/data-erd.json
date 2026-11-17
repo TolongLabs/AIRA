@@ -1,0 +1,2061 @@
+{
+  "diagram_type": "erd",
+  "entities": [
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "chat_id",
+          "type": "TEXT"
+        },
+        {
+          "key": "uk",
+          "name": "wa_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "type",
+          "type": "TEXT"
+        },
+        {
+          "name": "label",
+          "type": "TEXT"
+        },
+        {
+          "name": "status",
+          "type": "TEXT"
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 0,
+      "id": "chat",
+      "label": "chat",
+      "row": 0,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0002_settings_records.sql",
+          "line": 5
+        }
+      ],
+      "sublabel": "one row per chat instance",
+      "tag": "chats"
+    },
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "wa_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "subject_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "display_name",
+          "type": "TEXT"
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 1,
+      "id": "identity",
+      "label": "identity",
+      "row": 0,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0001_persistence.sql",
+          "line": 15
+        },
+        {
+          "label": "display_name column",
+          "path": "src/settings/chats.ts",
+          "line": 180
+        }
+      ],
+      "sublabel": "WhatsApp ids to subject ids",
+      "tag": "chats"
+    },
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "level",
+          "type": "TEXT"
+        },
+        {
+          "key": "pk",
+          "name": "scope",
+          "type": "TEXT"
+        },
+        {
+          "key": "pk",
+          "name": "key",
+          "type": "TEXT"
+        },
+        {
+          "name": "value",
+          "type": "TEXT"
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 0,
+      "id": "setting",
+      "label": "setting",
+      "row": 1,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0001_persistence.sql",
+          "line": 24
+        }
+      ],
+      "sublabel": "global, type, chat values",
+      "tag": "settings"
+    },
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "id",
+          "type": "INTEGER"
+        },
+        {
+          "name": "target",
+          "type": "TEXT"
+        },
+        {
+          "name": "actor",
+          "type": "TEXT"
+        },
+        {
+          "name": "level",
+          "type": "TEXT"
+        },
+        {
+          "name": "scope",
+          "type": "TEXT"
+        },
+        {
+          "name": "key",
+          "type": "TEXT"
+        },
+        {
+          "name": "old_value",
+          "type": "TEXT"
+        },
+        {
+          "name": "new_value",
+          "type": "TEXT"
+        },
+        {
+          "name": "changed_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 1,
+      "id": "setting_change",
+      "label": "setting_change",
+      "row": 1,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0001_persistence.sql",
+          "line": 36
+        }
+      ],
+      "sublabel": "who changed what, kept",
+      "tag": "settings"
+    },
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "chat_id",
+          "type": "TEXT"
+        },
+        {
+          "key": "pk",
+          "name": "character_id",
+          "type": "TEXT"
+        },
+        {
+          "key": "pk",
+          "name": "key",
+          "type": "TEXT"
+        },
+        {
+          "name": "value",
+          "type": "TEXT"
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 2,
+      "id": "chat_state",
+      "label": "chat_state",
+      "row": 1,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0002_settings_records.sql",
+          "line": 50
+        }
+      ],
+      "sublabel": "runtime state per character",
+      "tag": "settings"
+    },
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "chat_id",
+          "type": "TEXT"
+        },
+        {
+          "key": "pk",
+          "name": "mid",
+          "type": "TEXT"
+        },
+        {
+          "name": "sender_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "state",
+          "type": "TEXT"
+        },
+        {
+          "key": "fk",
+          "name": "turn_id",
+          "references": "turn.turn_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "received_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "closed_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 0,
+      "id": "inbound_message",
+      "label": "inbound_message",
+      "row": 2,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0001_persistence.sql",
+          "line": 20
+        }
+      ],
+      "sublabel": "gateway messages by chat",
+      "tag": "conversation"
+    },
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "turn_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "chat_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "sender_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "kind",
+          "type": "TEXT"
+        },
+        {
+          "name": "state",
+          "type": "TEXT"
+        },
+        {
+          "name": "stage",
+          "type": "TEXT"
+        },
+        {
+          "name": "received_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "ended_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "character_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "outcome",
+          "type": "TEXT"
+        },
+        {
+          "name": "failure_kind",
+          "type": "TEXT"
+        },
+        {
+          "name": "arrived_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "queue_ms",
+          "type": "INTEGER"
+        },
+        {
+          "name": "media_ms",
+          "type": "INTEGER"
+        },
+        {
+          "name": "tool_ms",
+          "type": "INTEGER"
+        },
+        {
+          "name": "total_ms",
+          "type": "INTEGER"
+        },
+        {
+          "name": "admitted_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "built_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "first_byte_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "model_done_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "cleaned_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "returned_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "system_tokens",
+          "type": "INTEGER"
+        },
+        {
+          "name": "window_size",
+          "type": "INTEGER"
+        },
+        {
+          "name": "recalled_ids",
+          "type": "TEXT"
+        },
+        {
+          "name": "mood",
+          "type": "TEXT"
+        },
+        {
+          "name": "mood_source",
+          "type": "TEXT"
+        },
+        {
+          "name": "shape_seed",
+          "type": "INTEGER"
+        },
+        {
+          "name": "length_bypass",
+          "type": "TEXT"
+        },
+        {
+          "name": "transport",
+          "type": "TEXT"
+        },
+        {
+          "name": "role",
+          "type": "TEXT"
+        },
+        {
+          "name": "model",
+          "type": "TEXT"
+        },
+        {
+          "name": "attempts",
+          "type": "INTEGER"
+        },
+        {
+          "name": "input_tokens",
+          "type": "INTEGER"
+        },
+        {
+          "name": "output_tokens",
+          "type": "INTEGER"
+        },
+        {
+          "name": "cached_tokens",
+          "type": "INTEGER"
+        },
+        {
+          "name": "cost_usd",
+          "type": "REAL"
+        },
+        {
+          "name": "reply_chars",
+          "type": "INTEGER"
+        },
+        {
+          "name": "bubble_count",
+          "type": "INTEGER"
+        },
+        {
+          "name": "sticker_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "attachments",
+          "type": "TEXT"
+        },
+        {
+          "name": "receipts",
+          "type": "TEXT"
+        },
+        {
+          "name": "cleaning_steps",
+          "type": "TEXT"
+        },
+        {
+          "name": "chain_limit",
+          "type": "TEXT"
+        }
+      ],
+      "col": 1,
+      "id": "turn",
+      "label": "turn",
+      "row": 2,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0001_persistence.sql",
+          "line": 5
+        },
+        {
+          "label": "timing totals",
+          "path": "src/records/turn-record.ts",
+          "line": 66
+        }
+      ],
+      "sublabel": "one row per turn",
+      "tag": "conversation"
+    },
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "id",
+          "type": "INTEGER"
+        },
+        {
+          "name": "chat_id",
+          "type": "TEXT"
+        },
+        {
+          "key": "fk",
+          "name": "turn_id",
+          "references": "turn.turn_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "role",
+          "type": "TEXT"
+        },
+        {
+          "name": "sender_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "content",
+          "type": "TEXT"
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "memory_skip",
+          "type": "INTEGER"
+        }
+      ],
+      "col": 2,
+      "id": "session_message",
+      "label": "session_message",
+      "row": 2,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0001_persistence.sql",
+          "line": 39
+        }
+      ],
+      "sublabel": "the conversation window",
+      "tag": "conversation"
+    },
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "id",
+          "type": "INTEGER"
+        },
+        {
+          "key": "fk",
+          "name": "turn_id",
+          "references": "turn.turn_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "job_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "role",
+          "type": "TEXT"
+        },
+        {
+          "name": "model",
+          "type": "TEXT"
+        },
+        {
+          "name": "transport",
+          "type": "TEXT"
+        },
+        {
+          "name": "attempt",
+          "type": "INTEGER"
+        },
+        {
+          "name": "started_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "duration_ms",
+          "type": "INTEGER"
+        },
+        {
+          "name": "input_tokens",
+          "type": "INTEGER"
+        },
+        {
+          "name": "output_tokens",
+          "type": "INTEGER"
+        },
+        {
+          "name": "cached_tokens",
+          "type": "INTEGER"
+        },
+        {
+          "name": "cost_usd",
+          "type": "REAL"
+        },
+        {
+          "name": "failure_kind",
+          "type": "TEXT"
+        }
+      ],
+      "col": 0,
+      "id": "model_call",
+      "label": "model_call",
+      "row": 3,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0002_settings_records.sql",
+          "line": 92
+        }
+      ],
+      "sublabel": "one row per model request",
+      "tag": "records"
+    },
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "id",
+          "type": "INTEGER"
+        },
+        {
+          "key": "fk",
+          "name": "turn_id",
+          "references": "turn.turn_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "tool",
+          "type": "TEXT"
+        },
+        {
+          "name": "source",
+          "type": "TEXT"
+        },
+        {
+          "name": "started_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "duration_ms",
+          "type": "INTEGER"
+        },
+        {
+          "name": "outcome",
+          "type": "TEXT"
+        },
+        {
+          "name": "receipt_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "args_shape",
+          "type": "TEXT"
+        }
+      ],
+      "col": 1,
+      "id": "tool_call",
+      "label": "tool_call",
+      "row": 3,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0002_settings_records.sql",
+          "line": 112
+        }
+      ],
+      "sublabel": "one row per tool call",
+      "tag": "records"
+    },
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "id",
+          "type": "INTEGER"
+        },
+        {
+          "key": "fk",
+          "name": "turn_id",
+          "references": "turn.turn_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "job_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "stage",
+          "type": "TEXT"
+        },
+        {
+          "name": "kind",
+          "type": "TEXT"
+        },
+        {
+          "name": "message",
+          "type": "TEXT"
+        },
+        {
+          "name": "stack",
+          "type": "TEXT"
+        },
+        {
+          "name": "handled_by",
+          "type": "TEXT"
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 2,
+      "id": "failure",
+      "label": "failure",
+      "row": 3,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0001_persistence.sql",
+          "line": 54
+        }
+      ],
+      "sublabel": "every failure by kind",
+      "tag": "records"
+    },
+    {
+      "attributes": [
+        {
+          "key": ["pk", "fk"],
+          "name": "turn_id",
+          "references": "turn.turn_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "request",
+          "type": "TEXT"
+        },
+        {
+          "name": "reply",
+          "type": "TEXT"
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 3,
+      "id": "failure_diagnostics",
+      "label": "failure_diagnostics",
+      "row": 3,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0002_settings_records.sql",
+          "line": 141
+        }
+      ],
+      "sublabel": "verbatim failed turns",
+      "tag": "records"
+    },
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "id",
+          "type": "INTEGER"
+        },
+        {
+          "name": "kind",
+          "type": "TEXT"
+        },
+        {
+          "name": "chat_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "job_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "started_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "ended_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "outcome",
+          "type": "TEXT"
+        },
+        {
+          "name": "counts",
+          "type": "TEXT"
+        }
+      ],
+      "col": 4,
+      "id": "job_run",
+      "label": "job_run",
+      "row": 3,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0002_settings_records.sql",
+          "line": 127
+        }
+      ],
+      "sublabel": "scheduled and background runs",
+      "tag": "records"
+    },
+    {
+      "attributes": [
+        {
+          "key": "uk",
+          "name": "reminder_id",
+          "type": "TEXT"
+        },
+        {
+          "key": "fk",
+          "name": "chat_id",
+          "references": "chat.chat_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "owner_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "target_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "state",
+          "type": "TEXT"
+        },
+        {
+          "name": "due_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "repeat",
+          "type": "TEXT"
+        },
+        {
+          "name": "text",
+          "type": "TEXT"
+        },
+        {
+          "name": "gateway_job_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 0,
+      "id": "reminder",
+      "label": "reminder",
+      "row": 4,
+      "sources": [
+        {
+          "label": "reminder columns",
+          "path": "src/tools/core/reminders.ts",
+          "line": 74
+        }
+      ],
+      "sublabel": "one row per reminder",
+      "tag": "tools"
+    },
+    {
+      "attributes": [
+        {
+          "key": "uk",
+          "name": "call_id",
+          "type": "TEXT"
+        },
+        {
+          "key": "fk",
+          "name": "turn_id",
+          "references": "turn.turn_id",
+          "type": "TEXT"
+        },
+        {
+          "key": "fk",
+          "name": "chat_id",
+          "references": "chat.chat_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "tool",
+          "type": "TEXT"
+        },
+        {
+          "name": "result",
+          "type": "TEXT"
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 1,
+      "id": "tool_result",
+      "label": "tool_result",
+      "row": 4,
+      "sources": [
+        {
+          "label": "stored result columns",
+          "path": "src/tools/registry.ts",
+          "line": 262
+        }
+      ],
+      "sublabel": "stored results by call id",
+      "tag": "tools"
+    },
+    {
+      "attributes": [
+        {
+          "key": "uk",
+          "name": "receipt_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "call_id",
+          "type": "TEXT"
+        },
+        {
+          "key": "fk",
+          "name": "turn_id",
+          "references": "turn.turn_id",
+          "type": "TEXT"
+        },
+        {
+          "key": "fk",
+          "name": "chat_id",
+          "references": "chat.chat_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "tool",
+          "type": "TEXT"
+        },
+        {
+          "name": "kind",
+          "type": "TEXT"
+        },
+        {
+          "name": "target",
+          "type": "TEXT"
+        },
+        {
+          "name": "state",
+          "type": "TEXT"
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 2,
+      "id": "receipt",
+      "label": "receipt",
+      "row": 4,
+      "sources": [
+        {
+          "label": "receipt columns",
+          "path": "src/tools/registry.ts",
+          "line": 268
+        }
+      ],
+      "sublabel": "one receipt per state change",
+      "tag": "tools"
+    },
+    {
+      "attributes": [
+        {
+          "key": "uk",
+          "name": "month",
+          "type": "TEXT"
+        },
+        {
+          "key": "uk",
+          "name": "role",
+          "type": "TEXT"
+        },
+        {
+          "key": "uk",
+          "name": "counted",
+          "type": "INTEGER"
+        },
+        {
+          "name": "cost_usd",
+          "type": "REAL"
+        },
+        {
+          "name": "calls",
+          "type": "INTEGER"
+        },
+        {
+          "name": "input_tokens",
+          "type": "INTEGER"
+        },
+        {
+          "name": "output_tokens",
+          "type": "INTEGER"
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 3,
+      "id": "spend",
+      "label": "spend",
+      "row": 4,
+      "sources": [
+        {
+          "label": "spend upsert columns",
+          "path": "src/models/spend.ts",
+          "line": 21
+        }
+      ],
+      "sublabel": "cost per role per month",
+      "tag": "models"
+    },
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "sha256",
+          "type": "TEXT"
+        },
+        {
+          "key": "uk",
+          "name": "path",
+          "type": "TEXT"
+        },
+        {
+          "name": "bytes",
+          "type": "INTEGER"
+        },
+        {
+          "name": "kind",
+          "type": "TEXT"
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 4,
+      "id": "file",
+      "label": "file",
+      "row": 4,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0001_persistence.sql",
+          "line": 89
+        }
+      ],
+      "sublabel": "content-addressed files",
+      "tag": "storage"
+    },
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "id",
+          "type": "INTEGER"
+        },
+        {
+          "name": "reason",
+          "type": "TEXT"
+        },
+        {
+          "name": "state",
+          "type": "TEXT"
+        },
+        {
+          "name": "file",
+          "type": "TEXT"
+        },
+        {
+          "name": "bytes",
+          "type": "INTEGER"
+        },
+        {
+          "name": "detail",
+          "type": "TEXT"
+        },
+        {
+          "name": "started_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "ended_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "removed_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 5,
+      "id": "backup_run",
+      "label": "backup_run",
+      "row": 4,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0001_persistence.sql",
+          "line": 98
+        }
+      ],
+      "sublabel": "one row per snapshot",
+      "tag": "storage"
+    },
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "job_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "chat_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "state",
+          "type": "TEXT"
+        },
+        {
+          "name": "payload",
+          "type": "TEXT"
+        },
+        {
+          "name": "attempts",
+          "type": "INTEGER"
+        },
+        {
+          "name": "run_after",
+          "type": "TEXT"
+        },
+        {
+          "name": "lease_owner",
+          "type": "TEXT"
+        },
+        {
+          "name": "lease_expires_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "last_error",
+          "type": "TEXT"
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 0,
+      "id": "memory_job",
+      "label": "memory_job",
+      "row": 5,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0001_persistence.sql",
+          "line": 69
+        }
+      ],
+      "sublabel": "the memory queue",
+      "tag": "memory"
+    },
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "id",
+          "type": "TEXT"
+        },
+        {
+          "key": "fk",
+          "name": "chat_id",
+          "references": "chat.chat_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "kind",
+          "type": "TEXT"
+        },
+        {
+          "name": "subject_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "key",
+          "type": "TEXT"
+        },
+        {
+          "name": "value",
+          "type": "TEXT"
+        },
+        {
+          "name": "status",
+          "type": "TEXT"
+        },
+        {
+          "name": "pinned",
+          "type": "INTEGER"
+        },
+        {
+          "name": "source_turn",
+          "type": "TEXT"
+        },
+        {
+          "name": "source_job",
+          "type": "TEXT"
+        },
+        {
+          "name": "source_message_id",
+          "type": "INTEGER"
+        },
+        {
+          "name": "valid_until",
+          "type": "TEXT"
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 1,
+      "id": "memory_item",
+      "label": "memory_item",
+      "row": 5,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0005_memory.sql",
+          "line": 3
+        }
+      ],
+      "sublabel": "typed facts and episodes",
+      "tag": "memory"
+    },
+    {
+      "attributes": [
+        {
+          "name": "item_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "chat_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "text",
+          "type": "TEXT"
+        }
+      ],
+      "col": 2,
+      "id": "memory_fts",
+      "label": "memory_fts",
+      "row": 5,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0005_memory.sql",
+          "line": 42
+        }
+      ],
+      "sublabel": "keyword recall index",
+      "tag": "memory"
+    },
+    {
+      "attributes": [
+        {
+          "key": ["pk", "fk"],
+          "name": "item_id",
+          "references": "memory_item.id",
+          "type": "TEXT"
+        },
+        {
+          "key": "fk",
+          "name": "chat_id",
+          "references": "memory_item.chat_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "model",
+          "type": "TEXT"
+        },
+        {
+          "name": "vector",
+          "type": "BLOB"
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 3,
+      "id": "memory_embedding",
+      "label": "memory_embedding",
+      "row": 5,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0005_memory.sql",
+          "line": 45
+        }
+      ],
+      "sublabel": "episode vectors",
+      "tag": "memory"
+    },
+    {
+      "attributes": [
+        {
+          "key": ["pk", "fk"],
+          "name": "chat_id",
+          "references": "chat.chat_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "through_message_id",
+          "type": "INTEGER"
+        },
+        {
+          "name": "forget_epoch",
+          "type": "INTEGER"
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 4,
+      "id": "memory_cursor",
+      "label": "memory_cursor",
+      "row": 5,
+      "width": 245,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0005_memory.sql",
+          "line": 54
+        }
+      ],
+      "sublabel": "extraction high-water mark",
+      "tag": "memory"
+    },
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "id",
+          "type": "INTEGER"
+        },
+        {
+          "name": "job_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "chat_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "step",
+          "type": "TEXT"
+        },
+        {
+          "name": "outcome",
+          "type": "TEXT"
+        },
+        {
+          "name": "op",
+          "type": "TEXT"
+        },
+        {
+          "name": "item_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "reason",
+          "type": "TEXT"
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 5,
+      "id": "memory_event",
+      "label": "memory_event",
+      "row": 5,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0005_memory.sql",
+          "line": 62
+        }
+      ],
+      "sublabel": "admit and apply log",
+      "tag": "memory"
+    },
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "id",
+          "type": "TEXT"
+        },
+        {
+          "name": "title",
+          "type": "TEXT"
+        },
+        {
+          "name": "artist",
+          "type": "TEXT"
+        },
+        {
+          "key": "uk",
+          "name": "song_key",
+          "type": "TEXT"
+        },
+        {
+          "name": "language",
+          "type": "TEXT"
+        },
+        {
+          "name": "source",
+          "type": "TEXT"
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 0,
+      "id": "lesson_song",
+      "label": "lesson_song",
+      "row": 6,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0006_lessons.sql",
+          "line": 6
+        }
+      ],
+      "sublabel": "one filed song",
+      "tag": "lessons"
+    },
+    {
+      "attributes": [
+        {
+          "key": ["pk", "fk"],
+          "name": "song_id",
+          "references": "lesson_song.id",
+          "type": "TEXT"
+        },
+        {
+          "key": "pk",
+          "name": "position",
+          "type": "INTEGER"
+        },
+        {
+          "name": "text",
+          "type": "TEXT"
+        },
+        {
+          "name": "reading",
+          "type": "TEXT"
+        }
+      ],
+      "col": 1,
+      "id": "lesson_song_line",
+      "label": "lesson_song_line",
+      "row": 6,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0006_lessons.sql",
+          "line": 21
+        }
+      ],
+      "sublabel": "one line of a song",
+      "tag": "lessons"
+    },
+    {
+      "attributes": [
+        {
+          "key": ["pk", "fk"],
+          "name": "song_id",
+          "references": "lesson_song_line.song_id",
+          "type": "TEXT"
+        },
+        {
+          "key": ["pk", "fk"],
+          "name": "position",
+          "references": "lesson_song_line.position",
+          "type": "INTEGER"
+        },
+        {
+          "key": "pk",
+          "name": "language",
+          "type": "TEXT"
+        },
+        {
+          "name": "meaning",
+          "type": "TEXT"
+        }
+      ],
+      "col": 2,
+      "id": "lesson_song_line_meaning",
+      "label": "lesson_song_line_meaning",
+      "row": 6,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0006_lessons.sql",
+          "line": 29
+        }
+      ],
+      "sublabel": "one line in one language",
+      "tag": "lessons"
+    },
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "id",
+          "type": "TEXT"
+        },
+        {
+          "name": "kind",
+          "type": "TEXT"
+        },
+        {
+          "name": "word",
+          "type": "TEXT"
+        },
+        {
+          "name": "word_key",
+          "type": "TEXT"
+        },
+        {
+          "name": "reading",
+          "type": "TEXT"
+        },
+        {
+          "name": "level",
+          "type": "TEXT"
+        },
+        {
+          "name": "pos",
+          "type": "TEXT"
+        },
+        {
+          "name": "forms",
+          "type": "TEXT"
+        },
+        {
+          "name": "example",
+          "type": "TEXT"
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 3,
+      "id": "lesson_word",
+      "label": "lesson_word",
+      "row": 6,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0006_lessons.sql",
+          "line": 38
+        }
+      ],
+      "sublabel": "one word or pattern",
+      "tag": "lessons"
+    },
+    {
+      "attributes": [
+        {
+          "key": ["pk", "fk"],
+          "name": "word_id",
+          "references": "lesson_word.id",
+          "type": "TEXT"
+        },
+        {
+          "key": "pk",
+          "name": "language",
+          "type": "TEXT"
+        },
+        {
+          "name": "meaning",
+          "type": "TEXT"
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 4,
+      "id": "lesson_word_meaning",
+      "label": "lesson_word_meaning",
+      "row": 6,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0006_lessons.sql",
+          "line": 56
+        }
+      ],
+      "sublabel": "one word in one language",
+      "tag": "lessons"
+    },
+    {
+      "attributes": [
+        {
+          "key": ["pk", "fk"],
+          "name": "word_id",
+          "references": "lesson_word.id",
+          "type": "TEXT"
+        },
+        {
+          "key": ["pk", "fk"],
+          "name": "song_id",
+          "references": "lesson_song_line.song_id",
+          "type": "TEXT"
+        },
+        {
+          "key": ["pk", "fk"],
+          "name": "position",
+          "references": "lesson_song_line.position",
+          "type": "INTEGER"
+        }
+      ],
+      "col": 0,
+      "id": "lesson_word_seen",
+      "label": "lesson_word_seen",
+      "row": 7,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0006_lessons.sql",
+          "line": 64
+        }
+      ],
+      "sublabel": "where a word appeared",
+      "tag": "lessons"
+    },
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "id",
+          "type": "TEXT"
+        },
+        {
+          "key": "fk",
+          "name": "chat_id",
+          "references": "chat.chat_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "provider",
+          "type": "TEXT"
+        },
+        {
+          "name": "ref",
+          "type": "TEXT"
+        },
+        {
+          "name": "title",
+          "type": "TEXT"
+        },
+        {
+          "name": "artist",
+          "type": "TEXT"
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 1,
+      "id": "lesson_lyrics_candidate",
+      "label": "lesson_lyrics_candidate",
+      "row": 7,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0006_lessons.sql",
+          "line": 74
+        }
+      ],
+      "sublabel": "lyrics results per chat",
+      "tag": "lessons"
+    },
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "id",
+          "type": "TEXT"
+        },
+        {
+          "name": "title",
+          "type": "TEXT"
+        },
+        {
+          "key": "uk",
+          "name": "title_key",
+          "type": "TEXT"
+        },
+        {
+          "name": "body",
+          "type": "TEXT"
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 2,
+      "id": "library_node",
+      "label": "library_node",
+      "row": 7,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0006_lessons.sql",
+          "line": 87
+        }
+      ],
+      "sublabel": "one library note",
+      "tag": "lessons"
+    },
+    {
+      "attributes": [
+        {
+          "key": ["pk", "fk"],
+          "name": "node_id",
+          "references": "library_node.id",
+          "type": "TEXT"
+        },
+        {
+          "name": "target_title",
+          "type": "TEXT"
+        },
+        {
+          "key": "pk",
+          "name": "target_key",
+          "type": "TEXT"
+        }
+      ],
+      "col": 3,
+      "id": "library_link",
+      "label": "library_link",
+      "row": 7,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0006_lessons.sql",
+          "line": 99
+        }
+      ],
+      "sublabel": "note to title links",
+      "tag": "lessons"
+    },
+    {
+      "attributes": [
+        {
+          "name": "node_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "text",
+          "type": "TEXT"
+        }
+      ],
+      "col": 4,
+      "id": "library_fts",
+      "label": "library_fts",
+      "row": 7,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0006_lessons.sql",
+          "line": 109
+        }
+      ],
+      "sublabel": "library keyword index",
+      "tag": "lessons"
+    },
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "job_id",
+          "type": "TEXT"
+        },
+        {
+          "key": "fk",
+          "name": "chat_id",
+          "references": "chat.chat_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "requester_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "topic",
+          "type": "TEXT"
+        },
+        {
+          "name": "wants_pdf",
+          "type": "INTEGER"
+        },
+        {
+          "name": "state",
+          "type": "TEXT"
+        },
+        {
+          "name": "attempts",
+          "type": "INTEGER"
+        },
+        {
+          "name": "payload",
+          "type": "TEXT"
+        },
+        {
+          "name": "run_after",
+          "type": "TEXT"
+        },
+        {
+          "name": "lease_owner",
+          "type": "TEXT"
+        },
+        {
+          "name": "lease_expires_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "last_error",
+          "type": "TEXT"
+        },
+        {
+          "name": "findings",
+          "type": "TEXT"
+        },
+        {
+          "key": "fk",
+          "name": "report_file_id",
+          "references": "file.sha256",
+          "type": "TEXT"
+        },
+        {
+          "name": "offer",
+          "type": "TEXT"
+        },
+        {
+          "name": "offer_expires_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "started_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "ended_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "delivered_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 5,
+      "id": "research_job",
+      "label": "research_job",
+      "row": 6,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0010_research.sql",
+          "line": 2
+        }
+      ],
+      "sublabel": "one research job per chat",
+      "tag": "research"
+    }
+  ],
+  "meta": {
+    "output": ".archify/data-erd.html",
+    "quality_profile": "standard",
+    "title": "AIRA Data Model",
+    "repository": {
+      "url": "https://github.com/TolongLabs/AIRA",
+      "provider": "github",
+      "revision": "163a320e5dfeaf636ffe3e4e4c389470d9567d35"
+    }
+  },
+  "relationships": [
+    {
+      "from": "memory_item",
+      "fromCardinality": "many",
+      "id": "r1",
+      "to": "chat",
+      "toCardinality": "one"
+    },
+    {
+      "from": "memory_embedding",
+      "fromCardinality": "many",
+      "id": "r2",
+      "to": "memory_item",
+      "toCardinality": "one"
+    },
+    {
+      "from": "memory_cursor",
+      "fromCardinality": "many",
+      "id": "r3",
+      "to": "chat",
+      "toCardinality": "one"
+    },
+    {
+      "from": "lesson_song_line",
+      "fromCardinality": "many",
+      "id": "r4",
+      "to": "lesson_song",
+      "toCardinality": "one"
+    },
+    {
+      "from": "lesson_song_line_meaning",
+      "fromCardinality": "many",
+      "id": "r5",
+      "to": "lesson_song_line",
+      "toCardinality": "one"
+    },
+    {
+      "from": "lesson_word_meaning",
+      "fromCardinality": "many",
+      "id": "r6",
+      "to": "lesson_word",
+      "toCardinality": "one"
+    },
+    {
+      "from": "lesson_word_seen",
+      "fromCardinality": "many",
+      "id": "r7",
+      "to": "lesson_word",
+      "toCardinality": "one"
+    },
+    {
+      "from": "lesson_word_seen",
+      "fromCardinality": "many",
+      "id": "r8",
+      "to": "lesson_song_line",
+      "toCardinality": "one"
+    },
+    {
+      "from": "lesson_lyrics_candidate",
+      "fromCardinality": "many",
+      "id": "r9",
+      "to": "chat",
+      "toCardinality": "one"
+    },
+    {
+      "from": "library_link",
+      "fromCardinality": "many",
+      "id": "r10",
+      "to": "library_node",
+      "toCardinality": "one"
+    },
+    {
+      "from": "research_job",
+      "fromCardinality": "many",
+      "id": "r11",
+      "to": "chat",
+      "toCardinality": "one"
+    },
+    {
+      "from": "research_job",
+      "fromCardinality": "many",
+      "fromOptional": true,
+      "id": "r12",
+      "to": "file",
+      "toCardinality": "one"
+    },
+    {
+      "from": "session_message",
+      "fromCardinality": "many",
+      "id": "r13",
+      "to": "turn",
+      "toCardinality": "one"
+    },
+    {
+      "from": "inbound_message",
+      "fromCardinality": "many",
+      "id": "r14",
+      "to": "turn",
+      "toCardinality": "one"
+    },
+    {
+      "from": "model_call",
+      "fromCardinality": "many",
+      "id": "r15",
+      "to": "turn",
+      "toCardinality": "one"
+    },
+    {
+      "from": "tool_call",
+      "fromCardinality": "many",
+      "id": "r16",
+      "to": "turn",
+      "toCardinality": "one"
+    },
+    {
+      "from": "failure",
+      "fromCardinality": "many",
+      "fromOptional": true,
+      "id": "r17",
+      "to": "turn",
+      "toCardinality": "one"
+    },
+    {
+      "from": "failure_diagnostics",
+      "fromCardinality": "many",
+      "id": "r18",
+      "to": "turn",
+      "toCardinality": "one"
+    },
+    {
+      "from": "reminder",
+      "fromCardinality": "many",
+      "id": "r19",
+      "to": "chat",
+      "toCardinality": "one"
+    },
+    {
+      "from": "tool_result",
+      "fromCardinality": "many",
+      "id": "r20",
+      "to": "turn",
+      "toCardinality": "one"
+    },
+    {
+      "from": "tool_result",
+      "fromCardinality": "many",
+      "id": "r21",
+      "to": "chat",
+      "toCardinality": "one"
+    },
+    {
+      "from": "receipt",
+      "fromCardinality": "many",
+      "id": "r22",
+      "to": "turn",
+      "toCardinality": "one"
+    },
+    {
+      "from": "receipt",
+      "fromCardinality": "many",
+      "id": "r23",
+      "to": "chat",
+      "toCardinality": "one"
+    }
+  ],
+  "schema_version": 1
+}
