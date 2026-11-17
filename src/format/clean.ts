@@ -547,6 +547,12 @@ export function createReplyCleaner(
           .filter((block) => block.name === 'core' || block.name === 'speech' || block.name === 'harness')
           .map((block) => block.text)
 
+        const directCommand =
+          built.record?.lengthBypass === 'command_list' ||
+          (context.kind === 'command' && context.commandTool === undefined && (run?.calls?.length ?? 0) === 0)
+        const intakeKinds = context.intakeKinds ?? []
+        const intakeUrls = context.intakeUrls ?? []
+
         return cleanReply(text, {
           toolNames: toolNames ? toolNames() : [],
           speakerNames: [context.character.card.displayName, context.character.card.id],
@@ -558,19 +564,20 @@ export function createReplyCleaner(
           bubbleMaxChars: config.format.bubbleMaxChars,
           maxBubbles: config.format.maxBubbles,
           // A direct command runs no model and gets no footer.
-          toolsOk:
-            context.delivery?.kind === 'research'
+          toolsOk: directCommand
+            ? []
+            : context.delivery?.kind === 'research'
               ? ['web_search', 'read_page']
-              : toolsOk && run.calls.length > 0
-                ? toolsOk(context.turnId)
-                : [],
+              : [...intakeKinds, ...(toolsOk ? toolsOk(context.turnId) : [])],
           ...(context.commandTool === undefined ? {} : { commandTool: context.commandTool }),
           ...(context.character.card.toolFooter ? { footer: context.character.card.toolFooter } : {}),
           footerOff: context.settings?.['features.toolFooter']?.value === false,
           ...(typeof context.settings?.['footerEmoji']?.value === 'string'
             ? { footerEmoji: context.settings['footerEmoji'].value }
             : {}),
-          sources: context.researchSources ?? (sources ? sources(context.turnId) : [])
+          sources: directCommand
+            ? []
+            : (context.researchSources ?? [...intakeUrls, ...(sources ? sources(context.turnId) : [])])
         })
       } catch (error) {
         const failed: CleanReplyResult = { content: '', bubbleCount: 0, steps: [], error }

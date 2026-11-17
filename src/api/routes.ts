@@ -1,4 +1,5 @@
 import type { PackSet } from '../character/loader.js'
+import { DEFAULT_TOOL_LABELS, plainLabel } from '../format/footer.js'
 import { listChatItems } from '../memory/store.js'
 import { buildReport, newestSnapshotFile } from '../records/report.js'
 import { listChats } from '../settings/chats.js'
@@ -219,6 +220,16 @@ function handleMemory(deps: SiteApiDeps, params: URLSearchParams): RouteResult {
   return ok({ items })
 }
 
+export function footerKindsFor(registry: ToolRegistry): { kind: string; defaultLabel: string }[] {
+  const kinds = new Set<string>(Object.keys(DEFAULT_TOOL_LABELS))
+  for (const tool of registry.all()) {
+    kinds.add(tool.name)
+  }
+  return [...kinds]
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    .map((kind) => ({ kind, defaultLabel: plainLabel(kind) }))
+}
+
 function handleCharacters(deps: SiteApiDeps): RouteResult {
   const set = deps.packs()
   const characters = [...set.packs.values()]
@@ -226,11 +237,12 @@ function handleCharacters(deps: SiteApiDeps): RouteResult {
       id: pack.id,
       displayName: pack.card.displayName,
       source: pack.source,
-      languages: pack.card.languages
+      languages: pack.card.languages,
+      toolFooter: pack.card.toolFooter ?? {}
     }))
     .sort((a, b) => a.id.localeCompare(b.id))
   const faults = set.faults.map((fault) => ({ id: fault.id, reason: fault.message }))
-  return ok({ characters, faults })
+  return ok({ characters, faults, footerKinds: footerKindsFor(deps.registry) })
 }
 
 const TURN_BY_ID = /^\/api\/turns\/([^/]+)$/

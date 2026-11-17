@@ -3,8 +3,14 @@ import { SocialPostError } from '../../social/port.js'
 import { parseSocialPostUrl } from '../../social/urls.js'
 import type { Storage } from '../../storage/database.js'
 import { putFile } from '../../storage/files.js'
+import type { TurnContext } from '../../turn/types.js'
 import { type ToolPorts, isForbiddenUrl } from '../ports.js'
 import type { ToolDefinition } from '../types.js'
+
+function alreadyReadAtIntake(url: string, context: Pick<TurnContext, 'intakeUrls'>): boolean {
+  const canonical = parseSocialPostUrl(url)?.canonicalUrl
+  return canonical !== undefined && (context.intakeUrls?.includes(canonical) ?? false)
+}
 
 const IMAGE_EXTENSIONS: Record<string, string> = {
   'image/jpeg': '.jpg',
@@ -67,6 +73,9 @@ export function readPageTool(ports: ToolPorts): ToolDefinition<z.infer<typeof ur
       if (isForbiddenUrl(args.url)) {
         return { ok: false, kind: 'refused', reason: 'forbidden address' }
       }
+      if (alreadyReadAtIntake(args.url, context)) {
+        return { ok: false, kind: 'refused', reason: 'already read at intake' }
+      }
       if (!ports.page) {
         return { ok: false, kind: 'unavailable', reason: 'page reader is not set up' }
       }
@@ -91,6 +100,9 @@ export function readPostTool(ports: ToolPorts): ToolDefinition<z.infer<typeof ur
     async handler(args, context) {
       if (isForbiddenUrl(args.url)) {
         return { ok: false, kind: 'refused', reason: 'forbidden address' }
+      }
+      if (alreadyReadAtIntake(args.url, context)) {
+        return { ok: false, kind: 'refused', reason: 'already read at intake' }
       }
       if (!ports.post) {
         return { ok: false, kind: 'unavailable', reason: 'post reader is not set up' }

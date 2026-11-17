@@ -457,6 +457,19 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
           combined.unreadable.push(...linkRead.unreadable)
           combined.calls.push(...linkRead.calls)
         }
+        const readLinks = (combined.links ?? []).filter((link) => link.post.platform !== 'youtube' || link.reading)
+        context.intakeKinds = [
+          ...combined.readings.map((entry) => `media_${entry.kind}`),
+          ...readLinks.map((link) =>
+            link.post.platform === 'youtube'
+              ? 'media_youtube'
+              : link.mediaKind
+                ? `media_${link.mediaKind}`
+                : 'media_post'
+          )
+        ]
+        // A YouTube link counts as read only when it was watched; a failed watch leaves the page to the tools.
+        context.intakeUrls = readLinks.map((link) => link.post.canonicalUrl).filter((url) => url.length > 0)
         outcome.fields.mediaMs = Math.max(0, now().getTime() - mediaStartedAt)
         const promptText = mediaPromptText(combined, pack.lines.unreadableMedia)
         if (promptText.length > 0) input.media = promptText

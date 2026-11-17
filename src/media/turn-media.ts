@@ -252,9 +252,9 @@ function formatLinkLines(link: LinkReading, share: number): string[] {
 
 function mediaIntro(hasFiles: boolean, hasLinks: boolean): string {
   if (hasFiles && hasLinks) {
-    return 'The sender attached files and shared a link. You cannot open them. This is what each one shows:'
+    return 'The sender attached files and shared a link. You cannot open them. It is already open; do not open it again. This is what each one shows:'
   }
-  if (hasLinks) return 'The sender shared a link. This is what it shows:'
+  if (hasLinks) return 'The sender shared a link. It is already open; do not open it again. This is what it shows:'
   return 'The sender attached files. You cannot open them. This is what each one shows:'
 }
 

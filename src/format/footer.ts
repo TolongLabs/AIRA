@@ -17,6 +17,12 @@ const MAX_LABELS = 2
 
 /** Plain labels for the footer. They hold no persona text; a card may replace any of them. */
 export const DEFAULT_TOOL_LABELS: Readonly<Record<string, string>> = {
+  media_video: 'watched a video',
+  media_youtube: 'watched a video',
+  media_image: 'looked at an image',
+  media_audio: 'listened to audio',
+  media_document: 'read a document',
+  media_post: 'read a post',
   recall: 'checked memory',
   note: 'saved a note',
   forget: 'forgot a note',
@@ -31,6 +37,8 @@ export const DEFAULT_TOOL_LABELS: Readonly<Record<string, string>> = {
   reminder_cancel: 'cancelled a reminder',
   set_mute: 'changed mute',
   make_report: 'wrote a report',
+  research_start: 'started research',
+  report_pdf: 'made a PDF',
   help: 'listed commands',
   list: 'listed tools',
   song_get: 'opened a song',
@@ -45,7 +53,7 @@ export const DEFAULT_TOOL_LABELS: Readonly<Record<string, string>> = {
   library_gaps: 'checked the library'
 }
 
-function plainLabel(tool: string): string {
+export function plainLabel(tool: string): string {
   return DEFAULT_TOOL_LABELS[tool] ?? `used ${tool.replace(/_/g, ' ')}`
 }
 
@@ -75,11 +83,11 @@ export function buildFooter(
 ): string | undefined {
   const tools = [...new Set(toolsOk)]
   if (tools.length === 0) return undefined
-  const labels = tools.map((tool) => card?.labels?.[tool] ?? plainLabel(tool))
+  const labels = [...new Set(tools.map((tool) => (card?.labels?.[tool] ?? plainLabel(tool)).toLowerCase()))]
   const visible = labels.slice(0, MAX_LABELS).join(' · ')
   const hidden = labels.length - MAX_LABELS
   const emoji = options.emoji ?? card?.icon ?? DEFAULT_FOOTER_ICON
-  const lines = [`_${emoji} ${visible.toLowerCase()}${hidden > 0 ? ` +${hidden}` : ''}_`]
+  const lines = [`_${emoji} ${visible}${hidden > 0 ? ` +${hidden}` : ''}_`]
   const domains = [...new Set((options.sources ?? []).map(domainOf).filter((d): d is string => d !== undefined))]
   if (domains.length > 0) lines.push(`_${SOURCES_MARK} ${domains.slice(0, MAX_SOURCES).join(' · ')}_`)
   return lines.join('\n')

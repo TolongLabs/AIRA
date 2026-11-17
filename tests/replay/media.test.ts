@@ -86,7 +86,7 @@ describe('a photo, a voice note and a document', () => {
       withMedia('m-1', 'what do you think?', [{ kind: 'image', path: `${HOST_CACHE}/images/img_a1b2.jpg` }])
     )
 
-    expect(delivery.content).toBe('Nice one!')
+    expect(delivery.content).toBe('Nice one!\n\n_🛠️ looked at an image_')
     expect(watcher.seen).toEqual([{ contentType: 'image/jpeg', size: 'jpeg-bytes'.length }])
     const context = contextOf(model.requests[0])
     expect(context).toContain('<media untrusted="true">\n- image: A red bicycle against a brick wall.\n</media>')
@@ -112,7 +112,7 @@ describe('a photo, a voice note and a document', () => {
       withMedia('m-1', '', [{ kind: 'image', path: `${HOST_CACHE}/images/img_a1b2.jpg` }])
     )
 
-    expect(delivery.content).toBe('Nice one!')
+    expect(delivery.content).toBe('Nice one!\n\n_🛠️ looked at an image_')
     expect(model.requests[0]?.messages).toEqual([{ role: 'user', content: '[member 1] (no text, only a file)' }])
     expect(contextOf(model.requests[0])).toContain('- image: A cat on a windowsill.')
   })
@@ -145,7 +145,7 @@ describe('a photo, a voice note and a document', () => {
     expect(watcher.seen).toHaveLength(1)
     expect(contextOf(model.requests[0])).toContain('- image: A red bicycle against a brick wall.')
     expect(photo.content).toBe('NO_REPLY')
-    expect(caption.content).toBe('Nice one!')
+    expect(caption.content).toBe('Nice one!\n\n_🛠️ looked at an image_')
   })
 })
 

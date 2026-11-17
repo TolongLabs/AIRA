@@ -361,13 +361,50 @@ describe('mediaPromptText', () => {
     const text = mediaPromptText({ readings: [], links: [link], unreadable: [] }, LINE)
     expect(text).toBe(
       [
-        'The sender shared a link. This is what it shows:',
+        'The sender shared a link. It is already open; do not open it again. This is what it shows:',
         '<media untrusted="true">',
         '- post (X @handle, 2026-11-01): "look at this" | quoting @other: "original thought" | 12 replies | url: https://x.com/handle/status/123',
         '  video: A bicycle rolls past.',
         '  transcript: Watch out!',
         '</media>'
       ].join('\n')
+    )
+  })
+
+  it('mediaIntro: the link text says the link is already open', () => {
+    const link: LinkReading = {
+      post: {
+        platform: 'youtube',
+        id: 'vid123',
+        canonicalUrl: 'https://www.youtube.com/watch?v=vid123',
+        target: { platform: 'youtube', id: 'vid123' } as SocialPost['target'],
+        authorHandle: '',
+        authorName: 'Channel',
+        createdAt: null,
+        text: 'Video title',
+        quotedText: '',
+        quotedAuthorHandle: '',
+        photoCount: 0,
+        videoCount: 1,
+        imageUrl: null,
+        externalTitle: 'Video title',
+        replyCount: null,
+        durationSec: 60,
+        video: null
+      },
+      mediaKind: 'video',
+      reading: { description: 'A short clip.' }
+    }
+    const linkOnly = mediaPromptText({ readings: [], links: [link], unreadable: [] }, LINE)
+    expect(linkOnly.split('\n')[0]).toBe(
+      'The sender shared a link. It is already open; do not open it again. This is what it shows:'
+    )
+    const filesAndLink = mediaPromptText(
+      { readings: [{ kind: 'image', reading: { description: 'A cat.' } }], links: [link], unreadable: [] },
+      LINE
+    )
+    expect(filesAndLink.split('\n')[0]).toBe(
+      'The sender attached files and shared a link. You cannot open them. It is already open; do not open it again. This is what each one shows:'
     )
   })
 

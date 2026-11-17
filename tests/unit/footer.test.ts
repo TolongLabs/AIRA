@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { loadPack } from '../../src/character/loader.js'
 import { isFace } from '../../src/character/schema.js'
-import { type CleanOptions, cleanReply, guardFaces } from '../../src/format/clean.js'
+import { type CleanOptions, cleanReply, createReplyCleaner, guardFaces } from '../../src/format/clean.js'
 import { buildFooter, capitaliseBubble, forReplay } from '../../src/format/footer.js'
 import { BUBBLE_BREAK } from '../../src/gateway/response.js'
+import type { BuiltPrompt, RunResult, TurnContext } from '../../src/turn/types.js'
 
 const base: CleanOptions = {
   toolNames: [],
@@ -41,6 +43,135 @@ describe('buildFooter', () => {
         ]
       })
     ).toBe('_🔬 ran a web search · used song find_\n_🔗 dosm.gov.my · en.wikipedia.org · reuters.com_')
+  })
+
+  it('footer: media_video and media_youtube in one turn show the label once', () => {
+    expect(buildFooter(['media_video', 'media_youtube'])).toBe('_🛠️ watched a video_')
+    expect(buildFooter(['media_video', 'media_youtube', 'web_search'])).toBe('_🛠️ watched a video · searched the web_')
+  })
+})
+
+describe('createReplyCleaner intake and tool footers', () => {
+  const pack = loadPack('characters/example', 'repository')
+  const built: BuiltPrompt = { system: [], messages: [], record: {}, shape: { maxChars: 600 } }
+  const emptyRun = { calls: [] } as unknown as RunResult
+
+  const makeContext = (overrides: Partial<TurnContext> = {}): TurnContext => ({
+    turnId: 't_1',
+    chat: { chatId: 'c_1', waId: 'test-chat', type: 'group', label: '', status: 'active' },
+    senderId: 's_1',
+    character: pack,
+    settings: {},
+    kind: 'reply',
+    delivery: { kind: 'reply' },
+    deadline: Date.now() + 10_000,
+    ...overrides
+  })
+
+  it('footer: a watched YouTube link with no tool call shows "watched a video" and youtube.com', () => {
+    const cleaner = createReplyCleaner(
+      { format: { bubbleMaxChars: 4000, maxBubbles: 1, leakCheck: 'off' } },
+      () => [],
+      () => [],
+      () => []
+    )
+    const result = cleaner.clean({
+      text: 'looks cool',
+      context: makeContext({
+        intakeKinds: ['media_youtube'],
+        intakeUrls: ['https://www.youtube.com/watch?v=abc123']
+      }),
+      built,
+      run: emptyRun
+    })
+    expect(result.content).toBe('Looks cool\n\n_🛠️ watched a video_\n_🔗 youtube.com_')
+  })
+
+  it('footer: a video file and a web search show both labels, intake first', () => {
+    const cleaner = createReplyCleaner(
+      { format: { bubbleMaxChars: 4000, maxBubbles: 1, leakCheck: 'off' } },
+      () => ['web_search'],
+      () => ['web_search'],
+      () => ['https://example.com/1']
+    )
+    const result = cleaner.clean({
+      text: 'here is more info',
+      context: makeContext({ intakeKinds: ['media_video'] }),
+      built,
+      run: emptyRun
+    })
+    expect(result.content).toBe('Here is more info\n\n_🛠️ watched a video · searched the web_\n_🔗 example.com_')
+  })
+
+  it('footer: an unreadable file adds no label', () => {
+    const cleaner = createReplyCleaner(
+      { format: { bubbleMaxChars: 4000, maxBubbles: 1, leakCheck: 'off' } },
+      () => [],
+      () => [],
+      () => []
+    )
+    const result = cleaner.clean({
+      text: 'could not open that',
+      context: makeContext({ intakeKinds: [], intakeUrls: [] }),
+      built,
+      run: emptyRun
+    })
+    expect(result.content).toBe('Could not open that')
+  })
+
+  it('footer: a pack label overrides an intake default', () => {
+    const customPack = {
+      ...pack,
+      card: {
+        ...pack.card,
+        toolFooter: { icon: '📺', labels: { media_youtube: 'checked a clip' } }
+      }
+    }
+    const cleaner = createReplyCleaner(
+      { format: { bubbleMaxChars: 4000, maxBubbles: 1, leakCheck: 'off' } },
+      () => [],
+      () => [],
+      () => []
+    )
+    const result = cleaner.clean({
+      text: 'nice clip',
+      context: makeContext({
+        character: customPack,
+        intakeKinds: ['media_youtube'],
+        intakeUrls: ['https://www.youtube.com/watch?v=abc123']
+      }),
+      built,
+      run: emptyRun
+    })
+    expect(result.content).toBe('Nice clip\n\n_📺 checked a clip_\n_🔗 youtube.com_')
+  })
+
+  it('footer: a direct command still gets no footer; features.toolFooter off hides both lines', () => {
+    const cleaner = createReplyCleaner(
+      { format: { bubbleMaxChars: 4000, maxBubbles: 1, leakCheck: 'off' } },
+      () => ['help', 'web_search'],
+      () => ['help'],
+      () => ['https://example.com']
+    )
+    const direct = cleaner.clean({
+      text: 'Commands in this chat:',
+      context: makeContext({ kind: 'command' }),
+      built: { system: [], messages: [], record: { lengthBypass: 'command_list' }, shape: { lengthBypass: true } },
+      run: emptyRun
+    })
+    expect(direct.content).toBe('Commands in this chat:')
+
+    const off = cleaner.clean({
+      text: 'found it',
+      context: makeContext({
+        intakeKinds: ['media_youtube'],
+        intakeUrls: ['https://www.youtube.com/watch?v=abc123'],
+        settings: { 'features.toolFooter': { value: false, level: 'chat' } }
+      }),
+      built,
+      run: emptyRun
+    })
+    expect(off.content).toBe('Found it')
   })
 })
 
