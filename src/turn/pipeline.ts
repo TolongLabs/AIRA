@@ -4,6 +4,7 @@ import type { LineKind } from '../character/schema.js'
 import type { Config } from '../config/schema.js'
 import type { Attachment, GatewayRequest } from '../gateway/request.js'
 import { compactDue } from '../gateway/schedule.js'
+import { modelRecordContext } from '../judge/systemone.js'
 import { type TurnMedia, type TurnMediaResult, mediaPromptText, mediaToRead } from '../media/turn-media.js'
 import { ModelError } from '../models/types.js'
 import type { FailureKind } from '../records/kinds.js'
@@ -633,7 +634,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         stamps: []
       }
       try {
-        outcome = await execute(turnId, chat, batch, outcome)
+        outcome = await modelRecordContext.run({ turnId }, () => execute(turnId, chat, batch, outcome))
       } catch (error) {
         // An uncaught exception ends the turn with the pack's error line. The process stays up.
         log.error('turn.uncaught', { error })

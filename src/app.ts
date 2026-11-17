@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -12,7 +13,12 @@ import { createReplyCleaner } from './format/clean.js'
 import { writeChatFlags } from './gateway/chat-flags.js'
 import { writeScheduleFile } from './gateway/schedule.js'
 import { createGatewayServer } from './gateway/server.js'
-import { createSystemOneClient, createSystemOneMemoryJudge, createSystemOneMoodJudge } from './judge/systemone.js'
+import {
+  createSystemOneClient,
+  createSystemOneMemoryJudge,
+  createSystemOneMoodJudge,
+  modelRecordContext
+} from './judge/systemone.js'
 import { type MediaWatcher, createGeminiWatcher } from './media/gemini-watcher.js'
 import { DEFAULT_MEDIA_LIMITS } from './media/limits.js'
 import { createLinkReader } from './media/link-intake.js'
@@ -36,7 +42,7 @@ import { withStickers } from './prompt/stickers.js'
 import { type Logger, createLogger } from './records/logger.js'
 import { createRedactor, secretsFromEnv } from './records/redact.js'
 import { pruneRecords } from './records/retention.js'
-import { recordModelCall } from './records/turn-record.js'
+import { endJobRun, recordFailure, recordModelCall, startJobRun } from './records/turn-record.js'
 import { okToolsOfTurn } from './records/turn-view.js'
 import { renderReport } from './render/render.js'
 import { reportFormatSchema } from './render/types.js'
@@ -294,7 +300,33 @@ export async function createApp(options: AppOptions): Promise<App> {
     const judgeKey = env['TYPESAFE_API_KEY']
     const hosted =
       config.judge.model !== '' && judgeKey
-        ? createSystemOneClient({ apiKey: judgeKey, model: config.judge.model })
+        ? createSystemOneClient({
+            apiKey: judgeKey,
+            model: config.judge.model,
+            now,
+            onCall: (call) => {
+              storage.tx((db) => {
+                recordModelCall(db, { ...call, role: 'judge', transport: 'api', attempt: 1 })
+                if (call.failureKind)
+                  recordFailure(
+                    db,
+                    {
+                      turnId: call.turnId,
+                      jobId: call.jobId,
+                      stage: 'judge',
+                      kind: 'judge_unavailable',
+                      error: new Error(`judge request failed: ${call.failureKind}`),
+                      handledBy: 'judge_fallback'
+                    },
+                    redactor,
+                    now
+                  )
+              })
+              if (call.failureKind)
+                logger.warn('judge.unavailable', { ...modelRecordContext.getStore(), kind: call.failureKind })
+              if (call.failureKind === 'auth') alerter.raise('model_auth', { role: 'judge' })
+            }
+          })
         : undefined
     const moodJudge = options.judge ?? (hosted ? createSystemOneMoodJudge(hosted) : undefined)
     const memoryJudge = options.memoryJudge ?? (hosted ? createSystemOneMemoryJudge(hosted) : undefined)
@@ -533,6 +565,7 @@ export async function createApp(options: AppOptions): Promise<App> {
           onCall: (call) => {
             storage.tx((db) =>
               recordModelCall(db, {
+                jobId: modelRecordContext.getStore()?.jobId,
                 role: call.role,
                 model: call.model,
                 transport: call.transport,
@@ -551,6 +584,7 @@ export async function createApp(options: AppOptions): Promise<App> {
           now
         }),
         judge: memoryJudge,
+        redactor,
         logger: logger.child({ module: 'memory' }),
         alerter,
         paused: () => started.diskGuard.state().paused.memoryExtraction,
@@ -578,32 +612,101 @@ export async function createApp(options: AppOptions): Promise<App> {
     }
     refreshUnavailableLine()
 
-    const stopDiskGuard = started.diskGuard.start(config.storage.checkEveryMin * 60_000)
+    const storageFault = (kind: 'backup_failed' | 'storage_error', error: unknown, recorded = false): void => {
+      logger.error(`storage.${kind}`, { error })
+      alerter.raise('storage', { failureKind: kind })
+      if (!recorded) {
+        try {
+          storage.tx((db) =>
+            recordFailure(db, { stage: 'storage', kind, error, handledBy: 'background' }, redactor, now)
+          )
+        } catch (recordError) {
+          logger.error('storage.failure_record_failed', { error: recordError })
+        }
+      }
+    }
+    const stopDiskGuard = started.diskGuard.start(config.storage.checkEveryMin * 60_000, (error) =>
+      storageFault('storage_error', error)
+    )
     const stopSnapshots = startSnapshotTimer(storage, paths.snapshots, {
       everyMin: config.backup.everyMin,
       keepDays: config.backup.keepDays,
       now,
+      redactor,
+      onError: (error) => storageFault('backup_failed', error, true),
       onResult: (result) => {
-        if (result.state !== 'verified')
-          logger.error('storage.snapshot_failed', { file: result.file, detail: result.detail })
+        if (result.state === 'verified') logger.info('storage.snapshot', { file: result.file })
       }
     })
-    // The daily retention job. With the archive on, rows are exported before they are deleted, and the job waits
-    // while the disk guard pauses the archive. With the archive off, rows are deleted without an export.
-    const retention = setInterval(() => {
-      const run =
-        config.archive.enabled === 'on'
-          ? archiveAndPrune(storage, {
-              archiveDir: paths.archive,
-              config: config.records,
-              enabled: !started.diskGuard.state().paused.archive,
+    let retentionRunning: Promise<void> | undefined
+    const checkRetention = (): Promise<void> => {
+      if (retentionRunning) return retentionRunning
+      const last = storage.read((db) =>
+        db
+          .prepare(
+            "SELECT ended_at FROM job_run WHERE kind = 'retention' AND outcome = 'ok' ORDER BY ended_at DESC LIMIT 1"
+          )
+          .pluck()
+          .get()
+      ) as string | undefined
+      if (last && now().getTime() - Date.parse(last) < 86_400_000) return Promise.resolve()
+      retentionRunning = (async () => {
+        const jobId = randomUUID()
+        const runId = storage.tx((db) => startJobRun(db, { kind: 'retention', jobId }, now))
+        let outcome = 'failed'
+        let counts: Record<string, number> | undefined
+        try {
+          const result =
+            config.archive.enabled === 'on'
+              ? (
+                  await archiveAndPrune(storage, {
+                    archiveDir: paths.archive,
+                    config: config.records,
+                    enabled: !started.diskGuard.state().paused.archive,
+                    now
+                  })
+                )?.retention
+              : pruneRecords(storage, config.records, { now })
+          if (result) {
+            counts = result.counts
+            // Pruning also writes a success receipt. Keep the attempt opened before work as the single run.
+            storage.tx((db) => db.prepare('DELETE FROM job_run WHERE id = ?').run(result.jobRunId))
+            outcome = 'ok'
+          } else outcome = 'paused'
+        } catch (error) {
+          logger.error('storage.retention_failed', { jobId, error })
+          storage.tx((db) =>
+            recordFailure(
+              db,
+              {
+                jobId,
+                stage: 'retention',
+                kind: 'storage_error',
+                error,
+                handledBy: 'retention'
+              },
+              redactor,
               now
-            })
-          : Promise.resolve().then(() => pruneRecords(storage, config.records, { now }))
-      run.catch((error: unknown) => logger.error('storage.retention_failed', { error }))
-    }, 86_400_000)
+            )
+          )
+        } finally {
+          storage.tx((db) => endJobRun(db, runId, { outcome, counts }, now))
+        }
+      })()
+        .catch((error: unknown) => storageFault('storage_error', error))
+        .finally(() => {
+          retentionRunning = undefined
+        })
+      return retentionRunning
+    }
+    closers.push(stopDiskGuard, stopSnapshots)
+    await checkRetention()
+    const retention = setInterval(() => void checkRetention(), 3_600_000)
     retention.unref()
-    closers.push(stopDiskGuard, stopSnapshots, () => clearInterval(retention))
+    closers.push(async () => {
+      clearInterval(retention)
+      await retentionRunning
+    })
 
     // Step 6: report ready.
     let ready = true
@@ -666,7 +769,17 @@ export async function createApp(options: AppOptions): Promise<App> {
       alerter,
       packs,
       refreshUnavailableLine,
-      snapshot: (reason) => takeSnapshot(storage, paths.snapshots, reason, now),
+      snapshot: async (reason) => {
+        try {
+          const result = await takeSnapshot(storage, paths.snapshots, reason, now, { redactor })
+          if (result.state === 'failed')
+            storageFault('backup_failed', new Error(result.detail ?? 'snapshot failed'), true)
+          return result
+        } catch (error) {
+          storageFault('backup_failed', error, true)
+          throw error
+        }
+      },
       listen: (port, host) =>
         new Promise((resolve, reject) => {
           server.once('error', reject)

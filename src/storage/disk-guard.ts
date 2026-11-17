@@ -22,6 +22,7 @@ export interface DiskGuardOptions {
   storage?: Storage
   /** Called once each time the level changes to warn or critical. */
   onAlert?: (state: DiskState) => void
+  onError?: (error: unknown) => void
   /** Free space in megabytes. Replaced in tests. */
   freeMb?: (dir: string) => number
   now?: () => Date
@@ -32,7 +33,7 @@ export interface DiskGuard {
   check(): DiskState
   state(): DiskState
   /** Checks every intervalMs until the returned function is called. */
-  start(intervalMs: number): () => void
+  start(intervalMs: number, onError?: (error: unknown) => void): () => void
 }
 
 export function freeMegabytes(dir: string): number {
@@ -46,6 +47,7 @@ export function emptyDir(dir: string): void {
 }
 
 export function createDiskGuard(options: DiskGuardOptions): DiskGuard {
+  let onError = options.onError
   const measure = options.freeMb ?? freeMegabytes
   let current: DiskState = {
     level: 'ok',
@@ -67,8 +69,8 @@ export function createDiskGuard(options: DiskGuardOptions): DiskGuard {
       // The cache is rebuilt on demand, so it is the first thing emptied.
       try {
         emptyDir(join(options.dataDir, 'cache'))
-      } catch {
-        // A cache that cannot be emptied must not stop replies.
+      } catch (error) {
+        onError?.(error)
       }
     }
     if (changed && level !== 'ok') {
@@ -85,8 +87,8 @@ export function createDiskGuard(options: DiskGuardOptions): DiskGuard {
             options.now
           )
         )
-      } catch {
-        // On a full disk this record may not fit. The alert below still goes out.
+      } catch (error) {
+        onError?.(error)
       }
       options.onAlert?.(next)
     }
@@ -96,12 +98,13 @@ export function createDiskGuard(options: DiskGuardOptions): DiskGuard {
   return {
     check,
     state: () => current,
-    start: (intervalMs) => {
+    start: (intervalMs, reportError = options.onError) => {
+      onError = reportError
       const timer = setInterval(() => {
         try {
           check()
-        } catch {
-          // A failed measurement keeps the last known level.
+        } catch (error) {
+          onError?.(error)
         }
       }, intervalMs)
       timer.unref()
