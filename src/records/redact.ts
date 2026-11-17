@@ -8,20 +8,43 @@ const SECRET_MASK = '[secret]'
 // A WhatsApp id (digits, optional device suffix, then a known server), or a bare phone-like run of digits.
 const WHATSAPP_ID = /\b\d[\d-]{4,}(?::\d+)?@(?:s\.whatsapp\.net|g\.us|lid|c\.us|newsletter)\b/g
 const PHONE = /(?<![\w.])\+?\d[\d\s-]{7,}\d(?![\w.])/g
-const MIN_SECRET_LENGTH = 6
+const MIN_SECRET_LENGTH = 4
+
+export type RedactorSecrets = readonly string[] | Readonly<Record<string, string | undefined>>
 
 export interface Redactor {
   /** A stable hash that stands in for message text, a name, a phone number or a WhatsApp id. */
   hash(value: string): string
   /** Masks secrets and hashes any WhatsApp id or phone number found inside free text. */
   scrub(text: string): string
+  /** Key names of non-empty secrets shorter than the masking minimum (never their values). */
+  weak: string[]
 }
 
-export function createRedactor(options: { secrets?: readonly string[]; salt?: string } = {}): Redactor {
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+export function createRedactor(options: { secrets?: RedactorSecrets; salt?: string } = {}): Redactor {
   const salt = options.salt ?? ''
-  const secrets = [...new Set(options.secrets ?? [])]
-    .filter((secret) => secret.length >= MIN_SECRET_LENGTH)
-    .sort((a, b) => b.length - a.length)
+  const rawSecrets: string[] = []
+  const weakKeys = new Set<string>()
+
+  if (Array.isArray(options.secrets)) {
+    for (const secret of options.secrets) {
+      if (secret.length >= MIN_SECRET_LENGTH) rawSecrets.push(secret)
+    }
+  } else if (options.secrets !== undefined) {
+    for (const [key, secret] of Object.entries(options.secrets)) {
+      if (typeof secret !== 'string' || secret === '') continue
+      if (secret.length >= MIN_SECRET_LENGTH) rawSecrets.push(secret)
+      else weakKeys.add(key)
+    }
+  }
+
+  const secrets = [...new Set(rawSecrets)].sort((a, b) => b.length - a.length)
+  const secretPattern = secrets.length > 0 ? new RegExp(secrets.map(escapeRegExp).join('|'), 'g') : undefined
+  const weak = [...weakKeys]
 
   const hash = (value: string): string =>
     'h:' +
@@ -31,19 +54,23 @@ export function createRedactor(options: { secrets?: readonly string[]; salt?: st
       .slice(0, 12)
 
   const scrub = (text: string): string => {
-    let out = text
-    for (const secret of secrets) out = out.split(secret).join(SECRET_MASK)
+    let out = secretPattern ? text.replace(secretPattern, () => SECRET_MASK) : text
     out = out.replace(WHATSAPP_ID, (id) => hash(id))
     out = out.replace(PHONE, (phone) => hash(phone.replace(/[\s-]/g, '')))
     return out
   }
 
-  return { hash, scrub }
+  return { hash, scrub, weak }
 }
 
-/** Every value read from .env, for the logger to mask. Reads values, returns them only to the redactor. */
-export function secretsFromEnv(names: readonly string[], env: NodeJS.ProcessEnv = process.env): string[] {
-  return names.map((name) => env[name]).filter((value): value is string => typeof value === 'string' && value !== '')
+/** Non-empty values read from .env, keyed by name, for the redactor to mask. */
+export function secretsFromEnv(names: readonly string[], env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const name of names) {
+    const value = env[name]
+    if (typeof value === 'string' && value !== '') out[name] = value
+  }
+  return out
 }
 
 /** Describes a value by keys and types, for logging tool arguments without their values. */

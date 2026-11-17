@@ -334,6 +334,17 @@ describe('the whole service', () => {
     expect(lines.join('')).not.toContain(secret)
   })
 
+  it('logs records.weak_secret with key names only when an env secret is shorter than 4 characters', async () => {
+    const weakValue = 'xyz'
+    const { logs } = await start(queueModel([{ text: 'ok' }]), {
+      env: { EXA_API_KEY: weakValue, LLM_API_KEY: 'abcd', OPENAI_API_KEY: '' }
+    })
+    const warnings = logs.filter((line) => line['event'] === 'records.weak_secret')
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toMatchObject({ level: 'warn', event: 'records.weak_secret', keys: ['EXA_API_KEY'] })
+    expect(JSON.stringify(warnings[0])).not.toContain(weakValue)
+  })
+
   it('has the page reader built in, and it refuses a private address', async () => {
     const model = queueModel([
       { toolCalls: [{ id: 'c1', name: 'read_page', args: { url: 'http://127.0.0.1:1/private' } }] },
