@@ -1,6 +1,6 @@
 import * as Tooltip from '@radix-ui/react-tooltip'
 import { ChevronRight, X } from 'lucide-react'
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { Shell } from '@/components/shell'
 import { Badge, Button, Card, Empty, Field, Input, Picker, Section, Segmented, Spinner, Toggle } from '@/components/ui'
 import {
@@ -58,7 +58,7 @@ const FEATURES: { key: string; label: string; hint: string }[] = [
   { key: 'features.social', label: 'Social posts', hint: 'Off: links to posts are not read.' },
   { key: 'features.photos', label: 'Photos', hint: 'Off: no photo is sent.' },
   { key: 'features.media', label: 'Media watching', hint: 'Off: pictures, audio and video are not read.' },
-  { key: 'features.reports', label: 'Reports', hint: 'Off: /report is not offered.' },
+  { key: 'features.reports', label: 'Reports', hint: 'Off: /doc is not offered.' },
   { key: 'features.proactive', label: 'Messages first', hint: 'Off: replies only when written to.' },
   { key: 'features.voice', label: 'Voice notes', hint: 'Off: replies are text.' },
   { key: 'features.lessons', label: 'Lessons', hint: 'Off: songs, words and the library are not offered.' },
@@ -933,20 +933,41 @@ function ChatRow({
               )}
               {tab === 'features' &&
                 FEATURES.map((f) => (
-                  <SettingRow key={f.key} chat={chat} name={f.key} label={f.label} onClear={clear}>
-                    <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1">
-                      <div className="min-w-0 flex-1 basis-48">
-                        <Toggle
-                          checked={valueOf(chat, f.key, false)}
-                          disabled={busy}
-                          onChange={(v) => save(f.key, v)}
-                          label={f.label}
-                          hint={f.hint}
-                        />
+                  <Fragment key={f.key}>
+                    <SettingRow chat={chat} name={f.key} label={f.label} onClear={clear}>
+                      <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1">
+                        <div className="min-w-0 flex-1 basis-48">
+                          <Toggle
+                            checked={valueOf(chat, f.key, false)}
+                            disabled={busy}
+                            onChange={(v) => save(f.key, v)}
+                            label={f.label}
+                            hint={f.hint}
+                          />
+                        </div>
+                        <FeatureTools tools={toolFeatures.find((feature) => feature.key === f.key)?.tools ?? []} />
                       </div>
-                      <FeatureTools tools={toolFeatures.find((feature) => feature.key === f.key)?.tools ?? []} />
-                    </div>
-                  </SettingRow>
+                    </SettingRow>
+                    {f.key === 'features.reports' && (
+                      <SettingRow
+                        chat={chat}
+                        name="report.defaultFormat"
+                        label="Default document format"
+                        hint="Format for /doc when a message names none."
+                        onClear={clear}
+                      >
+                        <Segmented
+                          options={['pdf', 'markdown'] as const}
+                          labels={{ pdf: 'PDF', markdown: 'Markdown' }}
+                          value={valueOf<'pdf' | 'markdown'>(chat, 'report.defaultFormat', 'pdf')}
+                          onChange={(v) => {
+                            if (!busy) void save('report.defaultFormat', v)
+                          }}
+                          className={cn(busy && 'pointer-events-none opacity-55')}
+                        />
+                      </SettingRow>
+                    )}
+                  </Fragment>
                 ))}
               {tab === 'quiet' && (
                 <SettingRow

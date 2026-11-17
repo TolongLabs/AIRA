@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { loadPack } from '../../src/character/loader.js'
 import { createLogger } from '../../src/records/logger.js'
 import { createRedactor } from '../../src/records/redact.js'
+import { RenderError } from '../../src/render/render.js'
+import { type NoteDocument, noteDocumentSchema } from '../../src/render/types.js'
 import { ensureChat, setChatStatus } from '../../src/settings/chats.js'
 import { resolveSettings, setSetting } from '../../src/settings/settings.js'
 import type { Storage } from '../../src/storage/database.js'
@@ -498,14 +500,20 @@ describe('core tools', () => {
     const muteOff = await registry.call('set_mute', { muted: false }, ctx, { callId: 'c-unmute', source: 'command' })
     expect(muteOff).toMatchObject({ ok: true, data: { muted: false }, receipt: { kind: 'mute.off' } })
 
-    const reportRes = await registry.call('make_report', { title: 'Weekly', body: 'All good.' }, ctx, {
-      callId: 'c-report',
-      source: 'model'
-    })
+    const mdCtx: TurnContext = { ...ctx, messageText: '/doc weekly md' }
+    const reportRes = await registry.call(
+      'make_report',
+      { title: 'Weekly', sections: [{ heading: 'Status', body: 'All good.' }] },
+      mdCtx,
+      {
+        callId: 'c-report',
+        source: 'model'
+      }
+    )
     expect(reportRes).toMatchObject({ ok: true, data: { created: true }, receipt: { kind: 'report.created' } })
     if (reportRes.ok) {
       const attachment = reportRes.receipt?.state?.attachment as string
-      expect(readFileSync(join(filesDir, attachment), 'utf8')).toBe('# Weekly\n\nAll good.')
+      expect(readFileSync(join(filesDir, attachment), 'utf8')).toBe('# Weekly\n\n## Status\n\nAll good.')
     }
 
     const helpRes = await registry.call('help', {}, ctx, { callId: 'c-help', source: 'command' })
@@ -515,6 +523,8 @@ describe('core tools', () => {
       expect(cmds).toContain('/help')
       expect(cmds).toContain('/mute')
       expect(cmds).toContain('/unmute')
+      expect(cmds).toContain('/doc')
+      expect(cmds).not.toContain('/report')
     }
 
     const listRes = await registry.call('list', {}, ctx, { callId: 'c-list-tools', source: 'command' })
@@ -587,6 +597,120 @@ describe('core tools', () => {
         source: 'model'
       })
     ).toMatchObject({ ok: false, kind: 'error' })
+  })
+
+  it('the model cannot pick the format', async () => {
+    const noteRenderer = vi.fn(async () => ({ pdf: Buffer.from('%PDF-note'), pages: 1 }))
+    const { storage, registry, makeCtx } = setup({ noteRenderer })
+    const ctx = makeCtx()
+
+    const offered = registry.offered(ctx).find((tool) => tool.schema.name === 'make_report')
+    expect(offered).toBeDefined()
+    const params = offered?.schema.parameters as {
+      additionalProperties?: unknown
+      properties?: Record<string, unknown>
+    }
+    expect(params.additionalProperties).toBe(false)
+    expect(params.properties).not.toHaveProperty('format')
+
+    const res = await registry.call(
+      'make_report',
+      { title: 'Weekly Plan', sections: [{ heading: 'Tasks', body: 'Ship tests.' }], format: 'markdown' },
+      ctx,
+      { callId: 'c-fmt-refuse', source: 'model' }
+    )
+    expect(res).toMatchObject({ ok: false, kind: 'invalid' })
+    expect(noteRenderer).not.toHaveBeenCalled()
+    expect(storage.read((db) => db.prepare('SELECT count(*) FROM file').pluck().get())).toBe(0)
+  })
+
+  it('a NoteDocument over its limits is refused', async () => {
+    const noteRenderer = vi.fn(async () => ({ pdf: Buffer.from('%PDF-note'), pages: 1 }))
+    const { storage, registry, makeCtx } = setup({ noteRenderer })
+    const ctx = makeCtx()
+
+    const invalidDocs: unknown[] = [
+      { title: 'abc', sections: [{ heading: 'One', body: 'Body text.' }] },
+      { title: 't'.repeat(121), sections: [{ heading: 'One', body: 'Body text.' }] },
+      { title: 'Valid Title', sections: [] },
+      {
+        title: 'Valid Title',
+        sections: Array.from({ length: 9 }, (_, i) => ({ heading: `Section ${i + 1}`, body: 'Body text.' }))
+      },
+      { title: 'Valid Title', sections: [{ heading: '   ', body: 'Body text.' }] },
+      { title: 'Valid Title', sections: [{ heading: 'h'.repeat(81), body: 'Body text.' }] },
+      { title: 'Valid Title', sections: [{ heading: 'One', body: '   ' }] },
+      { title: 'Valid Title', sections: [{ heading: 'One', body: 'b'.repeat(4001) }] }
+    ]
+
+    for (let i = 0; i < invalidDocs.length; i += 1) {
+      expect(noteDocumentSchema.safeParse(invalidDocs[i]).success).toBe(false)
+      const res = await registry.call('make_report', invalidDocs[i], ctx, {
+        callId: `c-limit-${i}`,
+        source: 'model'
+      })
+      expect(res).toMatchObject({ ok: false, kind: 'invalid' })
+    }
+    expect(noteRenderer).not.toHaveBeenCalled()
+    expect(storage.read((db) => db.prepare('SELECT count(*) FROM file').pluck().get())).toBe(0)
+  })
+
+  it('passes chat report.format profile to noteRenderer, ignores partial words like amd, and maps render errors', async () => {
+    const noteRenderer = vi.fn(async () => ({ pdf: Buffer.from('%PDF-1.4\n'), pages: 1 }))
+    const { storage, filesDir, registry, makeCtx } = setup({ noteRenderer })
+    const ctx = makeCtx()
+    setSetting(storage, {
+      level: 'chat',
+      scope: ctx.chat.chatId,
+      key: 'report.format',
+      value: {
+        pageSize: 'Letter',
+        accent: '#1f4e79',
+        fontSize: 11,
+        cover: false,
+        sourcesAppendix: false,
+        header: 'Team'
+      },
+      actor: 'test'
+    })
+    ctx.settings = resolveSettings(storage, ctx.chat)
+    ctx.messageText = '/doc amd and markdowns'
+
+    const doc: NoteDocument = {
+      title: 'Chip Notes',
+      sections: [{ heading: 'Summary', body: 'Whole-word matching only.' }]
+    }
+    const okRes = await registry.call('make_report', doc, ctx, { callId: 'c-prof', source: 'command' })
+    expect(okRes).toMatchObject({
+      ok: true,
+      data: { created: true, format: 'pdf' },
+      receipt: { kind: 'report.created' }
+    })
+    expect(noteRenderer).toHaveBeenCalledWith(doc, {
+      pageSize: 'Letter',
+      accent: '#1f4e79',
+      fontSize: 11,
+      cover: false,
+      sourcesAppendix: false,
+      header: 'Team'
+    })
+    if (okRes.ok) {
+      const attachment = okRes.receipt?.state?.attachment as string
+      expect(attachment).toMatch(/\.pdf$/)
+      expect(readFileSync(join(filesDir, attachment)).toString('ascii')).toBe('%PDF-1.4\n')
+    }
+
+    noteRenderer.mockRejectedValueOnce(new RenderError('timeout', 'typst render timed out'))
+    expect(await registry.call('make_report', doc, ctx, { callId: 'c-timeout', source: 'command' })).toMatchObject({
+      ok: false,
+      kind: 'timeout'
+    })
+
+    noteRenderer.mockRejectedValueOnce(new RenderError('too_large', 'rendered pdf exceeds maxPages'))
+    expect(await registry.call('make_report', doc, ctx, { callId: 'c-large', source: 'command' })).toMatchObject({
+      ok: false,
+      kind: 'error'
+    })
   })
 })
 

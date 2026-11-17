@@ -36,6 +36,20 @@ export const reportDocumentSchema = z.strictObject({
 })
 export type ReportDocument = z.infer<typeof reportDocumentSchema>
 
+export const noteDocumentSchema = z.strictObject({
+  title: z.string().trim().min(4).max(120),
+  sections: z
+    .array(
+      z.strictObject({
+        heading: z.string().trim().min(1).max(80),
+        body: z.string().trim().min(1).max(4000)
+      })
+    )
+    .min(1)
+    .max(8)
+})
+export type NoteDocument = z.infer<typeof noteDocumentSchema>
+
 export const reportFormatSchema = z.strictObject({
   pageSize: z.enum(['A4', 'Letter']).default('A4'),
   accent: z

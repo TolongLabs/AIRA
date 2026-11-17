@@ -53,6 +53,8 @@ export interface ToolContext extends TurnContext {
   /** Aborts at the call's timeout or the turn deadline. */
   signal: AbortSignal
   now: () => Date
+  /** Text of the message(s) this turn answers, supplied by code. */
+  messageText?: string
   /**
    * The one transaction of a state change. The handler's writes, the stored result of the call and its receipt
    * commit together or not at all. A handler may call it once. Only a tool with `mutates: true` may call it.

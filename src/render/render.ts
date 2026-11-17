@@ -3,7 +3,14 @@ import { access, copyFile, mkdtemp, readFile, rm, stat, writeFile } from 'node:f
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { type ReportDocument, type ReportFormat, reportDocumentSchema, reportFormatSchema } from './types.js'
+import {
+  type NoteDocument,
+  type ReportDocument,
+  type ReportFormat,
+  noteDocumentSchema,
+  reportDocumentSchema,
+  reportFormatSchema
+} from './types.js'
 
 export const MAX_TYPST_OUTPUT_BYTES = 1024 * 1024
 
@@ -46,8 +53,10 @@ export interface RenderReportOptions {
   run?: RenderRunner
 }
 
-export function buildTypstArgs(rootDir: string): string[] {
-  return ['compile', '--root', rootDir, '--input', 'data=data.json', 'report.typ', 'out.pdf']
+export type TemplateName = 'report.typ' | 'note.typ'
+
+export function buildTypstArgs(rootDir: string, template: TemplateName = 'report.typ'): string[] {
+  return ['compile', '--root', rootDir, '--input', 'data=data.json', template, 'out.pdf']
 }
 
 export function countPdfPages(pdf: Buffer): number {
@@ -69,10 +78,10 @@ function formatIssuePaths(issues: readonly { path: readonly PropertyKey[] }[]): 
   return issues.map((issue) => issue.path.map(String).join('.') || '(root)').join(', ')
 }
 
-async function resolveTemplatePath(): Promise<string> {
+async function resolveTemplatePath(template: TemplateName): Promise<string> {
   const candidates = [
-    fileURLToPath(new URL('./templates/report.typ', import.meta.url)),
-    join(process.cwd(), 'src/render/templates/report.typ')
+    fileURLToPath(new URL(`./templates/${template}`, import.meta.url)),
+    join(process.cwd(), 'src/render/templates', template)
   ]
   for (const candidate of candidates) {
     try {
@@ -82,10 +91,16 @@ async function resolveTemplatePath(): Promise<string> {
       // Try next location when running from build output without copied templates.
     }
   }
-  throw new RenderError('engine', 'report template not found')
+  throw new RenderError('engine', `${template === 'note.typ' ? 'note' : 'report'} template not found`)
 }
 
-function runTypst(typstPath: string, workDir: string, timeoutMs: number, runner?: RenderRunner): Promise<void> {
+function runTypst(
+  typstPath: string,
+  workDir: string,
+  template: TemplateName,
+  timeoutMs: number,
+  runner?: RenderRunner
+): Promise<void> {
   const run: RenderRunner = runner ?? ((command, args, spawnOptions) => spawn(command, args, spawnOptions))
   return new Promise((resolve, reject) => {
     let settled = false
@@ -107,7 +122,7 @@ function runTypst(typstPath: string, workDir: string, timeoutMs: number, runner?
     }, timeoutMs)
 
     try {
-      child = run(typstPath, buildTypstArgs(workDir), {
+      child = run(typstPath, buildTypstArgs(workDir, template), {
         cwd: workDir,
         env: isolatedEnvironment(workDir),
         shell: false,
@@ -148,9 +163,10 @@ function runTypst(typstPath: string, workDir: string, timeoutMs: number, runner?
   })
 }
 
-export async function renderReport(
-  doc: ReportDocument,
+async function renderTemplate(
+  doc: ReportDocument | NoteDocument,
   format: ReportFormat,
+  template: TemplateName,
   options: RenderReportOptions
 ): Promise<{ pdf: Buffer; pages: number }> {
   if (
@@ -165,27 +181,13 @@ export async function renderReport(
     throw new RenderError('invalid', 'invalid render options')
   }
 
-  const parsedDoc = reportDocumentSchema.safeParse(doc)
-  if (!parsedDoc.success) {
-    throw new RenderError('invalid', `invalid report document: ${formatIssuePaths(parsedDoc.error.issues)}`)
-  }
-
-  const parsedFormat = reportFormatSchema.safeParse(format)
-  if (!parsedFormat.success) {
-    throw new RenderError('invalid', `invalid report format: ${formatIssuePaths(parsedFormat.error.issues)}`)
-  }
-
-  const templatePath = await resolveTemplatePath()
+  const templatePath = await resolveTemplatePath(template)
   const workDir = await mkdtemp(join(options.tmpDir ?? tmpdir(), 'aira-render-'))
 
   try {
-    await writeFile(
-      join(workDir, 'data.json'),
-      JSON.stringify({ doc: parsedDoc.data, format: parsedFormat.data }),
-      'utf8'
-    )
-    await copyFile(templatePath, join(workDir, 'report.typ'))
-    await runTypst(options.typstPath, workDir, options.timeoutMs, options.run)
+    await writeFile(join(workDir, 'data.json'), JSON.stringify({ doc, format }), 'utf8')
+    await copyFile(templatePath, join(workDir, template))
+    await runTypst(options.typstPath, workDir, template, options.timeoutMs, options.run)
 
     const pdfPath = join(workDir, 'out.pdf')
     let fileStat: Awaited<ReturnType<typeof stat>>
@@ -216,6 +218,38 @@ export async function renderReport(
   } finally {
     await rm(workDir, { recursive: true, force: true })
   }
+}
+
+function parseFormat(format: ReportFormat): ReportFormat {
+  const parsed = reportFormatSchema.safeParse(format)
+  if (!parsed.success) {
+    throw new RenderError('invalid', `invalid report format: ${formatIssuePaths(parsed.error.issues)}`)
+  }
+  return parsed.data
+}
+
+export async function renderReport(
+  doc: ReportDocument,
+  format: ReportFormat,
+  options: RenderReportOptions
+): Promise<{ pdf: Buffer; pages: number }> {
+  const parsedDoc = reportDocumentSchema.safeParse(doc)
+  if (!parsedDoc.success) {
+    throw new RenderError('invalid', `invalid report document: ${formatIssuePaths(parsedDoc.error.issues)}`)
+  }
+  return renderTemplate(parsedDoc.data, parseFormat(format), 'report.typ', options)
+}
+
+export async function renderNote(
+  doc: NoteDocument,
+  format: ReportFormat,
+  options: RenderReportOptions
+): Promise<{ pdf: Buffer; pages: number }> {
+  const parsedDoc = noteDocumentSchema.safeParse(doc)
+  if (!parsedDoc.success) {
+    throw new RenderError('invalid', `invalid note document: ${formatIssuePaths(parsedDoc.error.issues)}`)
+  }
+  return renderTemplate(parsedDoc.data, parseFormat(format), 'note.typ', options)
 }
 
 export async function isTypstAvailable(typstPath: string, timeoutMs = 10_000): Promise<boolean> {

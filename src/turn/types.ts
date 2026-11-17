@@ -31,6 +31,8 @@ export interface TurnContext {
   intakeKinds?: string[]
   /** Canonical URLs of links read at intake, so web tools do not open them again. */
   intakeUrls?: string[]
+  /** Text of the message(s) this turn answers, supplied by code. */
+  messageText?: string
 }
 
 export interface WindowMessage {
