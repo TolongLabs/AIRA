@@ -188,4 +188,43 @@ describe('add first, remove later', () => {
     if (baseline.releasedVersion > 0)
       expect(() => storage.tx((db) => db.exec(readFileSync(seedFile, 'utf8')))).toThrow(/UNIQUE|PRIMARY/)
   })
+
+  it('migration 0011 keeps every backup_run row and accepts offsite and check', () => {
+    const migrations = readMigrations()
+    const before11 = migrations.filter((migration) => migration.version < 11)
+    const migration11 = migrations.filter((migration) => migration.version === 11)
+    expect(migration11).toHaveLength(1)
+
+    const storage = tmpStorage({ migrate: false })
+    applyMigrations(storage, before11)
+    storage.tx((db) => {
+      db.prepare(
+        "INSERT INTO backup_run (id, reason, state, file, bytes, detail, started_at, ended_at) VALUES (1, 'timer', 'verified', 'aira-1.db', 1024, null, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:01.000Z')"
+      ).run()
+      db.prepare(
+        "INSERT INTO backup_run (id, reason, state, file, bytes, detail, started_at, ended_at) VALUES (2, 'manual', 'failed', 'aira-2.db', null, 'disk fault', '2026-01-02T00:00:00.000Z', '2026-01-02T00:00:01.000Z')"
+      ).run()
+    })
+
+    expect(applyMigrations(storage, migrations)).toEqual([11])
+    expect(() => storage.check()).not.toThrow()
+
+    const preserved = storage.read((db) =>
+      db.prepare('SELECT id, reason, state, file, bytes, detail FROM backup_run ORDER BY id').all()
+    )
+    expect(preserved).toEqual([
+      { id: 1, reason: 'timer', state: 'verified', file: 'aira-1.db', bytes: 1024, detail: null },
+      { id: 2, reason: 'manual', state: 'failed', file: 'aira-2.db', bytes: null, detail: 'disk fault' }
+    ])
+
+    storage.tx((db) => {
+      db.prepare(
+        "INSERT INTO backup_run (reason, state, file, started_at, ended_at) VALUES ('offsite', 'ok', 'aira-1.db', '2026-01-03T00:00:00.000Z', '2026-01-03T00:00:02.000Z')"
+      ).run()
+      db.prepare(
+        "INSERT INTO backup_run (reason, state, file, started_at, ended_at) VALUES ('check', 'ok', '', '2026-01-03T01:00:00.000Z', '2026-01-03T01:00:05.000Z')"
+      ).run()
+    })
+    expect(storage.read((db) => db.prepare('SELECT count(*) FROM backup_run').pluck().get())).toBe(4)
+  })
 })

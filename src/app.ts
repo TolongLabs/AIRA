@@ -57,6 +57,7 @@ import { SocialPostViewer } from './social/viewer.js'
 import { isYtDlpAvailable } from './social/yt-dlp.js'
 import { archiveAndPrune } from './storage/archive.js'
 import type { Storage } from './storage/database.js'
+import { createOffsite } from './storage/offsite.js'
 import { type SnapshotReason, type SnapshotResult, startSnapshotTimer, takeSnapshot } from './storage/snapshot.js'
 import { type DataPaths, startStorage } from './storage/startup.js'
 import { createCommandRouter } from './tools/commands.js'
@@ -634,6 +635,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     const stopDiskGuard = started.diskGuard.start(config.storage.checkEveryMin * 60_000, (error) =>
       storageFault('storage_error', error)
     )
+    const offsite = createOffsite({ config, env, storage, alerter, logger, now })
     const stopSnapshots = startSnapshotTimer(storage, paths.snapshots, {
       everyMin: config.backup.everyMin,
       keepDays: config.backup.keepDays,
@@ -642,7 +644,8 @@ export async function createApp(options: AppOptions): Promise<App> {
       onError: (error) => storageFault('backup_failed', error, true),
       onResult: (result) => {
         if (result.state === 'verified') logger.info('storage.snapshot', { file: result.file })
-      }
+      },
+      onVerified: (file) => offsite.ship(file)
     })
     let retentionRunning: Promise<void> | undefined
     const checkRetention = (): Promise<void> => {
@@ -705,7 +708,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         })
       return retentionRunning
     }
-    closers.push(stopDiskGuard, stopSnapshots)
+    closers.push(stopDiskGuard, stopSnapshots, offsite.start())
     await checkRetention()
     const retention = setInterval(() => void checkRetention(), 3_600_000)
     retention.unref()

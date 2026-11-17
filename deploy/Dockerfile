@@ -59,12 +59,33 @@ RUN set -eu; \
     install -m 0755 -o root -g root "/tmp/$target/typst" /usr/local/bin/typst; \
     rm -rf /tmp/typst.tar.xz "/tmp/$target"
 
+# Static Go binaries pinned by the release SHA-256 checksums.
+FROM debian:bookworm-slim AS restic
+RUN apt-get update && apt-get install -y --no-install-recommends bzip2 ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+ARG TARGETARCH
+ARG RESTIC_VERSION=0.19.1
+ARG RESTIC_AMD64_SHA256=f415415624dcc452f2a02b8c33641791a8c6d6d3b65bbb3543fcf9a25151585c
+ARG RESTIC_ARM64_SHA256=a5f64aaab53d51e311fa3829124c5b703f2d14cf187d8640b6be3b2b49376465
+RUN set -eu; \
+    case "$TARGETARCH" in \
+      amd64) asset="restic_${RESTIC_VERSION}_linux_amd64"; expected="$RESTIC_AMD64_SHA256" ;; \
+      arm64) asset="restic_${RESTIC_VERSION}_linux_arm64"; expected="$RESTIC_ARM64_SHA256" ;; \
+      *) echo "Unsupported restic architecture: $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    curl -fLsS -o /tmp/restic.bz2 "https://github.com/restic/restic/releases/download/v$RESTIC_VERSION/$asset.bz2"; \
+    echo "$expected  /tmp/restic.bz2" | sha256sum -c -; \
+    bzip2 -d /tmp/restic.bz2; \
+    install -m 0755 -o root -g root /tmp/restic /usr/local/bin/restic; \
+    rm -f /tmp/restic
+
 FROM node:24-slim
-RUN apt-get update && apt-get install -y --no-install-recommends fonts-noto-core fonts-noto-cjk \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates fonts-noto-core fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=ytdlp /opt/yt-dlp /opt/yt-dlp
 RUN ln -s /opt/yt-dlp/yt-dlp /usr/local/bin/yt-dlp
 COPY --from=typst /usr/local/bin/typst /usr/local/bin/typst
+COPY --from=restic /usr/local/bin/restic /usr/local/bin/restic
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build /repo/dist ./dist

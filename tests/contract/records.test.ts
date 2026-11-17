@@ -38,6 +38,7 @@ describe('failure kinds', () => {
     for (const kind of FAILURE_KINDS) {
       expect(isFailureKind(kind)).toBe(true)
     }
+    expect(isFailureKind('backup_stale')).toBe(true)
     expect(isFailureKind('not_a_real_kind')).toBe(false)
   })
 })

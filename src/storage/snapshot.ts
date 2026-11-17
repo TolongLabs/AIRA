@@ -214,6 +214,7 @@ export function startSnapshotTimer(
     keepDays: number
     onResult?: (result: SnapshotResult) => void
     onError?: (error: unknown) => void
+    onVerified?: (file: string) => void | Promise<void>
     redactor?: Redactor
     now?: Clock
   }
@@ -227,9 +228,10 @@ export function startSnapshotTimer(
         pruneSnapshots(storage, snapshotsDir, options.keepDays, options.now)
       }
     })
-      .then((result) => {
+      .then(async (result) => {
         if (result.state === 'failed') options.onError?.(new Error(result.detail ?? 'snapshot failed'))
         options.onResult?.(result)
+        if (result.state === 'verified') await options.onVerified?.(result.file)
       })
       .catch((error: unknown) => {
         options.onError?.(error)
