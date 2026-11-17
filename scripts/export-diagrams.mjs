@@ -20,6 +20,9 @@ const STYLE = `
     --cloud-fill: color-mix(in srgb, var(--cloud-stroke) 12%, var(--mask));
     --security-fill: color-mix(in srgb, var(--security-stroke) 12%, var(--mask));
     --messagebus-fill: color-mix(in srgb, var(--messagebus-stroke) 12%, var(--mask));
+    --external-fill: var(--mask);
+    --text: var(--ink); --text-muted: var(--muted);
+    --arrow: var(--muted); --arrow-emphasis: var(--blue);
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; letter-spacing: -0.01em; }
   @media (prefers-color-scheme: dark) {
     svg { --ink: #e8ecf5; --muted: #a3acc0; --faint: #5d667a; --line: #2c3342; --card: #11141b;
@@ -45,6 +48,7 @@ const STYLE = `
   .t-cloud { fill: var(--violet); } .t-security { fill: var(--amber); } .t-database { fill: var(--green); }
   .t-edge-security { fill: var(--red); }
   .semantic-sigil { display: none; }
+  .c-page { fill: var(--card); stroke: none; }
 `
 
 function exportOne(name) {
@@ -57,6 +61,14 @@ function exportOne(name) {
   const defsEnd = svg.indexOf('</defs>')
   if (defsEnd < 0) throw new Error(`${name}: the diagram has no <defs> block`)
   svg = `${svg.slice(0, defsEnd)}<style>${STYLE}</style>${svg.slice(defsEnd)}`
+  // An opaque page in the diagram's own palette keeps it readable on any page theme: an <img> follows the
+  // reader's system colour scheme, not the GitHub theme around it.
+  const viewBox = /viewBox="([^"]+)"/.exec(svg)?.[1].split(/[\s,]+/)
+  if (!viewBox) throw new Error(`${name}: the diagram has no viewBox`)
+  const [x, y, width, height] = viewBox
+  const afterDefs = svg.indexOf('</defs>') + '</defs>'.length
+  const page = `<rect class="c-page" x="${x}" y="${y}" width="${width}" height="${height}"/>`
+  svg = `${svg.slice(0, afterDefs)}${page}${svg.slice(afterDefs)}`
   writeFileSync(join(OUTPUT, `${name}.svg`), `${svg}\n`)
   return name
 }
