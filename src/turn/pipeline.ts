@@ -32,7 +32,6 @@ import { type Db, type Storage, isoNow } from '../storage/database.js'
 import { advanceTurn, closeTurn, openTurn, receiveInbound } from '../storage/turns.js'
 import type { Alerter } from './alerts.js'
 import { type DeliveryKind, type DeliverySettings, mayDeliver } from './deliver.js'
-import { matchesName, resolveNames } from './name-call.js'
 import type {
   BuiltPrompt,
   CommandRouter,
@@ -605,24 +604,9 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     })
     request = { ...request, text }
 
-    // A group message that only names the character is answered only when the chat allows name calls.
-    if (
-      chat.type === 'group' &&
-      selfIds.size > 0 &&
-      !mentionsSelf &&
-      !request.quote?.ofAira &&
-      settings['freeResponse']?.value !== true &&
-      !COMMAND_TEXT.test(text) &&
-      pack !== undefined
-    ) {
-      // Nothing else woke the gateway for this message, so it came in on a name pattern. The gateway's patterns
-      // cover every character's names, so the text may name another character: only the chat's own names count.
-      const nameCallAllowed = settings['nameCall']?.value === true && matchesName(text, resolveNames(settings, pack))
-      if (!nameCallAllowed) {
-        logger.info('turn.name_call_off', { chatId: chat.chatId })
-        return { content: 'NO_REPLY', replayed: true }
-      }
-    }
+    // The gateway decides which group messages reach the core: a mention, a reply, a command, free response, or one
+    // of the chat's names while name call is on. It removes the bot's own mention from the text, so the core cannot
+    // tell a mention from a name and does not try (docs/trd/system.md, Name call).
 
     return admit(
       chat,

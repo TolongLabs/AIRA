@@ -767,7 +767,8 @@ describe('names, mentions and name calls in a group', () => {
     )
   })
 
-  it('answers a message that only names the character when the chat allows name calls, and else stays silent', async () => {
+  it('answers a group message the gateway passed on, even with name call off and no mention left in the text', async () => {
+    // The gateway decides who is addressed and removes the bot's own mention, so a mention can arrive as plain text.
     const runner = scriptedRunner(() => 'here')
     const core = await startTestCore({
       runner,
@@ -775,36 +776,8 @@ describe('names, mentions and name calls in a group', () => {
         config.gateway.selfIds = [SELF]
       })
     })
-    const chatId = core.activate(CHAT)
-    expect((await core.gateway.send(named('m-1', 'EXAMPLE, are you there?', '123456@lid', 'Alice'))).content).toBe(
-      'NO_REPLY'
-    )
-    expect(runner.inputs).toHaveLength(0)
-    expect((await core.gateway.send(named('m-2', '@0000000 are you there?', '123456@lid', 'Alice'))).content).toBe(
-      'here'
-    )
-    setSetting(core.storage, { level: 'chat', scope: chatId, key: 'nameCall', value: true, actor: 'test' })
-    expect((await core.gateway.send(named('m-3', 'example, you there?', '123456@lid', 'Alice'))).content).toBe('here')
-    expect(runner.inputs).toHaveLength(2)
-  })
-
-  it('stays silent for another character name, whether name calls are on or off', async () => {
-    // The gateway wakes on every character's names, so a group bound to one pack can receive the other's name.
-    const runner = scriptedRunner(() => 'here')
-    const core = await startTestCore({
-      runner,
-      config: testConfig((config) => {
-        config.gateway.selfIds = [SELF]
-      })
-    })
-    const chatId = core.activate(CHAT)
-    expect(
-      (await core.gateway.send(named('m-1', 'otherbot where is my reminder', '123456@lid', 'Alice'))).content
-    ).toBe('NO_REPLY')
-    setSetting(core.storage, { level: 'chat', scope: chatId, key: 'nameCall', value: true, actor: 'test' })
-    expect((await core.gateway.send(named('m-2', 'otherbot are you there', '123456@lid', 'Alice'))).content).toBe(
-      'NO_REPLY'
-    )
-    expect(runner.inputs).toHaveLength(0)
+    core.activate(CHAT)
+    expect((await core.gateway.send(named('m-1', 'oi', '123456@lid', 'Alice'))).content).toBe('here')
+    expect(runner.inputs).toHaveLength(1)
   })
 })
