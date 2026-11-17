@@ -5,7 +5,7 @@ import { loadPack } from '../../src/character/loader.js'
 import { createLogger } from '../../src/records/logger.js'
 import { createRedactor } from '../../src/records/redact.js'
 import { ensureChat, setChatStatus } from '../../src/settings/chats.js'
-import { resolveSettings } from '../../src/settings/settings.js'
+import { resolveSettings, setSetting } from '../../src/settings/settings.js'
 import type { Storage } from '../../src/storage/database.js'
 import { openTurn, receiveInbound } from '../../src/storage/turns.js'
 import { CORE_TOOL_NAMES, registerCoreTools } from '../../src/tools/core/index.js'
@@ -217,6 +217,40 @@ describe('core tools', () => {
       { chatId: ctx2.chat.chatId, itemId: 'fact_1' },
       { chatId: ctx1.chat.chatId, itemId: 'fact_1' }
     ])
+  })
+
+  it('hides and refuses note and recall while off, but keeps help and forget usable', async () => {
+    const fakes = makeFakePorts()
+    const { storage, registry, makeCtx } = setup({ memory: fakes.memory })
+    const ctx = makeCtx({ waId: '0000000000@g.us', senderId: 'member' })
+    fakes.facts.set('kept', { chatId: ctx.chat.chatId, text: 'likes green tea' })
+    setSetting(storage, { level: 'chat', scope: ctx.chat.chatId, key: 'features.memory', value: false, actor: 'test' })
+    ctx.settings = resolveSettings(storage, ctx.chat)
+    const offered = registry.offered(ctx).map((tool) => tool.schema.name)
+    expect(offered).not.toContain('note')
+    expect(offered).not.toContain('recall')
+    expect(offered).toContain('forget')
+    const help = await registry.call('help', {}, ctx, { callId: 'off-help', source: 'command' })
+    expect(JSON.stringify(help)).not.toContain('/remember')
+    expect(JSON.stringify(help)).not.toContain('/recall')
+    expect(JSON.stringify(help)).toContain('/forget')
+    for (const source of ['command', 'model'] as const) {
+      for (const tool of ['note', 'recall']) {
+        expect(
+          await registry.call(tool, { text: 'new fact', query: 'tea' }, ctx, {
+            callId: `off-${source}-${tool}`,
+            source
+          })
+        ).toMatchObject({ ok: false, kind: 'refused' })
+      }
+    }
+    expect(
+      await registry.call('forget', { query: 'tea' }, ctx, { callId: 'off-find', source: 'command' })
+    ).toMatchObject({ ok: true, data: { candidates: [{ itemId: 'kept' }] } })
+    expect(
+      await registry.call('forget', { itemId: 'kept' }, ctx, { callId: 'off-forget', source: 'command' })
+    ).toMatchObject({ ok: true, data: { forgotten: true } })
+    expect(fakes.facts.size).toBe(0)
   })
 
   it('web tools: web_search, read_page, read_post, send_photo, routing and failures', async () => {

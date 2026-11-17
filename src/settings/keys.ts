@@ -82,6 +82,7 @@ export const SETTING_KEYS: Record<string, SettingDefinition> = {
     default: false
   },
   'features.proactive': { schema: z.boolean(), default: false },
+  'features.memory': { schema: z.boolean(), default: true },
   'features.reminders': { schema: z.boolean(), default: true },
   'features.search': { schema: z.boolean(), default: true },
   'features.social': { schema: z.boolean(), default: true },

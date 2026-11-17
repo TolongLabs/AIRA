@@ -27,6 +27,7 @@ const lingoSchema = z.strictObject({
 export function recallTool(ports: ToolPorts): ToolDefinition<z.infer<typeof querySchema>> {
   return {
     name: 'recall',
+    feature: 'features.memory',
     description: 'Searches what AIRA remembers in this chat.',
     schema: querySchema,
     mode: 'both',
@@ -53,6 +54,7 @@ export function recallTool(ports: ToolPorts): ToolDefinition<z.infer<typeof quer
 export function noteTool(ports: ToolPorts): ToolDefinition<z.infer<typeof noteSchema>> {
   return {
     name: 'note',
+    feature: 'features.memory',
     description: 'Writes one fact into this chat memory.',
     schema: noteSchema,
     mode: 'both',

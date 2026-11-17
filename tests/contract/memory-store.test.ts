@@ -19,6 +19,7 @@ import {
 } from '../../src/memory/store.js'
 import { FORGOTTEN_KEY, FORGOTTEN_MESSAGE, MAX_VALUE_CHARS, type MemoryJudge } from '../../src/memory/types.js'
 import { ensureChat } from '../../src/settings/chats.js'
+import { setSetting } from '../../src/settings/settings.js'
 import type { Storage } from '../../src/storage/database.js'
 import { enqueueJob, leaseNextJob } from '../../src/storage/leases.js'
 import { openTurn, receiveInbound } from '../../src/storage/turns.js'
@@ -48,6 +49,32 @@ function expectFtsInSync(storage: Storage, chatId: string): void {
 }
 
 describe('memory store', () => {
+  it('recalls no memory while off and recalls kept facts after enabling it again', () => {
+    const storage = tmpStorage()
+    const chat = ensureChat(storage, { waId: '0000000000@g.us', type: 'group' })
+    storage.tx((db) => addNote(db, chat.chatId, { text: 'likes green tea', subjectId: 'member' }))
+    const input = {
+      chatId: chat.chatId,
+      present: new Map([['member', 'member 1']]),
+      queryTexts: ['tea'],
+      tokenBudget: 500
+    }
+    const before = recallForTurn(storage, input)
+    expect(before).toEqual(['member 1: likes green tea'])
+    for (const level of ['global', 'type', 'chat'] as const) {
+      const setting = {
+        level,
+        scope: level === 'global' ? '' : level === 'type' ? 'group' : chat.chatId,
+        key: 'features.memory',
+        actor: 'test'
+      }
+      setSetting(storage, { ...setting, value: false })
+      expect(recallForTurn(storage, input)).toEqual([])
+      setSetting(storage, { ...setting, value: true })
+      expect(recallForTurn(storage, input)).toEqual(before)
+    }
+  })
+
   it('generates item ids and normalises keys and texts', () => {
     expect(newItemId()).toMatch(/^m_[0-9a-f]{16}$/)
     expect(normaliseKey('Likes Food-Now')).toBe('likes_food_now')

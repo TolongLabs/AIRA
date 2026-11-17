@@ -673,6 +673,15 @@ function ChatRow({
                       </SettingRow>
                     </>
                   )}
+                  <SettingRow chat={chat} name="features.memory" label="Memory" onClear={clear}>
+                    <Toggle
+                      checked={valueOf(chat, 'features.memory', true)}
+                      disabled={busy}
+                      onChange={(v) => save('features.memory', v)}
+                      label="Learn and recall facts in this chat"
+                      hint="Off: AIRA learns nothing new and recalls nothing here. Stored facts are kept."
+                    />
+                  </SettingRow>
                   <SettingRow chat={chat} name="reactions" label="Reactions" onClear={clear}>
                     <Toggle
                       checked={valueOf(chat, 'reactions', false)}
