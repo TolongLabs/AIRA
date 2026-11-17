@@ -1,7 +1,7 @@
 """AIRA's brain.chatflags for per-chat gateway flags (docs/trd/system.md#chat-flags-file).
 
 The core writes <AIRA_HOST_DATA_DIR>/gateway/chats.json with:
-{"version": 1, "chats": {"<whatsapp chat id>": {"voice": "all", "reactions": true, "names": ["Taiga"], "free": true}}}.
+{"version": 1, "chats": {"<whatsapp chat id>": {"voice": "all", "reactions": true, "reactionChance": 0.33, "names": ["Taiga"], "free": true}}}.
 
 This module caches the parsed chats map and reloads it only when the file's
 modification time changes. A missing, unreadable, or invalid file means
@@ -11,9 +11,12 @@ everything is off. No function here ever raises.
 from __future__ import annotations
 
 import json
+import math
 import os
 import threading
 from pathlib import Path
+
+DEFAULT_REACTION_CHANCE = 0.33
 
 _LOCK = threading.Lock()
 _CACHE_PATH: Path | None = None
@@ -107,3 +110,25 @@ def free(chat_id: str | None) -> bool:
         return flags(chat_id).get("free") is True
     except Exception:
         return False
+
+
+def _clamp_unit(value: object, fallback: float) -> float:
+    try:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return fallback
+        num = float(value)
+        if not math.isfinite(num):
+            return fallback
+        return max(0.0, min(1.0, num))
+    except Exception:
+        return fallback
+
+
+def reaction_chance(chat_id: str | None, default: float = DEFAULT_REACTION_CHANCE) -> float:
+    """Reaction probability in [0.0, 1.0] for one chat, or `default` when absent or invalid."""
+    fallback = _clamp_unit(default, DEFAULT_REACTION_CHANCE)
+    try:
+        raw = flags(chat_id).get("reactionChance")
+        return _clamp_unit(raw, fallback)
+    except Exception:
+        return fallback

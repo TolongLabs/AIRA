@@ -110,6 +110,37 @@ with tempfile.TemporaryDirectory() as d:
 '''
 
 
+PASSIVE_REACTIONS_TEST = '''import sys, types
+from gateway.platforms.whatsapp_common import WhatsAppBehaviorMixin as M
+seen = []
+fake_brain = types.ModuleType("brain")
+fake_reactions = types.ModuleType("brain.reactions")
+fake_reactions.react_to = lambda data: seen.append(data)
+fake_brain.reactions = fake_reactions
+sys.modules["brain"] = fake_brain
+sys.modules["brain.reactions"] = fake_reactions
+m = object.__new__(M)
+m._mention_patterns = []
+m._is_broadcast_chat = lambda _: False
+m._is_group_allowed = lambda _: True
+m._whatsapp_free_response_chats = lambda: set()
+m._whatsapp_require_mention = lambda: True
+m._message_is_reply_to_bot = lambda _: False
+m._message_mentions_bot = lambda _: False
+m._message_matches_mention_patterns = lambda d: "wakeword" in str(d.get("body") or "").lower()
+unaddressed = {"chatId": "0000000000@g.us", "isGroup": True, "body": "making ramen"}
+addressed = {"chatId": "12345678901@g.us", "isGroup": True, "body": "hey wakeword"}
+assert m._should_process_message(unaddressed) is False
+assert seen == [unaddressed]
+assert m._should_process_message(addressed) is True
+assert seen == [unaddressed]
+def boom(_data):
+    raise RuntimeError("boom")
+fake_reactions.react_to = boom
+assert m._should_process_message(unaddressed) is False
+'''
+
+
 def patches() -> list[dict]:
     """Every patch, in the order it is applied. Paths are relative to the gateway tree."""
     py = ["{python}", "-m", "py_compile", "{target}"]
@@ -553,6 +584,37 @@ async def test_reply_prefix_still_injected_when_text_in_history():
             "tests": [],
             "cwd": ".",
             "why": "the global name patterns woke every group, so a chat with name call off showed typing and sent nothing",
+        },
+        {
+            "name": "passive-reactions",
+            "target": "gateway/platforms/whatsapp_common.py",
+            "present": "[aira] passive-reactions",
+            "edits": (
+        ('''        if self._message_is_reply_to_bot(data):
+            return True
+        if self._message_mentions_bot(data):
+            return True
+        return self._message_matches_mention_patterns(data)
+''',
+         '''        if self._message_is_reply_to_bot(data):
+            return True
+        if self._message_mentions_bot(data):
+            return True
+        # [aira] passive-reactions: unaddressed group messages still reach brain.reactions.
+        if self._message_matches_mention_patterns(data):
+            return True
+        try:
+            from brain import reactions
+            reactions.react_to(data)
+        except Exception:
+            pass
+        return False
+'''),
+    ),
+            "syntax": py,
+            "tests": [["{python}", "-c", PASSIVE_REACTIONS_TEST]],
+            "cwd": ".",
+            "why": "unaddressed group messages never reached brain.reactions",
         },
     ]
 

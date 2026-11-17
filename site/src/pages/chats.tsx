@@ -170,6 +170,16 @@ function LanguageField({ chat, onSave }: { chat: CoreChat; onSave: (value: unkno
 }
 
 const FOOTER_EMOJI = ['🛠️', '🧪', '🔬', '🔎', '✨', '🌸', '📎']
+const REACTION_CHANCES = ['10', '25', '33', '50', '75', '100'] as const
+type ReactionChancePreset = (typeof REACTION_CHANCES)[number]
+const REACTION_CHANCE_LABELS: Record<ReactionChancePreset, string> = {
+  '10': '10%',
+  '25': '25%',
+  '33': '33%',
+  '50': '50%',
+  '75': '75%',
+  '100': '100%'
+}
 const NAME_CALL_PATTERN = /^[\p{L}\p{N} ]{2,24}$/u
 
 function escapeRegExp(text: string): string {
@@ -671,6 +681,39 @@ function ChatRow({
                       label="React to members' messages with an emoji"
                     />
                   </SettingRow>
+                  {valueOf(chat, 'reactions', false) &&
+                    (() => {
+                      const chance = valueOf(chat, 'reactions.chance', 33)
+                      const preset = REACTION_CHANCES.includes(String(chance) as ReactionChancePreset)
+                        ? (String(chance) as ReactionChancePreset)
+                        : null
+                      return (
+                        <SettingRow
+                          chat={chat}
+                          name="reactions.chance"
+                          label="Chance"
+                          hint={
+                            preset === null
+                              ? `Current value: ${chance}%. Pick a preset to change.`
+                              : 'How often a matching message gets a reaction.'
+                          }
+                          onClear={clear}
+                        >
+                          <Segmented
+                            options={REACTION_CHANCES}
+                            labels={REACTION_CHANCE_LABELS}
+                            value={preset}
+                            onChange={(v) => {
+                              if (!busy) void save('reactions.chance', Number(v))
+                            }}
+                            className={cn(
+                              'max-w-full [&_button]:min-h-[44px]',
+                              busy && 'pointer-events-none opacity-55'
+                            )}
+                          />
+                        </SettingRow>
+                      )
+                    })()}
                   <SettingRow
                     chat={chat}
                     name="commands.maxPerMessage"

@@ -117,7 +117,7 @@ describe('chat flags file', () => {
       version: 1,
       chats: {
         '1234567890@s.whatsapp.net': { voice: 'all' },
-        '0000000000@lid': { reactions: true }
+        '0000000000@lid': { reactions: true, reactionChance: 0.33 }
       }
     })
 
@@ -156,7 +156,7 @@ describe('chat flags file', () => {
     expect(readFlags(dataDir)).toEqual({
       version: 1,
       chats: {
-        '1234567890@s.whatsapp.net': { voice: 'all', reactions: true }
+        '1234567890@s.whatsapp.net': { voice: 'all', reactions: true, reactionChance: 0.33 }
       }
     })
 
@@ -288,6 +288,123 @@ describe('chat flags file', () => {
       version: 1,
       chats: {
         '12345678901@g.us': { free: true }
+      }
+    })
+  })
+
+  it('writes reactionChance from reactions.chance and omits reactions while muted', async () => {
+    const { app, dataDir, siteUrl } = await startWithSite()
+
+    const groupA = ensureChat(app.storage, { waId: '0000000000@g.us', type: 'group' })
+    setChatStatus(app.storage, { chatId: groupA.chatId, status: 'active', actor: 'test' })
+    const groupB = ensureChat(app.storage, { waId: '12345678901@g.us', type: 'group' })
+    setChatStatus(app.storage, { chatId: groupB.chatId, status: 'active', actor: 'test' })
+
+    expect(
+      (await putSite(siteUrl, '/api/settings', { level: 'chat', scope: groupA.chatId, key: 'reactions', value: true }))
+        .status
+    ).toBe(200)
+    expect(
+      (await putSite(siteUrl, '/api/settings', { level: 'chat', scope: groupB.chatId, key: 'reactions', value: true }))
+        .status
+    ).toBe(200)
+    expect(
+      (await putSite(siteUrl, '/api/settings', { level: 'type', scope: 'group', key: 'reactions.chance', value: 50 }))
+        .status
+    ).toBe(200)
+    expect(
+      (
+        await putSite(siteUrl, '/api/settings', {
+          level: 'chat',
+          scope: groupA.chatId,
+          key: 'reactions.chance',
+          value: 75
+        })
+      ).status
+    ).toBe(200)
+    expect(
+      (
+        await putSite(siteUrl, '/api/settings', {
+          level: 'chat',
+          scope: groupB.chatId,
+          key: 'features.voice',
+          value: true
+        })
+      ).status
+    ).toBe(200)
+
+    expect(readFlags(dataDir)).toEqual({
+      version: 1,
+      chats: {
+        '0000000000@g.us': { reactions: true, reactionChance: 0.75 },
+        '12345678901@g.us': { voice: 'all', reactions: true, reactionChance: 0.5 }
+      }
+    })
+
+    // Muting leaves reactions and reactionChance out, keeping other flags (e.g. voice).
+    expect(
+      (
+        await putSite(siteUrl, '/api/settings', {
+          level: 'chat',
+          scope: groupA.chatId,
+          key: 'muted',
+          value: { by: 's_test', at: '2026-11-17T00:00:00.000Z' }
+        })
+      ).status
+    ).toBe(200)
+    expect(
+      (
+        await putSite(siteUrl, '/api/settings', {
+          level: 'chat',
+          scope: groupB.chatId,
+          key: 'muted',
+          value: { by: 's_test', at: '2026-11-17T00:00:00.000Z' }
+        })
+      ).status
+    ).toBe(200)
+
+    expect(readFlags(dataDir)).toEqual({
+      version: 1,
+      chats: {
+        '12345678901@g.us': { voice: 'all' }
+      }
+    })
+
+    // Unmuting and setting boundary chances (0 and 100) restores reactions with expected ratios.
+    expect(
+      (await putSite(siteUrl, '/api/settings', { level: 'chat', scope: groupA.chatId, key: 'muted', value: false }))
+        .status
+    ).toBe(200)
+    expect(
+      (
+        await putSite(siteUrl, '/api/settings', {
+          level: 'chat',
+          scope: groupA.chatId,
+          key: 'reactions.chance',
+          value: 0
+        })
+      ).status
+    ).toBe(200)
+    expect(
+      (await putSite(siteUrl, '/api/settings', { level: 'chat', scope: groupB.chatId, key: 'muted', value: false }))
+        .status
+    ).toBe(200)
+    expect(
+      (
+        await putSite(siteUrl, '/api/settings', {
+          level: 'chat',
+          scope: groupB.chatId,
+          key: 'reactions.chance',
+          value: 100
+        })
+      ).status
+    ).toBe(200)
+
+    expect(readFlags(dataDir)).toEqual({
+      version: 1,
+      chats: {
+        '0000000000@g.us': { reactions: true, reactionChance: 0 },
+        '12345678901@g.us': { voice: 'all', reactions: true, reactionChance: 1 }
       }
     })
   })
