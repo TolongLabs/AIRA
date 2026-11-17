@@ -54,6 +54,41 @@ waits for idle or health, set `AIRA_WAIT_FOR_IDLE_MS` or `AIRA_HEALTH_TIMEOUT_MS
 Snapshots, retention, the off-host copy and recovery are specified in
 [`docs/trd/storage.md`](trd/storage.md).
 
+The off-host copy is a restic repository behind an append-only REST server on
+the owner's workstation (`deploy/offsite/`). Every 15-minute snapshot is
+shipped; a `backup_run` row with reason `offsite` records each attempt, and
+`backup_stale` alerts after 60 minutes without a good one. Backups pause while
+the workstation or its Docker is off.
+
+### Restore From The Off-Host Copy
+
+1.  Confirm the workstation's REST server is up: from the host,
+    `curl -s -o /dev/null -w '%{http_code}' http://<workstation>:8000/aira/config`
+    answers `401` (up, needs a password).
+2.  Restore into an empty folder with the deployed image, reading the
+    credentials from the install's `.env`:
+
+    ```sh
+    mkdir -p ~/aira-restore && chmod 777 ~/aira-restore
+    IMG=$(cd ~/aira && docker compose ps --format '{{.Image}}')
+    docker run --rm --env-file ~/aira/.env \
+      -v ~/aira/config.yml:/app/config.yml:ro -v ~/aira-restore:/restore \
+      -w /app --entrypoint node "$IMG" dist/scripts/restore-offsite.js --to /restore
+    ```
+
+    It prints the snapshot id and time, `integrity_check: ok`, and row counts.
+
+3.  To check it serves, copy the restored `data/snapshots/aira-*.db` to a
+    scratch `data/aira.db`, start the image on that folder with no published
+    ports, and send one `deploy check` request to its
+    `/v1/chat/completions`.
+4.  To replace live data, stop the core, move `~/aira/data/aira.db` aside,
+    copy the restored database in as `aira.db`, start the core and check
+    `/health`.
+
+Drill, 18 Nov 2026: restore took 4 s; `integrity_check: ok`; the scratch core
+started `ready` and answered the synthetic turn.
+
 ## Cutover
 
 The one-night cutover steps from the old core to the new core are specified in
