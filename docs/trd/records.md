@@ -83,7 +83,9 @@ Verbatim text is kept in two places only:
 
 ## Retention
 
-A daily job prunes by table. Defaults: turn and child records 90 days, diagnostics 72 hours, window messages 7
+A daily job prunes by table. Start-up checks the newest successful `retention` run and prunes immediately when
+none exists or it is at least 24 hours old. An hourly check repeats this decision, with no overlapping runs.
+Each attempt opens a `job_run` row before work and closes it with its outcome, including failures. Defaults: turn and child records 90 days, diagnostics 72 hours, window messages 7
 days, setting changes kept. Pruning writes its own `job_run` row with counts. Rows are exported to the archive before
 they are deleted. See [Persistence](storage.md#analytics-and-the-archive).
 
