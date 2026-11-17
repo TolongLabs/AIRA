@@ -54,7 +54,7 @@ A role's `provider` decides the request shape. Both providers serve both roles.
   effort, including an invalid one, and ignores it, and it has no prompt caching. The native endpoint rejects an
   invalid effort, and the same question took 147 output tokens at `low` and 482 at `max`.
 - The `anthropic` provider sends no sampling parameter. Claude 5 models refuse a non-default `temperature`. A
-  response schema is sent as `output_config.format`.
+  response schema is sent as `output_config.format`. Without `max_tokens` in the request, the client sends 16,000.
 - The subscription runner passes `llm.main.effort` to the program as `--effort`, and `medium` when it is empty,
   which is Claude Haiku 5.5's own default.
 
@@ -151,6 +151,7 @@ token. The service answers with the program's output lines as they arrive, one J
   timeouts, receipts and records are the same as on the API runner.
 - The two chain limits of [Tools](tools.md#implicit-calls) are enforced here: past a limit every call is refused.
 - For a skill-style command, the named tool is the only one listed until it has been called.
+- Tool calls arrive as JSON bodies of at most 1 MiB. A larger declared or streamed body is refused with 413.
 - The program shows a tool to the model under a prefixed name. The prompt's tool list is written with the same
   prefix on this transport (**Assumption A-7**, the tool names confirmed).
 
@@ -174,6 +175,8 @@ token. The service answers with the program's output lines as they arrive, one J
 - Each fallback is written to the turn record with the failure kind that caused it.
 - If both roles fail, the turn ends with the pack's error line and a failure record.
 
+![Sequence of a model call: runner choice, retries, fallback, spend cap, and recorded attempts](../diagrams/model-routing.svg)
+
 ## Media Watching
 
 Media is read at intake, before the main model runs. The gateway saves each file on the host and names its path in a
@@ -189,23 +192,29 @@ media folders.
    at the same place under the paired `container` folder. A symlink that leaves the mounted folder, a path outside
    every pair, a path that is not a file and a missing file are refused. The core never reads a path anywhere else:
    a note is text, and a member's message could imitate one.
-3. **Which kind.** The kind comes from the file's extension: `.jpg`, `.jpeg`, `.png`, `.webp`, `.gif`, `.heic` for
-   an image; `.ogg`, `.oga`, `.opus`, `.mp3`, `.m4a`, `.aac`, `.wav` for audio and voice notes; `.mp4`, `.mov`, `.webm`,
-   `.3gp` for video; `.pdf` for a document. Any other extension is an unsupported type.
-4. **Limits.** Code checks type, size and duration against the `media` limits before it reads the file into memory. A
+3. **Which kind.** The kind comes from the MIME type the file's extension maps to: `.jpg`, `.jpeg`, `.png`, `.webp`,
+   `.gif`, `.heic` for an image; `.ogg`, `.oga`, `.opus`, `.mp3`, `.m4a`, `.aac`, `.wav` (as `audio/x-wav`) for audio
+   and voice notes; `.mp4`, `.mov`, `.webm`, `.3gp` (as `video/3gpp`) for video; `.pdf` for a document. Any other
+   extension is an unsupported type.
+4. **Limits.** Code checks type and size against fixed limits before it reads the file into memory: at most
+   20,000,000 bytes, and an empty file is refused. Duration is checked only when the sender
+   reported one. A gateway attachment names only a kind and a path, so an attached video's length is never checked.
+   Remote link downloads carry a duration, and audio longer than 600 seconds is refused. A
    voice note's duration is not in the gateway's note, so the size limit is the only length limit that applies to it.
 5. **The read.** All files of a turn are read at once, each with its own timeout: `media.timeoutMs`, and at most
    two thirds of the time left in the turn deadline, so the main model keeps at least a third. The media model returns
    a description, and a transcript where there is speech. It runs on the free tier of its own key, so its calls record
    their tokens with a cost of 0 and do not count against the spend cap.
 6. **Into the prompt.** The descriptions enter prompt block 4 as one labelled, untrusted block, clipped to a fixed
-   budget so that media cannot push the prompt over its ceiling. The main model never receives the file.
+   budget so that media cannot push the prompt over its ceiling. The budget is 4,500 characters, split evenly across
+   the readable files and links of the turn. The main model never receives the file.
    See [Prompt Engine](prompt-engine.md#prompt-blocks).
 7. **Links.** The first link in the turn's messages to a YouTube video or a supported social post (newest message text
    first, then quoted text) is opened at intake, at most one per turn, unless the turn's commands already name
    `read_post` or `read_page`. `features.media` off means no file (rule 8 notes it as `off`) and no YouTube link is
    read; `features.social` off means no post link is read. A YouTube video is sent to the media model as its own
-   URL (`file_data`) at low media resolution (`MEDIA_RESOLUTION_LOW`), starting from its `t=` offset if any, for at
+   URL (`file_data`) at low media resolution (`MEDIA_RESOLUTION_LOW`), starting from its offset if any (the `t=`
+   or `start=` parameter or a `#t=` fragment, in seconds or clock form), and watched for at
    most `media.maxLinkVideoSeconds` (default 600) through `video_metadata` offsets (measured: a 3-minute video in 5 s,
    about 19,000 tokens). A longer YouTube video is clipped, never refused, and the description the model receives says
    it covers only the first part; a private or removed video fails with reason `unavailable`. A post's video is fetched
@@ -222,10 +231,48 @@ media folders.
    `media`, handled by `line:unreadableMedia`, and a message with the kind of file and the reason, never the path.
    The turn itself stays `delivered`. An `auth` failure of the media role also alerts the operator.
 
+![How attached files and shared links are read at intake, with limits and refusals](../diagrams/media-intake.svg)
+
 With no media model or no `MEDIA_WATCHER_API_KEY`, media is off: the core logs `media.off` once at start-up, files
 are not read, and each one gets the unreadable note with the reason `off`. The turn still answers.
 
 Video from a linked social post is fetched by the social tool and passed through the same path.
+
+## Social Post And Reply Readers
+
+Link intake and the social tools read public posts and their replies through one subsystem in `src/social`. It
+covers eight platforms: X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram and Bilibili.
+
+![How a shared link is normalised, fetched per platform, and cached](../diagrams/social-readers.svg)
+
+- **URLs.** `parseSocialPostUrl` accepts only `https` links with no user info, port or IP host. Each platform has a
+  fixed host list and an id pattern, and yields a canonical URL, an extractor URL and a lookup key. The Bluesky key
+  carries the profile; the YouTube target carries the start offset from rule 7 of Media Watching.
+- **Post dispatch.** X is read through the fxtwitter API, Bluesky through its public API after handle-to-DID
+  resolution (video comes from the author's data server when found), and Threads through its logged-out page, which
+  holds only the first batch of replies. Reddit is read through its RSS feed first: a refused feed (403 or 429) is
+  reported, and a feed with no video is returned without calling yt-dlp. Every other platform is read through
+  yt-dlp. When yt-dlp fails on YouTube, the oEmbed endpoint still returns the title and author.
+- **Safe fetching.** The shared fetcher rejects forbidden and non-public addresses and never follows redirects, so
+  a redirect cannot smuggle in a private host. yt-dlp runs in a fresh temporary home with an isolated environment,
+  and its output is capped at 2 MiB. When the binary is missing, lookups fail as `binary_missing`.
+- **Post cache.** Successful lookups are cached by lookup key with a time limit and an entry cap; a time limit of 0
+  switches the cache off. The key ignores YouTube timestamps, so a cached post is re-targeted to the link that asked
+  for it. Only successes are cached.
+- **Reply dispatch.** `ReplyReader` fans out to one fetcher per platform under a single timeout, and caches successes
+  per lookup key and reply limit. The reply limit is clamped to between 1 and 50. X reads the conversation API
+  ranked by likes with views as the tiebreak, and strips the leading mentions every reply repeats. Bluesky reads a
+  depth-1 thread. Threads reuses its page batch. YouTube reads the Data API in relevance order and re-ranks by
+  likes; a disabled comment section is reported, not an error. TikTok reads its comment API. Reddit reads the RSS
+  feed in top order, which carries no like counts, so its order is kept. Instagram reads yt-dlp's comment dump and
+  keeps only top-level comments. Bilibili resolves the id to an aid and reads one page of 20.
+- **Reply shaping.** Deleted and removed texts are dropped. Each kept reply collapses whitespace, is sliced by code
+  point so a cap cannot split an emoji, and is capped at the reply character limit. Ranking is by likes, then the
+  platform tiebreak, then the order the platform returned. Totals are reported when the platform gives one.
+- **Keys.** The YouTube reply fetcher reads `YOUTUBE_API_KEY` from the environment when no override is supplied.
+  Without it, YouTube reply lookup fails as `not_configured`.
+- **Settings.** Timeouts, text caps, cache limits and the yt-dlp path come from the `social.*` settings, listed
+  with their defaults in [Tools](tools.md#social-post-reader).
 
 ## Spend
 
@@ -233,7 +280,8 @@ Real token counts and prices are recorded per call, in the `spend` table by mont
 the cost the provider's response reports. When it reports none, the cost is the token counts times the role's
 prices in `config.yml`. A role with no reported cost and prices of 0 costs nothing on record, so set its prices
 before relying on the cap. At 80% of `llm.monthlyBudgetUsd`, background work (memory
-extraction, the mood judge) stops. At 100%, replies stop with the pack's limit line. The subscription transport
+extraction, the mood judge) stops. At 100%, replies stop with the pack's limit line. A monthly budget of 0 or less
+switches both gates off: background work and replies run with no spend check. The subscription transport
 records estimated cost for comparison and does not count against the cap.
 
 Claude's API reports no cost, so `main` carries Claude Haiku 5.5's prices: 0.10 in, 0.50 out and 0.01 for a cache
@@ -260,3 +308,4 @@ credit, about one per call, not in dollars, so its prices are 0 and it does not 
 | `media.timeoutMs`                                              | 30000                   | One media read, within two thirds of the time left in the turn     |
 | `media.maxVideoSeconds`                                        | 180                     | Longest video that is watched                                      |
 | `media.maxLinkVideoSeconds`                                    | 600                     | Longest span watched from a YouTube link                           |
+| `YOUTUBE_API_KEY` (env)                                        | unset                   | Without it, YouTube reply lookup fails as `not_configured`         |

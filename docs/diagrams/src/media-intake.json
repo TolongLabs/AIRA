@@ -1,0 +1,173 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Media Intake",
+    "quality_profile": "standard",
+    "output": ".archify/media-intake.html"
+  },
+  "lanes": [
+    {
+      "id": "intake",
+      "label": "Turn Intake"
+    },
+    {
+      "id": "limits",
+      "label": "Limits and Mounts"
+    },
+    {
+      "id": "watch",
+      "label": "Gemini Watcher"
+    },
+    {
+      "id": "prompt",
+      "label": "Prompt Block 4"
+    }
+  ],
+  "mainPath": ["select", "paths", "checks", "read", "block"],
+  "nodes": [
+    {
+      "id": "select",
+      "lane": "intake",
+      "col": 0,
+      "type": "backend",
+      "label": "Files Of The Turn",
+      "sublabel": "mediaToRead: 3/message, 6/turn"
+    },
+    {
+      "id": "paths",
+      "lane": "intake",
+      "col": 1,
+      "type": "security",
+      "label": "Map Gateway Paths",
+      "sublabel": "loadGatewayFile, gatewayDirs only"
+    },
+    {
+      "id": "checks",
+      "lane": "limits",
+      "col": 2,
+      "type": "security",
+      "label": "Check Type, Size, Duration",
+      "sublabel": "mediaFault: 20MB, empty refused"
+    },
+    {
+      "id": "links",
+      "lane": "intake",
+      "col": 2,
+      "type": "backend",
+      "label": "Pick One Link",
+      "sublabel": "createLinkReader, newest first"
+    },
+    {
+      "id": "lookup",
+      "lane": "intake",
+      "col": 3,
+      "type": "cloud",
+      "label": "Look Up Post Or Video",
+      "sublabel": "SocialPostViewer, yt-dlp, oEmbed"
+    },
+    {
+      "id": "read",
+      "lane": "watch",
+      "col": 3,
+      "type": "cloud",
+      "label": "Watch With Gemini",
+      "sublabel": "readMedia, readMediaUrl"
+    },
+    {
+      "id": "block",
+      "lane": "prompt",
+      "col": 4,
+      "type": "backend",
+      "label": "Build Block 4 Text",
+      "sublabel": "mediaPromptText: 4,500 chars split evenly"
+    },
+    {
+      "id": "unreadable",
+      "lane": "prompt",
+      "col": 5,
+      "type": "backend",
+      "label": "Unreadable Notes",
+      "sublabel": "kind and reason, no path"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "select",
+      "to": "paths",
+      "label": "attachments"
+    },
+    {
+      "id": "e2",
+      "from": "paths",
+      "to": "checks",
+      "label": "mapped file"
+    },
+    {
+      "id": "e3",
+      "from": "checks",
+      "to": "read",
+      "label": "readable"
+    },
+    {
+      "id": "e4",
+      "from": "checks",
+      "to": "unreadable",
+      "label": "refused",
+      "role": "error"
+    },
+    {
+      "id": "e5",
+      "from": "select",
+      "to": "links",
+      "label": "same messages",
+      "role": "branch"
+    },
+    {
+      "id": "e6",
+      "from": "links",
+      "to": "lookup",
+      "label": "post/video URL"
+    },
+    {
+      "id": "e7",
+      "from": "lookup",
+      "to": "read",
+      "label": "video bytes"
+    },
+    {
+      "id": "e8",
+      "from": "lookup",
+      "to": "block",
+      "label": "post text only",
+      "role": "branch"
+    },
+    {
+      "id": "e9",
+      "from": "lookup",
+      "to": "unreadable",
+      "label": "link failed",
+      "role": "error"
+    },
+    {
+      "id": "e10",
+      "from": "read",
+      "to": "block",
+      "label": "description"
+    },
+    {
+      "id": "e11",
+      "from": "read",
+      "to": "unreadable",
+      "label": "failed",
+      "role": "error"
+    },
+    {
+      "id": "e12",
+      "from": "unreadable",
+      "to": "block",
+      "label": "short note"
+    }
+  ]
+}
