@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.1.0](https://github.com/TolongLabs/AIRA/compare/v1.0.0...v1.1.0) (2026-11-17)
+
+
+### Features
+
+* **footer:** name watched media, site labels ([a8118ff](https://github.com/TolongLabs/AIRA/commit/a8118ffb958d0c41568caa684872ed8ffda88641)), closes [#166](https://github.com/TolongLabs/AIRA/issues/166)
+* **lessons:** import the old library ([2a48823](https://github.com/TolongLabs/AIRA/commit/2a48823c16d63cb1a65e7f77f2ef1040934c3aa9))
+* **memory:** per-chat memory switch ([3072c66](https://github.com/TolongLabs/AIRA/commit/3072c66a7931e384b0143bd1e1e3a847e5800cd4))
+* **models:** deeper thinking on request ([c832013](https://github.com/TolongLabs/AIRA/commit/c8320133bf3ce2ca708d807d0023a326abcfda47)), closes [#90](https://github.com/TolongLabs/AIRA/issues/90)
+* **records:** store reply latency and failures ([29efbc3](https://github.com/TolongLabs/AIRA/commit/29efbc3b39065f3f9f326317c2562bc057c5af64))
+* **render:** render PDF reports with Typst ([079fe03](https://github.com/TolongLabs/AIRA/commit/079fe035c0eca874f795b32c3e74be0a2c6a3b4f))
+* **research:** research jobs and the PDF offer ([28beaf7](https://github.com/TolongLabs/AIRA/commit/28beaf7d75acd3dac421a8ed2ad7b1abdc306e07))
+* **settings:** per-chat context and memory page ([6e15cb0](https://github.com/TolongLabs/AIRA/commit/6e15cb0d73cca9115a5c6d22e0ebbc04e45695d9))
+* **site:** show how each feature's tools run ([f4f21fd](https://github.com/TolongLabs/AIRA/commit/f4f21fd1844e9be9990e64dd505b0f95c17835fa))
+* **storage:** ship snapshots with restic ([74fd289](https://github.com/TolongLabs/AIRA/commit/74fd2890f31c1b22f427a9cb1619ce146182c384)), closes [#36](https://github.com/TolongLabs/AIRA/issues/36)
+* **tools:** /doc writes Markdown or PDF ([7daff01](https://github.com/TolongLabs/AIRA/commit/7daff01ef9eaf43deacb5f6f22a6338ec05b7118)), closes [#158](https://github.com/TolongLabs/AIRA/issues/158)
+
+
+### Bug Fixes
+
+* **deploy:** bound every host deploy step ([18dfa23](https://github.com/TolongLabs/AIRA/commit/18dfa2348f1eb54ca34ce4b2210dd31d7a276f7f)), closes [#179](https://github.com/TolongLabs/AIRA/issues/179)
+* **deploy:** retry a stalled image pull ([c525240](https://github.com/TolongLabs/AIRA/commit/c5252406ed3a33de4c1bff666fd21d554b5fbae1)), closes [#187](https://github.com/TolongLabs/AIRA/issues/187)
+* **diagrams:** define fill colours so ERD headers render ([186bf5e](https://github.com/TolongLabs/AIRA/commit/186bf5ee49b37fb37dd455d9fb757fd635585db7))
+* **diagrams:** give every diagram an opaque background ([08f5ee0](https://github.com/TolongLabs/AIRA/commit/08f5ee0666e5d5a4270584eea1cb742bed3be26c))
+* **gateway:** read quoted and inline media ([1798ff9](https://github.com/TolongLabs/AIRA/commit/1798ff9eef39bb0c646deaed72091a027ab0f57f)), closes [#151](https://github.com/TolongLabs/AIRA/issues/151)
+* **lessons:** read wiki links in old song lines ([9dc4c47](https://github.com/TolongLabs/AIRA/commit/9dc4c47b08655ccd3cfc09d080ef30b2172815cf)), closes [#38](https://github.com/TolongLabs/AIRA/issues/38)
+* **media:** watch YouTube links in segments ([e80d4d8](https://github.com/TolongLabs/AIRA/commit/e80d4d834379c6993e3badf5dca2e4167be4fb4d)), closes [#163](https://github.com/TolongLabs/AIRA/issues/163)
+* **memory:** record judge and job failures ([163a320](https://github.com/TolongLabs/AIRA/commit/163a320e5dfeaf636ffe3e4e4c389470d9567d35))
+* **memory:** skip queued jobs once memory is off ([1250f3c](https://github.com/TolongLabs/AIRA/commit/1250f3c5770e007ba34879317f9e2a1c10be67bb)), closes [#160](https://github.com/TolongLabs/AIRA/issues/160)
+* **models:** count cached input on subscription ([de11f18](https://github.com/TolongLabs/AIRA/commit/de11f18ae445e2bead73bd67f14bd3af24d330da)), closes [#172](https://github.com/TolongLabs/AIRA/issues/172)
+* **records:** deliver alerts, tighten redaction ([774ddd7](https://github.com/TolongLabs/AIRA/commit/774ddd7528fc731c2ec39792cbd9038ff6cc229a))
+* **records:** keep the cause of failures ([b6f075f](https://github.com/TolongLabs/AIRA/commit/b6f075f115c820f9c5f0f8fef375a050e1574084)), closes [#122](https://github.com/TolongLabs/AIRA/issues/122)
+* **records:** mask only secret env values ([bb50b3a](https://github.com/TolongLabs/AIRA/commit/bb50b3ad0e9caef47ed133852206c52681f93ae4)), closes [#195](https://github.com/TolongLabs/AIRA/issues/195)
+* **records:** mask secrets of 4 characters ([ee9b18c](https://github.com/TolongLabs/AIRA/commit/ee9b18cc8eeed9584eccfc61a9d538e5f92bb834)), closes [#159](https://github.com/TolongLabs/AIRA/issues/159)
+* **research:** send Claude a schema it accepts ([831b53a](https://github.com/TolongLabs/AIRA/commit/831b53a1a219e8a602ada348ae97d10f76e294e7)), closes [#155](https://github.com/TolongLabs/AIRA/issues/155)
+* **tools:** find photos through Exa ([f797532](https://github.com/TolongLabs/AIRA/commit/f7975323e2a557509d46e29f70cfa3993de11473)), closes [#193](https://github.com/TolongLabs/AIRA/issues/193)
+* **tools:** refuse only links intake watched ([ba9edb6](https://github.com/TolongLabs/AIRA/commit/ba9edb6093506fe6bdbd0585d34c6fcc82066bd7)), closes [#202](https://github.com/TolongLabs/AIRA/issues/202)
+* **turn:** contain storage and uncaught failures ([b309c39](https://github.com/TolongLabs/AIRA/commit/b309c3989225453062a1af65ca3424975778f8de)), closes [#121](https://github.com/TolongLabs/AIRA/issues/121)
+
 ## 1.0.0 (2026-11-17)
 
 
