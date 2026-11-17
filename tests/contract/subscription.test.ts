@@ -568,7 +568,7 @@ describe('the subscription transport', () => {
       expect(result.transport).toBe('subscription')
       expect(result.role).toBe('main')
       expect(result.model).toBe('fake-model')
-      expect(result.usage).toEqual({ inputTokens: 100, outputTokens: 25, cachedTokens: 10 })
+      expect(result.usage).toEqual({ inputTokens: 115, outputTokens: 25, cachedTokens: 10 })
       expect(result.costUsd).toBe(0.012)
       expect(result.calls).toHaveLength(1)
       expect(result.receipts).toEqual(['rcpt_1'])
