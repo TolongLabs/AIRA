@@ -1,6 +1,6 @@
 {
   "name": "aira",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "A WhatsApp chatbot agent that plays a configured character in each chat",
   "private": true,
   "type": "module",
