@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import type { FailureKind } from '../../src/records/kinds.js'
 import { recordModelCall, updateTurnRecord } from '../../src/records/turn-record.js'
 import { archiveAndPrune, writeParquet } from '../../src/storage/archive.js'
 import type { Storage } from '../../src/storage/database.js'
@@ -12,7 +13,13 @@ const CONFIG = { retentionDays: 90, diagnosticsHours: 72, windowDays: 7 }
 
 function seedTurn(
   storage: Storage,
-  input: { turnId: string; mid: string; at: string; kind?: 'reply' | 'command' | 'scheduled'; failureKind?: string }
+  input: {
+    turnId: string
+    mid: string
+    at: string
+    kind?: 'reply' | 'command' | 'scheduled'
+    failureKind?: FailureKind
+  }
 ): void {
   const clock = () => new Date(input.at)
   receiveInbound(

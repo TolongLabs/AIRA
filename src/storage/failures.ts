@@ -1,3 +1,4 @@
+import type { FailureKind } from '../records/kinds.js'
 import { type Db, isoNow } from './database.js'
 
 // The minimal failure writer the persistence layer needs. Records (docs/trd/records.md) builds on this table.
@@ -7,7 +8,7 @@ export interface FailureInput {
   jobId?: string
   stage: string
   /** A failure kind from docs/trd/records.md#failure-kinds. */
-  kind: string
+  kind: FailureKind
   message: string
   stack?: string
   handledBy?: string

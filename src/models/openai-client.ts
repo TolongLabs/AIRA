@@ -110,8 +110,8 @@ function parseToolCalls(raw: unknown): ToolCallRequest[] {
     let parsedArgs: unknown
     try {
       parsedArgs = JSON.parse(fn.arguments)
-    } catch (cause) {
-      throw new ModelError('malformed', 'tool call arguments are not valid JSON', { cause })
+    } catch {
+      throw new ModelError('malformed', 'tool call arguments are not valid JSON')
     }
     if (!isRecord(parsedArgs)) {
       throw new ModelError('malformed', 'tool call arguments must be a JSON object')
@@ -142,7 +142,7 @@ export function fromChatCompletionsBody(body: unknown, prices: OpenAiClientOptio
     throw new ModelError('malformed', 'choice has no message object')
   }
   if (typeof message.refusal === 'string' && message.refusal.length > 0) {
-    throw new ModelError('refusal', message.refusal)
+    throw providerError('refusal', 'provider refusal', message.refusal)
   }
 
   let text = ''
@@ -183,6 +183,19 @@ export function fromChatCompletionsBody(body: unknown, prices: OpenAiClientOptio
   }
 }
 
+const diagnostics = new WeakMap<ModelError, string>()
+
+/** Verbatim provider data is kept outside enumerable error fields and is only for failure_diagnostics. */
+export function providerDiagnostics(error: unknown): string | undefined {
+  return error instanceof ModelError ? diagnostics.get(error) : undefined
+}
+
+function providerError(kind: ModelFailureKind, message: string, body: string): ModelError {
+  const error = new ModelError(kind, message)
+  diagnostics.set(error, body.slice(0, 200))
+  return error
+}
+
 const REFUSAL_BODY_PATTERN = /content_policy|content_filter|safety/i
 
 /** The ModelError for a failed HTTP response. Pure. */
@@ -199,9 +212,16 @@ export function errorForStatus(status: number, bodyText: string): ModelError {
   } else {
     kind = 'malformed'
   }
-  const snippet = bodyText.slice(0, 200)
-  const message = snippet.length > 0 ? `HTTP ${status}: ${snippet}` : `HTTP ${status}`
-  return new ModelError(kind, message)
+  let code: unknown
+  try {
+    const body: unknown = JSON.parse(bodyText)
+    const error = isRecord(body) && isRecord(body.error) ? body.error : undefined
+    code = error?.type ?? error?.code
+  } catch {
+    // A non-JSON body carries no safe provider code.
+  }
+  const safeCode = typeof code === 'string' && /^[a-z][a-z0-9_]{0,63}$/.test(code) ? code : undefined
+  return providerError(kind, `HTTP ${status}${safeCode === undefined ? '' : `: ${safeCode}`}`, bodyText)
 }
 
 export function createOpenAiClient(options: OpenAiClientOptions): ModelClient {
@@ -260,8 +280,8 @@ export function createOpenAiClient(options: OpenAiClientOptions): ModelClient {
       let json: unknown
       try {
         json = JSON.parse(rawText)
-      } catch (cause) {
-        throw new ModelError('malformed', 'response body is not valid JSON', { cause })
+      } catch {
+        throw providerError('malformed', 'response body is not valid JSON', rawText)
       }
 
       const parsed = fromChatCompletionsBody(json, options.prices)

@@ -55,21 +55,28 @@ function serialise(value: unknown, redactor: Redactor, seen: WeakSet<object>): u
 }
 
 export function createLogger(options: LoggerOptions): Logger {
-  const redactor = options.redactor ?? createRedactor()
+  const redactor =
+    options.redactor ??
+    createRedactor({
+      secrets: Object.values(process.env).filter((value): value is string => typeof value === 'string')
+    })
   const sink = options.sink ?? ((line: string) => void process.stdout.write(line + '\n'))
   const now = options.now ?? (() => new Date())
 
   const build = (context: LogContext): Logger => {
     const write = (level: LogLevel, event: string, fields: LogFields = {}) => {
       if (RANK[level] > RANK[options.level]) return
+      const { turnId, jobId, job, ...fieldsWithoutAliases } = fields
+      const fieldTurnId = typeof turnId === 'string' ? turnId : undefined
+      const fieldJobId = typeof jobId === 'string' ? jobId : typeof job === 'string' ? job : undefined
       const line = {
-        ...(serialise(fields, redactor, new WeakSet()) as LogFields),
+        ...(serialise(fieldsWithoutAliases, redactor, new WeakSet()) as LogFields),
         time: now().toISOString(),
         level,
         module: context.module,
         event,
-        ...(context.turnId === undefined ? {} : { turn_id: context.turnId }),
-        ...(context.jobId === undefined ? {} : { job_id: context.jobId })
+        ...((context.turnId ?? fieldTurnId) === undefined ? {} : { turn_id: context.turnId ?? fieldTurnId }),
+        ...((context.jobId ?? fieldJobId) === undefined ? {} : { job_id: context.jobId ?? fieldJobId })
       }
       sink(JSON.stringify(line))
     }
