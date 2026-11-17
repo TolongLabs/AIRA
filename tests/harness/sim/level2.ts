@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { type ChatInfo, type FakeBridge, type RecordedCall, createFakeBridge } from '../bridge.js'
+import { type ChatInfo, createFakeBridge, type FakeBridge, type RecordedCall } from '../bridge.js'
 import {
   DM_MEMBER,
   GROUP_MEMBERS,

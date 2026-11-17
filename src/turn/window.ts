@@ -1,4 +1,4 @@
-import { type Db, type Storage, isoNow } from '../storage/database.js'
+import { type Db, isoNow, type Storage } from '../storage/database.js'
 import type { WindowMessage } from './types.js'
 
 // The conversation window (docs/trd/system.md#gateway-contract). The core keeps its own window in SQLite and

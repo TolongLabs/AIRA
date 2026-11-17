@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type VideoCandidate, selectPlayableVideo } from '../../src/social/videoVariant.js'
+import { selectPlayableVideo, type VideoCandidate } from '../../src/social/videoVariant.js'
 
 function candidate(overrides: Partial<VideoCandidate>): VideoCandidate {
   return {

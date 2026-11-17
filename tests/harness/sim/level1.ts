@@ -2,10 +2,10 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { type App, SECRET_NAMES, createApp } from '../../../src/app.js'
+import { type App, createApp, SECRET_NAMES } from '../../../src/app.js'
 import type { Config } from '../../../src/config/schema.js'
 import type { ModelClient } from '../../../src/models/types.js'
-import { type Logger, createLogger } from '../../../src/records/logger.js'
+import { createLogger, type Logger } from '../../../src/records/logger.js'
 import { createRedactor, secretsFromEnv } from '../../../src/records/redact.js'
 import { formatTurn, readTurn, stageDurations } from '../../../src/records/turn-view.js'
 import { ensureChat, setChatStatus } from '../../../src/settings/chats.js'
@@ -22,10 +22,10 @@ import {
   type SimChat,
   type SimInfo,
   SimInputError,
-  type TurnPanel,
-  slug
+  slug,
+  type TurnPanel
 } from './backend.js'
-import { ChatLog, type MessageDraft, type PreviewMessage, quoteText, shapeReply, textFields } from './model.js'
+import { ChatLog, type MessageDraft, quoteText, shapeReply, textFields } from './model.js'
 import { findPhoto, findSticker, photoUrl, stickerUrl } from './stickers.js'
 
 // Level 1 of the WhatsApp simulator (docs/trd/harness.md#whatsapp-simulator): the core runs in this process, and

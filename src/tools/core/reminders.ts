@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 import type { Logger } from '../../records/logger.js'
-import { type Storage, isoNow } from '../../storage/database.js'
+import { isoNow, type Storage } from '../../storage/database.js'
 import type { ToolPorts } from '../ports.js'
 import type { ToolDefinition } from '../types.js'
 
@@ -44,7 +44,7 @@ interface ReminderRow {
 type CancelRow = Pick<ReminderRow, 'chat_id' | 'owner_id' | 'state'>
 
 export function reminderSetTool(
-  storage: Storage,
+  _storage: Storage,
   ports: ToolPorts,
   logger: Logger
 ): ToolDefinition<z.infer<typeof reminderSetSchema>> {

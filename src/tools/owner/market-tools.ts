@@ -3,13 +3,13 @@ import type { HandlerResult, ToolContext, ToolDefinition } from '../types.js'
 import type { Headline, MarketsPort, Quote } from './markets.js'
 import {
   type AlertRule,
-  type QuoteLike,
   chatWatchlists,
   cleanSymbols,
   loadWatchConfig,
   pnl,
   pnlMissing,
   positionsFor,
+  type QuoteLike,
   saveWatchConfig,
   setChatWatchlist,
   setPosition,

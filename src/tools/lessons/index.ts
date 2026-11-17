@@ -1,5 +1,5 @@
 import type { ToolPorts } from '../ports.js'
-import { type ToolRegistry, registryDepsOf } from '../registry.js'
+import { registryDepsOf, type ToolRegistry } from '../registry.js'
 import { libraryGapsTool, libraryOpenTool, librarySearchTool, libraryWriteTool } from './library.js'
 import { lyricsFetchTool, lyricsSearchTool, songGetTool, songSaveTool } from './songs.js'
 import { glossSetTool, vocabLookupTool } from './words.js'

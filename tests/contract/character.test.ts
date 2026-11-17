@@ -1,8 +1,8 @@
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { PackError, loadPack, loadPacks } from '../../src/character/loader.js'
-import { LINE_KINDS, cardSchema } from '../../src/character/schema.js'
+import { loadPack, loadPacks, PackError } from '../../src/character/loader.js'
+import { cardSchema, LINE_KINDS } from '../../src/character/schema.js'
 import { stickerHostPath, writeUnavailableLine } from '../../src/character/unavailable.js'
 import { tmpDir } from '../support/tmp.js'
 

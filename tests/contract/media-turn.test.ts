@@ -6,9 +6,9 @@ import type { MediaWatcher } from '../../src/media/gemini-watcher.js'
 import { DEFAULT_MEDIA_LIMITS } from '../../src/media/limits.js'
 import { type LinkReader, type LinkReading } from '../../src/media/link-intake.js'
 import {
+  createTurnMedia,
   MAX_MEDIA_PER_MESSAGE,
   MAX_MEDIA_PER_TURN,
-  createTurnMedia,
   mediaPromptText,
   mediaToRead
 } from '../../src/media/turn-media.js'

@@ -6,13 +6,13 @@ import { addNote, applyOperation, forgetBarrier, forgetItem, setLingo } from '..
 import { FORGOTTEN_MESSAGE } from '../../src/memory/types.js'
 import {
   type EpisodeMessage,
-  type ProposedOperation,
   memberLabels,
+  type ProposedOperation,
   precheck,
   validateOperation,
   validateSummary
 } from '../../src/memory/validate.js'
-import { RETRY_DELAYS_MS, createMemoryWorker } from '../../src/memory/worker.js'
+import { createMemoryWorker, RETRY_DELAYS_MS } from '../../src/memory/worker.js'
 import { ModelError } from '../../src/models/types.js'
 import { setSetting } from '../../src/settings/settings.js'
 import type { Storage } from '../../src/storage/database.js'

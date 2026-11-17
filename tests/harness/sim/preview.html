@@ -935,14 +935,13 @@
 
       var POLL_MS = 700
       var state = { info: null, chats: [], activeId: null, replyTo: null, panelTurn: null, online: true }
-      var $ = function (id) {
-        return document.getElementById(id)
-      }
+      var $ = (id) => document.getElementById(id)
 
       function esc(text) {
-        return String(text == null ? '' : text).replace(/[&<>"']/g, function (c) {
-          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-        })
+        return String(text == null ? '' : text).replace(
+          /[&<>"']/g,
+          (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
+        )
       }
       function fmtTime(iso) {
         var d = new Date(iso)
@@ -960,8 +959,8 @@
         return 'hsl(' + hue(name) + ', 60%, var(--name-l))'
       }
       function api(path, options) {
-        return fetch(path, options).then(function (response) {
-          return response.text().then(function (raw) {
+        return fetch(path, options).then((response) =>
+          response.text().then((raw) => {
             var body = null
             try {
               body = JSON.parse(raw)
@@ -969,7 +968,7 @@
             if (!response.ok) throw new Error((body && body.error) || 'HTTP ' + response.status)
             return body
           })
-        })
+        )
       }
       function post(path, body) {
         return api(path, {
@@ -996,7 +995,7 @@
         return window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
       }
       applyTheme(store('sim-theme'))
-      $('theme').addEventListener('click', function () {
+      $('theme').addEventListener('click', () => {
         var next = currentTheme() === 'dark' ? 'light' : 'dark'
         applyTheme(next)
         store('sim-theme', next)
@@ -1021,14 +1020,10 @@
         }
       }
       function active() {
-        return state.chats.filter(function (c) {
-          return c.id === state.activeId
-        })[0]
+        return state.chats.filter((c) => c.id === state.activeId)[0]
       }
       function sortedMsgs(chat) {
-        return Array.from(chat.msgs.values()).sort(function (a, b) {
-          return a.seq - b.seq
-        })
+        return Array.from(chat.msgs.values()).sort((a, b) => a.seq - b.seq)
       }
       function plainOf(m) {
         if (m.text && m.text.trim()) return m.text.replace(/\s+/g, ' ')
@@ -1044,11 +1039,9 @@
 
       function renderList() {
         $('chats').innerHTML = state.chats
-          .map(function (chat) {
+          .map((chat) => {
             var msgs = sortedMsgs(chat)
-            var shown = msgs.filter(function (m) {
-              return m.kind !== 'note'
-            })
+            var shown = msgs.filter((m) => m.kind !== 'note')
             var last = shown[shown.length - 1]
             return (
               '<li><button type="button" class="chat-item" data-chat="' +
@@ -1197,7 +1190,7 @@
           var empty = log.querySelector('[data-empty]')
           if (empty) empty.remove()
         }
-        changed.forEach(function (m) {
+        changed.forEach((m) => {
           var el = elementFor(bubbleHtml(m, chat))
           var existing = log.querySelector('[data-seq="' + m.seq + '"]')
           if (existing) {
@@ -1271,9 +1264,7 @@
           html +=
             '<select id="sender">' +
             chat.members
-              .map(function (n) {
-                return '<option' + (n === chat.sender ? ' selected' : '') + '>' + esc(n) + '</option>'
-              })
+              .map((n) => '<option' + (n === chat.sender ? ' selected' : '') + '>' + esc(n) + '</option>')
               .join('') +
             '</select></label>'
           html +=
@@ -1282,15 +1273,15 @@
           html += '<input type="text" id="sender" value="' + esc(chat.sender) + '" maxlength="40" /></label>'
         }
         $('as').innerHTML = html
-        $('sender').addEventListener('change', function (e) {
+        $('sender').addEventListener('change', (e) => {
           chat.sender = e.target.value
         })
-        $('sender').addEventListener('input', function (e) {
+        $('sender').addEventListener('input', (e) => {
           chat.sender = e.target.value
         })
         var mention = $('mention')
         if (mention) {
-          mention.addEventListener('change', function (e) {
+          mention.addEventListener('change', (e) => {
             chat.mention = e.target.checked
           })
         }
@@ -1332,18 +1323,13 @@
         if (polling || document.hidden || !state.info) return
         polling = true
         Promise.all(
-          state.chats.map(function (chat) {
+          state.chats.map((chat) => {
             var id = chat.id
-            return api('/api/chats/' + encodeURIComponent(id) + '/messages?after=' + chat.rev).then(function (result) {
+            return api('/api/chats/' + encodeURIComponent(id) + '/messages?after=' + chat.rev).then((result) => {
               // The chat may have been reset while the request was out.
-              if (
-                !state.chats.some(function (c) {
-                  return c === chat
-                })
-              )
-                return
+              if (!state.chats.some((c) => c === chat)) return
               var added = []
-              result.messages.forEach(function (m) {
+              result.messages.forEach((m) => {
                 var isNew = !chat.msgs.has(m.seq)
                 chat.msgs.set(m.seq, m)
                 added.push(m)
@@ -1357,9 +1343,7 @@
                 if (added.length)
                   renderLog(
                     added,
-                    added.some(function (m) {
-                      return m.kind === 'member' && m.sender === chat.sender
-                    })
+                    added.some((m) => m.kind === 'member' && m.sender === chat.sender)
                   )
                 else if (typingChanged) renderTyping(chat)
                 if (typingChanged) renderHead()
@@ -1368,11 +1352,11 @@
             })
           })
         )
-          .then(function () {
+          .then(() => {
             if (!state.online) showBanner('')
             state.online = true
           })
-          .catch(function (error) {
+          .catch((error) => {
             state.online = false
             showBanner(
               state.info.level === 2
@@ -1380,7 +1364,7 @@
                 : 'Lost the connection to the simulator: ' + error.message
             )
           })
-          .then(function () {
+          .then(() => {
             polling = false
           })
       }
@@ -1390,7 +1374,7 @@
         $('toast').hidden = !text
         $('toast').textContent = text || ''
         if (text)
-          setTimeout(function () {
+          setTimeout(() => {
             if ($('toast').textContent === text) showToast('')
           }, 6000)
       }
@@ -1409,10 +1393,10 @@
         state.replyTo = null
         renderReply()
         post('/api/chats/' + encodeURIComponent(chat.id) + '/send', body)
-          .then(function () {
+          .then(() => {
             poll()
           })
-          .catch(function (error) {
+          .catch((error) => {
             $('text').value = text
             chat.draft = text
             autosize()
@@ -1422,24 +1406,24 @@
         setTimeout(poll, 60)
         setTimeout(poll, 250)
       }
-      $('composer').addEventListener('submit', function (e) {
+      $('composer').addEventListener('submit', (e) => {
         e.preventDefault()
         send()
       })
-      $('text').addEventListener('keydown', function (e) {
+      $('text').addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
           e.preventDefault()
           send()
         }
       })
-      $('text').addEventListener('input', function () {
+      $('text').addEventListener('input', () => {
         var chat = active()
         if (chat) chat.draft = $('text').value
         autosize()
       })
 
       /* Reply by clicking a bubble; open a turn record by clicking its label. */
-      $('log').addEventListener('click', function (e) {
+      $('log').addEventListener('click', (e) => {
         if (e.target.closest('a')) return
         // Selecting text to copy it is not a click on the bubble.
         if (String(window.getSelection()).length > 0) return
@@ -1452,9 +1436,7 @@
         if (state.replyTo && state.replyTo.id === id) {
           state.replyTo = null
         } else {
-          var m = sortedMsgs(chat).filter(function (x) {
-            return x.id === id
-          })[0]
+          var m = sortedMsgs(chat).filter((x) => x.id === id)[0]
           if (!m) return
           state.replyTo = { id: m.id, sender: m.kind === 'aira' ? 'AIRA' : m.sender, text: plainOf(m) || '…' }
           $('text').focus()
@@ -1462,24 +1444,24 @@
         renderReply()
         renderLog(null, false)
       })
-      $('cancel-reply').addEventListener('click', function () {
+      $('cancel-reply').addEventListener('click', () => {
         state.replyTo = null
         renderReply()
         renderLog(null, false)
       })
 
-      $('chats').addEventListener('click', function (e) {
+      $('chats').addEventListener('click', (e) => {
         var item = e.target.closest('[data-chat]')
         if (item) selectChat(item.getAttribute('data-chat'))
       })
-      $('back').addEventListener('click', function () {
+      $('back').addEventListener('click', () => {
         $('app').setAttribute('data-view', 'list')
       })
 
-      $('reset').addEventListener('click', function () {
+      $('reset').addEventListener('click', () => {
         var chat = active()
         post('/api/chats/' + encodeURIComponent(chat.id) + '/reset', {})
-          .then(function (result) {
+          .then((result) => {
             var fresh = chatState(result.chat)
             fresh.sender = chat.sender
             fresh.mention = chat.mention
@@ -1492,18 +1474,18 @@
             renderComposer()
             renderLog(null, true)
           })
-          .catch(function (error) {
+          .catch((error) => {
             showToast(error.message)
           })
       })
-      $('free').addEventListener('change', function (e) {
+      $('free').addEventListener('change', (e) => {
         var chat = active()
         var value = e.target.checked
         post('/api/chats/' + encodeURIComponent(chat.id) + '/free-response', { value: value })
-          .then(function () {
+          .then(() => {
             chat.freeResponse = value
           })
-          .catch(function (error) {
+          .catch((error) => {
             e.target.checked = !value
             showToast(error.message)
           })
@@ -1515,10 +1497,10 @@
         $('app').classList.add('has-panel')
         $('panel-body').innerHTML = '<p>Loading…</p>'
         api('/api/turn/' + encodeURIComponent(id))
-          .then(function (panel) {
+          .then((panel) => {
             if (state.panelTurn === id) $('panel-body').innerHTML = renderTurn(panel)
           })
-          .catch(function (error) {
+          .catch((error) => {
             if (state.panelTurn === id) $('panel-body').innerHTML = '<p class="bad">' + esc(error.message) + '</p>'
           })
       }
@@ -1527,7 +1509,7 @@
         $('app').classList.remove('has-panel')
       }
       $('panel-close').addEventListener('click', closePanel)
-      document.addEventListener('keydown', function (e) {
+      document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return
         if (state.panelTurn) closePanel()
         else if (state.replyTo) {
@@ -1559,22 +1541,15 @@
           ['Reply', s.replyChars != null ? s.replyChars + ' chars, ' + (s.bubbleCount || 0) + ' bubbles' : null],
           ['Sticker', s.sticker]
         ]
-        rows.forEach(function (r) {
+        rows.forEach((r) => {
           out += '<dt>' + r[0] + '</dt><dd>' + val(r[1]) + '</dd>'
         })
         out += '</dl><h3>Stage timings</h3>'
-        var max = Math.max.apply(
-          null,
-          p.stages
-            .map(function (x) {
-              return x.ms
-            })
-            .concat([1])
-        )
+        var max = Math.max.apply(null, p.stages.map((x) => x.ms).concat([1]))
         out += p.stages.length
           ? p.stages
-              .map(function (x) {
-                return (
+              .map(
+                (x) =>
                   '<div class="stage"><span>' +
                   esc(x.stage) +
                   '</span><span><div class="bar-fill" style="width:' +
@@ -1582,16 +1557,15 @@
                   '%"></div></span><span class="ms">' +
                   fmtMs(x.ms) +
                   '</span></div>'
-                )
-              })
+              )
               .join('')
           : '<p>No stage times.</p>'
         out += '<h3>Model calls</h3>'
         out += p.modelCalls.length
           ? '<table><tr><th>Model</th><th>Try</th><th>Time</th><th>Tokens</th></tr>' +
             p.modelCalls
-              .map(function (c) {
-                return (
+              .map(
+                (c) =>
                   '<tr><td>' +
                   val(c.model) +
                   (c.failure ? '<br><span class="bad">' + esc(c.failure) + '</span>' : '') +
@@ -1604,8 +1578,7 @@
                   '/' +
                   (c.outputTokens || 0) +
                   '</td></tr>'
-                )
-              })
+              )
               .join('') +
             '</table>'
           : '<p>None.</p>'
@@ -1613,8 +1586,8 @@
         out += p.toolCalls.length
           ? '<table><tr><th>Tool</th><th>Source</th><th>Outcome</th><th>Time</th></tr>' +
             p.toolCalls
-              .map(function (c) {
-                return (
+              .map(
+                (c) =>
                   '<tr><td>' +
                   val(c.tool) +
                   '</td><td>' +
@@ -1624,16 +1597,15 @@
                   '</td><td>' +
                   (c.durationMs != null ? fmtMs(c.durationMs) : '-') +
                   '</td></tr>'
-                )
-              })
+              )
               .join('') +
             '</table>'
           : '<p>None.</p>'
         out += '<h3>Failures</h3>'
         out += p.failures.length
           ? p.failures
-              .map(function (f) {
-                return (
+              .map(
+                (f) =>
                   '<p class="bad"><b>' +
                   val(f.kind) +
                   '</b> at ' +
@@ -1643,8 +1615,7 @@
                   ')<br>' +
                   val(f.message) +
                   '</p>'
-                )
-              })
+              )
               .join('')
           : '<p>None.</p>'
         out += '<details><summary>Raw record</summary><pre>' + esc(p.text) + '</pre></details>'
@@ -1654,7 +1625,7 @@
       /* Start */
       function start() {
         api('/api/info')
-          .then(function (info) {
+          .then((info) => {
             state.info = info
             state.chats = info.chats.map(chatState)
             $('level-sub').textContent =
@@ -1670,7 +1641,7 @@
             $('app').setAttribute('data-view', matchMedia('(min-width: 761px)').matches ? 'chat' : 'list')
             setInterval(poll, POLL_MS)
           })
-          .catch(function (error) {
+          .catch((error) => {
             $('chats').innerHTML = '<li class="tips">' + esc(error.message) + '</li>'
           })
       }

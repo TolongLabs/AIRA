@@ -1,6 +1,6 @@
 import { mkdirSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { type Storage, isoNow } from './database.js'
+import { isoNow, type Storage } from './database.js'
 import { insertFailure } from './failures.js'
 import { type SweepResult, sweepFiles } from './files.js'
 import { JOB_TABLES, releaseLeases } from './leases.js'

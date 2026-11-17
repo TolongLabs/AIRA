@@ -11,7 +11,7 @@ import {
   writeSync
 } from 'node:fs'
 import { basename, dirname, join, relative, sep } from 'node:path'
-import { type Storage, isoNow } from './database.js'
+import { isoNow, type Storage } from './database.js'
 import { insertFailure } from './failures.js'
 
 // File writes (docs/trd/storage.md#what-a-write-promises): temporary name, flush, rename, then the row.

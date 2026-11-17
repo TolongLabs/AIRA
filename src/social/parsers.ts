@@ -1,6 +1,6 @@
 import type { SocialPost } from './types.js'
 import type { SocialPostTarget } from './urls.js'
-import { type VideoCandidate, selectPlayableVideo } from './videoVariant.js'
+import { selectPlayableVideo, type VideoCandidate } from './videoVariant.js'
 
 type JsonObject = Record<string, unknown>
 
@@ -16,7 +16,7 @@ export function string(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
 
-function count(value: unknown): number {
+function _count(value: unknown): number {
   return Array.isArray(value) ? value.length : 0
 }
 

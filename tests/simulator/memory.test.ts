@@ -4,12 +4,12 @@ import type { ModelClient } from '../../src/models/types.js'
 import { itemsOf } from '../support/memory.js'
 import { tmpStorage } from '../support/tmp.js'
 import {
-  type SimChat,
-  type Simulation,
   activeFacts,
   crashRecovery,
   createSimulation,
-  everythingRecalled
+  everythingRecalled,
+  type SimChat,
+  type Simulation
 } from './memory-sim.js'
 
 // The five checks of docs/trd/harness.md#memory-simulator, over several generated worlds.

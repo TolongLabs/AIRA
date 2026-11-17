@@ -1,6 +1,6 @@
-import { type Stats, lstatSync, mkdirSync, readdirSync, realpathSync, rmSync, statfsSync, unlinkSync } from 'node:fs'
+import { lstatSync, mkdirSync, readdirSync, realpathSync, rmSync, statfsSync, unlinkSync } from 'node:fs'
 import { join, sep } from 'node:path'
-import { type Logger, createLogger } from '../records/logger.js'
+import { createLogger, type Logger } from '../records/logger.js'
 import type { Storage } from './database.js'
 import { insertFailure } from './failures.js'
 

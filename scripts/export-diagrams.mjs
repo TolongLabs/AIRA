@@ -1,6 +1,6 @@
 // Turns each rendered diagram in .archify/ into a standalone SVG in docs/diagrams/.
 // Render first: see docs/diagrams/README.md.
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 
 const SOURCES = 'docs/diagrams/src'

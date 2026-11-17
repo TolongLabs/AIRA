@@ -29,7 +29,7 @@ describe('Exa page reader', () => {
       text: { maxCharacters: 10 },
       livecrawl: 'fallback'
     })
-    expect((sent?.init.headers as Record<string, string>)['x-api-key']).toBe('test-key')
+    expect((sent!.init.headers as Record<string, string>)['x-api-key']).toBe('test-key')
   })
 
   it('falls back to the plain reader on an error status, an empty text or a network failure', async () => {

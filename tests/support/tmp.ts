@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach } from 'vitest'
-import { type Storage, openDatabase } from '../../src/storage/database.js'
+import { openDatabase, type Storage } from '../../src/storage/database.js'
 import { applyMigrations } from '../../src/storage/migrate.js'
 
 const cleanups: (() => void)[] = []

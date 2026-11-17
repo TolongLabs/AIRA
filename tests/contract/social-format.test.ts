@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SOCIAL_POST_FAILURE_MARKER, formatRepliesForModel, formatSocialPostLine } from '../../src/social/format.js'
+import { formatRepliesForModel, formatSocialPostLine, SOCIAL_POST_FAILURE_MARKER } from '../../src/social/format.js'
 import type { SocialPost } from '../../src/social/types.js'
 import { parseSocialPostUrl } from '../../src/social/urls.js'
 

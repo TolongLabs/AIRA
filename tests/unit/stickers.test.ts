@@ -1,7 +1,7 @@
 import { cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { type Pack, PackError, loadPack } from '../../src/character/loader.js'
+import { loadPack, type Pack, PackError } from '../../src/character/loader.js'
 import { readWebpInfo, stickerFault } from '../../src/character/webp.js'
 import { pickSticker, withStickers } from '../../src/prompt/stickers.js'
 import type { CleanedReply, ReplyCleaner, TurnContext } from '../../src/turn/types.js'

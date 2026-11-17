@@ -1,5 +1,5 @@
-import { type Storage, isoNow } from '../storage/database.js'
-import { SETTING_KEYS, type SettingDefinition, definitionFor } from './keys.js'
+import { isoNow, type Storage } from '../storage/database.js'
+import { definitionFor, SETTING_KEYS, type SettingDefinition } from './keys.js'
 
 // Settings hierarchy and resolution (docs/trd/data.md#settings-hierarchy).
 

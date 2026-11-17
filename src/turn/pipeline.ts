@@ -5,22 +5,22 @@ import type { Config } from '../config/schema.js'
 import type { Attachment, GatewayRequest } from '../gateway/request.js'
 import { compactDue } from '../gateway/schedule.js'
 import { modelRecordContext } from '../judge/systemone.js'
-import { type TurnMedia, type TurnMediaResult, mediaPromptText, mediaToRead } from '../media/turn-media.js'
+import { mediaPromptText, mediaToRead, type TurnMedia, type TurnMediaResult } from '../media/turn-media.js'
 import { ModelError } from '../models/types.js'
 import type { FailureKind } from '../records/kinds.js'
 import type { Logger } from '../records/logger.js'
 import type { Redactor } from '../records/redact.js'
 import {
-  type TurnRecordFields,
-  type TurnStage,
   markStage,
   recordFailure,
   recordModelCall,
   saveDiagnostics,
+  type TurnRecordFields,
+  type TurnStage,
   updateTurnRecord
 } from '../records/turn-record.js'
 import { reportDocumentSchema } from '../render/types.js'
-import { RESEARCH_LINES, type ResearchOffers, type ResearchRow, offerAnswer } from '../research/offer.js'
+import { offerAnswer, RESEARCH_LINES, type ResearchOffers, type ResearchRow } from '../research/offer.js'
 import {
   type Chat,
   displayNameOfNumber,
@@ -31,7 +31,7 @@ import {
   setDisplayName
 } from '../settings/chats.js'
 import { type Resolved, resolveSettings } from '../settings/settings.js'
-import { type Db, type Storage, isoNow } from '../storage/database.js'
+import { type Db, isoNow, type Storage } from '../storage/database.js'
 import { advanceTurn, closeTurn, closeTurnAsFailed, openTurn, receiveInbound } from '../storage/turns.js'
 import type { Alerter } from './alerts.js'
 import { type DeliveryKind, type DeliverySettings, mayDeliver } from './deliver.js'
@@ -991,10 +991,10 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     const thinkPrefix = THINK_PREFIX.exec(request.text)
     const strippedText = thinkPrefix ? request.text.slice(thinkPrefix[0].length) : request.text
     const selfIds = new Set((config.gateway?.selfIds ?? []).map((id) => id.replace(/@.*$/, '')))
-    let mentionsSelf = false
+    let _mentionsSelf = false
     const text = strippedText.replace(/@(\d{6,20})\b/g, (_, number: string) => {
       if (selfIds.has(number)) {
-        mentionsSelf = true
+        _mentionsSelf = true
         return `@${pack?.card.displayName ?? 'you'}`
       }
       return `@${displayNameOfNumber(storage, number) ?? 'member'}`
@@ -1079,7 +1079,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
   async function handleJob(request: Extract<ScheduledRequest, { kind: 'job' }>): Promise<TurnReply | null> {
     const listed = deps.config.gateway?.jobs?.find((job) => job.id === request.jobId)
     const chat = listed ? getChatByWaId(storage, listed.chat) : undefined
-    if (!chat || chat.status !== 'active' || request.text === '') return null
+    if (chat?.status !== 'active' || request.text === '') return null
     // One firing per 10-minute window: the gateway's repeats of a firing are answered from the stored reply.
     const window = Math.floor(now().getTime() / JOB_WINDOW_MS)
     const mid = `job-${request.jobId}-${window}`

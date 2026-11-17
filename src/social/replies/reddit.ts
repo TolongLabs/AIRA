@@ -1,5 +1,5 @@
 import { entryAuthor, entryContent, feedEntries, feedField, htmlToText } from '../redditFeed.js'
-import { BROWSER_USER_AGENT, type ReplyCandidate, failed, found, takeReplies } from './common.js'
+import { BROWSER_USER_AGENT, failed, found, type ReplyCandidate, takeReplies } from './common.js'
 import type { ReplyFetcher } from './types.js'
 
 export function parseRedditComments(feed: string): ReplyCandidate[] {

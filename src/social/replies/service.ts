@@ -1,5 +1,5 @@
-import { type Logger, createLogger } from '../../records/logger.js'
-import { type Lookup, checkedFetcher } from '../fetch.js'
+import { createLogger, type Logger } from '../../records/logger.js'
+import { checkedFetcher, type Lookup } from '../fetch.js'
 import type { SocialPlatform, SocialPostTarget } from '../urls.js'
 import { runYtDlp } from '../yt-dlp.js'
 import { fetchBilibiliReplies } from './bilibili.js'

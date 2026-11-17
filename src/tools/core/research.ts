@@ -8,7 +8,7 @@ import type { ToolDefinition } from '../types.js'
 
 const startSchema = z.strictObject({ topic: z.string().trim().max(2000) })
 
-export function researchStartTool(storage: Storage): ToolDefinition<z.infer<typeof startSchema>> {
+export function researchStartTool(_storage: Storage): ToolDefinition<z.infer<typeof startSchema>> {
   return {
     name: 'research_start',
     description: 'Starts background research for this chat.',

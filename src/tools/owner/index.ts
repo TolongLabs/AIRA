@@ -3,7 +3,7 @@ import type { Config } from '../../config/schema.js'
 import type { ToolRegistry } from '../registry.js'
 import { claudeTools } from './claude.js'
 import { marketTools } from './market-tools.js'
-import { type MarketsPort, createMarketsPort } from './markets.js'
+import { createMarketsPort, type MarketsPort } from './markets.js'
 
 export function registerOwnerTools(
   registry: ToolRegistry,

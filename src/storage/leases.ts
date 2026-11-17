@@ -1,4 +1,4 @@
-import { type Db, type Storage, StorageError, isoNow } from './database.js'
+import { type Db, isoNow, type Storage, StorageError } from './database.js'
 import { insertFailure } from './failures.js'
 
 // Job leases (docs/trd/storage.md#everything-in-flight-is-a-row).

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import { parse } from 'yaml'
-import { type Logger, createLogger } from '../records/logger.js'
+import { createLogger, type Logger } from '../records/logger.js'
 import { type Config, configSchema } from './schema.js'
 
 /** A deployment fault in config.yml. Start-up stops with this one message. */

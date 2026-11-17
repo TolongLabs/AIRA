@@ -1,4 +1,4 @@
-import { type Redactor, createRedactor } from './redact.js'
+import { createRedactor, type Redactor } from './redact.js'
 
 // Structured JSON lines on standard output (docs/trd/records.md#logs).
 // Every line has: time, level, module, event, and a turn id or job id when one applies.

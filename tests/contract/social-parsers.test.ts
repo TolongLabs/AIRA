@@ -6,8 +6,8 @@ import {
   parseYouTubeOEmbed,
   parseYtDlpMetadata
 } from '../../src/social/parsers.js'
-import { parseSocialPostUrl } from '../../src/social/urls.js'
 import type { SocialPostTarget } from '../../src/social/urls.js'
+import { parseSocialPostUrl } from '../../src/social/urls.js'
 
 const fxTwitterFixture = JSON.parse(readFileSync(new URL('../fixtures/social/fxtwitter.json', import.meta.url), 'utf8'))
 const blueskyFixture = JSON.parse(

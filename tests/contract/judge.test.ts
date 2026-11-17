@@ -118,7 +118,7 @@ describe('the mood judge', () => {
       signal()
     )
     expect(result).toEqual({ mood: 'cheerful', probability: 0.7 })
-    const body = JSON.parse((send.mock.calls[0]?.[1] as RequestInit).body as string)
+    const body = JSON.parse((send.mock.calls[0]![1] as RequestInit).body as string)
     expect(body.state).toBe('yay\nwe won')
     expect(body.questions.mood.criteria).toEqual({ neutral: 'Calm.', cheerful: 'Warm.' })
   })
@@ -132,7 +132,7 @@ describe('the memory judge', () => {
     expect(
       await memory.verify({ operation: 'add likes.food = noodles', quote: 'i love noodles', episode: 'x' }, signal())
     ).toBe(0.82)
-    const verifyBody = JSON.parse((send.mock.calls[1]?.[1] as RequestInit).body as string)
+    const verifyBody = JSON.parse((send.mock.calls[1]![1] as RequestInit).body as string)
     expect(verifyBody.questions.q.instructions).toContain('add likes.food = noodles')
     expect(verifyBody.questions.q.instructions).toContain('i love noodles')
   })

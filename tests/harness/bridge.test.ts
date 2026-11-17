@@ -2,8 +2,8 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { tmpDir } from '../support/tmp.js'
+import { createFakeBridge, type FakeBridge, type FakeBridgeOptions } from './bridge.js'
 import { checkStep, injectScenario, sentMessages } from './bridge-scenario.js'
-import { type FakeBridge, type FakeBridgeOptions, createFakeBridge } from './bridge.js'
 import { loadScenario } from './scenario.js'
 
 const activeBridges: FakeBridge[] = []

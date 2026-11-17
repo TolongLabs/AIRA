@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { type Pack, loadPacks } from '../../src/character/loader.js'
+import { loadPacks, type Pack } from '../../src/character/loader.js'
 import { withAttachments } from '../../src/format/attachments.js'
 import { createReplyCleaner } from '../../src/format/clean.js'
 import type { GatewayRequest } from '../../src/gateway/request.js'

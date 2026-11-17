@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { type IncomingMessage, type Server, createServer } from 'node:http'
+import { createServer, type IncomingMessage, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { fileURLToPath } from 'node:url'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
@@ -321,8 +321,8 @@ describe('/think deeper effort', () => {
       expect(proxy.runs).toHaveLength(2)
       expect(proxy.runs[0]?.request['effort']).toBe('medium')
       expect(proxy.runs[1]?.request['effort']).toBe('high')
-      expect((proxy.runs[0]?.fakeOutput['args'] as string[]).slice(-2)).toEqual(['--effort', 'medium'])
-      expect((proxy.runs[1]?.fakeOutput['args'] as string[]).slice(-2)).toEqual(['--effort', 'high'])
+      expect((proxy.runs[0]!.fakeOutput['args'] as string[]).slice(-2)).toEqual(['--effort', 'medium'])
+      expect((proxy.runs[1]!.fakeOutput['args'] as string[]).slice(-2)).toEqual(['--effort', 'high'])
       expect(String(proxy.runs[1]?.fakeOutput['prompt']).toLowerCase()).not.toContain('/think')
     }
   )

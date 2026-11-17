@@ -2,7 +2,7 @@
 // gateway endpoint, with a scripted runner in place of a model. The suite kills it at any point and restarts it.
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { type IncomingMessage, createServer } from 'node:http'
+import { createServer, type IncomingMessage } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
