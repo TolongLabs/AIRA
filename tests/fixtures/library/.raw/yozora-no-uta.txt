@@ -1,0 +1,3 @@
+raw-only-marker: this file in .raw must never be imported
+夜空を見上げたら
+願いをかける

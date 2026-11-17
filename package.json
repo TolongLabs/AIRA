@@ -31,7 +31,8 @@
     "pack:check": "tsx scripts/pack-check.ts",
     "export:memory": "tsx scripts/export-memory.ts",
     "migrate:memory": "tsx scripts/migrate-memory.ts",
-    "migrate:settings": "tsx scripts/migrate-settings.ts"
+    "migrate:settings": "tsx scripts/migrate-settings.ts",
+    "migrate:library": "tsx scripts/migrate-library.ts"
   },
   "lint-staged": {
     "*.{ts,tsx}": "biome check --write --no-errors-on-unmatched",

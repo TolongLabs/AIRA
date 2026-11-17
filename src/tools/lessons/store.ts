@@ -46,7 +46,7 @@ export function keyOf(text: string): string {
   return text.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase()
 }
 
-function songKeyOf(title: string, artist: string): string {
+export function songKeyOf(title: string, artist: string): string {
   return `${keyOf(title)}\n${keyOf(artist)}`
 }
 
@@ -394,7 +394,7 @@ export function setGloss(
   return { wordId, created }
 }
 
-function extractLinks(body: string, selfKey: string): { title: string; key: string }[] {
+export function extractLinks(body: string, selfKey: string): { title: string; key: string }[] {
   const seen = new Set<string>()
   const links: { title: string; key: string }[] = []
   const re = /\[\[([^\[\]]{1,120})\]\]/g
