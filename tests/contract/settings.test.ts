@@ -47,7 +47,18 @@ describe('settings resolution', () => {
     expect(resolved.replyLength).toEqual({ value: 'default', level: 'default' })
     expect(resolved.expressions).toEqual({ value: true, level: 'default' })
     expect(resolved.muted).toEqual({ value: false, level: 'default' })
+    expect(resolved['features.memory']).toEqual({ value: true, level: 'default' })
     expect(resolved['tools.maxPerMessage']).toEqual({ value: 3, level: 'default' })
+  })
+
+  it('accepts only boolean values for the memory switch', () => {
+    const storage = tmpStorage()
+    for (const value of ['false', 0, 1, null, {}]) {
+      expect(() =>
+        setSetting(storage, { level: 'global', scope: '', key: 'features.memory', value, actor: 'test' })
+      ).toThrow(SettingError)
+    }
+    expect(count(storage, 'setting')).toBe(0)
   })
 
   it('resolves nearest level: chat overrides type, type overrides global, global overrides default', () => {

@@ -1,3 +1,5 @@
+import { getChat } from '../settings/chats.js'
+import { resolveSetting } from '../settings/settings.js'
 import type { Storage } from '../storage/database.js'
 import { FORGOTTEN_MESSAGE, type MemoryKind, type MemoryStatus } from './types.js'
 
@@ -192,6 +194,8 @@ export function recallForTurn(
   }
 ): string[] {
   if (input.tokenBudget <= 0) return []
+  const chat = getChat(storage, input.chatId)
+  if (chat && resolveSetting(storage, chat, 'features.memory').value === false) return []
 
   const pinnedRows = storage.read(
     (db) =>

@@ -14,6 +14,7 @@ import {
 } from '../../src/memory/validate.js'
 import { RETRY_DELAYS_MS, createMemoryWorker } from '../../src/memory/worker.js'
 import { ModelError } from '../../src/models/types.js'
+import { setSetting } from '../../src/settings/settings.js'
 import type { Storage } from '../../src/storage/database.js'
 import { openTurn, receiveInbound } from '../../src/storage/turns.js'
 import type { AlertKind } from '../../src/turn/alerts.js'
@@ -185,6 +186,43 @@ describe('closeDueEpisodes (steps 2 and 3)', () => {
           payload: string
         }[]
     )
+
+  it('leaves an episode open and queues nothing when memory is off at any settings level', () => {
+    for (const level of ['global', 'type', 'chat'] as const) {
+      const storage = tmpStorage()
+      const chatId = activeChat(storage, '0000000000@g.us')
+      for (let index = 0; index < limits.maxMessages; index++) {
+        say(storage, { chatId, senderId: 'member', text: 'I really like green tea', at: T0 })
+      }
+      setSetting(storage, {
+        level,
+        scope: level === 'global' ? '' : level === 'type' ? 'group' : chatId,
+        key: 'features.memory',
+        value: false,
+        actor: 'test'
+      })
+      expect(closeDueEpisodes(storage, limits, () => later(10))).toBe(0)
+      expect(jobs(storage)).toEqual([])
+      expect(
+        storage.read((db) => db.prepare('SELECT * FROM memory_cursor WHERE chat_id = ?').get(chatId))
+      ).toBeUndefined()
+    }
+  })
+
+  it('starts with new messages after enabling memory, without extracting the off window', () => {
+    const storage = tmpStorage()
+    const chatId = activeChat(storage, '0000000000@g.us')
+    const setting = { level: 'chat' as const, scope: chatId, key: 'features.memory', actor: 'test' }
+    setSetting(storage, { ...setting, value: false }, () => T0)
+    say(storage, { chatId, senderId: 'member', text: 'I really like green tea', at: later(1) })
+    expect(closeDueEpisodes(storage, limits, () => later(5))).toBe(0)
+    say(storage, { chatId, senderId: 'member', text: 'I live near the river', at: later(6) })
+    setSetting(storage, { ...setting, value: true }, () => later(7))
+    expect(closeDueEpisodes(storage, limits, () => later(10))).toBe(0)
+    const next = say(storage, { chatId, senderId: 'member', text: 'I prefer iced tea', at: later(11) })
+    expect(closeDueEpisodes(storage, limits, () => later(20))).toBe(1)
+    expect(JSON.parse(jobs(storage)[0]?.payload ?? '')).toMatchObject({ fromId: next, throughId: next, count: 1 })
+  })
 
   it('queues one job for an idle episode, moves the cursor with it, and never covers a message twice', () => {
     const storage = tmpStorage()
