@@ -88,6 +88,7 @@ The primary key is `(level, scope, key)`. Deleting a row at a level restores inh
 | `nameCall`               | Boolean: answer a group message that only names the character | `false`                 |
 | `nameCall.names`         | 1 to 5 names, each 2 to 24 letters, digits or spaces          | unset: the card's names |
 | `reactions`              | Boolean: passive emoji reactions to members' messages         | `false`                 |
+| `reactions.chance`       | Integer 0 to 100: percent chance to react when a rule trips   | `33`                    |
 | `commands.maxPerMessage` | Integer 1 to 5: commands run from one message                 | `1`                     |
 | `footerEmoji`            | One emoji, at most 8 characters                               | unset: the card's icon  |
 | `mcp.<server id>`        | Boolean                                                       | `false`                 |
