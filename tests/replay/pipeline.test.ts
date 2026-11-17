@@ -336,7 +336,10 @@ describe('batching', () => {
     await expect.poll(() => runner.inputs.length).toBe(1)
     const second = core.gateway.send(msg('m-2', 'two', BOB))
     const third = core.gateway.send(msg('m-3', 'three'))
-    await new Promise((resolve) => setTimeout(resolve, 80))
+    // Release the first turn only once both later messages are stored; a fixed sleep raced under CI load (#185).
+    await expect
+      .poll(() => one(core.storage, "SELECT count(*) FROM session_message WHERE role = 'user'"), { timeout: 5000 })
+      .toBe(3)
     // The second turn has not started: one turn per chat.
     expect(runner.inputs).toHaveLength(1)
     releases[0]?.('reply one')
