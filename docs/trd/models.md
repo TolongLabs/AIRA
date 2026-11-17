@@ -201,11 +201,18 @@ media folders.
 6. **Into the prompt.** The descriptions enter prompt block 4 as one labelled, untrusted block, clipped to a fixed
    budget so that media cannot push the prompt over its ceiling. The main model never receives the file.
    See [Prompt Engine](prompt-engine.md#prompt-blocks).
-7. **Links.** The first link in the turn's messages to a YouTube video or a supported social post is opened at
-   intake, at most one per turn, when `features.media` (YouTube) or `features.social` (posts) is on. A YouTube video
-   goes to the media model as its own URL, with no download: Gemini reads YouTube natively (measured: a 3-minute video
-   in 5 s, about 19,000 tokens). A post's video is fetched under the same size limits as a file. The result enters
-   block 4 like a file's description, and a failure follows rule 8. Ported from rokabot's media and social readers.
+7. **Links.** The first link in the turn's messages to a YouTube video or a supported social post (newest message text
+   first, then quoted text) is opened at intake, at most one per turn, unless the turn's commands already name
+   `read_post` or `read_page`. `features.media` off means no file (rule 8 notes it as `off`) and no YouTube link is
+   read; `features.social` off means no post link is read. A YouTube video is sent to the media model as its own
+   URL (`file_data`) at low media resolution (`MEDIA_RESOLUTION_LOW`), starting from its `t=` offset if any, for at
+   most `media.maxLinkVideoSeconds` (default 600) through `video_metadata` offsets (measured: a 3-minute video in 5 s,
+   about 19,000 tokens). A longer YouTube video is clipped, never refused, and the description the model receives says
+   it covers only the first part; a private or removed video fails with reason `unavailable`. A post's video is fetched
+   under the same size and `media.maxVideoSeconds` limits as a file, falling back to its image or text only. A failed
+   link lookup adds an unreadable note with the platform and reason `link`; neither the note nor any log carries the
+   URL. The result enters block 4 like a file's description, and failures follow rule 8. Ported from rokabot's media
+   and social readers.
 8. **Failure.** A file that is refused, over a limit, of an unsupported type, unread because media is off, or whose
    read fails or times out, does not end the turn. Block 4 gets a short note naming the kind of file and why, and the
    pack's `unreadableMedia` line. The model tells the sender in its own voice, so the reply can also answer the
@@ -252,3 +259,4 @@ credit, about one per call, not in dollars, so its prices are 0 and it does not 
 | `media.gatewayDirs`                                            | empty                   | `host` and `container` pairs of the gateway's media folders        |
 | `media.timeoutMs`                                              | 30000                   | One media read, within two thirds of the time left in the turn     |
 | `media.maxVideoSeconds`                                        | 180                     | Longest video that is watched                                      |
+| `media.maxLinkVideoSeconds`                                    | 600                     | Longest span watched from a YouTube link                           |

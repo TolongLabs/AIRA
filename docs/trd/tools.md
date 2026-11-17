@@ -199,6 +199,41 @@ character.
 - With `exa` set and no key in the environment, start-up logs `search.off` and the tool stays unavailable. The rest
   of the core is not affected.
 
+### Social Post Reader
+
+`read_post` takes one `url`; its argument schema stays unchanged. `/read` routes
+only recognized post URLs to it. Profiles, home pages, Facebook and unsupported
+share links use `read_page`. Supported platforms are X, Bluesky, Threads,
+YouTube, TikTok, Reddit, Instagram and Bilibili.
+
+The result keeps `author`, `text` and `media` URLs, and adds `platform`, `handle`,
+`createdAt`, `quotedText`, `replyCount`, `canonicalUrl`, `durationSec` and
+`replies`. One reply lookup runs in parallel with the post lookup. It returns
+up to five top replies by default, capped at 280 characters each; reply failure
+leaves an empty list and never fails a readable post. All returned content is
+untrusted external data; the social port marks its result with `untrusted: true`.
+
+Post `timeout` maps to tool `timeout`, `binary_missing` to `unavailable`, and
+HTTP failures, `no_post_data`, `missing_post` and other lookup failures to
+`error`. Logs contain platform and reason only. No cookies are used. X post
+identifiers are sent to the third-party FxTwitter service. YouTube replies
+require the optional `YOUTUBE_API_KEY`; other YouTube metadata remains usable
+without it. Missing yt-dlp disables only extractor-dependent reads; Reddit
+text and image feeds remain readable.
+
+Social settings (kept here because the media configuration table is maintained
+by the link-intake work order):
+
+| Key                      | Default  | Effect                                               |
+| ------------------------ | -------- | ---------------------------------------------------- |
+| `social.timeoutMs`       | 6000     | Hard deadline per lookup                             |
+| `social.cacheTtlMs`      | 900000   | Successful lookup cache lifetime; 0 disables caching |
+| `social.maxCacheEntries` | 256      | Maximum entries per LRU cache                        |
+| `social.maxTextChars`    | 1500     | Post text limit                                      |
+| `social.maxReplies`      | 5        | Replies returned, at most 50                         |
+| `social.maxReplyChars`   | 280      | Reply text limit, in Unicode code points             |
+| `social.ytDlpPath`       | `yt-dlp` | Metadata extractor binary                            |
+
 ### Lessons And Library
 
 Built after the core set, behind `features.lessons`. A chat with the switch off is offered none of these tools.
