@@ -165,6 +165,11 @@ export const configSchema = z.strictObject({
     gatewayDirs: z.array(gatewayDir).default([]),
     maxVideoSeconds: count,
     maxLinkVideoSeconds: count.default(600),
+    linkWatchMs: ms.default(12000),
+    linkSegmentSeconds: count.default(180),
+    linkFirstSegmentSeconds: count.default(60),
+    maxLinkSegments: count.default(4),
+    linkFps: z.number().positive().default(0.25),
     timeoutMs: ms.default(30000)
   }),
   social: z

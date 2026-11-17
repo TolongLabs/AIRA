@@ -7,6 +7,16 @@ import type { MediaUnreadable } from './files.js'
 import type { MediaReading, MediaWatcher, WatchUrlSource } from './gemini-watcher.js'
 import { type MediaOutcome, readMedia, readMediaUrl } from './intake.js'
 import { type MediaKind, type MediaLimits, mediaKindOf } from './limits.js'
+import {
+  DEFAULT_LINK_FIRST_SEGMENT_SECONDS,
+  DEFAULT_LINK_FPS,
+  DEFAULT_LINK_SEGMENT_SECONDS,
+  DEFAULT_LINK_WATCH_MS,
+  DEFAULT_MAX_LINK_SEGMENTS,
+  formatClock,
+  mergeLinkReadings,
+  planLinkSegments
+} from './link-segments.js'
 
 export const DEFAULT_MAX_LINK_VIDEO_SECONDS = 600
 
@@ -43,6 +53,7 @@ export interface LinkReadResult {
   readings: { kind: MediaKind; reading: MediaReading }[]
   links?: LinkReading[]
   unreadable: { kind: string; reason: MediaUnreadable }[]
+  partial?: { kind: string; reason: MediaUnreadable }[]
   calls: ModelCallRecord[]
 }
 
@@ -58,7 +69,14 @@ export interface LinkReaderOptions {
   watcher?: MediaWatcher
   download?: PagePort['download']
   model: string
-  limits: MediaLimits & { maxLinkVideoSeconds?: number }
+  limits: MediaLimits & {
+    maxLinkVideoSeconds?: number
+    linkWatchMs?: number
+    linkSegmentSeconds?: number
+    linkFirstSegmentSeconds?: number
+    maxLinkSegments?: number
+    linkFps?: number
+  }
   logger?: Logger
   now?: () => Date
 }
@@ -86,23 +104,6 @@ function pickTarget(
     }
   }
   return undefined
-}
-
-function formatClock(totalSeconds: number): string {
-  const s = Math.max(0, Math.floor(totalSeconds))
-  const hours = Math.floor(s / 3600)
-  const minutes = Math.floor((s % 3600) / 60)
-  const seconds = s % 60
-  const mm = hours > 0 ? String(minutes).padStart(2, '0') : String(minutes)
-  const ss = String(seconds).padStart(2, '0')
-  return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`
-}
-
-function clippedPrefix(startSec: number, endSec: number, durationSec: number): string {
-  const span = `${formatClock(startSec)}–${formatClock(endSec)} of ${formatClock(durationSec)}`
-  return startSec === 0
-    ? `Covers only the first part (${span}):`
-    : `Covers only the first part from ${formatClock(startSec)} (${span}):`
 }
 
 function normalizeImageMime(contentType: string): string {
@@ -173,6 +174,11 @@ function hasPostMetadata(post: SocialPost): boolean {
 export function createLinkReader(options: LinkReaderOptions): LinkReader {
   const now = options.now ?? (() => new Date())
   const maxLinkVideoSeconds = options.limits.maxLinkVideoSeconds ?? DEFAULT_MAX_LINK_VIDEO_SECONDS
+  const linkWatchMs = options.limits.linkWatchMs ?? DEFAULT_LINK_WATCH_MS
+  const linkSegmentSeconds = options.limits.linkSegmentSeconds ?? DEFAULT_LINK_SEGMENT_SECONDS
+  const linkFirstSegmentSeconds = options.limits.linkFirstSegmentSeconds ?? DEFAULT_LINK_FIRST_SEGMENT_SECONDS
+  const maxLinkSegments = options.limits.maxLinkSegments ?? DEFAULT_MAX_LINK_SEGMENTS
+  const linkFps = options.limits.linkFps ?? DEFAULT_LINK_FPS
 
   return {
     async read(texts, timeoutMs, allow, onMatch) {
@@ -209,47 +215,115 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
             }
           }
 
-          const knownDuration = post.durationSec !== null && post.durationSec > 0 ? post.durationSec : null
-          const startSec = Math.max(0, Math.floor(post.target.startSec ?? 0))
-          const maxEnd = startSec + maxLinkVideoSeconds
-          const clipped = knownDuration !== null && knownDuration > maxEnd
-          const endSec = knownDuration === null ? maxEnd : clipped ? maxEnd : undefined
-          const source: WatchUrlSource = {
-            url: post.canonicalUrl,
-            mimeType: 'video/mp4',
-            ...(startSec > 0 || endSec !== undefined ? { startSec } : {}),
-            ...(endSec !== undefined ? { endSec } : {})
+          const knownDuration =
+            post.durationSec !== null && Number.isFinite(post.durationSec) && post.durationSec > 0
+              ? Math.floor(post.durationSec)
+              : null
+          const rawStartSec = Math.max(0, Math.floor(post.target.startSec ?? 0))
+          const plan = planLinkSegments({
+            durationSec: knownDuration,
+            startSec: rawStartSec,
+            maxLinkVideoSeconds,
+            firstSegmentSeconds: linkFirstSegmentSeconds,
+            segmentSeconds: linkSegmentSeconds,
+            maxSegments: maxLinkSegments
+          })
+
+          const singleWhole =
+            plan.segments.length === 1 &&
+            !plan.clipped &&
+            !plan.unknownLength &&
+            (plan.segments[0]?.startSec ?? 0) === 0
+
+          const sources: WatchUrlSource[] = singleWhole
+            ? [{ url: post.canonicalUrl, mimeType: 'video/mp4', fps: linkFps }]
+            : plan.segments.map((segment) => ({
+                url: post.canonicalUrl,
+                mimeType: 'video/mp4',
+                startSec: segment.startSec,
+                endSec: segment.endSec,
+                fps: linkFps
+              }))
+
+          const watchMs = Math.min(linkWatchMs, remainingMs())
+          const watchController = new AbortController()
+          const onOuterAbort = () => watchController.abort()
+          if (controller.signal.aborted) watchController.abort()
+          else controller.signal.addEventListener('abort', onOuterAbort, { once: true })
+          const watchTimer = setTimeout(() => watchController.abort(), watchMs)
+
+          const watchStartedAt = now()
+          let segmentOutcomes: { startedAt: Date; outcome: MediaOutcome }[]
+          try {
+            segmentOutcomes = await Promise.all(
+              sources.map(async (source) => {
+                const startedAt = now()
+                const outcome = await readMediaUrl(
+                  source,
+                  { watcher: options.watcher, timeoutMs: watchMs },
+                  watchController.signal
+                )
+                return { startedAt, outcome }
+              })
+            )
+          } finally {
+            clearTimeout(watchTimer)
+            controller.signal.removeEventListener('abort', onOuterAbort)
           }
 
-          const startedAt = now()
-          const outcome = await readMediaUrl(
-            source,
-            { watcher: options.watcher, timeoutMs: remainingMs() },
-            controller.signal
-          )
-          if (outcome.ok) {
-            const reading: MediaReading = clipped
-              ? {
-                  ...outcome.reading,
-                  description: `${clippedPrefix(startSec, maxEnd, knownDuration as number)} ${outcome.reading.description}`
-                }
-              : outcome.reading
-            return {
-              readings: [],
-              links: [{ post, mediaKind: 'video', reading }],
-              unreadable: [],
-              calls: [okCall(outcome, startedAt)]
+          const elapsedWatchMs = Math.max(0, now().getTime() - watchStartedAt.getTime())
+          const calls: ModelCallRecord[] = []
+          const segmentReadings: (MediaReading | undefined)[] = []
+          const partial: { kind: string; reason: MediaUnreadable }[] = []
+          let hasUnavailable = false
+
+          for (let i = 0; i < plan.segments.length; i++) {
+            const segment = plan.segments[i]!
+            const { startedAt, outcome } = segmentOutcomes[i]!
+            if (outcome.ok) {
+              calls.push(okCall(outcome, startedAt))
+              segmentReadings.push(outcome.reading)
+            } else {
+              if (outcome.failureKind) {
+                calls.push(failCall(options.model, outcome.failureKind, outcome.durationMs, startedAt))
+              }
+              const reason: MediaUnreadable = outcome.reason === 'unavailable' ? 'unavailable' : 'unreadable'
+              if (reason === 'unavailable') hasUnavailable = true
+              partial.push({
+                kind: `YouTube video part ${i + 1} (${formatClock(segment.startSec)}–${formatClock(segment.endSec)})`,
+                reason
+              })
+              segmentReadings.push(undefined)
             }
           }
 
-          options.logger?.warn('media.link_watch_failed', { platform: post.platform, reason: outcome.reason })
+          const answered = segmentReadings.filter((reading) => reading !== undefined).length
+          const failed = plan.segments.length - answered
+          options.logger?.info('media.link_segments', {
+            segments: plan.segments.length,
+            answered,
+            failed,
+            watchMs: elapsedWatchMs
+          })
+
+          const merged = mergeLinkReadings(plan, segmentReadings, knownDuration)
+          if (merged) {
+            return {
+              readings: [],
+              links: [{ post, mediaKind: 'video', reading: merged }],
+              unreadable: [],
+              ...(partial.length > 0 ? { partial } : {}),
+              calls
+            }
+          }
+
+          const wholeReason: MediaUnreadable = hasUnavailable ? 'unavailable' : 'unreadable'
+          options.logger?.warn('media.link_watch_failed', { platform: post.platform, reason: wholeReason })
           return {
             readings: [],
             ...(hasPostMetadata(post) ? { links: [{ post }] } : {}),
-            unreadable: [{ kind: 'YouTube video', reason: outcome.reason }],
-            calls: outcome.failureKind
-              ? [failCall(options.model, outcome.failureKind, outcome.durationMs, startedAt)]
-              : []
+            unreadable: [{ kind: 'YouTube video', reason: wholeReason }],
+            calls
           }
         }
 

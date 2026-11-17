@@ -531,7 +531,12 @@ export async function createApp(options: AppOptions): Promise<App> {
           limits: {
             ...DEFAULT_MEDIA_LIMITS,
             maxVideoSeconds: config.media.maxVideoSeconds,
-            maxLinkVideoSeconds: config.media.maxLinkVideoSeconds
+            maxLinkVideoSeconds: config.media.maxLinkVideoSeconds,
+            linkWatchMs: config.media.linkWatchMs,
+            linkSegmentSeconds: config.media.linkSegmentSeconds,
+            linkFirstSegmentSeconds: config.media.linkFirstSegmentSeconds,
+            maxLinkSegments: config.media.maxLinkSegments,
+            linkFps: config.media.linkFps
           },
           logger,
           now

@@ -12,6 +12,7 @@ export interface WatchUrlSource {
   mimeType?: string
   startSec?: number
   endSec?: number
+  fps?: number
 }
 
 export interface WatchResult {
@@ -114,11 +115,12 @@ export function toGenerateContentBody(file: MediaFile): Record<string, unknown> 
   })
 }
 
-/** The request body for one video URL, with optional start and end offsets at low media resolution. Pure. */
+/** The request body for one video URL, with optional offsets and frame rate at low media resolution. Pure. */
 export function toGenerateContentUrlBody(source: WatchUrlSource): Record<string, unknown> {
-  const videoMetadata: Record<string, string> = {}
+  const videoMetadata: Record<string, string | number> = {}
   if (source.startSec !== undefined) videoMetadata['start_offset'] = `${Math.max(0, Math.floor(source.startSec))}s`
   if (source.endSec !== undefined) videoMetadata['end_offset'] = `${Math.max(0, Math.floor(source.endSec))}s`
+  if (source.fps !== undefined && Number.isFinite(source.fps) && source.fps > 0) videoMetadata['fps'] = source.fps
   return requestBodyFor(
     {
       file_data: {
