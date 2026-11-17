@@ -1,6 +1,7 @@
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import type { FailureKind } from '../../src/records/kinds.js'
 import { buildReport, formatReport, newestSnapshotFile } from '../../src/records/report.js'
 import { updateTurnRecord } from '../../src/records/turn-record.js'
 import { archiveAndPrune } from '../../src/storage/archive.js'
@@ -21,7 +22,7 @@ function addTurn(
     state: 'delivered' | 'declined' | 'failed'
     role?: string
     costUsd?: number
-    failureKind?: string
+    failureKind?: FailureKind
   }
 ): void {
   const startClock = () => new Date(input.receivedAt)

@@ -1,14 +1,17 @@
 import { describe, expect, it, vi } from 'vitest'
+import { createAnthropicClient } from '../../src/models/anthropic-client.js'
 import { createBreaker } from '../../src/models/breaker.js'
 import {
   createOpenAiClient,
   errorForStatus,
   fromChatCompletionsBody,
+  providerDiagnostics,
   toChatCompletionsBody
 } from '../../src/models/openai-client.js'
 import { createRoutedClient } from '../../src/models/routed-client.js'
 import { addSpend, countedSpend, monthOf, spendState } from '../../src/models/spend.js'
 import { ModelError, type ModelRequest } from '../../src/models/types.js'
+import { createLogger } from '../../src/records/logger.js'
 import type { ModelCallRecord } from '../../src/turn/types.js'
 import { fakeModel, textResponse } from '../support/fake-model.js'
 import { tmpStorage } from '../support/tmp.js'
@@ -29,6 +32,67 @@ function baseRequest(overrides: Partial<ModelRequest> = {}): ModelRequest {
 }
 
 describe('openai-client', () => {
+  it('keeps provider text out of errors and logs', () => {
+    const sentence = 'Private sentence quoted by the provider'
+    const error = errorForStatus(400, JSON.stringify({ error: { type: 'invalid_request_error', message: sentence } }))
+    const lines: string[] = []
+    createLogger({ level: 'debug', module: 'models', sink: (line) => lines.push(line) }).error('model.failed', {
+      error
+    })
+    expect(error.message).toBe('HTTP 400: invalid_request_error')
+    expect(lines.join('')).not.toContain(sentence)
+  })
+
+  it.each([createOpenAiClient, createAnthropicClient])(
+    'redacts a client HTTP error and keeps its diagnostic separately',
+    async (createClient) => {
+      const sentence = 'Private sentence quoted by the provider'
+      const body = JSON.stringify({ error: { type: 'invalid_request_error', message: sentence } })
+      const client = createClient({
+        baseUrl: 'https://provider.invalid/v1',
+        apiKey: fakeKey,
+        prices,
+        fetch: async () => new Response(body, { status: 400, headers: { 'content-type': 'application/json' } })
+      })
+      const error = await client.call(baseRequest()).catch((error: unknown) => error)
+      expect(error).toBeInstanceOf(ModelError)
+      expect((error as ModelError).message).toBe('HTTP 400: invalid_request_error')
+      const lines: string[] = []
+      createLogger({ module: 'models', level: 'debug', sink: (line) => lines.push(line) }).error('model.failed', {
+        error
+      })
+      expect(lines.join('')).not.toContain(sentence)
+      expect(providerDiagnostics(error)).toContain(sentence)
+    }
+  )
+
+  it('drops JSON parser causes containing model text', async () => {
+    const sentence = 'Private sentence in malformed JSON'
+    const client = createOpenAiClient({
+      baseUrl: 'https://provider.invalid/v1',
+      apiKey: fakeKey,
+      prices,
+      fetch: async () => new Response(sentence)
+    })
+    const error = await client.call(baseRequest()).catch((error: unknown) => error)
+    expect(error).toBeInstanceOf(ModelError)
+    expect((error as ModelError).cause).toBeUndefined()
+    expect((error as ModelError).message).not.toContain(sentence)
+    expect(providerDiagnostics(error)).toBe(sentence)
+    try {
+      fromChatCompletionsBody(
+        {
+          choices: [{ message: { tool_calls: [{ id: 'call-test', function: { name: 'test', arguments: sentence } }] } }]
+        },
+        prices
+      )
+      expect.unreachable()
+    } catch (error) {
+      expect((error as ModelError).cause).toBeUndefined()
+      expect((error as ModelError).message).not.toContain(sentence)
+    }
+  })
+
   it('builds a body with system blocks, all message kinds, tools, params and stream: false', () => {
     const body = toChatCompletionsBody(
       baseRequest({

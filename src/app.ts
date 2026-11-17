@@ -151,7 +151,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   const logger = options.logger ?? createLogger({ level: config.log.level, module: 'core', redactor })
 
   // Steps 1 to 4: the data volume, the database, migrations, the recovery pass.
-  const alerter = createAlerter({ minGapMs: config.alerts.minGapMs, logger, now })
+  let alerter = createAlerter({ minGapMs: config.alerts.minGapMs, logger, now })
   // Steps 1 to 4. The disk guard's three levels each alert the operator.
   const started = await startStorage({
     config,
@@ -161,6 +161,13 @@ export async function createApp(options: AppOptions): Promise<App> {
     onStorageError: () => alerter.raise('storage', { level: 'error' })
   })
   const { storage, paths } = started
+  alerter = createAlerter({
+    minGapMs: config.alerts.minGapMs,
+    logger,
+    storage,
+    deliveryFile: join(paths.root, 'alerts.jsonl'),
+    now
+  })
   const closers: (() => void | Promise<void>)[] = []
   try {
     for (const turnId of started.recovery.interruptedTurns) alerter.raise('turn_interrupted', { turnId })
@@ -224,7 +231,18 @@ export async function createApp(options: AppOptions): Promise<App> {
             breaker: roleBreaker,
             storage,
             transport: 'api',
-            onCall,
+            onCall: (call) => {
+              onCall(call)
+              const budget = config.llm.monthlyBudgetUsd
+              const spent = spendState(storage, budget, now).spentUsd
+              if (budget > 0 && call.costUsd !== undefined) {
+                for (const threshold of [0.8, 1]) {
+                  if (spent < budget * threshold && spent + call.costUsd >= budget * threshold) {
+                    alerter.raise('spend', { threshold })
+                  }
+                }
+              }
+            },
             onSpendError,
             onAuthFailure: (role) => alerter.raise('model_auth', { role }),
             now
@@ -246,7 +264,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       const runnerToken = env['RUNNER_TOKEN']
       if (!runnerToken)
         throw new ConfigError('RUNNER_TOKEN is not set in the environment (llm.transport is "subscription")')
-      const toolServer = createToolServer({ limits, logger, now })
+      const toolServer = createToolServer({ limits, logger: logger.child({ module: 'tool_server' }), now })
       await toolServer.listen(config.llm.subscription.toolServerPort)
       closers.push(() => toolServer.close())
       fallbackBreaker = fallbackTarget ? createBreaker({ breakerMs: config.llm.breakerMs, now }) : undefined
@@ -259,7 +277,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         breaker,
         fallback: fallbackTarget && fallbackBreaker ? apiRunner(fallbackTarget, undefined, fallbackBreaker) : undefined,
         onAuthFailure: (role) => alerter.raise('model_auth', { role }),
-        logger,
+        logger: logger.child({ module: 'subscription' }),
         now
       })
     }
@@ -281,7 +299,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     const schedule = { sync: () => void writeScheduleFile(storage, paths.root, now) }
     logger.info('schedule.written', { reminders: writeScheduleFile(storage, paths.root, now) })
     writeChatFlags(storage, paths.root, packs)
-    const registry = createToolRegistry({ storage, config, logger, redactor, now })
+    const registry = createToolRegistry({ storage, config, logger: logger.child({ module: 'tools' }), redactor, now })
     const exaKey = env['EXA_API_KEY']
     let search = options.ports?.search
     if (!search && config.search.provider === 'exa') {
@@ -452,7 +470,7 @@ export async function createApp(options: AppOptions): Promise<App> {
           now
         }),
         judge: memoryJudge,
-        logger,
+        logger: logger.child({ module: 'memory' }),
         alerter,
         paused: () => started.diskGuard.state().paused.memoryExtraction,
         now
@@ -596,6 +614,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       }
     }
   } catch (error) {
+    alerter.raise('deploy_health', {})
     for (const stop of closers) await stop()
     storage.close()
     throw error

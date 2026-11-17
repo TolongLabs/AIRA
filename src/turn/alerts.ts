@@ -1,4 +1,8 @@
+import { appendFileSync } from 'node:fs'
+import type { FailureKind } from '../records/kinds.js'
 import type { Logger } from '../records/logger.js'
+import type { Storage } from '../storage/database.js'
+import { insertFailure } from '../storage/failures.js'
 
 // Operator alerts (docs/trd/reliability.md#operator-alerts): rate limited per kind.
 
@@ -21,7 +25,10 @@ export interface Alerter {
 export function createAlerter(options: {
   minGapMs: number
   logger: Logger
-  /** Sends the alert to the owner's own chat. Absent until a delivery path for alerts exists. */
+  storage?: Storage
+  /** Durable delivery on the data volume. */
+  deliveryFile?: string
+  /** Optional additional delivery sink. */
   send?: (kind: AlertKind, detail: Record<string, unknown>) => void
   now?: () => Date
 }): Alerter {
@@ -33,8 +40,40 @@ export function createAlerter(options: {
       const previous = last.get(kind)
       if (previous !== undefined && at - previous < options.minGapMs) return false
       last.set(kind, at)
-      options.logger.error('alert', { kind, ...detail })
+      const failureKind: FailureKind =
+        kind === 'spend'
+          ? 'budget'
+          : kind === 'model_auth'
+            ? 'auth'
+            : kind === 'storage'
+              ? 'storage_error'
+              : kind === 'pack_invalid' || kind === 'deploy_health'
+                ? 'config_invalid'
+                : kind === 'breaker_open'
+                  ? 'rate_limit'
+                  : kind
+      options.storage?.tx((db) =>
+        insertFailure(
+          db,
+          {
+            turnId: typeof detail['turnId'] === 'string' ? detail['turnId'] : undefined,
+            jobId: typeof detail['jobId'] === 'string' ? detail['jobId'] : undefined,
+            stage: 'alert',
+            kind: failureKind,
+            message: `operator alert: ${kind}`,
+            handledBy: 'operator'
+          },
+          now
+        )
+      )
+      options.logger
+        .child({ module: 'alerts', ...(typeof detail['turnId'] === 'string' ? { turnId: detail['turnId'] } : {}) })
+        .error('alert', { kind, ...detail })
       try {
+        if (options.deliveryFile)
+          appendFileSync(options.deliveryFile, JSON.stringify({ kind, time: new Date(at).toISOString() }) + '\n', {
+            mode: 0o600
+          })
         options.send?.(kind, detail)
       } catch (error) {
         options.logger.error('alert.send_failed', { kind, error })

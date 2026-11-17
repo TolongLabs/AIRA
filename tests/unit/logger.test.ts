@@ -36,6 +36,16 @@ describe('logger', () => {
     expect(lines[0]).toMatchObject({ job_id: 'j-9', level: 'warn' })
   })
 
+  it('normalises legacy id fields without exposing duplicate aliases', () => {
+    const { logger, lines } = capture()
+    logger.warn('tool.failed', { turnId: 't-test' })
+    logger.warn('memory.failed', { job: 'j-test' })
+    expect(lines[0]).toMatchObject({ turn_id: 't-test' })
+    expect(lines[0]).not.toHaveProperty('turnId')
+    expect(lines[1]).toMatchObject({ job_id: 'j-test' })
+    expect(lines[1]).not.toHaveProperty('job')
+  })
+
   it('drops lines below the minimum level', () => {
     const { logger, lines } = capture('warn')
     logger.info('quiet')

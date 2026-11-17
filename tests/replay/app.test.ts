@@ -30,6 +30,25 @@ const turn = (app: App) =>
   )
 
 describe('the whole service', () => {
+  it('raises one spend alert and failure when calls cross the budget thresholds inside minGapMs', async () => {
+    const model = queueModel([
+      { text: 'first', costUsd: 8 },
+      { text: 'second', costUsd: 2 }
+    ])
+    const { app, gateway, dataDir, logs } = await start(model, {
+      config: (config) => {
+        config.llm.monthlyBudgetUsd = 10
+      }
+    })
+    await gateway.send(msg('budget-1', 'first request'))
+    await gateway.send(msg('budget-2', 'second request'))
+    expect(logs.filter((line) => line['event'] === 'alert' && line['kind'] === 'spend')).toHaveLength(1)
+    expect(
+      app.storage.read((db) => db.prepare("SELECT kind FROM failure WHERE handled_by = 'operator'").all())
+    ).toEqual([{ kind: 'budget' }])
+    expect(readFileSync(join(dataDir, 'alerts.jsonl'), 'utf8').trim().split('\n')).toHaveLength(1)
+  })
+
   it('answers a message: six prompt blocks in, a cleaned and rendered reply out, a full turn record', async () => {
     const model = queueModel([
       { text: 'Example: Sure!\n\n# Plan\n* **Dinner** at *six*\n* [menu](https://example.test/menu)' }

@@ -171,12 +171,12 @@ export function createAnthropicClient(options: AnthropicClientOptions): ModelCli
           throw new ModelError('transient', 'aborted', { cause: err })
         }
         if (err instanceof APIConnectionError) {
-          throw new ModelError('transient', err.message, { cause: err })
+          throw new ModelError('transient', 'provider connection failed')
         }
         if (err instanceof APIError && err.status !== undefined) {
-          throw errorForStatus(err.status, err.message)
+          throw errorForStatus(err.status, JSON.stringify(err.error))
         }
-        throw new ModelError('malformed', err instanceof Error ? err.message : 'unexpected response', { cause: err })
+        throw new ModelError('malformed', 'unexpected provider response')
       }
       return fromMessage(message, options.prices)
     }
