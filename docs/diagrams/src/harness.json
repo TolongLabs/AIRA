@@ -1,0 +1,169 @@
+{
+  "diagram_type": "workflow",
+  "edges": [
+    {
+      "from": "parse",
+      "id": "e1",
+      "label": "validated scenario",
+      "to": "inject"
+    },
+    {
+      "from": "inject",
+      "id": "e2",
+      "label": "inbound steps",
+      "to": "bridge"
+    },
+    {
+      "from": "bridge",
+      "id": "e3",
+      "label": "recorded calls",
+      "to": "server"
+    },
+    {
+      "from": "server",
+      "id": "e4",
+      "label": "SimBackend API",
+      "to": "backend"
+    },
+    {
+      "from": "parse",
+      "id": "e5",
+      "label": "scenario",
+      "role": "branch",
+      "to": "record"
+    },
+    {
+      "from": "bridge",
+      "id": "e6",
+      "label": "recorded /send calls",
+      "role": "branch",
+      "to": "sent"
+    }
+  ],
+  "lanes": [
+    {
+      "id": "harness",
+      "label": "Harness Helpers"
+    },
+    {
+      "id": "system",
+      "label": "Core or Fake Bridge"
+    },
+    {
+      "id": "preview",
+      "label": "Chat Preview"
+    }
+  ],
+  "mainPath": ["parse", "inject", "bridge", "server", "backend"],
+  "meta": {
+    "output": ".archify/harness.html",
+    "quality_profile": "showcase",
+    "title": "Harness Replay, Fake Bridge and Preview",
+    "repository": {
+      "url": "https://github.com/TolongLabs/AIRA",
+      "provider": "github",
+      "revision": "163a320e5dfeaf636ffe3e4e4c389470d9567d35"
+    }
+  },
+  "nodes": [
+    {
+      "col": 0,
+      "id": "parse",
+      "label": "parseScenario",
+      "lane": "harness",
+      "sources": [
+        {
+          "label": "parseScenario",
+          "path": "tests/harness/scenario.ts"
+        }
+      ],
+      "sublabel": "Strict validation",
+      "type": "backend"
+    },
+    {
+      "col": 1,
+      "id": "record",
+      "label": "createRecordingClient",
+      "lane": "harness",
+      "sources": [
+        {
+          "label": "createRecordingClient",
+          "path": "tests/harness/recordings.ts"
+        }
+      ],
+      "sublabel": "Record or replay",
+      "type": "backend"
+    },
+    {
+      "col": 2,
+      "id": "inject",
+      "label": "injectScenario",
+      "lane": "harness",
+      "sources": [
+        {
+          "label": "injectScenario",
+          "path": "tests/harness/bridge-scenario.ts"
+        }
+      ],
+      "sublabel": "Steps in order",
+      "type": "backend"
+    },
+    {
+      "col": 2,
+      "id": "bridge",
+      "label": "createFakeBridge",
+      "lane": "system",
+      "sources": [
+        {
+          "label": "createFakeBridge",
+          "path": "tests/harness/bridge.ts"
+        }
+      ],
+      "sublabel": "Loopback HTTP routes",
+      "type": "backend"
+    },
+    {
+      "col": 3,
+      "id": "sent",
+      "label": "sentMessages",
+      "lane": "harness",
+      "sources": [
+        {
+          "label": "sentMessages",
+          "path": "tests/harness/bridge-scenario.ts"
+        }
+      ],
+      "sublabel": "Reads /send calls",
+      "type": "backend"
+    },
+    {
+      "col": 4,
+      "id": "server",
+      "label": "startSimServer",
+      "lane": "preview",
+      "sources": [
+        {
+          "label": "startSimServer",
+          "path": "tests/harness/sim/server.ts"
+        }
+      ],
+      "sublabel": "Loopback page and API",
+      "type": "frontend"
+    },
+    {
+      "col": 5,
+      "id": "backend",
+      "label": "SimBackend",
+      "lane": "preview",
+      "sources": [
+        {
+          "label": "SimBackend",
+          "path": "tests/harness/sim/backend.ts"
+        }
+      ],
+      "sublabel": "Draws recorded calls",
+      "type": "frontend"
+    }
+  ],
+  "schema_version": 2
+}

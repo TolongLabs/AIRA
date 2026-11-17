@@ -24,16 +24,24 @@ A replay or simulator run that makes a live call fails. The harness counts live 
 ## Recordings
 
 - Every model request is hashed from its role, model, prompt blocks, window, tool list and parameters.
+- The hash is SHA-256 over the canonicalized role, model, system blocks, messages, tools and parameters. Key order
+  does not matter.
 - In `record` mode the harness calls the real model and stores the response under that hash.
-- In `replay` mode it returns the stored response. A missing hash fails the test with the diff against the nearest
+- In `replay` mode it returns the stored response. A missing hash fails the test with a line diff against the closest
   stored request, so an unintended prompt change is visible.
+- A recording file holds version 1 with entries keyed by hash. Each entry keeps the request and the response or error.
 - Recordings are files in the repository. They contain only invented conversations. No real chat text is ever
   recorded.
 - `bun run harness:refresh <scenario>` re-records one scenario on purpose.
+- Recording and replay live in `tests/harness/recordings.ts`.
 
 ## Conversation Scenarios
 
-A scenario is a file that describes chats, members, a character and a timeline of messages with times.
+A scenario is a file that describes chats, members, a character and a timeline of messages with times. Parsing
+rejects unknown fields, duplicate members, a DM with anything but one member, a sender who is not a member, and a
+step time earlier than the one before it. Scenario ids are invented (`test-chat-<id>`, `test-member-<name>`) and never
+look like real WhatsApp ids. Scenario helpers live in `tests/harness/scenario.ts`; the gateway request shapes live in
+`tests/harness/gateway.ts`.
 
 ```yaml
 chat: { id: g1, type: group, character: example }
@@ -106,6 +114,20 @@ The Restart, Disk Full, Restore and Migration suites are specified in [Persisten
 
 Results are compared with the targets in the PRD (NFR-1). A benchmark does not gate a commit; it gates a release.
 
+![Benchmark run: a validated prompt set runs through a local core session, then a summary is written as JSONL](../diagrams/benchmarks.svg)
+
+- Sets are YAML with a non-empty name and description and 1 to 50 non-empty prompts. `loadBenchSet` rejects anything
+  else.
+- Prompts run in order through one local core session (`openChatSession`), which uses a scratch data folder unless a
+  test gives it one. Each prompt writes one row.
+- `p50` and `p90` are nearest-rank percentiles over delivered turns only. Cost and token totals cover all rows. A run
+  with no input tokens reports a null cache hit rate.
+- `writeBenchResult` writes one JSON line per prompt row plus a final summary line with `"summary": true`. The file
+  name is timestamp plus set name; writing the same path replaces it.
+- Shipped sets: `bench/casual.yml` (12 everyday messages that need no tool) and `bench/tool.yml` (8 search and
+  page-read prompts).
+- The runner lives in `src/bench/run.ts`; the local session lives in `src/bench/chat.ts`.
+
 ## Manual Tools
 
 - `bun run sim` opens the WhatsApp simulator. See [WhatsApp Simulator](#whatsapp-simulator).
@@ -146,13 +168,23 @@ answers the same routes, so the gateway cannot tell the difference.
   after number `n`, and `GET /control/file/<n>` returns the file that call `n` sent. Neither is recorded. Each
   `/send` and `/send-media` call also keeps the message id the bridge answered with, so a reply that names a message
   can be matched to it.
+- A `/send-media` file path is copied and served only when its real path, symlinks resolved, lies under a configured
+  media root. Any other path is recorded but never read.
+- The control file route serves recognized image types as images and every other file as `application/octet-stream`.
 - The route list above is read from the pinned bridge's source and the local patches. It is checked against that
   source whenever the gateway version changes.
+- The fake bridge binds loopback only and refuses a `Host` that is not loopback. Scenario injection and send
+  assertions live in `tests/harness/bridge-scenario.ts`; the bridge itself lives in `tests/harness/bridge.ts`.
 - The fake bridge binds to loopback and never contacts WhatsApp.
 
 ### Chat Preview
 
-A local page that draws the recorded calls as a conversation.
+A local page that draws the recorded calls as a conversation. The preview server accepts JSON request bodies up to
+64 KiB, binds loopback, and answers only requests whose `Host` is its own address with an absent or matching
+same-origin `Origin`, so another site cannot drive the sim. The server lives in `tests/harness/sim/server.ts`; the
+backends live in `tests/harness/sim/backend.ts`.
+
+![Harness replay: a validated scenario feeds recording replay or the fake bridge, and the preview draws the recorded sends](../diagrams/harness.svg)
 
 - One column per chat, with member bubbles and AIRA's bubbles in send order.
 - Text is drawn with WhatsApp's published markup rules: bold, italic, strikethrough, monospace, inline code, lists

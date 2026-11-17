@@ -33,6 +33,11 @@ Direct commands stamp built and model done too. The non-streaming clients have n
 Gateway delivery happens after core return and is outside these timings. Reports use arrival, falling back to turn
 open for older records.
 
+![Turn record lifecycle: stage stamps and child rows written during a turn, then retention pruning and operator reads](../diagrams/turn-record.svg)
+
+The writers live in `src/records/turn-record.ts`: `markStage`, `updateTurnRecord`, `recordModelCall`,
+`recordToolCall`, `recordFailure` and `saveDiagnostics`.
+
 ## Child Records
 
 | Table            | One Row Per                   | Key Fields                                                                  |
@@ -59,20 +64,24 @@ One list, used by records, alerts and tests: the model kinds in [Models](models.
 `memory_job_failed`, `config_invalid`, `binding_invalid`, `gateway_malformed`, `gateway_unmarked`, `turn_interrupted`, `storage_error`,
 `storage_low_space`, `backup_failed`, `internal`.
 
+The list lives in `src/records/kinds.ts`. Alert delivery follows the Deployment decisions.
+
 ## Logs
 
 - Structured JSON lines on standard output, collected by the container runtime with rotation.
-- Every line has: time, level, `turn_id` or job id, module, event name.
+- Every line has: time, level, module, event name. It carries `turn_id` or `job_id` only when the call's context
+  or fields supply one. The logger lives in `src/records/logger.ts`.
 - Errors are serialised with name, message and stack. A test checks that an error passed to the logger is not lost.
 - Levels: `error` for a failure that reached a user or lost work, `warn` for a handled failure, `info` for one line
   per stage, `debug` for detail that is off in production.
 
 ## Redaction
 
-- Message text, names, phone numbers and WhatsApp ids are replaced with stable hashes in logs and in every record
-  table except the two below.
+- WhatsApp ids and phone-like strings are replaced with stable hashes. Configured secrets are masked. Anything
+  else, including message text and names, passes through unchanged.
 - Tool arguments are logged by shape (keys and types), not by value.
-- Keys and tokens are never logged. The logger masks any value read from `.env`.
+- The default logger redacts every value found in `process.env`, not only `.env` entries. A value shorter than 6
+  characters is not masked, so a short secret is not safe to rely on. Redaction lives in `src/records/redact.ts`.
 
 Verbatim text is kept in two places only:
 
@@ -89,11 +98,18 @@ Each attempt opens a `job_run` row before work and closes it with its outcome, i
 days, setting changes kept. Pruning writes its own `job_run` row with counts. Rows are exported to the archive before
 they are deleted. See [Persistence](storage.md#analytics-and-the-archive).
 
+Two rows never fall to the cutoff. A turn whose state is `running` is kept, and the newest `session_message` row
+always stays: it is the high-water mark the memory cursors count from, and an empty window table would hand out the
+same ids again. `pruneRecords` in `src/records/retention.ts` takes an optional `beforeDelete` callback, called inside
+the same transaction with each table's rows before deletion, so an archive job can export them first.
+
 ## Operator Views
 
 - `scripts/turn.ts <turn_id>` prints one turn: stages, model calls, tool calls, failures, in time order.
+  It reads through `readTurn` in `src/records/turn-view.ts`, which returns the turn with its child rows ordered by time.
 - `scripts/report.ts` prints latency percentiles by turn kind, failure counts by kind, cost, and fallback rate for a
-  date range.
+  date range. `buildReport` in `src/records/report.ts` reads the newest filename-matching snapshot that passes a
+  `quick_check`, unions it with any Parquet archive files, and never opens the live database.
 - The site's dashboard page shows the same figures. See [Owner Site](site.md).
 
 ## Configuration
@@ -104,3 +120,14 @@ they are deleted. See [Persistence](storage.md#analytics-and-the-archive).
 | `records.diagnosticsHours` | 72      | Verbatim failed-turn diagnostics |
 | `records.windowDays`       | 7       | Conversation window messages     |
 | `log.level`                | `info`  | Minimum log level                |
+
+## Code
+
+| Area                           | Code                                                |
+| ------------------------------ | --------------------------------------------------- |
+| Turn and child record writers  | `src/records/turn-record.ts`                        |
+| Failure kinds                  | `src/records/kinds.ts`                              |
+| Structured logs                | `src/records/logger.ts`                             |
+| Redaction                      | `src/records/redact.ts`                             |
+| Retention pruning              | `src/records/retention.ts`                          |
+| Turn view and aggregate report | `src/records/turn-view.ts`, `src/records/report.ts` |
