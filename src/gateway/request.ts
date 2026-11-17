@@ -161,6 +161,32 @@ function attachmentOf(note: string): Attachment | undefined {
   return undefined
 }
 
+/** The timestamp the gateway puts at the start of a message, on the same line as its first note (docs/trd/system.md). */
+const TIMESTAMP = /^\[[A-Z][a-z]{2} \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?: [A-Za-z0-9_+\-/:]+)?\][ \t]*/gm
+/** The line the gateway adds after the text for each picture it sends inline, as an `image_url` part. */
+const IMAGE_ATTACHED = /\n*\[Image attached at: ([^\]\n]+)\][ \t]*$/
+
+/** The number of inline pictures in the newest user content. A member cannot add a content part. */
+function imagePartsOf(content: unknown): number {
+  if (!Array.isArray(content)) return 0
+  return content.filter(
+    (part: unknown) => typeof part === 'object' && part !== null && (part as { type?: unknown }).type === 'image_url'
+  ).length
+}
+
+/** Takes the attached-at lines off the end of the text, at most one per inline picture, in the order sent. */
+function inlineImages(text: string, parts: number): { text: string; attachments: Attachment[] } {
+  const attachments: Attachment[] = []
+  let rest = text
+  while (attachments.length < parts) {
+    const line = IMAGE_ATTACHED.exec(rest)
+    if (!line?.[1]) break
+    attachments.unshift({ kind: 'image', path: line[1].trim() })
+    rest = rest.slice(0, line.index)
+  }
+  return { text: rest.trim(), attachments }
+}
+
 /** A display name right before a marker. A note holds a colon or a quote mark; a name holds neither. */
 const SENDER_NAME = /\[([^\[\]\n:"]{1,40})\]\s*$/
 
@@ -251,7 +277,7 @@ export function parseGatewayRequest(body: unknown): GatewayRequest {
   const names: (string | undefined)[] = []
   const segments = starts.map((start, i) => {
     const from = i === 0 ? 0 : (starts[i - 1] ?? 0) + (markers[i - 1]?.[0].length ?? 0)
-    let segment = content.slice(from, start)
+    let segment = content.slice(from, start).replace(TIMESTAMP, '')
     const name = SENDER_NAME.exec(segment)
     names.push(name?.[1]?.trim())
     if (name) segment = segment.slice(0, name.index)
@@ -259,7 +285,11 @@ export function parseGatewayRequest(body: unknown): GatewayRequest {
   })
   const last = markers[markers.length - 1] as RegExpMatchArray
   const newest = segments[segments.length - 1] as Notes
-  let text = clean(content.slice((last.index ?? 0) + last[0].length))
+  const inline = inlineImages(
+    clean(content.slice((last.index ?? 0) + last[0].length)),
+    imagePartsOf(newestUser?.content)
+  )
+  let text = inline.text
   if (text === '' && newest.transcripts.length > 0) {
     text = newest.transcripts.map((line) => line.match(TRANSCRIPT)?.[1] ?? line).join('\n\n')
   }
@@ -277,7 +307,7 @@ export function parseGatewayRequest(body: unknown): GatewayRequest {
     earlier,
     ...(quote ? { quote } : {}),
     ...(names[names.length - 1] ? { senderName: names[names.length - 1] } : {}),
-    attachments: newest.attachments,
+    attachments: [...newest.attachments, ...inline.attachments],
     stream,
     includeUsage
   }
