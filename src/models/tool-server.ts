@@ -159,7 +159,8 @@ export function createToolServer(options: {
           ...(result.ok ? {} : { isError: true }),
           content: [{ type: 'text', text: result.content }]
         }
-      } catch {
+      } catch (error) {
+        options.logger.warn('mcp_tool_failed', { turnId: session.turnId, tool: toolName, error })
         return {
           isError: true,
           content: [{ type: 'text', text: JSON.stringify({ error: 'error', reason: 'the tool failed' }) }]

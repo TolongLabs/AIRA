@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { loadPacks } from '../../src/character/loader.js'
+import { type Pack, loadPacks } from '../../src/character/loader.js'
+import { withAttachments } from '../../src/format/attachments.js'
+import { createReplyCleaner } from '../../src/format/clean.js'
 import type { GatewayRequest } from '../../src/gateway/request.js'
 import { createApiRunner } from '../../src/models/api-runner.js'
 import { createBreaker } from '../../src/models/breaker.js'
@@ -7,6 +9,7 @@ import { createRoutedClient } from '../../src/models/routed-client.js'
 import { createSubscriptionRunner } from '../../src/models/subscription-runner.js'
 import { createToolServer } from '../../src/models/tool-server.js'
 import { ModelError } from '../../src/models/types.js'
+import { withStickers } from '../../src/prompt/stickers.js'
 import { createLogger } from '../../src/records/logger.js'
 import { createRedactor } from '../../src/records/redact.js'
 import { stageDurations } from '../../src/records/turn-view.js'
@@ -15,8 +18,8 @@ import { setSetting } from '../../src/settings/settings.js'
 import type { Storage } from '../../src/storage/database.js'
 import { basicPromptBuilder, plainCleaner } from '../../src/turn/defaults.js'
 import { createTurnService } from '../../src/turn/pipeline.js'
-import type { TurnRunner } from '../../src/turn/types.js'
-import { scriptedRunner, testConfig } from '../support/core.js'
+import type { PromptBuilder, ReplyCleaner, TurnRunner } from '../../src/turn/types.js'
+import { runResult, scriptedRunner, testConfig } from '../support/core.js'
 import { tmpStorage } from '../support/tmp.js'
 
 const CHAT = 'test-chat-records'
@@ -33,14 +36,19 @@ const request = (mid = 'test-record'): Extract<GatewayRequest, { type: 'turn' }>
 const rows = <T = Record<string, unknown>>(storage: Storage, sql: string): T[] =>
   storage.read((db) => db.prepare(sql).all() as T[])
 
-function setup(runner: TurnRunner = scriptedRunner(() => 'test reply'), batchMs = 0) {
+function setup(
+  runner: TurnRunner = scriptedRunner(() => 'test reply'),
+  batchMs = 0,
+  overrides: { cleaner?: ReplyCleaner; packs?: () => ReturnType<typeof loadPacks>; prompt?: PromptBuilder } = {}
+) {
   const storage = tmpStorage()
   const config = testConfig((config) => {
     config.turn.batchMs = batchMs
   })
   const logs: Record<string, unknown>[] = []
   const logger = createLogger({ module: 'test', level: 'debug', sink: (line) => logs.push(JSON.parse(line)) })
-  const packs = () => loadPacks({ repositoryDir: 'characters', dataDir: '/tmp/aira-no-private-packs' })
+  const packs =
+    overrides.packs ?? (() => loadPacks({ repositoryDir: 'characters', dataDir: '/tmp/aira-no-private-packs' }))
   const chat = ensureChat(storage, { waId: CHAT, type: 'group' })
   setChatStatus(storage, { chatId: chat.chatId, status: 'active', actor: 'test' })
   setSetting(storage, { level: 'global', scope: '', key: 'character', value: 'example', actor: 'test' })
@@ -51,15 +59,15 @@ function setup(runner: TurnRunner = scriptedRunner(() => 'test reply'), batchMs 
     redactor: createRedactor(),
     packs,
     runner,
-    prompt: basicPromptBuilder,
-    cleaner: plainCleaner,
+    prompt: overrides.prompt ?? basicPromptBuilder,
+    cleaner: overrides.cleaner ?? plainCleaner,
     alerter: {
       raise() {
         return false
       }
     }
   })
-  return { storage, turns, logs }
+  return { storage, turns, logs, packs }
 }
 
 afterEach(() => vi.useRealTimers())
@@ -189,5 +197,131 @@ describe('attempt records and arrival latency', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('a cleaner throw is recorded as internal at stage clean', async () => {
+    const throwingName = {
+      length: 1,
+      replace() {
+        throw new Error('cleaner step exploded')
+      }
+    } as unknown as string
+    const cleaner = createReplyCleaner({ format: { bubbleMaxChars: 700, maxBubbles: 3, leakCheck: 'off' } }, () => [
+      throwingName
+    ])
+    const core = setup(
+      scriptedRunner(() => 'hello there'),
+      0,
+      { cleaner }
+    )
+    const reply = await core.turns.handle(request('clean-throw'))
+
+    expect(reply.content).toBe(core.packs().packs.get('example')?.lines.error)
+    expect(reply.content).not.toContain('cleaner step exploded')
+    expect(rows(core.storage, 'SELECT state, outcome, failure_kind FROM turn')).toEqual([
+      { state: 'failed', outcome: 'failed', failure_kind: 'internal' }
+    ])
+    expect(rows(core.storage, 'SELECT stage, kind, message, stack FROM failure')).toEqual([
+      {
+        stage: 'clean',
+        kind: 'internal',
+        message: 'cleaner step exploded',
+        stack: expect.stringContaining('Error: cleaner step exploded')
+      }
+    ])
+  })
+
+  it('a sticker or attachment storage error is recorded as a handled failure', async () => {
+    const basePacks = loadPacks({ repositoryDir: 'characters', dataDir: '/tmp/aira-no-private-packs' })
+    const basePack = basePacks.packs.get('example')!
+    const moods = new Map(basePack.moods)
+    const neutral = moods.get('neutral')!
+    moods.set('neutral', { ...neutral, stickers: ['wave.webp'] })
+    const dataPack: Pack = { ...basePack, source: 'data', moods }
+    const brokenStorage = (msg: string): Storage =>
+      ({
+        read() {
+          throw new Error(msg)
+        },
+        tx() {
+          throw new Error(msg)
+        }
+      }) as unknown as Storage
+
+    const stickerCore = setup(
+      scriptedRunner(() => 'sticker text reply'),
+      0,
+      {
+        packs: () => ({ packs: new Map([['example', dataPack]]), faults: [] }),
+        prompt: {
+          async build(input) {
+            const built = await basicPromptBuilder.build(input)
+            return { ...built, record: { ...built.record, mood: 'neutral' } }
+          }
+        },
+        cleaner: withStickers(plainCleaner, {
+          storage: brokenStorage('sticker store failed'),
+          hostDataDir: '/host',
+          random: () => 0
+        })
+      }
+    )
+    const stickerReply = await stickerCore.turns.handle(request('sticker-err'))
+    expect(stickerReply.content).toBe('sticker text reply')
+    expect(rows(stickerCore.storage, 'SELECT state, outcome, failure_kind FROM turn')).toEqual([
+      { state: 'delivered', outcome: 'delivered', failure_kind: null }
+    ])
+    expect(rows(stickerCore.storage, 'SELECT stage, kind, handled_by, message, stack FROM failure')).toEqual([
+      {
+        stage: 'clean',
+        kind: 'storage_error',
+        handled_by: 'stickers',
+        message: 'sticker store failed',
+        stack: expect.stringContaining('Error: sticker store failed')
+      }
+    ])
+    expect(stickerCore.logs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ event: 'turn.failure', level: 'warn', stage: 'clean', kind: 'storage_error' })
+      ])
+    )
+
+    const receiptRunner: TurnRunner = {
+      run: async () => ({ ...runResult('attachment text reply'), receipts: ['rcpt_1'] })
+    }
+    const attachCore = setup(receiptRunner, 0, {
+      packs: () => ({ packs: new Map([['example', dataPack]]), faults: [] }),
+      prompt: {
+        async build(input) {
+          const built = await basicPromptBuilder.build(input)
+          return { ...built, record: { ...built.record, mood: 'neutral' } }
+        }
+      },
+      cleaner: withStickers(
+        withAttachments(plainCleaner, {
+          storage: brokenStorage('attachment store failed'),
+          hostDataDir: '/host'
+        }),
+        {
+          storage: tmpStorage(),
+          hostDataDir: '/host',
+          random: () => 0
+        }
+      )
+    })
+    const attachReply = await attachCore.turns.handle(request('attach-err'))
+    expect(attachReply.content).toBe('attachment text reply\nMEDIA:/host/characters/example/stickers/wave.webp')
+    expect(rows(attachCore.storage, 'SELECT state, outcome, failure_kind FROM turn')).toEqual([
+      { state: 'delivered', outcome: 'delivered', failure_kind: null }
+    ])
+    expect(rows(attachCore.storage, 'SELECT stage, kind, handled_by, message, stack FROM failure')).toEqual([
+      {
+        stage: 'clean',
+        kind: 'storage_error',
+        handled_by: 'attachments',
+        message: 'attachment store failed',
+        stack: expect.stringContaining('Error: attachment store failed')
+      }
+    ])
   })
 })

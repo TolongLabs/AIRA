@@ -413,8 +413,19 @@ export function leaksPrompt(text: string, fixedBlocks: string[]): boolean {
   return false
 }
 
+export interface CleanerWarning {
+  kind: 'storage_error' | 'internal'
+  error: unknown
+  handledBy: string
+}
+
+export interface CleanReplyResult extends CleanedReply {
+  error?: unknown
+  warnings?: CleanerWarning[]
+}
+
 /** Runs all seven steps of the cleaning chain, then splits into bubbles. */
-export function cleanReply(text: string, options: CleanOptions): CleanedReply {
+export function cleanReply(text: string, options: CleanOptions): CleanReplyResult {
   const steps: string[] = []
   try {
     let current = text
@@ -511,8 +522,8 @@ export function cleanReply(text: string, options: CleanOptions): CleanedReply {
       ...(replacedBy ? { replacedBy } : {}),
       ...(options.media ? { attachments: options.media } : {})
     }
-  } catch {
-    return { content: '', bubbleCount: 0, steps }
+  } catch (error) {
+    return { content: '', bubbleCount: 0, steps, error }
   }
 }
 
@@ -527,39 +538,44 @@ export function createReplyCleaner(
 ): ReplyCleaner {
   return {
     clean({ text, context, built, run }) {
-      const shapeObj =
-        typeof built.shape === 'object' && built.shape !== null ? (built.shape as Record<string, unknown>) : undefined
-      const maxChars = typeof shapeObj?.maxChars === 'number' ? shapeObj.maxChars : undefined
-      const lengthBypass = typeof shapeObj?.lengthBypass === 'boolean' ? shapeObj.lengthBypass : false
-      const fixedBlocks = built.system
-        .filter((block) => block.name === 'core' || block.name === 'speech' || block.name === 'harness')
-        .map((block) => block.text)
+      try {
+        const shapeObj =
+          typeof built.shape === 'object' && built.shape !== null ? (built.shape as Record<string, unknown>) : undefined
+        const maxChars = typeof shapeObj?.maxChars === 'number' ? shapeObj.maxChars : undefined
+        const lengthBypass = typeof shapeObj?.lengthBypass === 'boolean' ? shapeObj.lengthBypass : false
+        const fixedBlocks = built.system
+          .filter((block) => block.name === 'core' || block.name === 'speech' || block.name === 'harness')
+          .map((block) => block.text)
 
-      return cleanReply(text, {
-        toolNames: toolNames ? toolNames() : [],
-        speakerNames: [context.character.card.displayName, context.character.card.id],
-        lengthBypass,
-        shape: { maxChars },
-        fixedBlocks,
-        leakCheck: config.format.leakCheck === 'on',
-        fallbackLine: context.character.lines.fallback,
-        bubbleMaxChars: config.format.bubbleMaxChars,
-        maxBubbles: config.format.maxBubbles,
-        // A direct command runs no model and gets no footer.
-        toolsOk:
-          context.delivery?.kind === 'research'
-            ? ['web_search', 'read_page']
-            : toolsOk && run.calls.length > 0
-              ? toolsOk(context.turnId)
-              : [],
-        ...(context.commandTool === undefined ? {} : { commandTool: context.commandTool }),
-        ...(context.character.card.toolFooter ? { footer: context.character.card.toolFooter } : {}),
-        footerOff: context.settings?.['features.toolFooter']?.value === false,
-        ...(typeof context.settings?.['footerEmoji']?.value === 'string'
-          ? { footerEmoji: context.settings['footerEmoji'].value }
-          : {}),
-        sources: context.researchSources ?? (sources ? sources(context.turnId) : [])
-      })
+        return cleanReply(text, {
+          toolNames: toolNames ? toolNames() : [],
+          speakerNames: [context.character.card.displayName, context.character.card.id],
+          lengthBypass,
+          shape: { maxChars },
+          fixedBlocks,
+          leakCheck: config.format.leakCheck === 'on',
+          fallbackLine: context.character.lines.fallback,
+          bubbleMaxChars: config.format.bubbleMaxChars,
+          maxBubbles: config.format.maxBubbles,
+          // A direct command runs no model and gets no footer.
+          toolsOk:
+            context.delivery?.kind === 'research'
+              ? ['web_search', 'read_page']
+              : toolsOk && run.calls.length > 0
+                ? toolsOk(context.turnId)
+                : [],
+          ...(context.commandTool === undefined ? {} : { commandTool: context.commandTool }),
+          ...(context.character.card.toolFooter ? { footer: context.character.card.toolFooter } : {}),
+          footerOff: context.settings?.['features.toolFooter']?.value === false,
+          ...(typeof context.settings?.['footerEmoji']?.value === 'string'
+            ? { footerEmoji: context.settings['footerEmoji'].value }
+            : {}),
+          sources: context.researchSources ?? (sources ? sources(context.turnId) : [])
+        })
+      } catch (error) {
+        const failed: CleanReplyResult = { content: '', bubbleCount: 0, steps: [], error }
+        return failed
+      }
     }
   }
 }

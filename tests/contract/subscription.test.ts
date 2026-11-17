@@ -349,7 +349,8 @@ describe('the subscription transport', () => {
     })
 
     it('returns an error result when a tool rejects or is unknown, and keeps running', async () => {
-      const { server, url } = await startToolServer()
+      const logLines: Record<string, unknown>[] = []
+      const { server, url } = await startToolServer(undefined, undefined, (line) => logLines.push(JSON.parse(line)))
       const log: { args: unknown; callId: string }[] = []
       const broken = makeTool('broken', log, {
         fail: () => {
@@ -366,6 +367,17 @@ describe('the subscription transport', () => {
 
       const failed = await client.callTool({ name: 'broken', arguments: {} })
       expect(failed.isError).toBe(true)
+      expect(logLines).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            level: 'warn',
+            event: 'mcp_tool_failed',
+            turn_id: 't-err',
+            tool: 'broken',
+            error: expect.objectContaining({ message: 'boom' })
+          })
+        ])
+      )
 
       const unknown = await client.callTool({ name: 'missing', arguments: {} })
       expect(unknown.isError).toBe(true)

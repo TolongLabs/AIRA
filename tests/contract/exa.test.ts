@@ -84,6 +84,19 @@ describe('createExaSearchPort', () => {
       return true
     })
 
+    const netErr = new Error('socket hang up')
+    const netPort = createExaSearchPort({
+      apiKey,
+      fetch: (async () => {
+        throw netErr
+      }) as typeof fetch
+    })
+    await expect(netPort.search('q', new AbortController().signal)).rejects.toSatisfy((err: Error) => {
+      expect(err.message).toBe('exa search failed (network)')
+      expect(err.cause).toBe(netErr)
+      return true
+    })
+
     const badJsonPort = createExaSearchPort({
       apiKey,
       fetch: (async () => new Response(`{bad json ${secretBody}`, { status: 200 })) as typeof fetch
@@ -92,6 +105,7 @@ describe('createExaSearchPort', () => {
       expect(err.message).toContain('exa search failed')
       expect(err.message).not.toContain(apiKey)
       expect(err.message).not.toContain(secretBody)
+      expect(err.cause).toBeInstanceOf(Error)
       return true
     })
   })

@@ -26,6 +26,14 @@ export interface Receipt extends ReceiptDraft {
   tool: string
 }
 
+export type ToolFailure = {
+  ok: false
+  kind: ToolFailureKind
+  reason: string
+  /** Internal error that caused the failure; recorded for diagnostics, never sent to the model. */
+  cause?: unknown
+}
+
 export type ToolResult =
   | {
       ok: true
@@ -33,10 +41,10 @@ export type ToolResult =
       data: unknown
       receipt?: Receipt
     }
-  | { ok: false; kind: ToolFailureKind; reason: string }
+  | ToolFailure
 
 /** What a handler returns. A mutating handler gets its receipt from `commit`. */
-export type HandlerResult = { ok: true; data: unknown } | { ok: false; kind: ToolFailureKind; reason: string }
+export type HandlerResult = { ok: true; data: unknown } | ToolFailure
 
 /** The turn context plus what one call needs. Identity is here; a model never supplies it. */
 export interface ToolContext extends TurnContext {

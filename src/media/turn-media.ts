@@ -20,7 +20,7 @@ const MEDIA_TEXT_BUDGET = 4500
 export interface TurnMediaResult {
   readings: { kind: MediaKind; reading: MediaReading }[]
   links?: LinkReading[]
-  unreadable: { kind: string; reason: MediaUnreadable }[]
+  unreadable: { kind: string; reason: MediaUnreadable; error?: unknown }[]
   /** One row for each request to the media model, for the model_call table. */
   calls: ModelCallRecord[]
 }
@@ -75,7 +75,7 @@ export function createTurnMedia(options: TurnMediaOptions): TurnMedia {
     timeoutMs: number
   ): Promise<{
     reading?: { kind: MediaKind; reading: MediaReading }
-    unreadable?: { kind: string; reason: MediaUnreadable }
+    unreadable?: { kind: string; reason: MediaUnreadable; error?: unknown }
     call?: ModelCallRecord
   }> {
     const kind = KIND_NAME[attachment.kind]
@@ -107,7 +107,7 @@ export function createTurnMedia(options: TurnMediaOptions): TurnMedia {
     }
     // A failure kind means the watcher was called and failed. Any other refusal came from a limit, before a call.
     return {
-      unreadable: { kind, reason: outcome.reason },
+      unreadable: { kind, reason: outcome.reason, ...(outcome.error !== undefined ? { error: outcome.error } : {}) },
       ...(outcome.failureKind
         ? {
             call: {

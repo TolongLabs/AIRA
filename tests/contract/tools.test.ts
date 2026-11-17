@@ -681,4 +681,53 @@ describe('registry registration, filtering, records and offered tools', () => {
     )
     expect(kinds).toEqual(['tool_timeout', 'tool_error', 'tool_refused'])
   })
+
+  it('registry records the cause of a failed tool', async () => {
+    const storage = tmpStorage()
+    const registry = makeRegistry(storage)
+    const context = makeContext(storage)
+    registerCoreTools(registry, {
+      search: {
+        async search() {
+          throw new Error('boom')
+        }
+      },
+      memory: {
+        ...fakeMemory(),
+        recall() {
+          throw new Error('recall boom')
+        }
+      },
+      filesDir: tmpDir()
+    })
+
+    const offered = registry.offered(context)
+    const webSearch = offered.find((tool) => tool.schema.name === 'web_search')!
+    const modelOutcome = await webSearch.call({ query: 'test' }, 'c-port-boom', new AbortController().signal)
+    expect(modelOutcome).toEqual({
+      ok: false,
+      content: JSON.stringify({ error: 'error', reason: 'search failed' })
+    })
+    expect(modelOutcome.content).not.toContain('boom')
+
+    await registry.call('recall', { query: 'test' }, context, { callId: 'c-mem-boom', source: 'model' })
+
+    const failures = storage.read(
+      (db) =>
+        db
+          .prepare('SELECT stage, kind, message, stack FROM failure WHERE turn_id = ? ORDER BY id ASC')
+          .all(context.turnId) as {
+          stage: string
+          kind: string
+          message: string
+          stack: string | null
+        }[]
+    )
+    expect(failures).toHaveLength(2)
+    expect(failures[0]).toMatchObject({ stage: 'tool', kind: 'tool_error' })
+    expect(failures[0]?.message).toContain('boom')
+    expect(failures[0]?.stack).toContain('Error: boom')
+    expect(failures[1]).toMatchObject({ stage: 'tool', kind: 'tool_error' })
+    expect(failures[1]?.message).toContain('recall boom')
+  })
 })

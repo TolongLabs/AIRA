@@ -263,6 +263,27 @@ describe('a file that cannot be read', () => {
       expect.objectContaining({ kind: 'model_auth', role: 'media' })
     ])
   })
+
+  it('a media watcher error is stored in the media_unreadable row', async () => {
+    const watcher = fakeWatcher(() => new ModelError('transient', 'watcher socket reset'))
+    const { app, gateway, model } = await start({ watcher })
+
+    const delivery = await gateway.send(
+      withMedia('m-1', 'look', [{ kind: 'image', path: `${HOST_CACHE}/images/img_a1b2.jpg` }])
+    )
+
+    expect(delivery.content).toBe('Nice one!')
+    expect(contextOf(model.requests[0])).not.toContain('watcher socket reset')
+    expect(rows(app, 'SELECT stage, kind, handled_by, message, stack FROM failure')).toEqual([
+      {
+        stage: 'media',
+        kind: 'media_unreadable',
+        handled_by: 'line:unreadableMedia',
+        message: 'watcher socket reset',
+        stack: expect.stringContaining('ModelError')
+      }
+    ])
+  })
 })
 
 describe('a direct command', () => {

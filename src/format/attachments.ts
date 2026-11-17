@@ -44,8 +44,13 @@ export function withAttachments(
           receiptIds: input.run.receipts,
           hostDataDir: options.hostDataDir
         })
-      } catch {
-        return cleaned
+      } catch (error) {
+        const existing = 'warnings' in cleaned && Array.isArray(cleaned.warnings) ? cleaned.warnings : []
+        const warned = {
+          ...cleaned,
+          warnings: [...existing, { kind: 'storage_error' as const, error, handledBy: 'attachments' }]
+        }
+        return warned
       }
       if (paths.length === 0) return cleaned
       return {

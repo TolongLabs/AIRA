@@ -345,11 +345,13 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
       return {
         result: res,
         error:
-          res.kind === 'timeout'
-            ? new Error(`${def.name} timed out`)
-            : res.kind === 'error'
-              ? new Error(`${def.name} failed`)
-              : undefined
+          res.cause !== undefined
+            ? res.cause
+            : res.kind === 'timeout'
+              ? new Error(res.reason || `${def.name} timed out`)
+              : res.kind === 'error'
+                ? new Error(res.reason || `${def.name} failed`)
+                : undefined
       }
     } finally {
       ended = true
@@ -400,11 +402,13 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
           const failureKind =
             outcome.kind === 'timeout' ? 'tool_timeout' : outcome.kind === 'error' ? 'tool_error' : 'tool_refused'
           const failureError =
-            outcome.kind === 'refused'
-              ? new Error(`${name} refused`)
-              : outcome.kind === 'timeout'
-                ? (error ?? new Error(`${name} timed out`))
-                : (error ?? new Error(`${name} failed`))
+            error !== undefined
+              ? error
+              : outcome.kind === 'refused'
+                ? new Error(`${name} refused`)
+                : outcome.kind === 'timeout'
+                  ? new Error(`${name} timed out`)
+                  : new Error(`${name} failed`)
           recordFailure(
             db,
             {

@@ -19,6 +19,7 @@ export type MediaOutcome =
       kind?: MediaKind
       reason: MediaFailureReason
       failureKind?: ModelFailureKind
+      error?: unknown
       durationMs: number
     }
 
@@ -100,6 +101,7 @@ async function runWithTimeout(
       kind,
       reason,
       failureKind,
+      error: err,
       durationMs: Date.now() - startedAt
     }
   } finally {
