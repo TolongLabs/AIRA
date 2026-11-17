@@ -26,8 +26,8 @@ Contents:
    one commit that takes the title from the branch name, which the title check rejects. `--fill-first` takes it from the
    first commit, which may not describe the whole branch, so pass `--title` when it does not. The body follows
    `.github/pull_request_template.md`, and `scripts/pr-header.ts` checks it.
-5. **Review.** One approval required. Review looks at the diff and at the commit history, because the history is what
-   lands.
+5. **Review.** No approval is required (see the ruleset below). Review still looks at the diff and at the commit
+   history, because the history is what lands.
 6. **Resolve.** Every review conversation must be marked resolved before merging.
 7. **Merge and delete.** Rebase merge, then the branch deletes itself.
 
@@ -75,29 +75,32 @@ what the pull request list, the notification, and the reviewer see first.
 
 ## What Enforces What
 
-| Where                                     | What it blocks                                     |
-| ----------------------------------------- | -------------------------------------------------- |
-| The `main` ruleset                        | A merge that skips a step of [the loop](#the-loop) |
-| `.husky/commit-msg`                       | A commit whose message is not conventional         |
-| `.husky/pre-push`                         | A push straight to the default branch              |
-| `.github/workflows/test.yml`              | A failing test, or a type error                    |
-| `.github/workflows/conventional-lint.yml` | A bad pull request title, or a bad commit          |
-| `.github/workflows/lint.yml`              | An unformatted tree                                |
-| `.github/workflows/container.yml`         | An image that does not build or start              |
-| `.github/workflows/issue-title-lint.yml`  | A bad issue title — labels and explains it         |
-| `.github/workflows/assign-issues.yml`     | An unassigned issue — assigns the author or owner  |
-| `.github/workflows/pr-header.yml`         | A pull request missing its header or visual        |
-| `.github/pull_request_template.md`        | Nothing; it reminds you                            |
-| `.github/ISSUE_TEMPLATE/`                 | Blank issues, and titles with no type              |
+| Where                                 | What it blocks                                                     |
+| ------------------------------------- | ------------------------------------------------------------------ |
+| The `main` ruleset                    | A merge that skips a step of [the loop](#the-loop)                 |
+| `.husky/commit-msg`                   | A commit whose message is not conventional                         |
+| `.husky/pre-push`                     | A push straight to the default branch                              |
+| `.github/workflows/ci.yml` `check`    | A failing test, a type error, a lint error or an unformatted tree  |
+| `.github/workflows/ci.yml` `site`     | A site that does not build                                         |
+| `.github/workflows/ci.yml` `scan`     | A secret in the history (gitleaks)                                 |
+| `.github/workflows/ci.yml` `image`    | An image that does not build or cannot be pulled anonymously       |
+| `.github/workflows/ci.yml` `deploy`   | Nothing; on a push to `main` it deploys, and rolls back on failure |
+| `.github/workflows/assign-issues.yml` | An unassigned issue — assigns the author or owner                  |
+| `.github/workflows/pr-header.yml`     | A pull request missing its header or visual                        |
+| `.github/pull_request_template.md`    | Nothing; it reminds you                                            |
+| `.github/ISSUE_TEMPLATE/`             | Blank issues, and titles with no type                              |
 
 The ruleset is what turns the workflows into merge gates. It is a repository setting rather than a file, it covers
 `main`, and nobody is on its bypass list, admins included. A pull request merges only with:
 
-- one approval, which cannot come from its author;
+- no approval: the maintainers' agents open and merge pull requests from one account, so a required approval would
+  stop every merge (owner's decision, 17 Nov 2026);
 - every review conversation resolved;
 - a rebase merge, the only method it allows, onto a linear history;
-- passing **Test and typecheck**, **Formatting**, **Container smoke test**, **Pull request title**, and
-  **Commit messages** checks.
+- passing **check**, **site**, **scan**, **image**, **images-ok** and **PR header** checks. `deploy` is not
+  required: it runs only on a push to `main`.
+
+Commit messages are checked only by the local hook; no workflow lints them or the pull request title.
 
 It also refuses a push straight to `main`, a force push, and deleting the branch.
 
@@ -164,7 +167,7 @@ gh api -X POST 'repos/TolongLabs/AIRA/rulesets' --silent --input - <<'EOF'
     {
       "type": "pull_request",
       "parameters": {
-        "required_approving_review_count": 1,
+        "required_approving_review_count": 0,
         "dismiss_stale_reviews_on_push": false,
         "require_code_owner_review": false,
         "require_last_push_approval": false,
@@ -177,11 +180,12 @@ gh api -X POST 'repos/TolongLabs/AIRA/rulesets' --silent --input - <<'EOF'
       "parameters": {
         "strict_required_status_checks_policy": false,
         "required_status_checks": [
-          { "context": "Test and typecheck", "integration_id": 15368 },
-          { "context": "Formatting", "integration_id": 15368 },
-          { "context": "Container smoke test", "integration_id": 15368 },
-          { "context": "Pull request title", "integration_id": 15368 },
-          { "context": "Commit messages", "integration_id": 15368 }
+          { "context": "check", "integration_id": 15368 },
+          { "context": "site", "integration_id": 15368 },
+          { "context": "scan", "integration_id": 15368 },
+          { "context": "image", "integration_id": 15368 },
+          { "context": "images-ok", "integration_id": 15368 },
+          { "context": "PR header", "integration_id": 15368 }
         ]
       }
     }
