@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { type LogLevel, createLogger } from '../../src/records/logger.js'
-import { createRedactor, secretsFromEnv, shapeOf } from '../../src/records/redact.js'
+import { type RedactorSecrets, createRedactor, secretsFromEnv, shapeOf } from '../../src/records/redact.js'
 
-function capture(level: LogLevel = 'debug', secrets: string[] = []) {
+function capture(level: LogLevel = 'debug', secrets: RedactorSecrets = []) {
   const lines: Record<string, unknown>[] = []
   const logger = createLogger({
     level,
@@ -95,6 +95,32 @@ describe('redaction', () => {
     const text = JSON.stringify(lines[0])
     expect(text).not.toContain(fake)
     expect(text).toContain('[secret]')
+  })
+
+  it('masks a 4-character secret', () => {
+    const secret = 'abcd'
+    const secrets = secretsFromEnv(['SHORT_KEY'], { SHORT_KEY: secret })
+    const redactor = createRedactor({ secrets })
+    expect(redactor.weak).toEqual([])
+    expect(redactor.scrub(`token ${secret} here`)).toBe('token [secret] here')
+    expect(createRedactor({ secrets: ['ecre', 'longer-secret'] }).scrub('longer-secret and ecre')).toBe(
+      '[secret] and [secret]'
+    )
+
+    const { logger, lines } = capture('debug', secrets)
+    logger.error('model.auth', { header: `Bearer ${secret}` })
+    const text = JSON.stringify(lines[0])
+    expect(text).not.toContain(secret)
+    expect(text).toContain('[secret]')
+  })
+
+  it('does not mask a 3-character secret and reports its key name, never its value', () => {
+    const value = 'xyz'
+    const secrets = secretsFromEnv(['WEAK_KEY', 'EMPTY_KEY', 'MISSING_KEY'], { WEAK_KEY: value, EMPTY_KEY: '' })
+    const redactor = createRedactor({ secrets })
+    expect(redactor.scrub(`word ${value} stays`)).toBe(`word ${value} stays`)
+    expect(redactor.weak).toEqual(['WEAK_KEY'])
+    expect(redactor.weak).not.toContain(value)
   })
 
   it('replaces WhatsApp ids and phone numbers in free text with hashes', () => {

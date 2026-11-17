@@ -163,6 +163,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   const now = options.now ?? (() => new Date())
   const redactor = createRedactor({ secrets: secretsFromEnv(SECRET_NAMES, env) })
   const logger = options.logger ?? createLogger({ level: config.log.level, module: 'core', redactor })
+  if (redactor.weak.length > 0) logger.warn('records.weak_secret', { keys: redactor.weak })
 
   // Steps 1 to 4: the data volume, the database, migrations, the recovery pass.
   let alerter = createAlerter({ minGapMs: config.alerts.minGapMs, logger, now })
