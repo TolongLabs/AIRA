@@ -30,6 +30,11 @@ export function markStage(db: Db, turnId: string, stage: TurnStage, now: Clock =
 }
 
 export interface TurnRecordFields {
+  arrivedAt?: string
+  queueMs?: number
+  mediaMs?: number
+  toolMs?: number
+  totalMs?: number
   characterId?: string
   outcome?: 'delivered' | 'declined' | 'muted' | 'failed'
   failureKind?: FailureKind
@@ -59,6 +64,11 @@ export interface TurnRecordFields {
 }
 
 const FIELD_COLUMN: Record<keyof TurnRecordFields, string> = {
+  arrivedAt: 'arrived_at',
+  queueMs: 'queue_ms',
+  mediaMs: 'media_ms',
+  toolMs: 'tool_ms',
+  totalMs: 'total_ms',
   characterId: 'character_id',
   outcome: 'outcome',
   failureKind: 'failure_kind',

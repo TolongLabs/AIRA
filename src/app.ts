@@ -216,7 +216,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     /** The API runner on one model, with an optional second model behind it. */
     const apiRunner = (first: Target, second: Target | undefined, roleBreaker: Breaker): TurnRunner =>
       createApiRunner({
-        clientFor: (onCall) =>
+        clientFor: (onCall, onSpendError) =>
           createRoutedClient({
             main: first,
             fallback: second,
@@ -225,6 +225,7 @@ export async function createApp(options: AppOptions): Promise<App> {
             storage,
             transport: 'api',
             onCall,
+            onSpendError,
             onAuthFailure: (role) => alerter.raise('model_auth', { role }),
             now
           }),

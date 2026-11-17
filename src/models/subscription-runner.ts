@@ -93,7 +93,13 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
     async run(input): Promise<RunResult> {
       const runFallback = async (error: ModelError, failedCall?: ModelCallRecord): Promise<RunResult> => {
         if (error.kind !== 'refusal' && options.fallback && !input.signal.aborted) {
-          const fallback = await options.fallback.run(input)
+          const fallback = await options.fallback.run({
+            ...input,
+            onCall: (call) => {
+              call.role = 'fallback'
+              input.onCall?.(call)
+            }
+          })
           return {
             ...fallback,
             role: 'fallback',
@@ -221,6 +227,17 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
               cachedTokens: Number(lastResult.usage?.cache_read_input_tokens ?? 0)
             }
             const costUsd = typeof lastResult.total_cost_usd === 'number' ? lastResult.total_cost_usd : 0
+            const call: ModelCallRecord = {
+              role: 'main',
+              model,
+              transport: 'subscription',
+              attempt: 1,
+              startedAt,
+              durationMs,
+              usage,
+              costUsd
+            }
+            input.onCall?.(call)
             return {
               text: lastResult.result,
               usage,
@@ -228,18 +245,8 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
               model,
               role: 'main',
               transport: 'subscription',
-              calls: [
-                {
-                  role: 'main',
-                  model,
-                  transport: 'subscription',
-                  attempt: 1,
-                  startedAt,
-                  durationMs,
-                  usage,
-                  costUsd
-                }
-              ],
+              calls: [call],
+              toolMs: session.state.toolMs,
               chainLimit: session.state.chainLimit,
               receipts: session.state.receipts
             }
@@ -265,8 +272,10 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
         attempt: 1,
         startedAt,
         durationMs: Math.max(0, now().getTime() - startedAt.getTime()),
+        error: failure,
         failureKind: failure.kind
       }
+      input.onCall?.(failedCall)
       return runFallback(failure, failedCall)
     }
   }
