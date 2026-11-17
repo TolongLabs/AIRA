@@ -1,5 +1,7 @@
 import { lookup as dnsLookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
+import type { SocialReply } from '../social/types.js'
+import type { SocialPlatform } from '../social/urls.js'
 import type { Db } from '../storage/database.js'
 
 export interface MemoryPort {
@@ -34,7 +36,23 @@ export interface PagePort {
 }
 
 export interface PostPort {
-  read(url: string, signal: AbortSignal): Promise<{ author: string; text: string; media: string[] }>
+  read(
+    url: string,
+    signal: AbortSignal
+  ): Promise<{
+    untrusted?: true
+    author: string
+    text: string
+    media: string[]
+    platform?: SocialPlatform
+    handle?: string
+    createdAt?: string | null
+    quotedText?: string
+    replyCount?: number | null
+    canonicalUrl?: string
+    replies?: SocialReply[]
+    durationSec?: number | null
+  }>
 }
 
 /** The gateway's schedule. The reminder tools are the only code that talks to it. */
@@ -124,7 +142,7 @@ function parseIpv6Groups(raw: string): number[] | undefined {
   return [...left, ...new Array<number>(missing).fill(0), ...right]
 }
 
-function isForbiddenIp(ip: string): boolean {
+export function isForbiddenIp(ip: string): boolean {
   const version = isIP(ip)
   if (version === 4) {
     const v4 = parseIpv4(ip)

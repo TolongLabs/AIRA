@@ -32,6 +32,7 @@ owner:
 
 search:
   provider: 'exa' # Web search backend: exa, or off
+  pageMaxChars: 12000 # Longest page text read_page passes on
 
 # Owned by docs/trd/tools.md
 lessons:
@@ -89,8 +90,18 @@ media:
   gatewayDirs: []
   timeoutMs: 30000 # One media read, within two thirds of the time left in the turn deadline
   maxVideoSeconds: 180 # Longest video that is watched
+  maxLinkVideoSeconds: 600 # Longest span watched from a YouTube link
 
 # Owned by docs/trd/reliability.md
+social:
+  timeoutMs: 6000
+  cacheTtlMs: 900000
+  maxCacheEntries: 256
+  maxTextChars: 1500
+  maxReplies: 5
+  maxReplyChars: 280
+  ytDlpPath: yt-dlp
+
 turn:
   batchMs: 1500 # Window that merges quick messages
   mediaWaitMs: 8000 # Wait for a caption after a bare photo

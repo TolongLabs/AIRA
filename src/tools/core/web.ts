@@ -1,35 +1,10 @@
 import { z } from 'zod'
+import { SocialPostError } from '../../social/port.js'
+import { parseSocialPostUrl } from '../../social/urls.js'
 import type { Storage } from '../../storage/database.js'
 import { putFile } from '../../storage/files.js'
 import { type ToolPorts, isForbiddenUrl } from '../ports.js'
 import type { ToolDefinition } from '../types.js'
-
-const SOCIAL_HOSTS = [
-  'x.com',
-  'twitter.com',
-  'instagram.com',
-  'threads.net',
-  'tiktok.com',
-  'bsky.app',
-  'youtube.com',
-  'youtu.be',
-  'reddit.com',
-  'facebook.com',
-  'bilibili.com'
-]
-
-function isSocialUrl(raw: string): boolean {
-  const token = raw.trim().split(/\s+/)[0]
-  if (!token) return false
-  let parsed: URL
-  try {
-    parsed = new URL(token)
-  } catch {
-    return false
-  }
-  const host = parsed.hostname.toLowerCase().replace(/\.$/, '')
-  return SOCIAL_HOSTS.some((social) => host === social || host.endsWith(`.${social}`))
-}
 
 const IMAGE_EXTENSIONS: Record<string, string> = {
   'image/jpeg': '.jpg',
@@ -86,7 +61,7 @@ export function readPageTool(ports: ToolPorts): ToolDefinition<z.infer<typeof ur
       names: ['read'],
       kind: 'skill',
       usage: '/read <url>',
-      route: (rest) => (isSocialUrl(rest) ? 'read_post' : undefined)
+      route: (rest) => (parseSocialPostUrl(rest.trim().split(/\s+/)[0] ?? '') ? 'read_post' : undefined)
     },
     async handler(args, context) {
       if (isForbiddenUrl(args.url)) {
@@ -122,8 +97,9 @@ export function readPostTool(ports: ToolPorts): ToolDefinition<z.infer<typeof ur
       }
       try {
         const post = await ports.post.read(args.url, context.signal)
-        return { ok: true, data: { author: post.author, text: post.text, media: post.media } }
-      } catch {
+        return { ok: true, data: { ...post } }
+      } catch (error) {
+        if (error instanceof SocialPostError) return { ok: false, kind: error.kind, reason: error.message }
         return { ok: false, kind: 'error', reason: 'post read failed' }
       }
     }

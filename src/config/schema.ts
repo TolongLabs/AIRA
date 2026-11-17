@@ -76,7 +76,8 @@ export const configSchema = z.strictObject({
     })
     .default({ marketsConfig: '', claudeProjectsDir: '', noticeRoutesFile: '', timeoutMs: 15000 }),
   search: z.strictObject({
-    provider: z.string().min(1)
+    provider: z.string().min(1),
+    pageMaxChars: count.default(12_000)
   }),
   lessons: z
     .strictObject({
@@ -154,8 +155,20 @@ export const configSchema = z.strictObject({
     // The gateway's media folders as the gateway writes them in its notes, and where this process mounts them.
     gatewayDirs: z.array(gatewayDir).default([]),
     maxVideoSeconds: count,
+    maxLinkVideoSeconds: count.default(600),
     timeoutMs: ms.default(30000)
   }),
+  social: z
+    .strictObject({
+      timeoutMs: ms.default(6000),
+      cacheTtlMs: z.number().int().min(0).default(900000),
+      maxCacheEntries: z.number().int().min(1).default(256),
+      maxTextChars: z.number().int().min(1).default(1500),
+      maxReplies: z.number().int().min(1).max(50).default(5),
+      maxReplyChars: z.number().int().min(1).default(280),
+      ytDlpPath: z.string().min(1).default('yt-dlp')
+    })
+    .prefault({}),
   turn: z.strictObject({
     batchMs: ms,
     mediaWaitMs: ms

@@ -1,9 +1,11 @@
 import type { Attachment } from '../gateway/request.js'
+import type { SocialPost } from '../social/types.js'
 import type { ModelCallRecord } from '../turn/types.js'
 import { type GatewayDir, type MediaUnreadable, loadGatewayFile } from './files.js'
 import type { MediaReading, MediaWatcher } from './gemini-watcher.js'
-import { mediaBlock, readMedia } from './intake.js'
+import { mediaBlock, readMedia, sanitizeMediaText } from './intake.js'
 import type { MediaKind, MediaLimits } from './limits.js'
+import { type LinkAllow, type LinkReader, type LinkReading, PLATFORM_NAME } from './link-intake.js'
 
 // The media of one turn: which files are read, the reading of each, and the text for prompt block 4
 // (docs/trd/models.md#media-watching).
@@ -12,11 +14,12 @@ import type { MediaKind, MediaLimits } from './limits.js'
 export const MAX_MEDIA_PER_MESSAGE = 3
 export const MAX_MEDIA_PER_TURN = 6
 
-/** The size of the media text in block 4, in characters, shared evenly between the files. */
+/** The size of the media text in block 4, in characters, shared evenly between the files and links. */
 const MEDIA_TEXT_BUDGET = 4500
 
 export interface TurnMediaResult {
   readings: { kind: MediaKind; reading: MediaReading }[]
+  links?: LinkReading[]
   unreadable: { kind: string; reason: MediaUnreadable }[]
   /** One row for each request to the media model, for the model_call table. */
   calls: ModelCallRecord[]
@@ -24,12 +27,16 @@ export interface TurnMediaResult {
 
 export interface TurnMedia {
   /** Reads the files of a turn at once, inside the turn deadline. Never throws. */
-  read(attachments: Attachment[], deadline: number): Promise<TurnMediaResult>
+  read(attachments: Attachment[], deadline: number, options?: { enabled?: boolean }): Promise<TurnMediaResult>
+  /** Finds and reads at most one social or YouTube link from candidate texts, inside the turn deadline. Never throws. */
+  readLink(texts: readonly string[], deadline: number, allow: LinkAllow, onMatch?: () => void): Promise<TurnMediaResult>
 }
 
 export interface TurnMediaOptions {
   /** Absent: media is off, and every file is unreadable with the reason `off`. */
   watcher?: MediaWatcher
+  /** Absent: link intake is off. */
+  links?: LinkReader
   /** The media model's id, for the records of a call that failed before it answered. */
   model: string
   limits: MediaLimits
@@ -117,10 +124,21 @@ export function createTurnMedia(options: TurnMediaOptions): TurnMedia {
     }
   }
 
+  function effectiveTimeout(deadline: number): number {
+    // The main model keeps at least a third of the time that is left.
+    return Math.max(1, Math.min(options.timeoutMs, Math.floor(((deadline - now().getTime()) * 2) / 3)))
+  }
+
   return {
-    async read(attachments, deadline) {
-      // The main model keeps at least a third of the time that is left.
-      const timeoutMs = Math.max(1, Math.min(options.timeoutMs, Math.floor(((deadline - now().getTime()) * 2) / 3)))
+    async read(attachments, deadline, readOptions) {
+      if (readOptions?.enabled === false || !options.watcher) {
+        return {
+          readings: [],
+          unreadable: attachments.map((attachment) => ({ kind: KIND_NAME[attachment.kind], reason: 'off' as const })),
+          calls: []
+        }
+      }
+      const timeoutMs = effectiveTimeout(deadline)
       const items = await Promise.all(attachments.map((attachment) => readOne(attachment, timeoutMs)))
       const result: TurnMediaResult = { readings: [], unreadable: [], calls: [] }
       for (const item of items) {
@@ -129,6 +147,12 @@ export function createTurnMedia(options: TurnMediaOptions): TurnMedia {
         if (item.call) result.calls.push(item.call)
       }
       return result
+    },
+
+    async readLink(texts, deadline, allow, onMatch) {
+      if (!options.links) return { readings: [], unreadable: [], calls: [] }
+      const timeoutMs = effectiveTimeout(deadline)
+      return options.links.read(texts, timeoutMs, allow, onMatch)
     }
   }
 }
@@ -145,27 +169,116 @@ const REASON_TEXT: Record<MediaUnreadable, string> = {
   'empty file': 'empty file',
   'too large': 'too large',
   'too long': 'too long',
+  unavailable: 'private or removed',
+  link: 'could not open link',
   unreadable: 'the read failed'
 }
 
+function formatAuthor(post: SocialPost): string {
+  const handle = post.authorHandle.trim()
+  if (handle) {
+    const clean = sanitizeMediaText(handle)
+    if (clean.startsWith('@') || clean.startsWith('u/') || clean.startsWith('r/')) return clean
+    return `@${clean}`
+  }
+  const name = post.authorName.trim()
+  return name ? sanitizeMediaText(name) : ''
+}
+
+function formatDate(createdAt: string | null): string {
+  if (!createdAt) return ''
+  const clean = sanitizeMediaText(createdAt.trim())
+  const isoMatch = /^\d{4}-\d{2}-\d{2}/.exec(clean)
+  return isoMatch ? isoMatch[0] : clean
+}
+
+function formatPostLine(link: LinkReading, budget: number): string {
+  const { post } = link
+  const platform = PLATFORM_NAME[post.platform]
+  const author = formatAuthor(post)
+  const date = formatDate(post.createdAt)
+  const meta = [author ? `${platform} ${author}` : platform, ...(date ? [date] : [])].join(', ')
+  const prefix = `- post (${meta}): `
+
+  const tailParts: string[] = []
+  if (post.replyCount !== null) {
+    tailParts.push(`${post.replyCount} ${post.replyCount === 1 ? 'reply' : 'replies'}`)
+  }
+  if (post.canonicalUrl) {
+    tailParts.push(`url: ${sanitizeMediaText(post.canonicalUrl)}`)
+  }
+  const suffix = tailParts.length > 0 ? ` | ${tailParts.join(' | ')}` : ''
+
+  const bodyBudget = Math.max(40, budget - prefix.length - suffix.length)
+  const title = sanitizeMediaText(post.externalTitle.trim())
+  const text = sanitizeMediaText(post.text.trim())
+  const quotedText = sanitizeMediaText(post.quotedText.trim())
+  const quotedAuthor = sanitizeMediaText(post.quotedAuthorHandle.trim().replace(/^@+/, ''))
+
+  const bodySegments: string[] = []
+  const mainParts: string[] = []
+  if (title && !text.startsWith(title)) mainParts.push(title)
+  if (text) mainParts.push(text)
+  const mainText = mainParts.join(' — ')
+  if (mainText) {
+    const mainMax = quotedText ? Math.floor(bodyBudget * 0.65) : bodyBudget
+    bodySegments.push(`"${clip(mainText, Math.max(10, mainMax - 2))}"`)
+  }
+  if (quotedText) {
+    const quotePrefix = quotedAuthor ? `quoting @${quotedAuthor}: ` : 'quoting: '
+    const used = bodySegments.join(' | ').length + (bodySegments.length > 0 ? 3 : 0)
+    const quoteMax = Math.max(10, bodyBudget - used - quotePrefix.length - 2)
+    bodySegments.push(`${quotePrefix}"${clip(quotedText, quoteMax)}"`)
+  }
+
+  const body = bodySegments.join(' | ')
+  if (body.length === 0) return `${prefix}${tailParts.join(' | ')}`
+  return `${prefix}${body}${suffix}`
+}
+
+function formatLinkLines(link: LinkReading, share: number): string[] {
+  if (!link.reading) return [formatPostLine(link, share)]
+  const postBudget = Math.max(120, Math.floor(share * 0.4))
+  const postLine = formatPostLine(link, postBudget)
+  const readingBudget = Math.max(80, share - postLine.length)
+  const safeDesc = sanitizeMediaText(link.reading.description)
+  const safeTranscript = link.reading.transcript ? sanitizeMediaText(link.reading.transcript) : undefined
+  const description = clip(safeDesc, safeTranscript ? Math.floor(readingBudget * 0.4) : readingBudget)
+  const transcript = safeTranscript ? clip(safeTranscript, Math.max(0, readingBudget - description.length)) : undefined
+  const lines = [postLine, `  ${link.mediaKind ?? 'video'}: ${description}`]
+  if (transcript && transcript.length > 0) lines.push(`  transcript: ${transcript}`)
+  return lines
+}
+
+function mediaIntro(hasFiles: boolean, hasLinks: boolean): string {
+  if (hasFiles && hasLinks) {
+    return 'The sender attached files and shared a link. You cannot open them. This is what each one shows:'
+  }
+  if (hasLinks) return 'The sender shared a link. This is what it shows:'
+  return 'The sender attached files. You cannot open them. This is what each one shows:'
+}
+
 /**
- * The media text for prompt block 4: what each readable file shows, in one untrusted block, and a note for each
- * unreadable file that carries the pack's line. Empty when there were no files. The text is clipped so that media
- * cannot push the prompt over its ceiling.
+ * The media text for prompt block 4: what each readable file or link shows, in one untrusted block, and a note for
+ * each unreadable file or link that carries the pack's line. Empty when there were none. The text is clipped so that
+ * media cannot push the prompt over its ceiling.
  */
 export function mediaPromptText(
-  result: Pick<TurnMediaResult, 'readings' | 'unreadable'>,
+  result: Pick<TurnMediaResult, 'readings' | 'links' | 'unreadable'>,
   unreadableLine: string
 ): string {
   const parts: string[] = []
-  if (result.readings.length > 0) {
-    const share = Math.floor(MEDIA_TEXT_BUDGET / result.readings.length)
+  const links = result.links ?? []
+  const totalItems = result.readings.length + links.length
+  if (totalItems > 0) {
+    const share = Math.floor(MEDIA_TEXT_BUDGET / totalItems)
     const clipped = result.readings.map(({ kind, reading }) => {
       const description = clip(reading.description, reading.transcript ? Math.floor(share * 0.4) : share)
       const transcript = reading.transcript ? clip(reading.transcript, share - description.length) : undefined
       return { kind, reading: { description, ...(transcript ? { transcript } : {}) } }
     })
-    parts.push('The sender attached files. You cannot open them. This is what each one shows:', mediaBlock(clipped))
+    const linkLines = links.flatMap((link) => formatLinkLines(link, share))
+    parts.push(mediaIntro(result.readings.length > 0, links.length > 0), mediaBlock(clipped, linkLines))
   }
   if (result.unreadable.length > 0) {
     parts.push(

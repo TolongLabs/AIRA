@@ -15,6 +15,7 @@ import { createGatewayServer } from './gateway/server.js'
 import { createSystemOneClient, createSystemOneMemoryJudge, createSystemOneMoodJudge } from './judge/systemone.js'
 import { type MediaWatcher, createGeminiWatcher } from './media/gemini-watcher.js'
 import { DEFAULT_MEDIA_LIMITS } from './media/limits.js'
+import { createLinkReader } from './media/link-intake.js'
 import { createTurnMedia } from './media/turn-media.js'
 import { createMemoryPort } from './memory/port.js'
 import { presentLabels, recallForTurn } from './memory/recall.js'
@@ -39,13 +40,18 @@ import { recordModelCall } from './records/turn-record.js'
 import { okToolsOfTurn } from './records/turn-view.js'
 import { listChats } from './settings/chats.js'
 import { resolveSettings } from './settings/settings.js'
+import { createSocialPostPort } from './social/port.js'
+import { ReplyReader } from './social/replies/service.js'
+import { findLinkTarget } from './social/urls.js'
+import { SocialPostViewer } from './social/viewer.js'
+import { isYtDlpAvailable } from './social/yt-dlp.js'
 import { archiveAndPrune } from './storage/archive.js'
 import type { Storage } from './storage/database.js'
 import { type SnapshotReason, type SnapshotResult, startSnapshotTimer, takeSnapshot } from './storage/snapshot.js'
 import { type DataPaths, startStorage } from './storage/startup.js'
 import { createCommandRouter } from './tools/commands.js'
 import { registerCoreTools } from './tools/core/index.js'
-import { createExaSearchPort } from './tools/exa.js'
+import { createExaPagePort, createExaSearchPort } from './tools/exa.js'
 import { registerLessonTools } from './tools/lessons/index.js'
 import { connectMcpServers } from './tools/mcp-client.js'
 import { registerOwnerTools } from './tools/owner/index.js'
@@ -63,6 +69,7 @@ export const SECRET_NAMES = [
   'LLM_API_KEY',
   'LLM_FALLBACK_API_KEY',
   'MEDIA_WATCHER_API_KEY',
+  'YOUTUBE_API_KEY',
   'TYPESAFE_API_KEY',
   'EXA_API_KEY',
   'RUNNER_TOKEN',
@@ -283,15 +290,28 @@ export async function createApp(options: AppOptions): Promise<App> {
         logger.warn('search.off', { reason: 'no_key' })
       }
     }
+    // read_page goes through Exa when search does, so pages that refuse plain fetches still read.
+    const plainPage = createFetchPagePort()
+    const page =
+      config.search.provider === 'exa' && typeof exaKey === 'string' && exaKey.length > 0
+        ? createExaPagePort({ apiKey: exaKey, fallback: plainPage, maxChars: config.search.pageMaxChars })
+        : plainPage
+    const viewer = new SocialPostViewer(config.social, { logger })
+    const replyReader = new ReplyReader(config.social, { logger, youtubeApiKey: () => env['YOUTUBE_API_KEY'] })
+    const extractorAvailable = await isYtDlpAvailable(config.social.ytDlpPath)
+    viewer.setYtDlpAvailable(extractorAvailable)
+    replyReader.setYtDlpAvailable(extractorAvailable)
+    if (!extractorAvailable) logger.warn('social.extractor_off', { platform: 'yt-dlp', reason: 'binary_missing' })
     registerCoreTools(registry, {
+      post: createSocialPostPort(viewer, replyReader),
       memory: createMemoryPort({
         storage,
         judge: memoryJudge,
         verifyThreshold: config.judge.memoryVerify,
         timeoutMs: config.judge.timeoutMs
       }),
-      // The page reader is built in: it refuses private addresses, also after a redirect.
-      page: createFetchPagePort(),
+      // The plain reader refuses private addresses, also after a redirect; the Exa reader falls back to it.
+      page,
       schedule,
       ...(search ? { search } : {}),
       ...options.ports,
@@ -364,6 +384,20 @@ export async function createApp(options: AppOptions): Promise<App> {
       commands: createCommandRouter(registry, { timeZone: config.format.timeZone }),
       media: createTurnMedia({
         ...(mediaWatcher ? { watcher: mediaWatcher } : {}),
+        links: createLinkReader({
+          viewer,
+          findTarget: (text) => findLinkTarget([text]),
+          ...(mediaWatcher ? { watcher: mediaWatcher } : {}),
+          download: (url, signal, maxBytes) => plainPage.download(url, signal, maxBytes),
+          model: mediaModel ?? '',
+          limits: {
+            ...DEFAULT_MEDIA_LIMITS,
+            maxVideoSeconds: config.media.maxVideoSeconds,
+            maxLinkVideoSeconds: config.media.maxLinkVideoSeconds
+          },
+          logger,
+          now
+        }),
         model: mediaModel ?? '',
         limits: { ...DEFAULT_MEDIA_LIMITS, maxVideoSeconds: config.media.maxVideoSeconds },
         gatewayDirs: config.media.gatewayDirs,

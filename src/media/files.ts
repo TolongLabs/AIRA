@@ -16,8 +16,8 @@ export interface GatewayDir {
 /** Why loading a file failed. */
 export type LoadFault = 'refused' | 'missing' | 'unsupported type' | 'too large' | 'unreadable'
 
-/** Why a file was not read. `off` and the limit faults come from the intake code. */
-export type MediaUnreadable = LoadFault | 'off' | 'empty file' | 'too long'
+/** Why a file or link was not read. `off` and the limit faults come from the intake code. */
+export type MediaUnreadable = LoadFault | 'off' | 'empty file' | 'too long' | 'unavailable' | 'link'
 
 const EXTENSION_TYPES: Record<string, string> = {
   '.jpg': 'image/jpeg',
