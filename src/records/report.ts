@@ -63,14 +63,12 @@ function hasParquetFiles(tableDir: string): boolean {
 function turnSourceSql(archiveDir: string): string {
   const turnDir = join(archiveDir, 'turn')
   const columns =
-    'turn_id, kind, state, role, CAST(cost_usd AS DOUBLE) AS cost_usd, CAST(received_at AS TIMESTAMPTZ) AS received_at, CAST(returned_at AS TIMESTAMPTZ) AS returned_at'
+    'turn_id, kind, state, role, CAST(cost_usd AS DOUBLE) AS cost_usd, CAST(COALESCE(arrived_at, received_at) AS TIMESTAMPTZ) AS received_at, CAST(returned_at AS TIMESTAMPTZ) AS returned_at'
   const base = `SELECT ${columns} FROM snap.turn`
   if (!hasParquetFiles(turnDir)) return base
   const glob = escapeSqlLiteral(join(turnDir, '*', '*.parquet'))
-  return `${base}
-    UNION ALL
-    SELECT ${columns}
-    FROM read_parquet('${glob}', union_by_name = true)`
+  return `SELECT ${columns} FROM (SELECT * FROM snap.turn UNION ALL BY NAME
+    SELECT * FROM read_parquet('${glob}', union_by_name = true))`
 }
 
 function failureSourceSql(archiveDir: string): string {
@@ -101,14 +99,20 @@ export async function buildReport(input: {
     await conn.run('CREATE SCHEMA snap')
     await conn.run(
       `CREATE TABLE snap.turn (turn_id VARCHAR, kind VARCHAR, state VARCHAR, role VARCHAR, cost_usd DOUBLE,
-         received_at VARCHAR, returned_at VARCHAR)`
+         received_at VARCHAR, returned_at VARCHAR, arrived_at VARCHAR)`
     )
     await conn.run('CREATE TABLE snap.failure (id BIGINT, kind VARCHAR, created_at VARCHAR)')
     const reader = openReader(input.snapshotFile)
     try {
       const turns = await conn.createAppender('turn', 'snap')
+      const hasArrival = (reader.prepare('PRAGMA table_info(turn)').all() as { name: string }[]).some(
+        (column) => column.name === 'arrived_at'
+      )
       const turnRows = reader
-        .prepare('SELECT turn_id, kind, state, role, cost_usd, received_at, returned_at FROM turn')
+        .prepare(
+          `SELECT turn_id, kind, state, role, cost_usd, received_at, returned_at,
+          ${hasArrival ? 'arrived_at' : 'NULL'} FROM turn`
+        )
         .raw()
         .iterate() as IterableIterator<(string | number | null)[]>
       for (const row of turnRows) {

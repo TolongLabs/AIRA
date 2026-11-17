@@ -84,6 +84,7 @@ export interface ModelCallRecord {
   durationMs: number
   usage?: ModelUsage
   costUsd?: number
+  error?: unknown
   failureKind?: ModelFailureKind
 }
 
@@ -94,6 +95,7 @@ export interface RunResult {
   model: string
   role: string
   transport: string
+  toolMs?: number
   calls: ModelCallRecord[]
   /** Which chain limit ended the tool chain, if one did. */
   chainLimit?: 'calls' | 'time'
@@ -112,6 +114,8 @@ export interface TurnRunner {
      * For commands: until each named tool has been called once, only the named tools not yet called are offered.
      * The model fills their arguments, or asks one question and calls nothing.
      */
+    onCall?: (record: ModelCallRecord) => void
+    onSpendError?: (error: unknown) => void
     firstTools?: string[]
     /** Maximum tool calls this turn may make (never above the deployment ceiling in the runner). */
     maxToolCalls?: number

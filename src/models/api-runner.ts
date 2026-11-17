@@ -19,7 +19,7 @@ import {
 
 export interface ApiRunnerOptions {
   /** Builds the client for one turn. `onCall` receives every attempt, for the model_call records. */
-  clientFor: (onCall: (record: ModelCallRecord) => void) => ModelClient
+  clientFor: (onCall: (record: ModelCallRecord) => void, onSpendError?: (error: unknown) => void) => ModelClient
   /** The model id asked of the client. A routed client replaces it per role. */
   model: string
   limits: { maxCallsPerTurn: number; timeBudgetMs: number }
@@ -203,14 +203,27 @@ class SeamTool extends BaseTool {
 
 export function createApiRunner(options: ApiRunnerOptions): TurnRunner {
   return {
-    async run({ system, messages, tools, context, signal, firstTools, maxToolCalls }): Promise<RunResult> {
+    async run({
+      system,
+      messages,
+      tools,
+      context,
+      signal,
+      firstTools,
+      maxToolCalls,
+      onCall,
+      onSpendError
+    }): Promise<RunResult> {
       const calls: ModelCallRecord[] = []
       const offeredNames = new Set(tools.map((tool) => tool.schema.name))
       const state: LoopState = {
         system,
         messages,
         tools,
-        client: options.clientFor((record) => calls.push(record)),
+        client: options.clientFor((record) => {
+          calls.push(record)
+          onCall?.(record)
+        }, onSpendError),
         signal,
         turnId: context.turnId,
         toolCalls: 0,
@@ -258,6 +271,7 @@ export function createApiRunner(options: ApiRunnerOptions): TurnRunner {
         role: last?.role ?? 'main',
         transport: 'api',
         calls,
+        toolMs: state.toolMs,
         chainLimit: state.chainLimit,
         receipts: state.receipts
       }

@@ -90,6 +90,28 @@ describe('formatReport', () => {
 })
 
 describe('buildReport', () => {
+  it('uses inbound arrival for latency and date range before the turn opens', async () => {
+    const dataDir = tmpDir('aira-report-arrival-')
+    const storage = tmpStorage({ dir: dataDir })
+    addTurn(storage, {
+      turnId: 'arrival-turn',
+      mid: 'arrival-mid',
+      kind: 'reply',
+      state: 'delivered',
+      receivedAt: '2026-01-02T00:00:01.500Z',
+      returnedAt: '2026-01-02T00:00:02.000Z'
+    })
+    storage.tx((db) => updateTurnRecord(db, 'arrival-turn', { arrivedAt: '2026-01-01T23:59:59.000Z' }))
+    const snapshot = await takeSnapshot(storage, join(dataDir, 'snapshots'), 'manual')
+    const report = await buildReport({
+      snapshotFile: join(dataDir, 'snapshots', snapshot.file),
+      archiveDir: join(dataDir, 'archive'),
+      from: '2026-01-01T00:00:00.000Z',
+      to: '2026-01-02T00:00:00.000Z'
+    })
+    expect(report.turns).toEqual([{ kind: 'reply', count: 1, p50Ms: 3000, p90Ms: 3000 }])
+  })
+
   it('combines snapshot and archive, deduplicates overlap, and computes percentiles, cost, failures and fallback rate', async () => {
     const dataDir = tmpDir('aira-report-')
     const storage = tmpStorage({ dir: dataDir })

@@ -14,6 +14,7 @@ export interface RoutedClientOptions {
   transport: 'api' | 'subscription'
   /** Called once per attempt, success or failure, so the caller can write model_call rows. */
   onCall?: (record: ModelCallRecord) => void
+  onSpendError?: (error: unknown) => void
   /** Called when a role fails with auth, for the operator alert. */
   onAuthFailure?: (role: string) => void
   /** Waits between retries. Replaced in tests. Default: a timer that the signal can cut short. */
@@ -94,8 +95,8 @@ export function createRoutedClient(options: RoutedClientOptions): ModelClient {
               now
             )
           })
-        } catch {
-          // Storage failure after onCall is swallowed so the reply still returns.
+        } catch (error) {
+          options.onSpendError?.(error)
         }
         return { ok: true, response }
       } catch (rawErr) {
@@ -107,6 +108,7 @@ export function createRoutedClient(options: RoutedClientOptions): ModelClient {
           attempt,
           startedAt,
           durationMs: Math.max(0, now().getTime() - startedAt.getTime()),
+          error: err,
           failureKind: err.kind
         })
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createBreaker } from '../../src/models/breaker.js'
 import {
   createOpenAiClient,
@@ -422,6 +422,24 @@ describe('routed-client', () => {
     return { waits, sleep }
   }
 
+  it('returns the reply and reports a failed spend write once', async () => {
+    const storage = tmpStorage()
+    vi.spyOn(storage, 'tx').mockImplementation(() => {
+      throw new Error('write failed')
+    })
+    const onSpendError = vi.fn()
+    const client = createRoutedClient({
+      main: { client: fakeModel([textResponse('ok')]), model: 'main-m' },
+      config: defaultConfig,
+      breaker: createBreaker({ breakerMs: 1000 }),
+      storage,
+      transport: 'api',
+      onSpendError
+    })
+    expect((await client.call(baseRequest())).text).toBe('ok')
+    expect(onSpendError).toHaveBeenCalledTimes(1)
+  })
+
   it('calls main once on success', async () => {
     const storage = tmpStorage()
     const main = fakeModel([textResponse('hi', 0.01)])
@@ -766,5 +784,6 @@ describe('routed-client', () => {
     expect(res.text).toBe('ok')
     expect(waits).toEqual([250])
     expect(records[0]?.failureKind).toBe('transient')
+    expect(records[0]?.error).toMatchObject({ message: 'unexpected boom' })
   })
 })

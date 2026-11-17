@@ -190,6 +190,11 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
   async function execute(turnId: string, chat: Chat, batch: Waiter[], outcome: Outcome): Promise<Outcome> {
     const newest = batch[batch.length - 1] as Waiter
     const stage = (name: string) => advanceTurn(storage, turnId, name)
+    const stamp = (name: TurnStage) => {
+      const at = now()
+      storage.tx((db) => markStage(db, turnId, name, () => at))
+      outcome.stamps.push([name, at])
+    }
     const log = logger.child({ turnId, module: 'turn' })
     const fail = (at: string, kind: FailureKind, error: unknown, handledBy: string) => {
       outcome.failures.push({ stage: at, kind, error, handledBy })
@@ -234,7 +239,10 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     outcome.context = context
     outcome.fields.characterId = pack.id
     const line = (kind: LineKind, failure: FailureKind, error: unknown): Outcome => {
-      fail(context.kind === 'command' ? 'command' : 'run', failure, error, `line:${kind}`)
+      if (!outcome.calls.some((call) => call.error === error)) {
+        fail(context.kind === 'command' ? 'command' : 'run', failure, error, `line:${kind}`)
+      }
+      outcome.fields.failureKind = failure
       outcome.state = 'failed'
       outcome.fields.outcome = 'failed'
       outcome.content = pack.lines[kind]
@@ -256,7 +264,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     if (deps.hooks?.spendAllows?.() === false) {
       return line('limit', 'budget', new Error('the monthly spend cap is reached'))
     }
-    outcome.stamps.push(['admitted', now()])
+    stamp('admitted')
 
     // 5. Build: the window, then the prompt.
     stage('build')
@@ -287,7 +295,9 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     if (aloneDirect && deps.commands && commands[0]) {
       const command = commands[0]
       // A message with one command, a direct one: code runs the handler and writes the answer. No model call.
+      stamp('built')
       const result = await deps.commands.runDirect(command, context)
+      stamp('model_done')
       if (!result.ok) return line('error', 'tool_error', new Error(`the command ${command.name} failed`))
       built = { system: [], messages: [], record: { lengthBypass: 'command_list' }, shape: { lengthBypass: true } }
       run = {
@@ -317,6 +327,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
 
       if (deps.media && (files.length > 0 || shouldReadLinks)) {
         const combined: TurnMediaResult = { readings: [], unreadable: [], calls: [] }
+        const mediaStartedAt = now().getTime()
         let enteredMediaStage = false
         const enterMediaStage = () => {
           if (!enteredMediaStage) {
@@ -345,6 +356,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
           combined.unreadable.push(...linkRead.unreadable)
           combined.calls.push(...linkRead.calls)
         }
+        outcome.fields.mediaMs = Math.max(0, now().getTime() - mediaStartedAt)
         const promptText = mediaPromptText(combined, pack.lines.unreadableMedia)
         if (promptText.length > 0) input.media = promptText
         outcome.calls.push(...combined.calls)
@@ -362,7 +374,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       }
       built = await deps.prompt.build(input)
       Object.assign(outcome.fields, built.record)
-      outcome.stamps.push(['built', now()])
+      stamp('built')
       if (commands.length > 0 && deps.commands) {
         // Commands in a model turn: the model fills each named tool's arguments from the person's own words.
         context.commandTool = commands[0]?.tool
@@ -394,7 +406,20 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
             context,
             signal: abort.signal,
             firstTools: commands.length > 0 ? commands.map((command) => command.tool) : undefined,
-            maxToolCalls
+            maxToolCalls,
+            onCall: (call) => {
+              outcome.calls.push(call)
+              Object.assign(outcome.fields, {
+                transport: call.transport,
+                role: call.role,
+                model: call.model,
+                attempts: outcome.calls.filter((entry) => entry.role !== 'media').length
+              })
+            },
+            onSpendError: (error) => {
+              log.warn('model.spend_failed', { kind: 'storage_error' })
+              outcome.failures.push({ stage: 'run', kind: 'storage_error', error, handledBy: 'reply' })
+            }
           }),
           new Promise<never>((_, reject) =>
             abort.signal.addEventListener('abort', () =>
@@ -408,9 +433,10 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         throw error
       } finally {
         clearTimeout(timer)
+        stamp('model_done')
       }
-      outcome.calls.push(...run.calls)
-      outcome.stamps.push(['model_done', now()])
+      // Older runner seams may only return calls; the callback owns calls from current runners.
+      for (const call of run.calls) if (!outcome.calls.includes(call)) outcome.calls.push(call)
       Object.assign(outcome.fields, {
         transport: run.transport,
         role: run.role,
@@ -435,7 +461,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       stickerId: cleaned.stickerId,
       attachments: cleaned.attachments
     } satisfies TurnRecordFields)
-    outcome.stamps.push(['cleaned', now()])
+    stamp('cleaned')
     if (cleaned.content.trim() === '')
       return line('fallback', 'malformed', new Error('the reply was empty after cleaning'))
     if (cleaned.replacedBy)
@@ -477,7 +503,27 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       )
       log.info('turn.received', { chatId: chat.chatId, messages: batch.length })
 
-      let outcome: Outcome = { state: 'failed', fields: {}, failures: [], calls: [], stamps: [] }
+      const timing = storage.read(
+        (db) =>
+          db
+            .prepare(
+              `SELECT t.received_at, MIN(i.received_at) AS arrived_at FROM turn t
+         LEFT JOIN inbound_message i ON i.turn_id = t.turn_id WHERE t.turn_id = ?`
+            )
+            .get(turnId) as { received_at: string; arrived_at: string | null }
+      )
+      const arrivedAt = timing.arrived_at ?? timing.received_at
+      let outcome: Outcome = {
+        state: 'failed',
+        fields: {
+          arrivedAt,
+          queueMs: Math.max(0, Date.parse(timing.received_at) - Date.parse(arrivedAt)),
+          mediaMs: 0
+        },
+        failures: [],
+        calls: [],
+        stamps: []
+      }
       try {
         outcome = await execute(turnId, chat, batch, outcome)
       } catch (error) {
@@ -493,6 +539,26 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       // 8. Return: store the reply and close the turn record in one transaction. Only then is it sent.
       const content = outcome.state === 'declined' ? undefined : outcome.content
       outcome.fields.replyChars = content?.length ?? 0
+      const returnedAt = now()
+      outcome.fields.totalMs = Math.max(0, returnedAt.getTime() - Date.parse(arrivedAt))
+      outcome.fields.toolMs = storage.read((db) =>
+        Number(db.prepare('SELECT COALESCE(SUM(duration_ms), 0) FROM tool_call WHERE turn_id = ?').pluck().get(turnId))
+      )
+      const modelCalls = outcome.calls.filter((call) => call.role !== 'media')
+      for (const [index, call] of modelCalls.entries()) {
+        if (!call.failureKind) continue
+        const next = modelCalls[index + 1]
+        outcome.failures.push({
+          stage: 'run',
+          kind: call.failureKind,
+          error: call.error ?? new Error(call.failureKind),
+          handledBy: next
+            ? next.role === call.role && next.transport === call.transport
+              ? 'retry'
+              : 'fallback'
+            : `line:${LINE_FOR[call.failureKind] ?? (outcome.fields.outcome === 'failed' ? 'error' : 'fallback')}`
+        })
+      }
       const closed = closeTurn(
         storage,
         {
@@ -502,7 +568,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
           replyMid: newest.mid,
           also: (db) => {
             for (const [stage, at] of outcome.stamps) markStage(db, turnId, stage, () => at)
-            markStage(db, turnId, 'returned', now)
+            markStage(db, turnId, 'returned', () => returnedAt)
             updateTurnRecord(db, turnId, outcome.fields)
             if (outcome.context?.kind === 'command') {
               db.prepare("UPDATE turn SET kind = 'command' WHERE turn_id = ?").run(turnId)
@@ -536,7 +602,16 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       for (const failure of outcome.failures) {
         log.warn('turn.failure', { stage: failure.stage, kind: failure.kind, error: failure.error })
       }
-      log.info('turn.returned', { state: outcome.state, outcome: outcome.fields.outcome, chars: reply.content.length })
+      log.info('turn.returned', {
+        state: outcome.state,
+        outcome: outcome.fields.outcome,
+        chars: reply.content.length,
+        arrivedAt,
+        queueMs: outcome.fields.queueMs,
+        mediaMs: outcome.fields.mediaMs,
+        toolMs: outcome.fields.toolMs,
+        totalMs: outcome.fields.totalMs
+      })
     } catch (error) {
       // Storage failed around the turn. Nothing was acknowledged, so nothing is sent.
       log.error('turn.storage_failed', { error })

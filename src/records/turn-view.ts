@@ -13,7 +13,6 @@ const STAGES: readonly [string, string][] = [
   ['received', 'received_at'],
   ['admitted', 'admitted_at'],
   ['built', 'built_at'],
-  ['first_byte', 'first_byte_at'],
   ['model_done', 'model_done_at'],
   ['cleaned', 'cleaned_at'],
   ['returned', 'returned_at']
@@ -79,6 +78,7 @@ export function formatTurn(view: TurnView): string {
     `model: transport=${val(t['transport'])} role=${val(t['role'])} model=${val(t['model'])} attempts=${val(t['attempts'])} in=${val(t['input_tokens'])} out=${val(t['output_tokens'])} cached=${val(t['cached_tokens'])} cost=${val(t['cost_usd'])}`,
     `delivery: chars=${val(t['reply_chars'])} bubbles=${val(t['bubble_count'])} sticker=${val(t['sticker_id'])} attachments=${listVal(t['attachments'])} receipts=${listVal(t['receipts'])}`,
     `cleaning: ${listVal(t['cleaning_steps'])}`,
+    `timing: queue=${val(t['queue_ms'])}ms media=${val(t['media_ms'])}ms tools=${val(t['tool_ms'])}ms total=${val(t['total_ms'])}ms`,
     'stages:'
   ]
 

@@ -245,7 +245,7 @@ export async function startLevel1(options: Level1Options): Promise<Level1> {
     async function draw(chat: LiveChat, delivery: Awaited<ReturnType<FakeGateway['send']>>, ctx: DrawContext) {
       const { log } = chat
       const panel = delivery.turnId ? turn(delivery.turnId) : undefined
-      const faults = (panel?.failures ?? []).map((failure) => String(failure['kind']))
+      const faults = [...new Set((panel?.failures ?? []).map((failure) => String(failure['kind'])))]
       const turnInfo = { ...(delivery.turnId ? { id: delivery.turnId } : {}), ms: ctx.ms, faults }
 
       if (delivery.status === 'failed') {
