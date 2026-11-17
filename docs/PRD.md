@@ -13,7 +13,7 @@ Status: draft 0.1, 15 Nov 2026. Not yet approved by the owner.
 | Surfaces | WhatsApp DMs and small groups: mention, reply, free-response chats, and text slash commands |
 | Host     | One Linux machine on a private network, behind the Hermes Agent WhatsApp gateway            |
 | Scope    | The chatbot only. The owner's operations tools on the same machine are out of scope         |
-| Status   | 45 requirements: 22 Shipped, 20 Partial, 1 Exists (faulty), 2 Planned                       |
+| Status   | 45 requirements: 23 Shipped, 20 Partial, 1 Exists (faulty), 1 Planned                       |
 
 ## Problem
 
@@ -155,7 +155,7 @@ at this commit).
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | FR-32 | Choose the model transport in the root configuration file: an OpenAI-compatible API with a key, or the subscription command-line wrapper. The rest of the system behaves the same on both. The launch default is the faster one in a recorded benchmark; the API key is the default until that benchmark exists.                                                                                              | Partial |
 | FR-33 | Retry transient model errors inside a turn deadline, then fall back to a second model on the same loop with the same prompt and tools. Stop at a monthly spend cap.                                                                                                                                                                                                                                           | Shipped |
-| FR-45 | Think deeper on request. A message that starts with `/think` runs that one turn at a higher effort set per role, and the prefix is not sent to the model. Manual use is required. A per-chat switch turns it on or off, and the turn record notes the raised effort. Optional, later: code raises effort on its own from listed reply-shape signals, only if the harness shows the command misses real cases. | Planned |
+| FR-45 | Think deeper on request. A message that starts with `/think` runs that one turn at a higher effort set per role, and the prefix is not sent to the model. Manual use is required. A per-chat switch turns it on or off, and the turn record notes the raised effort. Optional, later: code raises effort on its own from listed reply-shape signals, only if the harness shows the command misses real cases. | Shipped |
 
 ### Records And Test Harness
 
