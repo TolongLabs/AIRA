@@ -252,6 +252,10 @@ are not read, and each one gets the unreadable note with the reason `off`. The t
 
 Video from a linked social post is fetched by the social tool and passed through the same path.
 
+A link read at intake is not opened again in the same turn: `read_page` and `read_post` refuse its canonical URL with
+kind `refused`, and the link note tells the model it is already open. A link whose watch or read failed is not
+refused, so the model may read the page instead, and the footer then shows a page read.
+
 ## Social Post And Reply Readers
 
 Link intake and the social tools read public posts and their replies through one subsystem in `src/social`. It

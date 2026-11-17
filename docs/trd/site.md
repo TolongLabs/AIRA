@@ -32,22 +32,23 @@ added to the contract before it is used.
 ## Core API
 
 Served by the core on the private network. Every route requires the site token. Every write goes through the same
-validation as start-up and is logged to `setting_change`. This is every route the core serves. No character write,
-sticker, preview or memory forget route exists.
+validation as start-up and is logged to `setting_change`. This is every route the core serves. The only character write is
+the footer route. No sticker, preview or memory forget route exists.
 
-| Method | Path                    | Purpose                                           | Access | Handler             |
-| ------ | ----------------------- | ------------------------------------------------- | ------ | ------------------- |
-| `GET`  | `/api/health`           | Readiness, version, active turns, per-role status | Read   | `src/api/routes.ts` |
-| `GET`  | `/api/chats`            | Chats with resolved settings and source levels    | Read   | `src/api/routes.ts` |
-| `PUT`  | `/api/chats/:id/status` | Switch one chat on (`active`) or off (`pending`)  | Write  | `src/api/writes.ts` |
-| `GET`  | `/api/settings`         | Raw values at one level (`level`, `scope`)        | Read   | `src/api/routes.ts` |
-| `PUT`  | `/api/settings`         | Set or clear one key at one level                 | Write  | `src/api/writes.ts` |
-| `GET`  | `/api/characters`       | Loaded packs, plus the packs that failed to load  | Read   | `src/api/routes.ts` |
-| `GET`  | `/api/tools`            | Tools grouped by feature, with modes and commands | Read   | `src/api/routes.ts` |
-| `GET`  | `/api/turns`            | Newest turn rows, newest first                    | Read   | `src/api/routes.ts` |
-| `GET`  | `/api/turns/:id`        | One turn with its model, tool and failure rows    | Read   | `src/api/routes.ts` |
-| `GET`  | `/api/report`           | Latency, failure, cost and fallback figures       | Read   | `src/api/routes.ts` |
-| `GET`  | `/api/memory`           | One chat's memory items (`chat` is required)      | Read   | `src/api/routes.ts` |
+| Method | Path                         | Purpose                                           | Access | Handler             |
+| ------ | ---------------------------- | ------------------------------------------------- | ------ | ------------------- |
+| `GET`  | `/api/health`                | Readiness, version, active turns, per-role status | Read   | `src/api/routes.ts` |
+| `GET`  | `/api/chats`                 | Chats with resolved settings and source levels    | Read   | `src/api/routes.ts` |
+| `PUT`  | `/api/chats/:id/status`      | Switch one chat on (`active`) or off (`pending`)  | Write  | `src/api/writes.ts` |
+| `GET`  | `/api/settings`              | Raw values at one level (`level`, `scope`)        | Read   | `src/api/routes.ts` |
+| `PUT`  | `/api/settings`              | Set or clear one key at one level                 | Write  | `src/api/writes.ts` |
+| `GET`  | `/api/characters`            | Loaded packs, plus the packs that failed to load  | Read   | `src/api/routes.ts` |
+| `PUT`  | `/api/characters/:id/footer` | Set or clear a data pack's footer icon and labels | Write  | `src/api/writes.ts` |
+| `GET`  | `/api/tools`                 | Tools grouped by feature, with modes and commands | Read   | `src/api/routes.ts` |
+| `GET`  | `/api/turns`                 | Newest turn rows, newest first                    | Read   | `src/api/routes.ts` |
+| `GET`  | `/api/turns/:id`             | One turn with its model, tool and failure rows    | Read   | `src/api/routes.ts` |
+| `GET`  | `/api/report`                | Latency, failure, cost and fallback figures       | Read   | `src/api/routes.ts` |
+| `GET`  | `/api/memory`                | One chat's memory items (`chat` is required)      | Read   | `src/api/routes.ts` |
 
 - Requests are JSON with a declared content type. Other content types are refused.
 - The Origin and Host headers are checked on every write.
@@ -85,10 +86,19 @@ sticker, preview or memory forget route exists.
 
 ### Write Routes
 
-| Route                       | Body                                                                 | Answer                                          |
-| --------------------------- | -------------------------------------------------------------------- | ----------------------------------------------- |
-| `PUT /api/chats/:id/status` | `{ "status": "active" }` or `"pending"`                              | `chatId`, `status`, and `changed` true or false |
-| `PUT /api/settings`         | `{ "level", "scope", "key", "value" }`; `value: null` clears the row | `level`, `scope`, `key`, `value`, `changed`     |
+| Route                            | Body                                                                        | Answer                                          |
+| -------------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------- |
+| `PUT /api/chats/:id/status`      | `{ "status": "active" }` or `"pending"`                                     | `chatId`, `status`, and `changed` true or false |
+| `PUT /api/settings`              | `{ "level", "scope", "key", "value" }`; `value: null` clears the row        | `level`, `scope`, `key`, `value`, `changed`     |
+| `PUT /api/characters/:id/footer` | `{ "icon"?, "labels"?: { "<kind>": string or null } }`; `null` clears a key | `id`, `toolFooter`, `changed`                   |
+
+- The footer route edits `toolFooter` in a data pack's `card.yml` in place, keeping its comments. A repository pack
+  gets 409 `pack_read_only`; a card that does not parse or validate gets 409 `pack_unparseable`, and nothing is
+  written. A label or icon that breaks the footer rule ([Prompt Engine](prompt-engine.md#tool-footer)) gets 400
+  `invalid_footer`; a kind that is neither a tool name nor an intake kind gets 400 `unknown_footer_kind`. Inside
+  the one writer lock the file is written to a temporary file and renamed over the card, and one `setting_change`
+  row per changed key is written with target `pack`. If the saved pack then fails to load, the old file is put
+  back. Packs reload on every turn, so the next turn uses the new labels.
 
 - A write needs `Content-Type: application/json` (else 415) and a body of at most 16 KB (else 413 `body_too_large`)
   that the route's schema accepts (else 400). Only `PUT` is accepted on a write path (else 405). An unknown chat
@@ -121,8 +131,9 @@ still never hold one.
 
 ## Character Studio
 
-Planned, not built (FR-41). No studio page exists in the site build, and the core has no character write, sticker
-or preview route. The only character surface is a read: `GET /api/characters` lists each loaded pack's id, display
+Planned, not built (FR-41). No studio page exists in the site build. The first pack write is the footer route: the
+Chats page edits a data pack's footer icon and labels, showing each kind's default and whether the pack sets it. The
+core has no other character write, and no sticker or preview route. The only character surface is a read: `GET /api/characters` lists each loaded pack's id, display
 name, source and languages, plus the packs that failed to load with their reasons. The Chats page uses that list
 for the character choice. What FR-41 still needs: a studio page, a pack save route with the start-up validator, a
 sticker upload route, and a prompt preview route.
@@ -137,7 +148,7 @@ chatbot pages have no control that sends a message to a chat or restarts a servi
 The site builds with Vite in CI and ships inside the release image. Built output is not committed. The build is
 multi-page, not a single-page app: nine entries (`index`, `markets`, `graph`, `library`, `cron`, `chats`,
 `settings`, `notices`, `send`), one shared shell, and no studio entry. The chatbot client (`site/src/lib/core.ts`)
-exposes five calls (`tools`, `chats`, `characters`, `setStatus`, `setSetting`) and keeps the site token in local
+exposes six calls (`tools`, `chats`, `characters`, `setStatus`, `setSetting`, `setFooter`) and keeps the site token in local
 storage under its own key (see below), retrying once on 401.
 
 ## Serving The Site
