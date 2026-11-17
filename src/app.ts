@@ -47,7 +47,7 @@ import { okToolsOfTurn } from './records/turn-view.js'
 import { renderReport } from './render/render.js'
 import { reportFormatSchema } from './render/types.js'
 import { type ReportRenderer, createResearchOffers } from './research/offer.js'
-import { createResearchWorker } from './research/worker.js'
+import { type ResearchWorker, createResearchWorker } from './research/worker.js'
 import { listChats } from './settings/chats.js'
 import { resolveSettings } from './settings/settings.js'
 import { createSocialPostPort } from './social/port.js'
@@ -123,6 +123,8 @@ export interface App {
   registry: ToolRegistry
   /** The memory worker, when passive memory is on. Its timer runs it; a test or an operator may run one tick. */
   memory?: MemoryWorker
+  /** The research worker. Its timer runs it; a test or an operator may run one tick. */
+  research: ResearchWorker
   server: Server
   siteServer?: Server
   alerter: Alerter
@@ -380,8 +382,9 @@ export async function createApp(options: AppOptions): Promise<App> {
       page: options.ports?.page ?? page,
       schedule,
       logger,
+      redactor,
       now,
-      client: {
+      client: (jobId) => ({
         async call(request, signal) {
           if (!extractionTarget) throw new Error('research_model_unavailable')
           const startedAt = now()
@@ -392,12 +395,13 @@ export async function createApp(options: AppOptions): Promise<App> {
           } catch (error) {
             storage.tx((db) =>
               recordModelCall(db, {
+                jobId,
                 role: 'main',
                 model: extractionTarget.model,
                 transport: 'api',
                 attempt: 1,
                 startedAt,
-                durationMs: now().getTime() - startedAt.getTime(),
+                durationMs: Math.max(0, now().getTime() - startedAt.getTime()),
                 failureKind: error instanceof ModelError ? error.kind : 'transient'
               })
             )
@@ -416,12 +420,13 @@ export async function createApp(options: AppOptions): Promise<App> {
               now
             )
             recordModelCall(db, {
+              jobId,
               role: 'main',
               model: response.model,
               transport: 'api',
               attempt: 1,
               startedAt,
-              durationMs: now().getTime() - startedAt.getTime(),
+              durationMs: Math.max(0, now().getTime() - startedAt.getTime()),
               inputTokens: response.usage.inputTokens,
               outputTokens: response.usage.outputTokens,
               cachedTokens: response.usage.cachedTokens,
@@ -430,7 +435,7 @@ export async function createApp(options: AppOptions): Promise<App> {
           })
           return response
         }
-      }
+      })
     })
     closers.push(worker.start(1000))
     registerCoreTools(registry, {
@@ -764,6 +769,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       turns,
       registry,
       ...(memory ? { memory } : {}),
+      research: worker,
       server,
       ...(siteServer ? { siteServer } : {}),
       alerter,

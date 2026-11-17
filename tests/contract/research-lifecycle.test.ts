@@ -6,6 +6,7 @@ import { withAttachments } from '../../src/format/attachments.js'
 import { createReplyCleaner } from '../../src/format/clean.js'
 import { parseGatewayRequest } from '../../src/gateway/request.js'
 import { scheduleEntries, writeScheduleFile } from '../../src/gateway/schedule.js'
+import { ModelError } from '../../src/models/types.js'
 import { createLogger } from '../../src/records/logger.js'
 import { createRedactor } from '../../src/records/redact.js'
 import { createResearchOffers } from '../../src/research/offer.js'
@@ -343,5 +344,101 @@ describe('research jobs and delivery', () => {
     expect(reply?.content).toBe(pack.lines.error)
     expect(f.row()).toMatchObject({ offer: 'none', delivered_at: instant })
     expect(f.storage.read((db) => scheduleEntries(db))).toHaveLength(0)
+  })
+
+  it('records the error kind and redacted message on failure rows and logs without topic text', async () => {
+    const f = fixture()
+    const secret = 'secret-token-999'
+    const privateTopic = 'confidential subject 1234567890'
+    f.storage.tx((db) =>
+      enqueueJob(
+        db,
+        'research_job',
+        {
+          jobId: 'res_secret',
+          chatId: f.chat.chatId,
+          payload: JSON.stringify({ topic: privateTopic }),
+          requesterId: 'req-1',
+          topic: privateTopic,
+          wantsPdf: false
+        },
+        f.now
+      )
+    )
+    const logs: Record<string, unknown>[] = []
+    const redactor = createRedactor({ secrets: [secret] })
+    const logger = createLogger({
+      level: 'warn',
+      module: 'test',
+      redactor,
+      sink: (line) => logs.push(JSON.parse(line))
+    })
+    const worker = createResearchWorker({
+      storage: f.storage,
+      config: testConfig(),
+      client: {
+        call: vi.fn().mockRejectedValue(new ModelError('malformed', `HTTP 400 with ${secret} and 1234567890@lid`))
+      },
+      search: { search: vi.fn() },
+      page: { read: vi.fn(), download: vi.fn() },
+      schedule: { sync: vi.fn() },
+      logger,
+      redactor,
+      now: f.now
+    })
+    expect(await worker.tick()).toBe('failed')
+    const row = f.storage.read((db) =>
+      db.prepare('SELECT job_id, stage, kind, message, handled_by FROM failure WHERE job_id = ?').get('res_secret')
+    ) as Record<string, unknown>
+    expect(row['stage']).toBe('research')
+    expect(row['kind']).toBe('malformed')
+    expect(row['handled_by']).toBe('line:researchFailed')
+    expect(row['message']).toContain('HTTP 400 with [secret] and h:')
+    expect(String(row['message'])).not.toContain(secret)
+    expect(String(row['message'])).not.toContain('1234567890@lid')
+    expect(String(row['message'])).not.toContain(privateTopic)
+
+    const failedLog = logs.find((entry) => entry['event'] === 'research.job_failed')
+    expect(failedLog).toMatchObject({ job_id: 'res_secret', kind: 'malformed', message: row['message'] })
+    expect(JSON.stringify(failedLog)).not.toContain(secret)
+    expect(JSON.stringify(failedLog)).not.toContain('1234567890@lid')
+    expect(JSON.stringify(failedLog)).not.toContain(privateTopic)
+
+    f.storage.tx((db) =>
+      enqueueJob(
+        db,
+        'research_job',
+        {
+          jobId: 'res_internal',
+          chatId: f.chat.chatId,
+          payload: JSON.stringify({ topic: 'another topic' }),
+          requesterId: 'req-1',
+          topic: 'another topic',
+          wantsPdf: false
+        },
+        f.now
+      )
+    )
+    const internalWorker = createResearchWorker({
+      storage: f.storage,
+      config: testConfig(),
+      client: { call: vi.fn().mockRejectedValue(new Error('unexpected failure')) },
+      search: { search: vi.fn() },
+      page: { read: vi.fn(), download: vi.fn() },
+      schedule: { sync: vi.fn() },
+      logger,
+      redactor,
+      now: f.now
+    })
+    expect(await internalWorker.tick()).toBe('failed')
+    expect(
+      f.storage.read((db) => db.prepare('SELECT kind, message FROM failure WHERE job_id = ?').get('res_internal'))
+    ).toEqual({ kind: 'internal', message: 'unexpected failure' })
+    expect(
+      logs.find((entry) => entry['event'] === 'research.job_failed' && entry['job_id'] === 'res_internal')
+    ).toMatchObject({
+      kind: 'internal',
+      message: 'unexpected failure'
+    })
   })
 })

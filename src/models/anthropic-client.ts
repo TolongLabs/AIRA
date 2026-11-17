@@ -33,8 +33,35 @@ const STABLE_BLOCKS: ReadonlySet<PromptBlock['name']> = new Set(['core', 'speech
 /** A cache write costs this much of the input price on the default five-minute lifetime. */
 const CACHE_WRITE_FACTOR = 1.25
 
+const CLAUDE_SCHEMA_KEYS = new Set(['type', 'required', 'enum', 'const', 'description'])
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** Converts a JSON Schema into the subset Claude's structured output (`output_config.format`) accepts. */
+export function toClaudeSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(schema)) {
+    if (value === undefined) continue
+    if (key === 'properties' && isRecord(value)) {
+      out['properties'] = Object.fromEntries(
+        Object.entries(value).map(([prop, sub]) => [prop, isRecord(sub) ? toClaudeSchema(sub) : sub])
+      )
+    } else if (key === 'items') {
+      if (isRecord(value)) out['items'] = toClaudeSchema(value)
+      else if (Array.isArray(value)) out['items'] = value.map((item) => (isRecord(item) ? toClaudeSchema(item) : item))
+    } else if (key === 'anyOf' && Array.isArray(value)) {
+      out['anyOf'] = value.map((branch) => (isRecord(branch) ? toClaudeSchema(branch) : branch))
+    } else if (key === 'additionalProperties') {
+      if (value === false) out['additionalProperties'] = false
+    } else if (key === 'minItems') {
+      if (value === 0 || value === 1) out['minItems'] = value
+    } else if (CLAUDE_SCHEMA_KEYS.has(key)) {
+      out[key] = Array.isArray(value) ? [...value] : value
+    }
+  }
+  return out
 }
 
 function systemBlocks(blocks: PromptBlock[]): Anthropic.TextBlockParam[] {
@@ -107,7 +134,7 @@ export function toMessagesBody(request: ModelRequest, effort = ''): Params {
   const format = request.params['response_format']
   if (isRecord(format) && format['type'] === 'json_schema' && isRecord(format['json_schema'])) {
     const schema = format['json_schema']['schema']
-    if (isRecord(schema)) outputConfig.format = { type: 'json_schema', schema }
+    if (isRecord(schema)) outputConfig.format = { type: 'json_schema', schema: toClaudeSchema(schema) }
   }
   if (Object.keys(outputConfig).length > 0) body.output_config = outputConfig
   return body
