@@ -1,7 +1,18 @@
-import { execFile } from 'node:child_process'
+import { type ChildProcess, type SpawnOptions, spawn } from 'node:child_process'
 import { appendFile, mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { DeployRecord, Release, UpdaterOps } from './update.js'
+
+export const DOCKER_PULL_TIMEOUT_MS = 8 * 60_000
+export const DOCKER_TIMEOUT_MS = 90_000
+export const KILL_GRACE_MS = 5_000
+export const SYNTHETIC_TURN_TIMEOUT_MS = 60_000
+
+export interface RunOptions {
+  timeoutMs?: number
+  killGraceMs?: number
+  signal?: AbortSignal
+}
 
 export interface RealOpsOptions {
   image: string
@@ -13,12 +24,14 @@ export interface RealOpsOptions {
   run?: (
     command: string,
     args: string[],
-    env?: Record<string, string>
+    env?: Record<string, string>,
+    options?: RunOptions
   ) => Promise<{ code: number; stdout: string; stderr: string }>
   fetch?: typeof fetch
 }
 
 type RunFn = NonNullable<RealOpsOptions['run']>
+export type SpawnFn = (command: string, args: readonly string[], options: SpawnOptions) => ChildProcess
 
 interface HealthBody {
   status?: unknown
@@ -29,24 +42,135 @@ interface HealthBody {
   }
 }
 
-const defaultRun: RunFn = (command, args, env) =>
-  new Promise((resolve) => {
-    execFile(command, args, { env: env ? { ...process.env, ...env } : process.env }, (error, stdout, stderr) => {
-      if (error === null) {
-        resolve({ code: 0, stdout, stderr })
+export function createSpawnRun(spawnFn: SpawnFn = spawn): RunFn {
+  return (command, args, env, options) =>
+    new Promise((resolve) => {
+      let child: ChildProcess
+      try {
+        child = spawnFn(command, args, {
+          env: env ? { ...process.env, ...env } : process.env,
+          shell: false,
+          stdio: ['ignore', 'pipe', 'pipe']
+        })
+      } catch (err) {
+        resolve({ code: 1, stdout: '', stderr: err instanceof Error ? err.message : String(err) })
         return
       }
-      const code = typeof (error as { code?: unknown }).code === 'number' ? (error as { code: number }).code : 1
-      resolve({ code, stdout, stderr: stderr || error.message })
+
+      const stdoutChunks: Buffer[] = []
+      const stderrChunks: Buffer[] = []
+      let settled = false
+      let killTimer: ReturnType<typeof setTimeout> | undefined
+      const graceMs = options?.killGraceMs ?? KILL_GRACE_MS
+
+      const finish = (code: number, fallbackError?: string) => {
+        if (settled) return
+        settled = true
+        if (killTimer !== undefined) clearTimeout(killTimer)
+        options?.signal?.removeEventListener('abort', onAbort)
+        const stdout = Buffer.concat(stdoutChunks).toString('utf8')
+        const stderr = Buffer.concat(stderrChunks).toString('utf8')
+        resolve({ code, stdout, stderr: stderr || fallbackError || '' })
+      }
+
+      const onAbort = () => {
+        if (settled) return
+        child.kill('SIGTERM')
+        if (settled) return
+        killTimer = setTimeout(() => {
+          if (!settled) {
+            child.kill('SIGKILL')
+          }
+        }, graceMs)
+        killTimer.unref?.()
+      }
+
+      child.stdout?.on('data', (chunk: Buffer | string) => {
+        stdoutChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+      })
+      child.stderr?.on('data', (chunk: Buffer | string) => {
+        stderrChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+      })
+
+      child.once('error', (error: NodeJS.ErrnoException) => {
+        finish(1, error.message)
+      })
+
+      child.once('close', (code, signal) => {
+        const exitCode = typeof code === 'number' ? code : signal ? 1 : 0
+        finish(exitCode, signal ? `killed by ${signal}` : undefined)
+      })
+
+      if (options?.signal) {
+        if (options.signal.aborted) {
+          onAbort()
+        } else {
+          options.signal.addEventListener('abort', onAbort, { once: true })
+        }
+      }
     })
+}
+
+const defaultRun: RunFn = createSpawnRun()
+
+function defaultCommandTimeoutMs(command: string, args: string[]): number {
+  return command === 'docker' && args[0] === 'pull' ? DOCKER_PULL_TIMEOUT_MS : DOCKER_TIMEOUT_MS
+}
+
+export async function execChecked(
+  run: RunFn,
+  command: string,
+  args: string[],
+  env?: Record<string, string>,
+  timeoutMs = defaultCommandTimeoutMs(command, args),
+  killGraceMs = KILL_GRACE_MS
+): Promise<string> {
+  const controller = new AbortController()
+  let timedOut = false
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let forceRejectTimer: ReturnType<typeof setTimeout> | undefined
+
+  const sub = args[0]
+  const label = sub ? `${command} ${sub}` : command
+  const duration = timeoutMs >= 1000 ? `${Math.round(timeoutMs / 1000)}s` : `${timeoutMs}ms`
+  const timeoutError = () => new Error(`${label} timed out after ${duration}`)
+
+  const runPromise = run(command, args, env, { timeoutMs, killGraceMs, signal: controller.signal })
+
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      timedOut = true
+      controller.abort()
+      // Fallback reject if an injected runner ignores signal and never settles.
+      forceRejectTimer = setTimeout(() => {
+        runPromise.catch(() => {})
+        reject(timeoutError())
+      }, killGraceMs + 100)
+      forceRejectTimer.unref?.()
+    }, timeoutMs)
   })
 
-async function execChecked(run: RunFn, command: string, args: string[], env?: Record<string, string>): Promise<string> {
-  const result = await run(command, args, env)
-  if (result.code !== 0) {
-    throw new Error(result.stderr || `${command} exited with code ${result.code}`)
+  try {
+    let result: Awaited<ReturnType<RunFn>>
+    try {
+      result = await Promise.race([runPromise, timeoutPromise])
+    } catch (err) {
+      if (timedOut) {
+        throw timeoutError()
+      }
+      throw err
+    }
+    if (timedOut) {
+      throw timeoutError()
+    }
+    if (result.code !== 0) {
+      throw new Error(result.stderr || `${command} exited with code ${result.code}`)
+    }
+    return result.stdout
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+    if (forceRejectTimer !== undefined) clearTimeout(forceRejectTimer)
   }
-  return result.stdout
 }
 
 function isManualBody(body: unknown): boolean {
@@ -181,7 +305,8 @@ export function createRealOps(options: RealOpsOptions): UpdaterOps {
           body: JSON.stringify({
             messages: [{ role: 'user', content: 'deploy check' }],
             stream: false
-          })
+          }),
+          signal: AbortSignal.timeout(SYNTHETIC_TURN_TIMEOUT_MS)
         })
         if (res.status !== 200) return false
         const data = (await res.json()) as {

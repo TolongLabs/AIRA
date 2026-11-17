@@ -1,7 +1,18 @@
+import { EventEmitter } from 'node:events'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
-import { createRealOps } from '../../scripts/updater/ops.js'
+import { PassThrough } from 'node:stream'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  DOCKER_PULL_TIMEOUT_MS,
+  DOCKER_TIMEOUT_MS,
+  KILL_GRACE_MS,
+  SYNTHETIC_TURN_TIMEOUT_MS,
+  type SpawnFn,
+  createRealOps,
+  createSpawnRun,
+  execChecked
+} from '../../scripts/updater/ops.js'
 import {
   type DeployRecord,
   type Release,
@@ -326,6 +337,36 @@ describe('runUpdate', () => {
 })
 
 describe('createRealOps', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  function makeFakeSpawn(ignoreSigterm = false) {
+    const killed: (NodeJS.Signals | number | undefined)[] = []
+    const spawnFn: SpawnFn = () => {
+      const emitter = new EventEmitter()
+      const stdout = new PassThrough()
+      const stderr = new PassThrough()
+      const proc = Object.assign(emitter, {
+        stdout,
+        stderr,
+        kill(signal?: NodeJS.Signals | number) {
+          killed.push(signal)
+          if (signal === 'SIGTERM' && ignoreSigterm) {
+            return true
+          }
+          stdout.end()
+          stderr.end()
+          queueMicrotask(() => emitter.emit('close', null, typeof signal === 'string' ? signal : 'SIGKILL'))
+          return true
+        }
+      })
+      return proc as unknown as ReturnType<SpawnFn>
+    }
+    return { spawnFn, killed }
+  }
+
   function baseOptions(
     overrides: Partial<Parameters<typeof createRealOps>[0]> = {}
   ): Parameters<typeof createRealOps>[0] {
@@ -483,6 +524,62 @@ describe('createRealOps', () => {
       })
     )
     await expect(ops.pull('9.9.9')).rejects.toThrow('manifest unknown')
+  })
+
+  it('a docker command past its timeout is killed and rejects', async () => {
+    vi.useFakeTimers()
+
+    const stubborn = makeFakeSpawn(true)
+    const stubbornRun = createSpawnRun(stubborn.spawnFn)
+    const stubbornPromise = execChecked(stubbornRun, 'docker', ['compose', 'up', '-d', 'aira'])
+    const stubbornRejection = expect(stubbornPromise).rejects.toThrow(/docker compose timed out after 90s/)
+
+    await vi.advanceTimersByTimeAsync(DOCKER_TIMEOUT_MS)
+    expect(stubborn.killed).toEqual(['SIGTERM'])
+
+    await vi.advanceTimersByTimeAsync(KILL_GRACE_MS - 1)
+    expect(stubborn.killed).toEqual(['SIGTERM'])
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(stubborn.killed).toEqual(['SIGTERM', 'SIGKILL'])
+    await stubbornRejection
+
+    const compliant = makeFakeSpawn(false)
+    const compliantRun = createSpawnRun(compliant.spawnFn)
+    const pullPromise = execChecked(compliantRun, 'docker', ['pull', 'ghcr.io/tolonglabs/aira:sha-1234567'])
+    const pullRejection = expect(pullPromise).rejects.toThrow(/docker pull timed out after 480s/)
+
+    await vi.advanceTimersByTimeAsync(DOCKER_PULL_TIMEOUT_MS - 1)
+    expect(compliant.killed).toEqual([])
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(compliant.killed).toEqual(['SIGTERM'])
+    await pullRejection
+
+    await vi.advanceTimersByTimeAsync(KILL_GRACE_MS)
+    expect(compliant.killed).toEqual(['SIGTERM'])
+  })
+
+  it('bounds syntheticTurn fetch with AbortSignal.timeout(60_000)', async () => {
+    const controller = new AbortController()
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal)
+    const ops = createRealOps(
+      baseOptions({
+        fetch: ((_input, init) =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener(
+              'abort',
+              () => reject(init.signal?.reason ?? new DOMException('timed out', 'TimeoutError')),
+              { once: true }
+            )
+          })) as typeof fetch
+      })
+    )
+
+    const resultPromise = ops.syntheticTurn()
+    expect(timeoutSpy).toHaveBeenCalledWith(SYNTHETIC_TURN_TIMEOUT_MS)
+    controller.abort(new DOMException('timed out', 'TimeoutError'))
+    expect(await resultPromise).toBe(false)
   })
 
   it('checks syntheticTurn status 200 with non-empty content and appends deploy records', async () => {

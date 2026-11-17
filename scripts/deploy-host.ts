@@ -124,6 +124,33 @@ export async function sendNtfy(
   })
 }
 
+function writeLine(line: string): void {
+  process.stdout.write(line + '\n')
+}
+
+function elapsedSeconds(ops: DeployHostOps, startedMs: number): number {
+  return Math.max(0, Math.round((ops.now().getTime() - startedMs) / 1000))
+}
+
+async function runStep<T>(
+  ops: DeployHostOps,
+  step: string,
+  fn: () => Promise<T>,
+  options: { detail?: string; ok?: (value: T) => boolean } = {}
+): Promise<T> {
+  const startedMs = ops.now().getTime()
+  writeLine(options.detail ? `deploy: ${step} ${options.detail} start` : `deploy: ${step} start`)
+  try {
+    const result = await fn()
+    const status = options.ok && !options.ok(result) ? 'failed' : 'done'
+    writeLine(`deploy: ${step} ${status} ${elapsedSeconds(ops, startedMs)}s`)
+    return result
+  } catch (err) {
+    writeLine(`deploy: ${step} failed ${elapsedSeconds(ops, startedMs)}s`)
+    throw err
+  }
+}
+
 async function rollback(
   ops: DeployHostOps,
   previous: string | undefined,
@@ -131,12 +158,20 @@ async function rollback(
   reason: 'start_failed' | 'unhealthy' | 'synthetic_turn_failed'
 ): Promise<DeployHostResult> {
   if (previous !== undefined) {
-    try {
-      await ops.writeEnv(previous)
-      await ops.start(previous)
-    } catch (err) {
-      await safeAlert(ops, `Rollback to ${previous} failed after ${reason}; service is down: ${errorMessage(err)}`)
-    }
+    await runStep(
+      ops,
+      'rollback',
+      async () => {
+        try {
+          await ops.writeEnv(previous)
+          await ops.start(previous)
+        } catch (err) {
+          await safeAlert(ops, `Rollback to ${previous} failed after ${reason}; service is down: ${errorMessage(err)}`)
+          throw err
+        }
+      },
+      { detail: previous }
+    ).catch(() => undefined)
   }
   await safeRecord(ops, {
     at: ops.now().toISOString(),
@@ -145,76 +180,96 @@ async function rollback(
     outcome: 'rolled_back',
     reason
   })
-  await safeAlert(ops, `Deploy of ${target} rolled back: ${reason}`)
+  await runStep(ops, 'alert', () => safeAlert(ops, `Deploy of ${target} rolled back: ${reason}`))
   return { action: 'rolled_back', from: previous, to: target, reason }
+}
+
+async function failBeforeStart(
+  ops: DeployHostOps,
+  previous: string | undefined,
+  target: string,
+  reason: 'snapshot_failed' | 'pull_failed' | 'env_failed',
+  message: string
+): Promise<DeployHostResult> {
+  await safeRecord(ops, {
+    at: ops.now().toISOString(),
+    from: previous,
+    to: target,
+    outcome: 'failed_before_start',
+    reason
+  })
+  await runStep(ops, 'alert', () => safeAlert(ops, message))
+  return { action: 'failed', from: previous, to: target, reason }
 }
 
 /** Runs the host deploy sequence: idle wait, snapshot, pull, .env update, recreate, health, turn, prune, alert. */
 export async function runDeployHost(ops: DeployHostOps, config: DeployHostConfig): Promise<DeployHostResult> {
   const pollMs = config.pollMs ?? DEFAULT_POLL_MS
-  const previous = await safeCall(() => ops.runningVersion(), undefined)
+  const previous = await runStep(ops, 'running-version', () => safeCall(() => ops.runningVersion(), undefined))
 
-  await waitForIdle(ops, config.waitForIdleMs, pollMs)
+  await runStep(ops, 'idle-wait', () => waitForIdle(ops, config.waitForIdleMs, pollMs))
 
   if (previous !== undefined) {
-    const snapped = await safeCall(() => ops.snapshot(), false)
+    const snapped = await runStep(ops, 'snapshot', () => safeCall(() => ops.snapshot(), false), {
+      ok: (value) => value
+    })
     if (!snapped) {
-      await safeRecord(ops, {
-        at: ops.now().toISOString(),
-        from: previous,
-        to: config.version,
-        outcome: 'failed_before_start',
-        reason: 'snapshot_failed'
-      })
-      await safeAlert(ops, `Deploy of ${config.version} aborted: snapshot failed`)
-      return { action: 'failed', from: previous, to: config.version, reason: 'snapshot_failed' }
+      return failBeforeStart(
+        ops,
+        previous,
+        config.version,
+        'snapshot_failed',
+        `Deploy of ${config.version} aborted: snapshot failed`
+      )
     }
   }
 
   try {
-    await ops.pull(config.version)
+    await runStep(ops, 'pull', () => ops.pull(config.version), { detail: config.version })
   } catch (err) {
-    await safeRecord(ops, {
-      at: ops.now().toISOString(),
-      from: previous,
-      to: config.version,
-      outcome: 'failed_before_start',
-      reason: 'pull_failed'
-    })
-    await safeAlert(ops, `Deploy of ${config.version} aborted: pull failed: ${errorMessage(err)}`)
-    return { action: 'failed', from: previous, to: config.version, reason: 'pull_failed' }
+    return failBeforeStart(
+      ops,
+      previous,
+      config.version,
+      'pull_failed',
+      `Deploy of ${config.version} aborted: pull failed: ${errorMessage(err)}`
+    )
   }
 
   try {
-    await ops.writeEnv(config.version)
+    await runStep(ops, 'env', () => ops.writeEnv(config.version), { detail: config.version })
   } catch (err) {
-    await safeRecord(ops, {
-      at: ops.now().toISOString(),
-      from: previous,
-      to: config.version,
-      outcome: 'failed_before_start',
-      reason: 'env_failed'
-    })
-    await safeAlert(ops, `Deploy of ${config.version} aborted: .env update failed: ${errorMessage(err)}`)
-    return { action: 'failed', from: previous, to: config.version, reason: 'env_failed' }
+    return failBeforeStart(
+      ops,
+      previous,
+      config.version,
+      'env_failed',
+      `Deploy of ${config.version} aborted: .env update failed: ${errorMessage(err)}`
+    )
   }
 
   try {
-    await ops.start(config.version)
+    await runStep(ops, 'recreate', () => ops.start(config.version), { detail: config.version })
   } catch {
     return rollback(ops, previous, config.version, 'start_failed')
   }
 
-  if (!(await waitForHealthy(ops, config.healthTimeoutMs, pollMs))) {
+  const healthy = await runStep(ops, 'health', () => waitForHealthy(ops, config.healthTimeoutMs, pollMs), {
+    ok: (value) => value
+  })
+  if (!healthy) {
     return rollback(ops, previous, config.version, 'unhealthy')
   }
 
-  if (!(await safeCall(() => ops.syntheticTurn(), false))) {
+  const turned = await runStep(ops, 'synthetic-turn', () => safeCall(() => ops.syntheticTurn(), false), {
+    ok: (value) => value
+  })
+  if (!turned) {
     return rollback(ops, previous, config.version, 'synthetic_turn_failed')
   }
 
   try {
-    await ops.pruneImages(config.version, previous)
+    await runStep(ops, 'prune', () => ops.pruneImages(config.version, previous))
   } catch (err) {
     await safeAlert(ops, `Deploy of ${config.version} succeeded, but image prune failed: ${errorMessage(err)}`)
   }
@@ -229,7 +284,7 @@ export async function runDeployHost(ops: DeployHostOps, config: DeployHostConfig
     previous !== undefined
       ? `Deploy of ${config.version} succeeded (from ${previous})`
       : `Deploy of ${config.version} succeeded`
-  await safeAlert(ops, summary)
+  await runStep(ops, 'alert', () => safeAlert(ops, summary))
   return { action: 'deployed', from: previous, to: config.version }
 }
 
