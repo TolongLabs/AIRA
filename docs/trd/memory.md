@@ -187,6 +187,21 @@ folder>` runs the readers on a copy, never on the live folder, and prints counts
 Song, vocabulary and library notes belong to the lessons feature. They are migrated with that work, once its data
 model is specified. See [Tools](tools.md#lessons-and-library).
 
+## Per-Chat Switch
+
+`features.memory` turns memory on or off for one chat, at any level of the settings hierarchy. It is on by default,
+so a chat that never sets it behaves as before. `memory.enabled` in `config.yml` stays the master switch for every
+chat.
+
+- **Off means nothing new is learned.** No episode is closed and no memory job is queued for the chat. Messages
+  still enter the window, because a reply needs them; they are never extracted.
+- **Off means nothing is recalled.** Recall returns no facts for the chat, and the prompt has no memory block.
+- **`note` (`/remember`) is refused** with the pack's refusal line, and `/help` leaves out `/remember` and `/recall`.
+- **Stored facts are kept, not used.** Turning memory off does not delete anything. The facts stay out of every
+  prompt while the switch is off, and come back when it is turned on. `/forget` still works while it is off, so a
+  member can remove a named fact either way. Deleting by switch would make a mistaken click lose data for good.
+- **Turning it on** starts from the next message; messages sent while it was off are not extracted later.
+
 ## Configuration
 
 | Key                         | Default      | Effect                                   |
