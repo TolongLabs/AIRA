@@ -172,14 +172,31 @@ Free space is checked at start-up and every `storage.checkEveryMin` minutes.
   holds verified snapshots and nothing else: the recovery pass removes every other entry.
 - **Keep.** Verified snapshots are kept for `backup.keepDays` days on the data volume. The newest verified snapshot
   is never removed.
-- **Ship.** Each verified snapshot, plus `files/` and `archive/`, goes to an encrypted, deduplicated repository on
-  another machine. The repository is checked on a schedule.
-  **Not built yet:** the code takes and verifies local snapshots only; `backup.offsite` is a schema-checked string
-  with no copy or encryption path behind it (`src/config/schema.ts:243`).
+- **Ship.** After each verified snapshot, the backup job runs `restic backup` of that snapshot, `files/` and
+  `archive/` into the repository named by `backup.offsite.repository`. restic encrypts and deduplicates on the host,
+  so the destination never sees plain data. The repository password is `AIRA_BACKUP_PASSWORD` in `.env`; the
+  destination's own credentials are restic's standard variables in `.env` (`RESTIC_REST_USERNAME` and
+  `RESTIC_REST_PASSWORD` for a REST server, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` for S3 or R2). Each run
+  writes a `backup_run` row with reason `offsite` and its outcome; a failed run is a `backup_failed` failure and
+  retries at the next snapshot. The restic binary is pinned and hash-checked in the image, like Typst.
+- **Destination.** `backup.offsite.kind` is `rest` or `s3`. Today it is `rest`: the owner's workstation runs restic's
+  `rest-server` in append-only mode, in Docker, listening only on its private-network address, and dev2 pushes to
+  it. Append-only means a stolen host credential can add snapshots but cannot delete or rewrite them, and no outside
+  system holds a key to the host. Moving to an S3-compatible bucket (S3 or Cloudflare R2) changes
+  `backup.offsite.kind`, `backup.offsite.repository` (`s3:<endpoint>/<bucket>/aira`) and the two credential
+  variables, and nothing else.
+- **Check and prune.** Once a day the job runs `restic check` (structure, no data read) and records the outcome as
+  a `backup_run` row. Pruning runs on the destination, never from dev2, because the host's credential is append-only:
+  `deploy/offsite/prune.sh` keeps hourly snapshots for 2 days, daily for 30 and weekly for 26.
+- **Stale alert.** The workstation can sleep, so the 15-minute target holds only while it is on. When the newest
+  successful `offsite` run is older than `backup.offsite.staleAlertMin` (60), the core raises a `backup_stale`
+  operator alert ([Reliability](reliability.md)), once until a run succeeds again.
 - **Targets.** At most 15 minutes of data is lost if the host's disk is lost. A restore takes at most 30 minutes
   by a written procedure.
 - **Restore drill.** Before cutover, and after any change to this module, one restore from the off-host
   repository into a scratch container must pass `integrity_check` and one replay scenario.
+  `scripts/restore-offsite.ts --to <folder>` restores the newest snapshot, `files/` and `archive/` into an empty
+  folder, runs `integrity_check`, and prints the snapshot time and row counts. The runbook holds the procedure.
 
 ![Local snapshots flow from the live database through verification and pruning, while the archive exports
 Parquet and the off-host copy stays unbuilt](../diagrams/backups.svg)
@@ -237,19 +254,22 @@ The Restart and Migration suites run in CI on every change. See [Test Harness](h
 
 ## Configuration
 
-| Key                      | Default | Effect                                                    |
-| ------------------------ | ------- | --------------------------------------------------------- |
-| `storage.path`           | `/data` | The data volume inside the container                      |
-| `storage.minFreeMb`      | 2048    | Warn level for free space                                 |
-| `storage.criticalFreeMb` | 512     | Critical level for free space                             |
-| `storage.checkEveryMin`  | 5       | How often free space is checked                           |
-| `storage.cacheMaxMb`     | 512     | Size cap for `cache/`                                     |
-| `backup.everyMin`        | 15      | Interval between snapshots                                |
-| `backup.keepDays`        | 14      | How long verified snapshots stay on the data volume       |
-| `backup.offsite`         | `off`   | The off-host repository. `off` until a destination is set |
-| `archive.enabled`        | `on`    | Export records to Parquet before they are pruned          |
+| Key                              | Default | Effect                                                           |
+| -------------------------------- | ------- | ---------------------------------------------------------------- |
+| `storage.path`                   | `/data` | The data volume inside the container                             |
+| `storage.minFreeMb`              | 2048    | Warn level for free space                                        |
+| `storage.criticalFreeMb`         | 512     | Critical level for free space                                    |
+| `storage.checkEveryMin`          | 5       | How often free space is checked                                  |
+| `storage.cacheMaxMb`             | 512     | Size cap for `cache/`                                            |
+| `backup.everyMin`                | 15      | Interval between snapshots                                       |
+| `backup.keepDays`                | 14      | How long verified snapshots stay on the data volume              |
+| `backup.offsite.kind`            | `off`   | `off`, `rest` or `s3`                                            |
+| `backup.offsite.repository`      | none    | restic repository URL, such as `rest:http://<address>:8000/aira` |
+| `backup.offsite.checkEveryHours` | 24      | Interval between `restic check` runs                             |
+| `backup.offsite.staleAlertMin`   | 60      | Age of the newest good off-host run that raises an alert         |
+| `archive.enabled`                | `on`    | Export records to Parquet before they are pruned                 |
 
 Deployment values are validated against strict schemas in `src/config/schema.ts`, which also requires
 `storage.criticalFreeMb` below `storage.minFreeMb`.
-**Not built yet:** `storage.cacheMaxMb` buys no cap and `backup.offsite` buys no copy; both are validated but have
-no runtime consumer in this slice (`src/config/schema.ts:235`, `src/config/schema.ts:243`).
+**Not built yet:** `storage.cacheMaxMb` buys no cap; it is validated but has no runtime consumer
+(`src/config/schema.ts:235`).
