@@ -80,6 +80,7 @@ The primary key is `(level, scope, key)`. Deleting a row at a level restores inh
 | `features.social`        | Boolean                                                                           | `true`                  |
 | `features.photos`        | Boolean                                                                           | `true`                  |
 | `features.media`         | Boolean                                                                           | `true`                  |
+| `features.memory`        | Boolean: memory for this chat ([Memory](memory.md#per-chat-switch))               | `true`                  |
 | `features.voice`         | Boolean                                                                           | `false`                 |
 | `features.lessons`       | Boolean                                                                           | `false`                 |
 | `features.reports`       | Boolean                                                                           | `true`                  |

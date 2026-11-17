@@ -15,15 +15,23 @@ What AIRA writes down about every turn and every failure, so a fault can be expl
 
 One row in `turn`, opened at step 1 and closed at step 8.
 
-| Group    | Fields                                                                                             |
-| -------- | -------------------------------------------------------------------------------------------------- |
-| Identity | `turn_id`, `chat_id`, `sender_id`, `character_id`, kind (`reply`, `command`, `scheduled`)          |
-| Timing   | Received, admitted, built, first model byte, model done, cleaned, returned. One duration per stage |
-| Prompt   | System token count, window size, recalled item ids, mood, mood source, shape seed, length bypass   |
-| Model    | Transport, role, model id, attempts, input, output and cached tokens, cost                         |
-| Outcome  | `delivered`, `declined`, `muted`, `failed`, with the failure kind                                  |
-| Delivery | Reply length, bubble count, sticker id, attachments, receipts                                      |
-| Cleaning | Which cleaning steps changed the text                                                              |
+| Group    | Fields                                                                                           |
+| -------- | ------------------------------------------------------------------------------------------------ |
+| Identity | `turn_id`, `chat_id`, `sender_id`, `character_id`, kind (`reply`, `command`, `scheduled`)        |
+| Timing   | Arrival, received, admitted, built, model done, cleaned, returned. One duration per stage        |
+| Prompt   | System token count, window size, recalled item ids, mood, mood source, shape seed, length bypass |
+| Model    | Transport, role, model id, attempts, input, output and cached tokens, cost                       |
+| Outcome  | `delivered`, `declined`, `muted`, `failed`, with the failure kind                                |
+| Delivery | Reply length, bubble count, sticker id, attachments, receipts                                    |
+| Cleaning | Which cleaning steps changed the text                                                            |
+
+`arrived_at` is the oldest inbound arrival in the batch; `received_at` is when the turn opens. `queue_ms` spans
+arrival to turn open. `media_ms` measures intake reads and `tool_ms` sums tool call durations. These are parts of
+stage time, not extra time to add. `total_ms` spans arrival to core return, including batching and queue waits.
+Stage stamps persist as stages finish; timing totals commit with turn close and appear on `turn.returned`.
+Direct commands stamp built and model done too. The non-streaming clients have no first-byte timing contract.
+Gateway delivery happens after core return and is outside these timings. Reports use arrival, falling back to turn
+open for older records.
 
 ## Child Records
 
@@ -40,6 +48,9 @@ A file the core could not read is a handled failure: one `failure` row of kind `
 `model_call` row of role `media` for each request to the media model. See [Models](models.md#media-watching).
 
 A `failure` row is written for handled failures too. A retry that succeeds still leaves the failed attempt on record.
+The pipeline receives each attempt even when the runner throws. Each failed attempt keeps its redacted error in a
+`failure` row, handled by `retry`, `fallback`, or the final pack line. Failed turns keep model routing and attempt
+counts too. A spend write failure keeps the reply, emits a warning and records a `storage_error` failure.
 
 ## Failure Kinds
 
