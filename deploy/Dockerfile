@@ -39,12 +39,36 @@ RUN set -eu; \
     ln -s "/opt/yt-dlp/$asset" /opt/yt-dlp/yt-dlp; \
     rm /tmp/yt-dlp.zip /tmp/SHA2-256SUMS
 
+# Static musl builds pinned by the release SHA-256 checksums.
+FROM debian:bookworm-slim AS typst
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+ARG TARGETARCH
+ARG TYPST_VERSION=v0.15.1
+ARG TYPST_AMD64_SHA256=a6d077d0a95eed5a2eba715b2dae06be954f624ccbf85758a03f389ded33118c
+ARG TYPST_ARM64_SHA256=5aa8d74a3d906e60ea12a66ac2f37f8eef1b14cbad7182a745e393a10c23dcee
+RUN set -eu; \
+    case "$TARGETARCH" in \
+      amd64) target=typst-x86_64-unknown-linux-musl; expected="$TYPST_AMD64_SHA256" ;; \
+      arm64) target=typst-aarch64-unknown-linux-musl; expected="$TYPST_ARM64_SHA256" ;; \
+      *) echo "Unsupported typst architecture: $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    curl -fLsS -o /tmp/typst.tar.xz "https://github.com/typst/typst/releases/download/$TYPST_VERSION/$target.tar.xz"; \
+    echo "$expected  /tmp/typst.tar.xz" | sha256sum -c -; \
+    tar -xJf /tmp/typst.tar.xz -C /tmp "$target/typst"; \
+    install -m 0755 -o root -g root "/tmp/$target/typst" /usr/local/bin/typst; \
+    rm -rf /tmp/typst.tar.xz "/tmp/$target"
+
 FROM node:24-slim
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-noto-core fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=ytdlp /opt/yt-dlp /opt/yt-dlp
 RUN ln -s /opt/yt-dlp/yt-dlp /usr/local/bin/yt-dlp
+COPY --from=typst /usr/local/bin/typst /usr/local/bin/typst
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build /repo/dist ./dist
+COPY --from=build /repo/src/render/templates ./dist/src/render/templates
 COPY --from=build /repo/node_modules ./node_modules
 COPY --from=build /repo/prompts ./prompts
 COPY --from=build /repo/characters/example ./characters/example
