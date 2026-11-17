@@ -1,0 +1,137 @@
+{
+  "diagram_type": "dataflow",
+  "flows": [
+    {
+      "from": "schedEntries",
+      "label": "wanted rows",
+      "to": "writeSched"
+    },
+    {
+      "from": "writeSched",
+      "label": "atomic write",
+      "to": "schedFile"
+    },
+    {
+      "from": "schedFile",
+      "label": "validated map",
+      "to": "reconciler"
+    },
+    {
+      "from": "reconciler",
+      "label": "sync aira jobs",
+      "to": "cronjobs"
+    },
+    {
+      "from": "buildFlags",
+      "label": "active flags",
+      "to": "writeFlags"
+    },
+    {
+      "from": "writeFlags",
+      "label": "atomic write",
+      "to": "chatsFile"
+    },
+    {
+      "from": "chatsFile",
+      "label": "cached read",
+      "to": "chatflags"
+    },
+    {
+      "from": "chatflags",
+      "label": "chance",
+      "to": "reactions"
+    }
+  ],
+  "meta": {
+    "locale": "en",
+    "output": ".archify/gateway-files.html",
+    "quality_profile": "showcase",
+    "title": "Gateway Schedule and Chat-Flag Dataflow"
+  },
+  "nodes": [
+    {
+      "id": "schedEntries",
+      "label": "scheduleEntries",
+      "row": 0,
+      "stage": 0,
+      "type": "backend"
+    },
+    {
+      "id": "writeSched",
+      "label": "writeScheduleFile",
+      "row": 1,
+      "stage": 0,
+      "type": "backend"
+    },
+    {
+      "id": "buildFlags",
+      "label": "buildChatFlags",
+      "row": 2,
+      "stage": 0,
+      "type": "backend"
+    },
+    {
+      "id": "writeFlags",
+      "label": "writeChatFlags",
+      "row": 3,
+      "stage": 0,
+      "type": "backend"
+    },
+    {
+      "id": "schedFile",
+      "label": "schedule.json",
+      "sublabel": "gateway/",
+      "row": 0,
+      "stage": 1,
+      "type": "database"
+    },
+    {
+      "id": "chatsFile",
+      "label": "gateway/chats.json",
+      "row": 1,
+      "stage": 1,
+      "type": "database"
+    },
+    {
+      "id": "reconciler",
+      "label": "reconcile",
+      "sublabel": "schedule.py",
+      "row": 0,
+      "stage": 2,
+      "type": "backend"
+    },
+    {
+      "id": "cronjobs",
+      "label": "cron.jobs",
+      "row": 1,
+      "stage": 2,
+      "type": "backend"
+    },
+    {
+      "id": "chatflags",
+      "label": "brain.chatflags",
+      "row": 2,
+      "stage": 2,
+      "type": "backend"
+    },
+    {
+      "id": "reactions",
+      "label": "brain.reactions",
+      "row": 3,
+      "stage": 2,
+      "type": "backend"
+    }
+  ],
+  "schema_version": 1,
+  "stages": [
+    {
+      "label": "Core Export"
+    },
+    {
+      "label": "Declared Files"
+    },
+    {
+      "label": "Gateway Read"
+    }
+  ]
+}

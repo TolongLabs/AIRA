@@ -1,0 +1,81 @@
+{
+  "diagram_type": "sequence",
+  "meta": {
+    "locale": "en",
+    "output": ".archify/gateway-request.html",
+    "quality_profile": "showcase",
+    "title": "Gateway Request and Reply Sequence"
+  },
+  "messages": [
+    {
+      "from": "gateway",
+      "label": "POST /v1/chat/completions",
+      "note": "One request carries the gateway transcript and tool list",
+      "to": "server",
+      "y": 160
+    },
+    {
+      "from": "server",
+      "label": "parseGatewayRequest",
+      "note": "Reads newest user content; strips notes; checks marker agreement",
+      "to": "parser",
+      "y": 230
+    },
+    {
+      "from": "parser",
+      "label": "turn, auxiliary, scheduled, or unmarked",
+      "note": "No tools means auxiliary fixed text; tools with no marker and no tag means NO_REPLY",
+      "to": "server",
+      "y": 300
+    },
+    {
+      "from": "server",
+      "label": "handle or handleScheduled",
+      "note": "Scheduled tags only count with no marker; identity comes from the row",
+      "to": "turns",
+      "y": 370
+    },
+    {
+      "from": "turns",
+      "label": "reply content",
+      "note": "Blank content becomes NO_REPLY; each attachment is one MEDIA line",
+      "to": "reply",
+      "y": 440
+    },
+    {
+      "from": "reply",
+      "label": "200 JSON or SSE reply",
+      "note": "Assistant chunk, stop chunk, optional usage chunk, then DONE",
+      "to": "gateway",
+      "y": 510
+    }
+  ],
+  "participants": [
+    {
+      "id": "gateway",
+      "label": "Hermes Gateway",
+      "type": "external"
+    },
+    {
+      "id": "server",
+      "label": "createGatewayServer",
+      "type": "backend"
+    },
+    {
+      "id": "parser",
+      "label": "parseGatewayRequest",
+      "type": "backend"
+    },
+    {
+      "id": "turns",
+      "label": "TurnService",
+      "type": "backend"
+    },
+    {
+      "id": "reply",
+      "label": "writeReply",
+      "type": "backend"
+    }
+  ],
+  "schema_version": 1
+}
