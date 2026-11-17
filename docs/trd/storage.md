@@ -29,6 +29,8 @@ is copied off the host and brought back.
 
 - No durable state lives in process memory, in a text or JSON file, or in a temporary folder.
 - `cache/` has a size cap and is the first thing emptied when space runs low. Nothing reads it as a source of truth.
+  **Not built yet:** no size cap is enforced; `storage.cacheMaxMb` is schema-checked but no storage code reads it
+  (`src/config/schema.ts:235`). The guard empties `cache/` below the warn level today.
 - All of these sit on one data volume on the host's local disk. The database is never placed on a network file
   system.
 
@@ -75,6 +77,9 @@ At 4 to 16 turns a day, `synchronous=FULL` costs nothing that a person can notic
 - A file is written to a temporary name in the same folder, flushed to disk, then renamed. Its row in `file` is
   written after the rename. A file with no row is removed by the start-up sweep; a row with no file is a failure
   record.
+- A stored file lives at `<first two hash characters>/<full SHA-256><extension>` under `files/`, so `putFile` in
+  `src/storage/files.ts` addresses content and never a name. The extension is optional and holds one to eight
+  lowercase letters or digits. Storing the same content twice leaves one file and one row.
 - A multi-step change is one transaction or it is a job. There is no third kind.
 
 ## Restart Safety
@@ -84,13 +89,14 @@ assumes all three.
 
 ### Everything In Flight Is A Row
 
-| Unit            | Table                                | States                                                      | On Start-Up                                                            |
-| --------------- | ------------------------------------ | ----------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Inbound message | `inbound_message`                    | `received`, `answered`, `dropped`                           | Unanswered rows are handled as [Interrupted Turns](#interrupted-turns) |
-| Turn            | `turn`                               | `running`, `delivered`, `declined`, `failed`, `interrupted` | Every `running` row becomes `interrupted`, with a failure record       |
-| Background job  | `memory_job` and any later job table | `queued`, `leased`, `done`, `failed`                        | Every lease returns to `queued`: its owner died with the old process   |
-| Reminder        | `reminder`                           | `active`, `fired`, `cancelled`                              | The wanted-jobs file is rewritten; the host reconciler recreates jobs  |
-| Snapshot        | `backup_run`                         | `started`, `verified`, `failed`                             | A `started` row becomes `failed` and its file is removed               |
+| Unit            | Table             | States                                                      | On Start-Up                                                            |
+| --------------- | ----------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Inbound message | `inbound_message` | `received`, `answered`, `dropped`                           | Unanswered rows are handled as [Interrupted Turns](#interrupted-turns) |
+| Turn            | `turn`            | `running`, `delivered`, `declined`, `failed`, `interrupted` | Every `running` row becomes `interrupted`, with a failure record       |
+| Background job  | `memory_job`      | `queued`, `leased`, `done`, `failed`                        | Every lease returns to `queued`: its owner died with the old process   |
+| Research job    | `research_job`    | `queued`, `running`, `done`, `failed`                       | A first interruption returns to `queued`; a second becomes `failed`    |
+| Reminder        | `reminder`        | `active`, `fired`, `cancelled`                              | The wanted-jobs file is rewritten; the host reconciler recreates jobs  |
+| Snapshot        | `backup_run`      | `started`, `verified`, `failed`                             | A `started` row becomes `failed` and its file is removed               |
 
 - An inbound request is written to `inbound_message`, keyed by the chat and the gateway's message id, before any
   other work. The chat is part of the key because a message id is unique only inside its chat, and a stored reply
@@ -103,6 +109,10 @@ assumes all three.
 - A lease has an owner and an expiry. A worker extends it while it works. Nothing is "in progress" without a lease.
 - While the core runs, a lease past its time returns to `queued`. A lease given back at shutdown does not count as
   an attempt. One cut short by a crash does, so a job that kills the process cannot retry for ever.
+- A research job survives one interrupted attempt, never a third start. When start-up finds a `running` research job
+  at its second attempt, the job becomes `failed` with an internal failure record instead of returning to `queued`.
+- The lease helpers live in `src/storage/leases.ts`, and the start-up pass that calls them lives in
+  `src/storage/recovery.ts`. Every job table joins `JOB_TABLES` there so the pass releases its leases.
 
 ### Interrupted Turns
 
@@ -123,10 +133,14 @@ image.
 
 1. Check the data volume is writable and free space is above `storage.criticalFreeMb`.
 2. Open the database. Run `quick_check` and `foreign_key_check`.
-3. Take a verified snapshot if a migration is pending. Apply migrations.
-4. Run the recovery pass: interrupted turns, expired leases, reminders, unfinished snapshots, the file sweep.
+3. Take a verified snapshot if a migration is pending on a database that already holds data. A fresh database
+   applies migrations with no snapshot. Apply migrations.
+4. Run the recovery pass: interrupted turns, released leases, reminders, unfinished snapshots, the file sweep.
 5. Validate configuration, character packs and bindings, as in [Reliability](reliability.md#start-up-and-shutdown).
 6. Report ready.
+
+![Start-up checks disk and database, snapshots before pending migrations, applies them, then repairs
+interrupted turns, leases, snapshots, and files](../diagrams/storage-startup.svg)
 
 ### Shutdown
 
@@ -149,7 +163,9 @@ Free space is checked at start-up and every `storage.checkEveryMin` minutes.
 ## Snapshots And The Off-Host Copy
 
 - **Snapshot.** The backup job copies the live database with SQLite's online backup call, every
-  `backup.everyMin` minutes, and before every migration and every deploy.
+  `backup.everyMin` minutes, and start-up takes one more before pending migrations on a database that already holds
+  data. Each run records a reason of `timer`, `migration`, `deploy` or `manual` in `backup_run`.
+  The timer and the migration gate live in `src/storage/snapshot.ts` and `src/storage/startup.ts`.
 - **Verify.** A snapshot counts only after it opens, passes `integrity_check`, and its row counts are within
   reason of the live file. An unverified snapshot is deleted and recorded as `backup_failed`.
 - **One file.** A verified snapshot is one self-contained file with a rollback journal, not WAL. `snapshots/`
@@ -158,10 +174,15 @@ Free space is checked at start-up and every `storage.checkEveryMin` minutes.
   is never removed.
 - **Ship.** Each verified snapshot, plus `files/` and `archive/`, goes to an encrypted, deduplicated repository on
   another machine. The repository is checked on a schedule.
+  **Not built yet:** the code takes and verifies local snapshots only; `backup.offsite` is a schema-checked string
+  with no copy or encryption path behind it (`src/config/schema.ts:243`).
 - **Targets.** At most 15 minutes of data is lost if the host's disk is lost. A restore takes at most 30 minutes
   by a written procedure.
 - **Restore drill.** Before cutover, and after any change to this module, one restore from the off-host
   repository into a scratch container must pass `integrity_check` and one replay scenario.
+
+![Local snapshots flow from the live database through verification and pruning, while the archive exports
+Parquet and the off-host copy stays unbuilt](../diagrams/backups.svg)
 
 The off-host destination is a pending input in the [Product Requirements](../PRD.md#pending-inputs). Continuous
 replication of the write-ahead log is the upgrade if 15 minutes is ever too much.
@@ -170,6 +191,11 @@ replication of the write-ahead log is the upgrade if 15 minutes is ever too much
 
 - The daily retention job in [Records](records.md#retention) exports rows to Parquet under `archive/`, by table and
   month, before it deletes them. Verbatim diagnostics are never archived.
+- `archiveAndPrune` in `src/storage/archive.ts` collects the rows in a first pass that always rolls back, so
+  nothing is deleted yet. It writes each table and month group through a temporary NDJSON file to a temporary
+  Parquet file, then moves the finished file into place. Only after every file succeeds does it prune for real with
+  the same clock. An export failure removes the files it already wrote and leaves the source rows untouched. Tables
+  that hold verbatim text are refused rather than exported.
 - Reports that need history read the newest verified snapshot and the archive together through DuckDB.
 - The site's dashboard reads the live window through the core's API. It does not need DuckDB.
 - Benchmark and harness runs write their results as files that DuckDB reads, so two runs can be compared in one
@@ -180,6 +206,10 @@ replication of the write-ahead log is the upgrade if 15 minutes is ever too much
 
 - Numbered SQL files, applied in order at start-up, each in one transaction, each recorded in `schema_migration`
   with a checksum. A changed checksum stops start-up.
+- A migration file is named `NNNN_name.sql`, and the numbers must run `0001`, `0002`, and on with no gap, or
+  start-up refuses them. The ledger is checked the same way: a gap in `schema_migration` stops start-up, while a
+  version the release does not know starts anyway, because a newer release applied it. The checks live in
+  `src/storage/migrate.ts`.
 - **Add first, remove later.** A migration must leave the previous release able to run. A column or table is
   removed one release after the code stopped using it.
 - So an image rollback needs no data restore. A restore is for a damaged file only.
@@ -218,3 +248,8 @@ The Restart and Migration suites run in CI on every change. See [Test Harness](h
 | `backup.keepDays`        | 14      | How long verified snapshots stay on the data volume       |
 | `backup.offsite`         | `off`   | The off-host repository. `off` until a destination is set |
 | `archive.enabled`        | `on`    | Export records to Parquet before they are pruned          |
+
+Deployment values are validated against strict schemas in `src/config/schema.ts`, which also requires
+`storage.criticalFreeMb` below `storage.minFreeMb`.
+**Not built yet:** `storage.cacheMaxMb` buys no cap and `backup.offsite` buys no copy; both are validated but have
+no runtime consumer in this slice (`src/config/schema.ts:235`, `src/config/schema.ts:243`).

@@ -1,0 +1,183 @@
+{
+  "diagram_type": "lifecycle",
+  "mainPath": ["start", "disk", "db", "plan", "apply"],
+  "meta": {
+    "output": ".archify/storage-startup.html",
+    "quality_profile": "showcase",
+    "title": "Storage Start-Up and Recovery"
+  },
+  "schema_version": 3,
+  "states": [
+    {
+      "id": "start",
+      "label": "Start",
+      "type": "start"
+    },
+    {
+      "id": "disk",
+      "label": "createDiskGuard",
+      "sublabel": "criticalFreeMb gate",
+      "type": "active"
+    },
+    {
+      "id": "db",
+      "label": "openDatabase",
+      "sublabel": "integrity checks",
+      "type": "active"
+    },
+    {
+      "id": "plan",
+      "label": "planMigrations",
+      "sublabel": "pending/applied/newer",
+      "type": "decision"
+    },
+    {
+      "id": "snap",
+      "label": "takeSnapshot",
+      "sublabel": "verified copy",
+      "type": "active"
+    },
+    {
+      "id": "apply",
+      "label": "applyMigrations",
+      "sublabel": "ordered, 1 tx each",
+      "type": "active"
+    },
+    {
+      "id": "interrupt",
+      "label": "interruptRunningTurns",
+      "sublabel": "each turn",
+      "type": "active"
+    },
+    {
+      "id": "leases",
+      "label": "releaseLeases",
+      "sublabel": "leases requeued",
+      "type": "active"
+    },
+    {
+      "id": "snapshots",
+      "label": "sweepSnapshots",
+      "sublabel": "keep verified only",
+      "type": "active"
+    },
+    {
+      "id": "files",
+      "label": "sweepFiles",
+      "sublabel": "prune untracked",
+      "type": "active"
+    },
+    {
+      "id": "ready",
+      "label": "StartedStorage",
+      "sublabel": "store ready",
+      "type": "success"
+    },
+    {
+      "id": "failed",
+      "label": "Start-Up Failed",
+      "sublabel": "failed; old image returns",
+      "type": "failure"
+    },
+    {
+      "id": "researchFailed",
+      "label": "Research Failed",
+      "sublabel": "interrupted again, recorded",
+      "type": "failure"
+    }
+  ],
+  "transitions": [
+    {
+      "from": "start",
+      "label": "ok",
+      "to": "disk"
+    },
+    {
+      "from": "disk",
+      "label": "ok",
+      "to": "db"
+    },
+    {
+      "from": "db",
+      "label": "pass",
+      "to": "plan"
+    },
+    {
+      "from": "plan",
+      "label": "pending",
+      "to": "snap"
+    },
+    {
+      "from": "snap",
+      "label": "verified",
+      "to": "apply"
+    },
+    {
+      "from": "apply",
+      "label": "done",
+      "to": "interrupt"
+    },
+    {
+      "from": "interrupt",
+      "label": "recorded",
+      "to": "leases"
+    },
+    {
+      "from": "leases",
+      "label": "free",
+      "to": "snapshots"
+    },
+    {
+      "from": "snapshots",
+      "label": "kept",
+      "to": "files"
+    },
+    {
+      "from": "files",
+      "label": "done",
+      "to": "ready"
+    },
+    {
+      "from": "plan",
+      "label": "none",
+      "to": "apply"
+    },
+    {
+      "from": "disk",
+      "label": "refused",
+      "to": "failed"
+    },
+    {
+      "from": "db",
+      "label": "fail",
+      "to": "failed"
+    },
+    {
+      "from": "snap",
+      "label": "no snapshot",
+      "to": "failed"
+    },
+    {
+      "from": "apply",
+      "label": "checksum or gap",
+      "to": "failed"
+    },
+    {
+      "from": "leases",
+      "label": "attempts at 2",
+      "to": "researchFailed"
+    },
+    {
+      "from": "researchFailed",
+      "label": "recorded",
+      "to": "snapshots"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "plan -> apply: no pending",
+      "items": ["Newer versions only warn."]
+    }
+  ]
+}
