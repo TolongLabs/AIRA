@@ -7,9 +7,13 @@ import type { TurnContext } from '../../turn/types.js'
 import { type ToolPorts, isForbiddenUrl } from '../ports.js'
 import type { ToolDefinition, ToolFailure } from '../types.js'
 
-function alreadyReadAtIntake(url: string, context: Pick<TurnContext, 'intakeUrls'>): boolean {
+/** Model-facing: a refusal the model reads, worded so it answers instead of telling the member. */
+export const INTAKE_REFUSAL =
+  'This link was already opened and watched; its content is in your context. Answer from that.'
+
+function alreadyReadAtIntake(url: string, context: Pick<TurnContext, 'intakeWatchedUrls'>): boolean {
   const canonical = parseSocialPostUrl(url)?.canonicalUrl
-  return canonical !== undefined && (context.intakeUrls?.includes(canonical) ?? false)
+  return canonical !== undefined && (context.intakeWatchedUrls?.includes(canonical) ?? false)
 }
 
 const MAX_PHOTO_BYTES = 5_000_000
@@ -77,7 +81,7 @@ export function readPageTool(ports: ToolPorts): ToolDefinition<z.infer<typeof ur
         return { ok: false, kind: 'refused', reason: 'forbidden address' }
       }
       if (alreadyReadAtIntake(args.url, context)) {
-        return { ok: false, kind: 'refused', reason: 'already read at intake' }
+        return { ok: false, kind: 'refused', reason: INTAKE_REFUSAL }
       }
       if (!ports.page) {
         return { ok: false, kind: 'unavailable', reason: 'page reader is not set up' }
@@ -105,7 +109,7 @@ export function readPostTool(ports: ToolPorts): ToolDefinition<z.infer<typeof ur
         return { ok: false, kind: 'refused', reason: 'forbidden address' }
       }
       if (alreadyReadAtIntake(args.url, context)) {
-        return { ok: false, kind: 'refused', reason: 'already read at intake' }
+        return { ok: false, kind: 'refused', reason: INTAKE_REFUSAL }
       }
       if (!ports.post) {
         return { ok: false, kind: 'unavailable', reason: 'post reader is not set up' }

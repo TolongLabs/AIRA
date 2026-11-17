@@ -31,6 +31,8 @@ export interface TurnContext {
   intakeKinds?: string[]
   /** Canonical URLs of links read at intake, so web tools do not open them again. */
   intakeUrls?: string[]
+  /** Links whose video or image intake watched; read_post and read_page refuse only these. */
+  intakeWatchedUrls?: string[]
   /** Text of the message(s) this turn answers, supplied by code. */
   messageText?: string
   /** True when `/think` raised effort for this turn. */

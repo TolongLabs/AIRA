@@ -11,6 +11,7 @@ import { resolveSettings, setSetting } from '../../src/settings/settings.js'
 import type { Storage } from '../../src/storage/database.js'
 import { openTurn, receiveInbound } from '../../src/storage/turns.js'
 import { CORE_TOOL_NAMES, registerCoreTools } from '../../src/tools/core/index.js'
+import { INTAKE_REFUSAL } from '../../src/tools/core/web.js'
 import {
   type MemoryPort,
   type PagePort,
@@ -472,6 +473,30 @@ describe('core tools', () => {
     expect(oversizedRes).toMatchObject({ ok: true, data: { attached: true }, receipt: { kind: 'photo.found' } })
   })
 
+  it('read_page: a post intake read as text only stays open, so its replies and media can be fetched', async () => {
+    const seenPages: string[] = []
+    const { registry, makeCtx } = setup({
+      page: {
+        async read(url) {
+          seenPages.push(url)
+          return { title: `Title of ${url}`, text: 'Body' }
+        },
+        async download() {
+          return { data: Buffer.from(''), contentType: 'text/plain' }
+        }
+      }
+    })
+    const ctx = makeCtx()
+    ctx.intakeUrls = ['https://x.com/i/status/7']
+    ctx.intakeWatchedUrls = []
+    const read = await registry.call('read_page', { url: 'https://x.com/someone/status/7' }, ctx, {
+      callId: 'c-rp-text-only',
+      source: 'model'
+    })
+    expect(read.ok).toBe(true)
+    expect(seenPages).toHaveLength(1)
+  })
+
   it('read_page: refuses a URL read at intake as "already read at intake"; works when intake did not read it', async () => {
     const seenPages: string[] = []
     const { storage, registry, makeCtx } = setup({
@@ -486,13 +511,13 @@ describe('core tools', () => {
       }
     })
     const ctx = makeCtx()
-    ctx.intakeUrls = ['https://x.com/i/status/1']
+    ctx.intakeWatchedUrls = ['https://x.com/i/status/1']
 
     const refused = await registry.call('read_page', { url: 'https://twitter.com/user/status/1' }, ctx, {
       callId: 'c-rp-refused',
       source: 'model'
     })
-    expect(refused).toEqual({ ok: false, kind: 'refused', reason: 'already read at intake' })
+    expect(refused).toEqual({ ok: false, kind: 'refused', reason: INTAKE_REFUSAL })
     expect(seenPages).toEqual([])
     expect(registry.takeSources(ctx.turnId)).toEqual([])
     expect(
@@ -519,19 +544,19 @@ describe('core tools', () => {
       }
     })
     const ctx = makeCtx()
-    ctx.intakeUrls = ['https://www.youtube.com/watch?v=dQw4w9WgXcQ']
+    ctx.intakeWatchedUrls = ['https://www.youtube.com/watch?v=dQw4w9WgXcQ']
 
     const shortRefused = await registry.call('read_post', { url: 'https://youtu.be/dQw4w9WgXcQ?t=15' }, ctx, {
       callId: 'c-rpost-yt-short',
       source: 'model'
     })
-    expect(shortRefused).toEqual({ ok: false, kind: 'refused', reason: 'already read at intake' })
+    expect(shortRefused).toEqual({ ok: false, kind: 'refused', reason: INTAKE_REFUSAL })
 
     const shortsRefused = await registry.call('read_post', { url: 'https://www.youtube.com/shorts/dQw4w9WgXcQ' }, ctx, {
       callId: 'c-rpost-yt-shorts',
       source: 'model'
     })
-    expect(shortsRefused).toEqual({ ok: false, kind: 'refused', reason: 'already read at intake' })
+    expect(shortsRefused).toEqual({ ok: false, kind: 'refused', reason: INTAKE_REFUSAL })
     expect(seenPosts).toEqual([])
     expect(registry.takeSources(ctx.turnId)).toEqual([])
 
