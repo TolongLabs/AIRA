@@ -25,6 +25,12 @@
     --frontend-stroke: var(--blue); --backend-stroke: var(--blue); --database-stroke: var(--green);
     --cloud-stroke: var(--violet); --security-stroke: var(--amber); --messagebus-stroke: var(--muted);
     --external-stroke: var(--muted);
+    --frontend-fill: color-mix(in srgb, var(--frontend-stroke) 12%, var(--mask));
+    --backend-fill: color-mix(in srgb, var(--backend-stroke) 12%, var(--mask));
+    --database-fill: color-mix(in srgb, var(--database-stroke) 12%, var(--mask));
+    --cloud-fill: color-mix(in srgb, var(--cloud-stroke) 12%, var(--mask));
+    --security-fill: color-mix(in srgb, var(--security-stroke) 12%, var(--mask));
+    --messagebus-fill: color-mix(in srgb, var(--messagebus-stroke) 12%, var(--mask));
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; letter-spacing: -0.01em; }
   @media (prefers-color-scheme: dark) {
     svg { --ink: #e8ecf5; --muted: #a3acc0; --faint: #5d667a; --line: #2c3342; --card: #11141b;
