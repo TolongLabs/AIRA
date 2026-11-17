@@ -42,8 +42,8 @@ export function webSearchTool(ports: ToolPorts): ToolDefinition<z.infer<typeof q
       try {
         const results = await ports.search.search(args.query, context.signal)
         return { ok: true, data: { results: results.slice(0, 8) } }
-      } catch {
-        return { ok: false, kind: 'error', reason: 'search failed' }
+      } catch (error) {
+        return { ok: false, kind: 'error', reason: 'search failed', cause: error }
       }
     }
   }
@@ -73,8 +73,8 @@ export function readPageTool(ports: ToolPorts): ToolDefinition<z.infer<typeof ur
       try {
         const page = await ports.page.read(args.url, context.signal)
         return { ok: true, data: { title: page.title, text: page.text } }
-      } catch {
-        return { ok: false, kind: 'error', reason: 'page read failed' }
+      } catch (error) {
+        return { ok: false, kind: 'error', reason: 'page read failed', cause: error }
       }
     }
   }
@@ -100,7 +100,7 @@ export function readPostTool(ports: ToolPorts): ToolDefinition<z.infer<typeof ur
         return { ok: true, data: { ...post } }
       } catch (error) {
         if (error instanceof SocialPostError) return { ok: false, kind: error.kind, reason: error.message }
-        return { ok: false, kind: 'error', reason: 'post read failed' }
+        return { ok: false, kind: 'error', reason: 'post read failed', cause: error }
       }
     }
   }
@@ -128,8 +128,8 @@ export function sendPhotoTool(storage: Storage, ports: ToolPorts): ToolDefinitio
       try {
         const images = await ports.search.images(args.query, context.signal)
         firstUrl = images[0]?.url
-      } catch {
-        return { ok: false, kind: 'error', reason: 'photo search failed' }
+      } catch (error) {
+        return { ok: false, kind: 'error', reason: 'photo search failed', cause: error }
       }
       if (!firstUrl) {
         return { ok: false, kind: 'unavailable', reason: 'no photo found' }
@@ -141,8 +141,8 @@ export function sendPhotoTool(storage: Storage, ports: ToolPorts): ToolDefinitio
       let downloaded: { data: Buffer; contentType: string }
       try {
         downloaded = await ports.page.download(firstUrl, context.signal, 5_000_000)
-      } catch {
-        return { ok: false, kind: 'error', reason: 'photo download failed' }
+      } catch (error) {
+        return { ok: false, kind: 'error', reason: 'photo download failed', cause: error }
       }
 
       const mime = downloaded.contentType.split(';')[0]?.trim().toLowerCase() ?? ''

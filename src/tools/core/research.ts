@@ -83,8 +83,8 @@ export function reportPdfTool(ports: ToolPorts): ToolDefinition<Record<string, n
       let file: Awaited<ReturnType<typeof offers.prepare>>
       try {
         file = await offers.prepare(row, context)
-      } catch {
-        return { ok: false, kind: 'error', reason: 'The PDF could not be rendered.' }
+      } catch (error) {
+        return { ok: false, kind: 'error', reason: 'The PDF could not be rendered.', cause: error }
       }
       const { data } = context.commit((db) => {
         const result = db

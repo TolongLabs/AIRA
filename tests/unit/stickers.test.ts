@@ -301,6 +301,30 @@ describe('withStickers', () => {
     const otherChar = cleaner.clean(makeInput({ chatId: 'c_one', pack: makePack({ id: 'other' }) }))
     expect(otherChar.stickerId).toBe('a.webp')
   })
+
+  it('returns a storage warning without dropping the cleaned text when storage throws', () => {
+    const dbErr = new Error('sqlite unavailable')
+    const brokenStorage = {
+      read() {
+        throw dbErr
+      },
+      tx() {
+        throw dbErr
+      }
+    } as unknown as ReturnType<typeof tmpStorage>
+    const cleaner = withStickers(fakeCleaner({ content: 'hello', bubbleCount: 1, steps: [] }), {
+      storage: brokenStorage,
+      hostDataDir: '/srv/data',
+      random: () => 0
+    })
+
+    const reply = cleaner.clean(makeInput({})) as CleanedReply & {
+      warnings?: { kind: string; error: unknown; handledBy: string }[]
+    }
+    expect(reply.content).toBe('hello')
+    expect(reply.stickerId).toBeUndefined()
+    expect(reply.warnings).toEqual([{ kind: 'storage_error', error: dbErr, handledBy: 'stickers' }])
+  })
 })
 
 describe('loadPack face groups and beats', () => {

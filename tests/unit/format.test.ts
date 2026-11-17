@@ -275,6 +275,31 @@ describe('cleaning chain steps', () => {
     })
     expect(result.content).toBe('')
     expect(result.bubbleCount).toBe(0)
+    expect(result.error).toBeUndefined()
+  })
+
+  it('returns the caught error when a cleaning step throws', () => {
+    const boom = new Error('step failure')
+    const throwingName = {
+      length: 1,
+      replace() {
+        throw boom
+      }
+    } as unknown as string
+    const result = cleanReply('hello', {
+      toolNames: [throwingName],
+      speakerNames: [],
+      lengthBypass: false,
+      shape: {},
+      fixedBlocks: [],
+      leakCheck: false,
+      fallbackLine: 'Fallback.',
+      bubbleMaxChars: 700,
+      maxBubbles: 3
+    })
+    expect(result.content).toBe('')
+    expect(result.bubbleCount).toBe(0)
+    expect(result.error).toBe(boom)
   })
 })
 

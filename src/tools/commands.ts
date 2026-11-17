@@ -1,6 +1,14 @@
 import type { CommandMatch, CommandRouter, TurnContext } from '../turn/types.js'
 import type { ToolRegistry } from './registry.js'
-import type { ToolResult } from './types.js'
+import type { ToolFailureKind, ToolResult } from './types.js'
+
+export type DirectCommandResult =
+  | { ok: true; text: string; receipts: string[] }
+  | { ok: false; text: string; receipts: string[]; kind: ToolFailureKind; reason: string; cause?: unknown }
+
+export interface DirectCommandRouter extends CommandRouter {
+  runDirect(match: CommandMatch, context: TurnContext): Promise<DirectCommandResult>
+}
 
 // Text commands (docs/trd/tools.md#explicit-calls-text-commands). A command is a `/name` token anywhere in the
 // message, at the start or after a space or line break, up to the chat's `commands.maxPerMessage` limit.
@@ -121,7 +129,7 @@ export function renderDirect(
 export function createCommandRouter(
   registry: ToolRegistry,
   options: { timeZone: string } = { timeZone: 'Asia/Kuala_Lumpur' }
-): CommandRouter {
+): DirectCommandRouter {
   return {
     match(text, context): CommandMatch[] {
       const limit = maxCommandsPerMessage(context)
@@ -175,7 +183,16 @@ export function createCommandRouter(
         callId: `${context.turnId}:command`,
         source: 'command'
       })
-      if (!result.ok) return { ok: false, text: '', receipts: [] }
+      if (!result.ok) {
+        return {
+          ok: false,
+          text: '',
+          receipts: [],
+          kind: result.kind,
+          reason: result.reason,
+          ...(result.cause !== undefined ? { cause: result.cause } : {})
+        }
+      }
       return {
         ok: true,
         text: renderDirect(match.tool, result, options),

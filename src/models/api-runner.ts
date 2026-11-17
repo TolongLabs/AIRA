@@ -1,6 +1,7 @@
 import { BaseLlm, type BaseLlmConnection, BaseTool, InMemoryRunner, LlmAgent } from '@google/adk'
 import type { LlmRequest, LlmResponse, RunAsyncToolRequest } from '@google/adk'
 import type { Content, FunctionDeclaration } from '@google/genai'
+import { type Logger, createLogger } from '../records/logger.js'
 import type { ModelCallRecord, OfferedTool, RunResult, TurnRunner } from '../turn/types.js'
 import {
   type ModelClient,
@@ -25,6 +26,7 @@ export interface ApiRunnerOptions {
   limits: { maxCallsPerTurn: number; timeBudgetMs: number }
   /** Sampling parameters sent with every request. */
   params?: Record<string, unknown>
+  logger?: Logger
   now?: () => Date
 }
 
@@ -191,7 +193,11 @@ class SeamTool extends BaseTool {
       const result = await this.tool.call(args, callId, state.signal)
       if (result.receiptId) state.receipts.push(result.receiptId)
       return { content: result.content }
-    } catch {
+    } catch (error) {
+      const log =
+        options.logger ??
+        createLogger({ level: 'warn', module: 'api_runner', ...(options.now ? { now: options.now } : {}) })
+      log.warn('api_tool_failed', { turnId: state.turnId, tool: this.name, error })
       return { content: JSON.stringify({ error: 'error', reason: 'the tool failed' }) }
     } finally {
       state.toolMs += now().getTime() - started

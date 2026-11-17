@@ -68,9 +68,9 @@ export function createExaSearchPort(options: { apiKey: string; fetch?: typeof fe
           }),
           signal: combined
         })
-      } catch {
+      } catch (cause) {
         const kind = signal.aborted ? 'aborted' : combined.aborted ? 'timeout' : 'network'
-        throw new Error(`exa search failed (${kind})`)
+        throw new Error(`exa search failed (${kind})`, { cause })
       }
       if (!response.ok) {
         throw new Error(`exa search failed (${response.status})`)
@@ -78,8 +78,8 @@ export function createExaSearchPort(options: { apiKey: string; fetch?: typeof fe
       let data: unknown
       try {
         data = await response.json()
-      } catch {
-        throw new Error('exa search failed (invalid_json)')
+      } catch (cause) {
+        throw new Error('exa search failed (invalid_json)', { cause })
       }
       return mapResults(data)
     }

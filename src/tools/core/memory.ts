@@ -44,8 +44,8 @@ export function recallTool(ports: ToolPorts): ToolDefinition<z.infer<typeof quer
       try {
         const items = ports.memory.recall(context.chat.chatId, args.query, 8, context.senderId)
         return { ok: true, data: { items } }
-      } catch {
-        return { ok: false, kind: 'error', reason: 'memory recall failed' }
+      } catch (error) {
+        return { ok: false, kind: 'error', reason: 'memory recall failed', cause: error }
       }
     }
   }
@@ -127,8 +127,8 @@ export function forgetTool(ports: ToolPorts): ToolDefinition<z.infer<typeof forg
       let candidates: { itemId: string; text: string }[]
       try {
         candidates = memory.recall(context.chat.chatId, args.query ?? '', 8, context.senderId)
-      } catch {
-        return { ok: false, kind: 'error', reason: 'memory recall failed' }
+      } catch (error) {
+        return { ok: false, kind: 'error', reason: 'memory recall failed', cause: error }
       }
 
       const { data } = context.commit((db) => {
@@ -162,8 +162,8 @@ export function historySearchTool(ports: ToolPorts): ToolDefinition<z.infer<type
       try {
         const matches = ports.memory.history(context.chat.chatId, args.query, 10)
         return { ok: true, data: { matches } }
-      } catch {
-        return { ok: false, kind: 'error', reason: 'history search failed' }
+      } catch (error) {
+        return { ok: false, kind: 'error', reason: 'history search failed', cause: error }
       }
     }
   }

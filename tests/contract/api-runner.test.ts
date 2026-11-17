@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createApiRunner } from '../../src/models/api-runner.js'
 import { type ModelClient, ModelError, type ModelRequest, type ModelResponse } from '../../src/models/types.js'
+import { createLogger } from '../../src/records/logger.js'
 import type { OfferedTool, TurnContext } from '../../src/turn/types.js'
 
 // The API runner: the agent kit's loop on the model seam, with the two chain limits (docs/trd/tools.md).
@@ -144,7 +145,9 @@ describe('the API runner', () => {
     expect(model.requests[2]?.tools).toEqual([])
   })
 
-  it('keeps the loop alive when a tool throws: the model reads a typed error', async () => {
+  it('keeps the loop alive when a tool throws: the model reads a typed error and logs the cause', async () => {
+    const logs: Record<string, unknown>[] = []
+    const logger = createLogger({ level: 'warn', module: 'api-test', sink: (line) => logs.push(JSON.parse(line)) })
     const broken: OfferedTool = {
       ...lookupTool(),
       call: async () => {
@@ -152,10 +155,19 @@ describe('the API runner', () => {
       }
     }
     const model = queueModel([{ toolCalls: [call('a')] }, { text: 'I could not look that up' }])
-    const result = await run(model, [broken])
+    const result = await run(model, [broken], { logger })
     expect(result.text).toBe('I could not look that up')
     const toolMessage = model.requests[1]?.messages.at(-1)
     expect(toolMessage).toMatchObject({ role: 'tool', content: '{"error":"error","reason":"the tool failed"}' })
+    expect(logs).toEqual([
+      expect.objectContaining({
+        level: 'warn',
+        event: 'api_tool_failed',
+        turn_id: 'turn-1',
+        tool: 'lookup',
+        error: expect.objectContaining({ message: 'a handler bug' })
+      })
+    ])
   })
 
   it.each(['refusal', 'budget', 'auth', 'transient'] as const)(

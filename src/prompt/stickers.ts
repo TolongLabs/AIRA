@@ -71,8 +71,13 @@ export function withStickers(cleaner: ReplyCleaner, options: StickerOptions): Re
             ...(cleaned.attachments ?? []).filter((path) => path.endsWith('.pdf'))
           ]
         }
-      } catch {
-        return cleaned
+      } catch (error) {
+        const existing = 'warnings' in cleaned && Array.isArray(cleaned.warnings) ? cleaned.warnings : []
+        const warned = {
+          ...cleaned,
+          warnings: [...existing, { kind: 'storage_error' as const, error, handledBy: 'stickers' }]
+        }
+        return warned
       }
     }
   }

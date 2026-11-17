@@ -190,6 +190,13 @@ function codeRun(text: string, receipts: string[] = []): RunResult {
 }
 
 const LINE_FOR: Record<string, LineKind> = { refusal: 'refusal', malformed: 'fallback', budget: 'limit' }
+const DIRECT_FAILURE: Record<string, FailureKind> = {
+  timeout: 'tool_timeout',
+  refused: 'tool_refused',
+  invalid: 'malformed',
+  unavailable: 'transient',
+  error: 'tool_error'
+}
 
 function deliverySettings(settings: Record<string, Resolved>): DeliverySettings {
   return {
@@ -266,6 +273,15 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       outcome.content = pack.lines[kind]
       return outcome
     }
+    const failDirect = (
+      result: { ok: boolean; kind?: string; reason?: string; cause?: unknown },
+      fallback: string
+    ): Outcome =>
+      line(
+        'error',
+        (result.kind ? DIRECT_FAILURE[result.kind] : undefined) ?? 'tool_error',
+        result.cause ?? new Error(result.reason || fallback)
+      )
 
     // 3. Admit: the sender, mute and quiet for a scheduled turn, the spend cap.
     stage('admit')
@@ -348,7 +364,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         const command = deps.commands.match('/pdf', context)[0]
         if (command) {
           const result = await deps.commands.runDirect(command, context)
-          if (!result.ok) return line('error', 'tool_error', new Error('report_pdf failed'))
+          if (!result.ok) return failDirect(result, 'report_pdf failed')
           handover = result.receipts.length > 0
           handoverReceipts = result.receipts
           handoverText = result.text
@@ -392,7 +408,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       stamp('built')
       const result = await deps.commands.runDirect(command, context)
       stamp('model_done')
-      if (!result.ok) return line('error', 'tool_error', new Error(`the command ${command.name} failed`))
+      if (!result.ok) return failDirect(result, `the command ${command.name} failed`)
       built = { system: [], messages: [], record: { lengthBypass: 'command_list' }, shape: { lengthBypass: true } }
       run = codeRun(result.text, result.receipts)
       Object.assign(outcome.fields, built.record, { receipts: result.receipts } satisfies TurnRecordFields)
@@ -449,7 +465,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
           outcome.failures.push({
             stage: 'media',
             kind: 'media_unreadable',
-            error: new Error(`${item.kind}: ${item.reason}`),
+            error: item.error ?? new Error(`${item.kind}: ${item.reason}`),
             handledBy: 'line:unreadableMedia'
           })
         }
@@ -561,7 +577,15 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
 
     // 7. Clean: the cleaning chain, the renderer, the bubbles.
     stage('clean')
-    const cleaned = deps.cleaner.clean({ text: run.text, context, built, run })
+    let cleaned: ReturnType<ReplyCleaner['clean']> & {
+      error?: unknown
+      warnings?: { kind?: FailureKind; error: unknown; handledBy?: string }[]
+    }
+    try {
+      cleaned = deps.cleaner.clean({ text: run.text, context, built, run })
+    } catch (error) {
+      cleaned = { content: '', bubbleCount: 0, steps: [], error }
+    }
     Object.assign(outcome.fields, {
       cleaningSteps: cleaned.steps,
       bubbleCount: cleaned.bubbleCount,
@@ -569,6 +593,23 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       attachments: cleaned.attachments
     } satisfies TurnRecordFields)
     stamp('cleaned')
+    if (cleaned.warnings) {
+      for (const warning of cleaned.warnings) {
+        outcome.failures.push({
+          stage: 'clean',
+          kind: warning.kind ?? 'storage_error',
+          error: warning.error,
+          handledBy: warning.handledBy ?? 'clean'
+        })
+      }
+    }
+    if (cleaned.error !== undefined) {
+      fail('clean', 'internal', cleaned.error, 'line:error')
+      outcome.state = 'failed'
+      outcome.fields.outcome = 'failed'
+      outcome.content = pack.lines.error
+      return outcome
+    }
     if (cleaned.content.trim() === '')
       return line('fallback', 'malformed', new Error('the reply was empty after cleaning'))
     if (cleaned.replacedBy)

@@ -123,7 +123,7 @@ describe('createTurnMedia', () => {
     expect(calls).toBe(1)
     expect(result.readings).toEqual([])
     expect(result.unreadable).toEqual([
-      { kind: 'image', reason: 'unreadable' },
+      { kind: 'image', reason: 'unreadable', error: expect.objectContaining({ kind: 'auth', message: 'HTTP 403' }) },
       { kind: 'image', reason: 'refused' },
       { kind: 'image', reason: 'missing' },
       { kind: 'file', reason: 'unsupported type' }
@@ -165,7 +165,13 @@ describe('createTurnMedia', () => {
     const { media } = setup(watcher, { timeoutMs: 30_000 })
     // 150 ms are left: the read may use 100 ms, however long media.timeoutMs is.
     const result = await media.read([file('a.jpg')], Date.now() + 150)
-    expect(result.unreadable).toEqual([{ kind: 'image', reason: 'unreadable' }])
+    expect(result.unreadable).toEqual([
+      {
+        kind: 'image',
+        reason: 'unreadable',
+        error: expect.objectContaining({ kind: 'transient', message: 'aborted' })
+      }
+    ])
     expect(result.calls[0]).toMatchObject({ failureKind: 'transient' })
     expect(seen[0]).toBeGreaterThanOrEqual(90)
     expect(seen[0]).toBeLessThan(140)

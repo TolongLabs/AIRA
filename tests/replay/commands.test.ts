@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import type { App } from '../../src/app.js'
+import { loadPacks } from '../../src/character/loader.js'
+import { createLogger } from '../../src/records/logger.js'
+import { createRedactor } from '../../src/records/redact.js'
+import { ensureChat, setChatStatus } from '../../src/settings/chats.js'
 import { setSetting } from '../../src/settings/settings.js'
+import { createCommandRouter } from '../../src/tools/commands.js'
+import { createToolRegistry } from '../../src/tools/registry.js'
+import type { ToolFailureKind } from '../../src/tools/types.js'
+import { basicPromptBuilder, plainCleaner } from '../../src/turn/defaults.js'
+import { createTurnService } from '../../src/turn/pipeline.js'
 import { type Answer, lastTurn, msg, queueModel, startApp } from '../support/app.js'
+import { scriptedRunner, testConfig } from '../support/core.js'
+import { tmpStorage } from '../support/tmp.js'
 
 // Text commands through the whole service (docs/trd/tools.md#explicit-calls-text-commands).
 
@@ -217,5 +229,99 @@ describe('lessons commands', () => {
     expect(names(model.requests[3])).toEqual(['song_get'])
     expect(model.requests[4]?.messages.at(-1)?.content).toContain('rain on the tin roof')
     expect(lastTurn(app)).toMatchObject({ kind: 'command', state: 'delivered' })
+  })
+})
+
+describe('direct command failure mapping', () => {
+  it('a failed direct command keeps its result kind', async () => {
+    const cases: Array<[ToolFailureKind, string]> = [
+      ['invalid', 'malformed'],
+      ['refused', 'tool_refused'],
+      ['unavailable', 'transient'],
+      ['timeout', 'tool_timeout'],
+      ['error', 'tool_error']
+    ]
+
+    for (const [resultKind, expectedFailureKind] of cases) {
+      const storage = tmpStorage()
+      const config = testConfig((c) => {
+        c.turn.batchMs = 0
+      })
+      const logger = createLogger({ level: 'error', module: 'commands-test', sink: () => {} })
+      const redactor = createRedactor()
+      const packs = () => loadPacks({ repositoryDir: 'characters', dataDir: '/tmp/aira-no-private-packs' })
+      const chat = ensureChat(storage, { waId: `test-chat-${resultKind}`, type: 'group' })
+      setChatStatus(storage, { chatId: chat.chatId, status: 'active', actor: 'test' })
+      setSetting(storage, { level: 'global', scope: '', key: 'character', value: 'example', actor: 'test' })
+
+      const registry = createToolRegistry({
+        storage,
+        config: { tools: { defaultTimeoutMs: 500 } },
+        logger,
+        redactor
+      })
+      registry.register({
+        name: 'probe_direct',
+        description: 'Direct probe tool',
+        schema: z.strictObject({}),
+        mode: 'explicit',
+        mutates: false,
+        command: {
+          names: ['probe'],
+          kind: 'direct',
+          usage: '/probe',
+          directArgs: () => ({})
+        },
+        handler: () => ({
+          ok: false,
+          kind: resultKind,
+          reason: `${resultKind} reason`,
+          cause: new Error(`${resultKind} cause`)
+        })
+      })
+
+      const turns = createTurnService({
+        storage,
+        config,
+        logger,
+        redactor,
+        packs,
+        runner: scriptedRunner(() => 'unused'),
+        prompt: basicPromptBuilder,
+        cleaner: plainCleaner,
+        commands: createCommandRouter(registry),
+        alerter: { raise: () => false }
+      })
+
+      const reply = await turns.handle({
+        type: 'turn',
+        marker: {
+          platform: 'test',
+          chat: `test-chat-${resultKind}`,
+          kind: 'group',
+          sender: 'test-member-probe',
+          mid: `mid-${resultKind}`
+        },
+        text: '/probe',
+        earlier: '',
+        attachments: [],
+        stream: false,
+        includeUsage: false
+      })
+
+      expect(reply.content).toBe(packs().packs.get('example')?.lines.error)
+      expect(reply.content).not.toContain(`${resultKind} cause`)
+      const turn = storage.read((db) => db.prepare('SELECT state, outcome, failure_kind FROM turn').get())
+      expect(turn).toEqual({ state: 'failed', outcome: 'failed', failure_kind: expectedFailureKind })
+      const cmdFailure = storage.read(
+        (db) =>
+          db.prepare("SELECT kind, message FROM failure WHERE stage = 'command'").get() as {
+            kind: string
+            message: string
+          }
+      )
+      expect(cmdFailure.kind).toBe(expectedFailureKind)
+      expect(cmdFailure.message).toContain(`${resultKind} cause`)
+    }
   })
 })
