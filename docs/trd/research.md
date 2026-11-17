@@ -64,7 +64,7 @@ The findings object is the only thing the model writes for a report. Code render
 | `sources`     | 1 to 12 items: `n`, `title`, `url`, `domain`, `accessedAt` (filled by code, not the model)             |
 
 The type lives in `src/render/types.ts` as `ReportDocument`, and its zod schema beside it. Research fills it; the
-renderer reads it. A future document kind adds a new type beside it rather than changing this one.
+renderer reads it. `NoteDocument` (see Documents) is the second kind; a future kind adds a new type beside them rather than changing either.
 
 ## Delivery
 
@@ -88,6 +88,22 @@ While a job's offer is open, the next message in that chat from the requester is
   the message is answered as usual.
 - **Anything else** is an ordinary message. The offer stays open until it expires. Another member's yes does not
   count.
+
+## Documents
+
+`make_report` (`/doc <topic>`, and callable by the model) writes one document in Markdown or PDF.
+
+1. **Format, chosen by code.** The member's message names it: `pdf`, or `markdown` or `md`, as a whole word in any
+   case. Else the chat's `report.defaultFormat` setting, `pdf` by default. The model never picks the format.
+2. **The mold.** The model fills a `NoteDocument`: `title` (4 to 120 characters) and 1 to 8 `sections`, each a
+   `heading` (at most 80) and a `body` (at most 4,000, paragraphs and `-` lists only). It lives beside
+   `ReportDocument` in `src/render/types.ts`.
+3. **Markdown.** Code writes the title and sections as a `.md` file.
+4. **PDF.** Code renders the same document through the renderer below with the template
+   `src/render/templates/note.typ` and the chat's format profile.
+5. **Reply.** A short text in the chat's character, the sticker as usual, then the file as a WhatsApp document
+   (`MEDIA:` line). The file is stored through `putFile`.
+6. `/report` is no longer this tool's command; it is kept for the member feedback form (#125).
 
 ## The Renderer
 
