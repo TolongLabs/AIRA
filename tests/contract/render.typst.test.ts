@@ -2,8 +2,13 @@ import { spawnSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { isTypstAvailable, renderReport } from '../../src/render/render.js'
-import { type ReportDocument, reportDocumentSchema, reportFormatSchema } from '../../src/render/types.js'
+import { isTypstAvailable, renderNote, renderReport } from '../../src/render/render.js'
+import {
+  type NoteDocument,
+  type ReportDocument,
+  reportDocumentSchema,
+  reportFormatSchema
+} from '../../src/render/types.js'
 import { tmpDir } from '../support/tmp.js'
 
 const sampleDoc = reportDocumentSchema.parse(JSON.parse(readFileSync('tests/fixtures/report/sample.json', 'utf8')))
@@ -111,6 +116,40 @@ describe.skipIf(!(await isTypstAvailable('typst')))('renderReport with real typs
       const text = extractPdfText(result.pdf)
       expect(text).toContain('Internal Research Brief')
       expect(text).not.toContain('https://example.com/reports/microgrid-storage-2026')
+    }
+  })
+})
+
+describe.skipIf(!(await isTypstAvailable('typst')))('renderNote with real typst binary', () => {
+  it('the note template prints fields as plain text', async () => {
+    const literalNote: NoteDocument = {
+      title: 'Literal Note #1 *bold* $x$',
+      sections: [
+        {
+          heading: 'Heading *bold* $x$',
+          body: 'Body holding #read("/etc/passwd") and #1 + 1 safely.\n\n- Bullet with $x$ and *bold* and CJK 测试'
+        }
+      ]
+    }
+
+    const result = await renderNote(literalNote, defaultFormat, {
+      typstPath: 'typst',
+      timeoutMs: 20_000,
+      maxPages: 30,
+      maxBytes: 5_242_880
+    })
+
+    expect(result.pdf.subarray(0, 5).toString('ascii')).toBe('%PDF-')
+    expect(result.pages).toBeGreaterThanOrEqual(1)
+
+    if (hasPdfToText()) {
+      const text = extractPdfText(result.pdf)
+      expect(text).toContain('#read("/etc/passwd")')
+      expect(text).toContain('#1 + 1')
+      expect(text).toContain('$x$')
+      expect(text).toContain('*bold*')
+      expect(text).toContain('测试')
+      expect(text).not.toContain('root:x:0:0')
     }
   })
 })

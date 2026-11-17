@@ -52,6 +52,7 @@ describe('settings resolution', () => {
     expect(resolved['context.maxMessages']).toEqual({ value: 40, level: 'default' })
     expect(resolved['memory.pageMessages']).toEqual({ value: 25, level: 'default' })
     expect(resolved['tools.maxPerMessage']).toEqual({ value: 3, level: 'default' })
+    expect(resolved['report.defaultFormat']).toEqual({ value: 'pdf', level: 'default' })
   })
 
   it('accepts only boolean values for the memory switch', () => {
@@ -373,6 +374,31 @@ describe('settings validation and change log', () => {
       ).toThrow(SettingError)
     }
     expect(resolveSetting(storage, chat, 'memory.pageMessages')).toEqual({ value: 50, level: 'chat' })
+  })
+
+  it('accepts report.defaultFormat pdf or markdown (default pdf) and rejects other values', () => {
+    const storage = tmpStorage()
+    const chat = ensureChat(storage, { waId: '0000000000@g.us', type: 'group' })
+
+    expect(resolveSetting(storage, chat, 'report.defaultFormat')).toEqual({ value: 'pdf', level: 'default' })
+
+    for (const value of ['markdown', 'pdf'] as const) {
+      setSetting(storage, { level: 'chat', scope: chat.chatId, key: 'report.defaultFormat', value, actor: 's_admin' })
+      expect(resolveSetting(storage, chat, 'report.defaultFormat')).toEqual({ value, level: 'chat' })
+    }
+
+    for (const bad of ['md', 'docx', 'PDF', 123, null]) {
+      expect(() =>
+        setSetting(storage, {
+          level: 'chat',
+          scope: chat.chatId,
+          key: 'report.defaultFormat',
+          value: bad,
+          actor: 's_admin'
+        })
+      ).toThrow(SettingError)
+    }
+    expect(resolveSetting(storage, chat, 'report.defaultFormat')).toEqual({ value: 'pdf', level: 'chat' })
   })
 })
 

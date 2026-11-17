@@ -326,6 +326,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     const input: TurnInput = { context, window: !contextOn || maxMessages === 0 ? pending : trimmed, pending }
     outcome.fields.windowSize = input.window.length
     outcome.diagnostics = { request: input.pending.map((message) => message.content).join('\n\n') }
+    context.messageText = outcome.diagnostics.request
 
     // 4. Command check. Command tokens anywhere in the message name the tools to offer first.
     const text = input.pending[input.pending.length - 1]?.content ?? ''

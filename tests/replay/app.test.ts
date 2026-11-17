@@ -192,20 +192,151 @@ describe('the whole service', () => {
     const model = queueModel([
       {
         toolCalls: [
-          { id: 'call-1', name: 'make_report', args: { title: 'Weekly notes', body: 'An invented report body.' } }
+          {
+            id: 'call-1',
+            name: 'make_report',
+            args: { title: 'Weekly notes', sections: [{ heading: 'Summary', body: 'An invented report body.' }] }
+          }
         ]
       },
       { text: 'Here is the report.' }
     ])
     const { app, gateway, dataDir } = await start(model)
-    const delivery = await gateway.send(msg('m-1', '/report weekly notes'))
+    const delivery = await gateway.send(msg('m-1', '/doc weekly notes in markdown'))
     expect(delivery.bubbles).toEqual(['Here is the report.\n\n_🛠️ wrote a report_'])
     expect(delivery.media).toHaveLength(1)
     expect(delivery.media[0]).toMatch(/^\/host\/aira-data\/files\/[0-9a-f]{2}\/[0-9a-f]{64}\.md$/)
     // The same file exists on the data volume, where the gateway reads it through the host path.
     const local = (delivery.media[0] as string).replace('/host/aira-data', dataDir)
-    expect(readFileSync(local, 'utf8')).toBe('# Weekly notes\n\nAn invented report body.')
+    expect(readFileSync(local, 'utf8')).toBe('# Weekly notes\n\n## Summary\n\nAn invented report body.')
     expect(JSON.parse(turn(app)['attachments'] as string)).toEqual(delivery.media)
+  })
+
+  it('/doc writes a PDF by default', async () => {
+    const noteRenderer = async () => ({ pdf: Buffer.from('%PDF-1.4\nnote'), pages: 1 })
+    const model = queueModel([
+      {
+        toolCalls: [
+          {
+            id: 'call-1',
+            name: 'make_report',
+            args: { title: 'Weekly notes', sections: [{ heading: 'Overview', body: 'All tasks on track.' }] }
+          }
+        ]
+      },
+      { text: 'Here is the PDF.' }
+    ])
+    const { app, gateway, dataDir } = await start(model, { ports: { noteRenderer } })
+    const delivery = await gateway.send(msg('m-1', '/doc weekly notes'))
+    expect(delivery.media).toHaveLength(1)
+    expect(delivery.media[0]).toMatch(/^\/host\/aira-data\/files\/[0-9a-f]{2}\/[0-9a-f]{64}\.pdf$/)
+    const local = (delivery.media[0] as string).replace('/host/aira-data', dataDir)
+    expect(readFileSync(local).toString('ascii')).toBe('%PDF-1.4\nnote')
+    expect(turn(app)).toMatchObject({ kind: 'command', state: 'delivered' })
+    expect(model.requests[0]?.tools.map((tool) => tool.name)).toEqual(['make_report'])
+  })
+
+  it('/doc writes Markdown when the message says md or markdown', async () => {
+    let renderedPdfCount = 0
+    const noteRenderer = async () => {
+      renderedPdfCount += 1
+      return { pdf: Buffer.from('%PDF-1.4\nnote'), pages: 1 }
+    }
+    const model = queueModel([
+      {
+        toolCalls: [
+          {
+            id: 'call-1',
+            name: 'make_report',
+            args: { title: 'Short MD', sections: [{ heading: 'One', body: 'First body.' }] }
+          }
+        ]
+      },
+      { text: 'Sent as md.' },
+      {
+        toolCalls: [
+          {
+            id: 'call-2',
+            name: 'make_report',
+            args: { title: 'Long Markdown', sections: [{ heading: 'Two', body: 'Second body.' }] }
+          }
+        ]
+      },
+      { text: 'Sent as markdown.' }
+    ])
+    const { gateway, dataDir } = await start(model, { ports: { noteRenderer } })
+
+    const mdDelivery = await gateway.send(msg('m-1', '/doc notes in MD please'))
+    expect(mdDelivery.media[0]).toMatch(/\.md$/)
+    expect(readFileSync((mdDelivery.media[0] as string).replace('/host/aira-data', dataDir), 'utf8')).toBe(
+      '# Short MD\n\n## One\n\nFirst body.'
+    )
+
+    const markdownDelivery = await gateway.send(msg('m-2', '/doc notes as Markdown'))
+    expect(markdownDelivery.media[0]).toMatch(/\.md$/)
+    expect(readFileSync((markdownDelivery.media[0] as string).replace('/host/aira-data', dataDir), 'utf8')).toBe(
+      '# Long Markdown\n\n## Two\n\nSecond body.'
+    )
+    expect(renderedPdfCount).toBe(0)
+  })
+
+  it("the chat's report.defaultFormat picks the format when the message names none", async () => {
+    const noteRenderer = async () => ({ pdf: Buffer.from('%PDF-1.4\noverride'), pages: 1 })
+    const model = queueModel([
+      {
+        toolCalls: [
+          {
+            id: 'call-1',
+            name: 'make_report',
+            args: { title: 'Default MD', sections: [{ heading: 'Notes', body: 'From chat default.' }] }
+          }
+        ]
+      },
+      { text: 'Default markdown sent.' },
+      {
+        toolCalls: [
+          {
+            id: 'call-2',
+            name: 'make_report',
+            args: { title: 'Explicit PDF', sections: [{ heading: 'Notes', body: 'Message wins.' }] }
+          }
+        ]
+      },
+      { text: 'PDF override sent.' }
+    ])
+    const { app, gateway, chatId, dataDir } = await start(model, { ports: { noteRenderer } })
+    setSetting(app.storage, {
+      level: 'chat',
+      scope: chatId,
+      key: 'report.defaultFormat',
+      value: 'markdown',
+      actor: 'test'
+    })
+
+    const d1 = await gateway.send(msg('m-1', '/doc project notes'))
+    expect(d1.media[0]).toMatch(/\.md$/)
+    expect(readFileSync((d1.media[0] as string).replace('/host/aira-data', dataDir), 'utf8')).toBe(
+      '# Default MD\n\n## Notes\n\nFrom chat default.'
+    )
+
+    const d2 = await gateway.send(msg('m-2', '/doc project notes as PDF'))
+    expect(d2.media[0]).toMatch(/\.pdf$/)
+  })
+
+  it('/report no longer runs make_report', async () => {
+    const model = queueModel([{ text: 'I noted your feedback.' }])
+    const { app, gateway } = await start(model)
+    const delivery = await gateway.send(msg('m-1', '/report reminders broke today'))
+    expect(delivery.content).toBe('I noted your feedback.')
+    expect(delivery.media).toEqual([])
+    expect(turn(app)).toMatchObject({ kind: 'reply', state: 'delivered' })
+    expect(model.requests[0]?.tools.map((tool) => tool.name)).toContain('make_report')
+    expect(model.requests[0]?.tools.length).toBeGreaterThan(1)
+    expect(
+      app.storage.read((db) =>
+        db.prepare('SELECT count(*) FROM tool_call WHERE turn_id = ?').pluck().get(turn(app)['turn_id'])
+      )
+    ).toBe(0)
   })
 
   it('writes the wanted-jobs file for the gateway schedule at start-up', async () => {

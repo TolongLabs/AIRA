@@ -44,7 +44,7 @@ import { createRedactor, secretsFromEnv } from './records/redact.js'
 import { pruneRecords } from './records/retention.js'
 import { endJobRun, recordFailure, recordModelCall, startJobRun } from './records/turn-record.js'
 import { okToolsOfTurn } from './records/turn-view.js'
-import { renderReport } from './render/render.js'
+import { renderNote, renderReport } from './render/render.js'
 import { reportFormatSchema } from './render/types.js'
 import { type ReportRenderer, createResearchOffers } from './research/offer.js'
 import { type ResearchWorker, createResearchWorker } from './research/worker.js'
@@ -442,6 +442,8 @@ export async function createApp(options: AppOptions): Promise<App> {
     closers.push(worker.start(1000))
     registerCoreTools(registry, {
       research,
+      noteRenderer: (doc, format) => renderNote(doc, format, config.render ?? {}),
+      reportFormat: config.render?.report ?? reportFormatSchema.parse({}),
       post: createSocialPostPort(viewer, replyReader),
       memory: createMemoryPort({
         storage,

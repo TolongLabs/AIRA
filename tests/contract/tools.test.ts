@@ -478,10 +478,15 @@ describe('faults of the old system', () => {
     })
     context.settings = resolveSettings(storage, context.chat)
 
-    const res = await registry.call('make_report', { title: 'Summary', body: 'Details' }, context, {
-      callId: 'c-rep-off',
-      source: 'model'
-    })
+    const res = await registry.call(
+      'make_report',
+      { title: 'Summary note', sections: [{ heading: 'Details', body: 'All clear.' }] },
+      context,
+      {
+        callId: 'c-rep-off',
+        source: 'model'
+      }
+    )
     expect(res).toMatchObject({ ok: false, kind: 'refused' })
     expect(storage.read((db) => db.prepare('SELECT count(*) FROM file').pluck().get())).toBe(0)
   })

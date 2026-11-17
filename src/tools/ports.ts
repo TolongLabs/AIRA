@@ -1,5 +1,6 @@
 import { lookup as dnsLookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
+import type { NoteDocument, ReportFormat } from '../render/types.js'
 import type { ResearchOffers } from '../research/offer.js'
 import type { SocialReply } from '../social/types.js'
 import type { SocialPlatform } from '../social/urls.js'
@@ -71,8 +72,12 @@ export interface LyricsPort {
   fetch(ref: string, signal: AbortSignal): Promise<{ title: string; artist: string; lines: string[] }>
 }
 
+export type NoteRenderer = (doc: NoteDocument, format: ReportFormat) => Promise<{ pdf: Buffer; pages: number }>
+
 export interface ToolPorts {
   research?: ResearchOffers
+  noteRenderer?: NoteRenderer
+  reportFormat?: ReportFormat
   memory?: MemoryPort
   search?: SearchPort
   lyrics?: LyricsPort

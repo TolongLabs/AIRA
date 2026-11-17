@@ -12,9 +12,11 @@ import {
   type RenderRunner,
   countPdfPages,
   isTypstAvailable,
+  renderNote,
   renderReport
 } from '../../src/render/render.js'
 import {
+  type NoteDocument,
   type ReportDocument,
   type ReportFormat,
   reportDocumentSchema,
@@ -386,5 +388,105 @@ describe('isTypstAvailable', () => {
     expect(await isTypstAvailable(failBin)).toBe(false)
     expect(await isTypstAvailable(join(scratch, 'does-not-exist'))).toBe(false)
     expect(await isTypstAvailable('')).toBe(false)
+  })
+})
+
+describe('renderNote', () => {
+  const sampleNote: NoteDocument = {
+    title: 'Sprint Retrospective',
+    sections: [
+      { heading: 'What Went Well', body: 'Shipped the release on schedule.\n\n- Zero downtime\n- Clean rollback test' },
+      { heading: 'Next Steps', body: 'Monitor disk alerts for seven days.' }
+    ]
+  }
+
+  it('stages data.json and note.typ, runs typst with safe argv, and cleans up', async () => {
+    const scratch = tmpDir()
+    let seenArgs: readonly string[] = []
+    let stagedFiles: string[] = []
+    let stagedData: unknown = null
+    let stagedTemplate = ''
+
+    const run: RenderRunner = (_command, args, options) => {
+      seenArgs = args
+      stagedFiles = readdirSync(options.cwd).sort()
+      stagedData = JSON.parse(readFileSync(join(options.cwd, 'data.json'), 'utf8'))
+      stagedTemplate = readFileSync(join(options.cwd, 'note.typ'), 'utf8')
+
+      const { proc, stdout, stderr } = makeFakeProcess()
+      writeFileSync(join(options.cwd, 'out.pdf'), fakePdf(1))
+      stdout.end()
+      stderr.end()
+      queueMicrotask(() => proc.emit('close', 0, null))
+      return proc
+    }
+
+    const result = await renderNote(sampleNote, defaultFormat, {
+      typstPath: 'typst',
+      timeoutMs: 5000,
+      maxPages: 30,
+      maxBytes: 5_242_880,
+      tmpDir: scratch,
+      run
+    })
+
+    expect(seenArgs.slice(-2)).toEqual(['note.typ', 'out.pdf'])
+    expect(stagedFiles).toEqual(['data.json', 'note.typ'])
+    expect(stagedData).toEqual({ doc: sampleNote, format: defaultFormat })
+    expect(stagedTemplate).toContain('json(sys.inputs.data)')
+    expect(stagedTemplate).toContain('text(sec.heading)')
+    expect(result.pages).toBe(1)
+    expect(result.pdf.subarray(0, 5).toString('ascii')).toBe('%PDF-')
+    expect(readdirSync(scratch)).toEqual([])
+  })
+
+  it('rejects invalid note documents without running typst or leaking note text', async () => {
+    const scratch = tmpDir()
+    let ran = false
+    const run: RenderRunner = () => {
+      ran = true
+      return makeFakeProcess().proc
+    }
+
+    let caught: unknown = null
+    try {
+      await renderNote(
+        { title: 'ab', sections: [{ heading: 'H', body: 'CANARY_PRIVATE_NOTE_TEXT' }] } as NoteDocument,
+        defaultFormat,
+        { typstPath: 'typst', timeoutMs: 5000, maxPages: 30, maxBytes: 5_242_880, tmpDir: scratch, run }
+      )
+    } catch (error) {
+      caught = error
+    }
+
+    expect(caught).toBeInstanceOf(RenderError)
+    expect((caught as RenderError).kind).toBe('invalid')
+    expect((caught as RenderError).message).not.toContain('CANARY_PRIVATE_NOTE_TEXT')
+    expect(ran).toBe(false)
+    expect(readdirSync(scratch)).toEqual([])
+  })
+
+  it('refuses note PDFs exceeding maxPages or maxBytes and cleans up', async () => {
+    const scratch = tmpDir()
+    const tooManyPagesRunner: RenderRunner = (_cmd, _args, options) => {
+      const { proc, stdout, stderr } = makeFakeProcess()
+      writeFileSync(join(options.cwd, 'out.pdf'), fakePdf(3))
+      stdout.end()
+      stderr.end()
+      queueMicrotask(() => proc.emit('close', 0, null))
+      return proc
+    }
+
+    await expect(
+      renderNote(sampleNote, defaultFormat, {
+        typstPath: 'typst',
+        timeoutMs: 5000,
+        maxPages: 2,
+        maxBytes: 5_242_880,
+        tmpDir: scratch,
+        run: tooManyPagesRunner
+      })
+    ).rejects.toSatisfy((err: unknown) => err instanceof RenderError && err.kind === 'too_large')
+    expect(readdirSync(scratch)).toEqual([])
   })
 })
