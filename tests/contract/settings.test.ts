@@ -48,6 +48,9 @@ describe('settings resolution', () => {
     expect(resolved.expressions).toEqual({ value: true, level: 'default' })
     expect(resolved.muted).toEqual({ value: false, level: 'default' })
     expect(resolved['features.memory']).toEqual({ value: true, level: 'default' })
+    expect(resolved['features.context']).toEqual({ value: true, level: 'default' })
+    expect(resolved['context.maxMessages']).toEqual({ value: 40, level: 'default' })
+    expect(resolved['memory.pageMessages']).toEqual({ value: 25, level: 'default' })
     expect(resolved['tools.maxPerMessage']).toEqual({ value: 3, level: 'default' })
   })
 
@@ -298,6 +301,78 @@ describe('settings validation and change log', () => {
       ).toThrow(SettingError)
     }
     expect(resolveSetting(storage, chat, 'tools.maxPerMessage')).toEqual({ value: 8, level: 'chat' })
+  })
+
+  it('accepts features.context boolean (default true) and rejects non-booleans', () => {
+    const storage = tmpStorage()
+    const chat = ensureChat(storage, { waId: '0000000000@g.us', type: 'group' })
+
+    expect(resolveSetting(storage, chat, 'features.context')).toEqual({ value: true, level: 'default' })
+    setSetting(storage, { level: 'chat', scope: chat.chatId, key: 'features.context', value: false, actor: 's_admin' })
+    expect(resolveSetting(storage, chat, 'features.context')).toEqual({ value: false, level: 'chat' })
+
+    for (const bad of ['false', 0, 1, null, {}]) {
+      expect(() =>
+        setSetting(storage, {
+          level: 'chat',
+          scope: chat.chatId,
+          key: 'features.context',
+          value: bad,
+          actor: 's_admin'
+        })
+      ).toThrow(SettingError)
+    }
+    expect(resolveSetting(storage, chat, 'features.context')).toEqual({ value: false, level: 'chat' })
+  })
+
+  it('accepts context.maxMessages from 0 to 100 (default 40) and rejects out-of-range values', () => {
+    const storage = tmpStorage()
+    const chat = ensureChat(storage, { waId: '0000000000@g.us', type: 'group' })
+
+    expect(resolveSetting(storage, chat, 'context.maxMessages')).toEqual({ value: 40, level: 'default' })
+
+    for (const value of [0, 5, 100]) {
+      setSetting(storage, { level: 'chat', scope: chat.chatId, key: 'context.maxMessages', value, actor: 's_admin' })
+      expect(resolveSetting(storage, chat, 'context.maxMessages')).toEqual({ value, level: 'chat' })
+    }
+
+    for (const bad of [-1, 101, 5.5, '40', null]) {
+      expect(() =>
+        setSetting(storage, {
+          level: 'chat',
+          scope: chat.chatId,
+          key: 'context.maxMessages',
+          value: bad,
+          actor: 's_admin'
+        })
+      ).toThrow(SettingError)
+    }
+    expect(resolveSetting(storage, chat, 'context.maxMessages')).toEqual({ value: 100, level: 'chat' })
+  })
+
+  it('accepts memory.pageMessages from 5 to 50 (default 25) and rejects out-of-range values', () => {
+    const storage = tmpStorage()
+    const chat = ensureChat(storage, { waId: '0000000000@g.us', type: 'group' })
+
+    expect(resolveSetting(storage, chat, 'memory.pageMessages')).toEqual({ value: 25, level: 'default' })
+
+    for (const value of [5, 25, 50]) {
+      setSetting(storage, { level: 'chat', scope: chat.chatId, key: 'memory.pageMessages', value, actor: 's_admin' })
+      expect(resolveSetting(storage, chat, 'memory.pageMessages')).toEqual({ value, level: 'chat' })
+    }
+
+    for (const bad of [4, 51, 10.5, '25', null]) {
+      expect(() =>
+        setSetting(storage, {
+          level: 'chat',
+          scope: chat.chatId,
+          key: 'memory.pageMessages',
+          value: bad,
+          actor: 's_admin'
+        })
+      ).toThrow(SettingError)
+    }
+    expect(resolveSetting(storage, chat, 'memory.pageMessages')).toEqual({ value: 50, level: 'chat' })
   })
 })
 

@@ -286,16 +286,28 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
 
     // 5. Build: the window, then the prompt.
     stage('build')
+    const contextOn = settings['features.context']?.value !== false
+    const rawMaxMessages = settings['context.maxMessages']?.value
+    const chatMaxMessages =
+      typeof rawMaxMessages === 'number' &&
+      Number.isInteger(rawMaxMessages) &&
+      rawMaxMessages >= 0 &&
+      rawMaxMessages <= 100
+        ? rawMaxMessages
+        : 40
+    const maxMessages = deps.maxWindowMessages ?? chatMaxMessages
+    const readLimit = !contextOn || maxMessages === 0 ? Math.max(batch.length, 100) : maxMessages
     const window = readWindow(
       storage,
       chat.chatId,
-      { windowDays: config.records.windowDays, maxMessages: deps.maxWindowMessages ?? 40 },
+      { windowDays: config.records.windowDays, maxMessages: readLimit },
       now
     )
     // A message that arrived after this turn opened belongs to the next turn, so the window stops before it.
     const pending = pendingOf(window, turnId)
     const lastPending = pending.length > 0 ? window.lastIndexOf(pending[pending.length - 1] as WindowMessage) : -1
-    const input: TurnInput = { context, window: lastPending < 0 ? window : window.slice(0, lastPending + 1), pending }
+    const trimmed = lastPending < 0 ? window : window.slice(0, lastPending + 1)
+    const input: TurnInput = { context, window: !contextOn || maxMessages === 0 ? pending : trimmed, pending }
     outcome.fields.windowSize = input.window.length
     outcome.diagnostics = { request: input.pending.map((message) => message.content).join('\n\n') }
 

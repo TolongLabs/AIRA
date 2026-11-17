@@ -17,7 +17,7 @@ export interface EpisodePayload {
 
 export interface EpisodeLimits {
   idleMs: number
-  maxMessages: number
+  maxMessages?: number
 }
 
 /**
@@ -36,6 +36,16 @@ export function closeDueEpisodes(storage: Storage, limits: EpisodeLimits, now: (
   for (const chat of chats) {
     const chatId = chat.chat_id
     if (resolveSetting(storage, { chatId, type: chat.type }, 'features.memory').value === false) continue
+    const page = resolveSetting(storage, { chatId, type: chat.type }, 'memory.pageMessages')
+    const maxMessages =
+      page.level !== 'default' &&
+      page.level !== 'unset' &&
+      typeof page.value === 'number' &&
+      Number.isInteger(page.value) &&
+      page.value >= 5 &&
+      page.value <= 50
+        ? page.value
+        : (limits.maxMessages ?? (typeof page.value === 'number' ? page.value : 25))
     queued += storage.tx((db) => {
       const cursor = db
         .prepare('SELECT through_message_id, forget_epoch FROM memory_cursor WHERE chat_id = ?')
@@ -56,12 +66,12 @@ export function closeDueEpisodes(storage: Storage, limits: EpisodeLimits, now: (
              ), '')
            ORDER BY id LIMIT ?`
         )
-        .all(chatId, through, chatId, chat.type, limits.maxMessages) as { id: number; created_at: string }[]
+        .all(chatId, through, chatId, chat.type, maxMessages) as { id: number; created_at: string }[]
       const last = rows.at(-1)
       const first = rows[0]
       if (!first || !last) return 0
       const idle = now().getTime() - new Date(last.created_at).getTime() >= limits.idleMs
-      if (rows.length < limits.maxMessages && !idle) return 0
+      if (rows.length < maxMessages && !idle) return 0
       const payload: EpisodePayload = {
         fromId: first.id,
         throughId: last.id,

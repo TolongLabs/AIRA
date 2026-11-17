@@ -212,6 +212,80 @@ function LanguageField({ chat, onSave }: { chat: CoreChat; onSave: (value: unkno
   )
 }
 
+function NumberSettingField({
+  value,
+  min,
+  max,
+  unit,
+  label,
+  busy,
+  onSave
+}: {
+  value: number
+  min: number
+  max: number
+  unit: string
+  label: string
+  busy: boolean
+  onSave: (value: number) => Promise<boolean>
+}) {
+  const [draft, setDraft] = useState(String(value))
+  const [error, setError] = useState<string | null>(null)
+
+  async function commit() {
+    const trimmed = draft.trim()
+    if (!/^-?\d+$/.test(trimmed)) {
+      setError(`Enter a whole number from ${min} to ${max}.`)
+      return
+    }
+    const parsed = Number(trimmed)
+    if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+      setError(`Enter a whole number from ${min} to ${max}.`)
+      return
+    }
+    setError(null)
+    await onSave(parsed)
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          type="number"
+          inputMode="numeric"
+          min={min}
+          max={max}
+          step={1}
+          value={draft}
+          disabled={busy}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            if (error) setError(null)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              void commit()
+            }
+          }}
+          className="tnum w-24 font-mono text-[0.9rem]"
+          aria-label={label}
+          aria-invalid={error ? true : undefined}
+        />
+        <span className="text-[0.82rem] text-muted">{unit}</span>
+        <Button size="sm" disabled={busy || draft.trim() === ''} onClick={() => void commit()}>
+          Save
+        </Button>
+      </div>
+      {error && (
+        <p role="alert" className="m-0 text-[0.8rem] text-down">
+          {error}
+        </p>
+      )}
+    </div>
+  )
+}
+
 const FOOTER_EMOJI = ['🛠️', '🧪', '🔬', '🔎', '✨', '🌸', '📎']
 const REACTION_CHANCES = ['10', '25', '33', '50', '75', '100'] as const
 type ReactionChancePreset = (typeof REACTION_CHANCES)[number]
@@ -718,6 +792,37 @@ function ChatRow({
                       </SettingRow>
                     </>
                   )}
+                  <SettingRow chat={chat} name="features.context" label="Live context" onClear={clear}>
+                    <Toggle
+                      checked={valueOf(chat, 'features.context', true)}
+                      disabled={busy}
+                      onChange={(v) => save('features.context', v)}
+                      label="Replay earlier messages as context"
+                      hint="Off: AIRA sees only the message she is answering. Messages are still logged."
+                    />
+                  </SettingRow>
+                  <SettingRow
+                    chat={chat}
+                    name="context.maxMessages"
+                    label="Context size"
+                    hint={
+                      valueOf(chat, 'features.context', true)
+                        ? 'Recent chat-log messages replayed per turn (0 to 100).'
+                        : 'Applies when Live context is on (0 to 100).'
+                    }
+                    onClear={clear}
+                  >
+                    <NumberSettingField
+                      key={`${chat.settings['context.maxMessages']?.level ?? 'unset'}:${valueOf(chat, 'context.maxMessages', 40)}`}
+                      value={valueOf(chat, 'context.maxMessages', 40)}
+                      min={0}
+                      max={100}
+                      unit="messages"
+                      label="Context size"
+                      busy={busy}
+                      onSave={(v) => save('context.maxMessages', v)}
+                    />
+                  </SettingRow>
                   <SettingRow chat={chat} name="features.memory" label="Memory" onClear={clear}>
                     <Toggle
                       checked={valueOf(chat, 'features.memory', true)}
@@ -725,6 +830,24 @@ function ChatRow({
                       onChange={(v) => save('features.memory', v)}
                       label="Learn and recall facts in this chat"
                       hint="Off: AIRA learns nothing new and recalls nothing here. Stored facts are kept."
+                    />
+                  </SettingRow>
+                  <SettingRow
+                    chat={chat}
+                    name="memory.pageMessages"
+                    label="Memory page"
+                    hint="Messages that close a memory episode (5 to 50)."
+                    onClear={clear}
+                  >
+                    <NumberSettingField
+                      key={`${chat.settings['memory.pageMessages']?.level ?? 'unset'}:${valueOf(chat, 'memory.pageMessages', 25)}`}
+                      value={valueOf(chat, 'memory.pageMessages', 25)}
+                      min={5}
+                      max={50}
+                      unit="messages"
+                      label="Memory page"
+                      busy={busy}
+                      onSave={(v) => save('memory.pageMessages', v)}
                     />
                   </SettingRow>
                   <SettingRow chat={chat} name="reactions" label="Reactions" onClear={clear}>
