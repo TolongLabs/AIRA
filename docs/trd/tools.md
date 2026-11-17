@@ -283,6 +283,34 @@ Their data is specified in [Lessons Data Model](#lessons-data-model).
 | `library_write`  | Files one library node                     | implicit | none      |             |
 | `library_open`   | Reads one library node by title            | implicit | none      |             |
 
+#### Library Migration
+
+The old core's library is a folder of Markdown files with YAML front matter (measured on the production host,
+17 Nov 2026): `vocab/` (about 1,850 words), `grammar/` (about 240 patterns), `songs/<artist>/` (7 songs),
+`artists/` (5 notes) and `.raw/` (raw lyrics). `scripts/migrate-library.ts --from <folder> --db <file>` imports it.
+It is a dry run unless `--apply` is given.
+
+| Source                | Target                                                                                                                                        |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vocab/*.md`          | `lesson_word` kind `word`: `title`, `reading`, `level` (else `jlpt`), `pos`, `forms`, `example`; meanings `en` and `zh` from `gloss_*`        |
+| `grammar/*.md`        | `lesson_word` kind `pattern`: `title`, `level` from `jlpt`; meanings `en` and `zh` from `explanation`, `explanation_zh`                       |
+| `songs/*/*.md`        | `lesson_song` (`title`, `artist`, `source` from `provenance.source`) and its `lines`: `i` is the position, `ja` the text, meanings `en`, `zh` |
+| A song line's `vocab` | `lesson_word_seen` rows for words and patterns that exist after the import                                                                    |
+| `artists/*.md`        | `library_node`: the title and the body after the front matter                                                                                 |
+| `.raw/`, `provenance` | Not imported                                                                                                                                  |
+
+- **Senses.** A word with `senses` keeps its first sense in the word's fields where they are empty. Its meaning in
+  each language is the senses' glosses joined with `; `, cut at 500 characters.
+- **Never overwrite.** A row whose key (`word_key`, `song_key`, `title_key`) already exists is left as it is and
+  counted as merged. The keys are the ones the lessons tools use.
+- **Reject, never guess.** A file whose front matter does not parse, or a row that fails a table's limits, is
+  rejected with a reason and skipped. A song line past position 200 is rejected.
+- **Report.** The dry run and the real run print the same report: counts read, kept, merged and rejected per
+  folder, and each rejection's file name and reason. File contents never appear in the report.
+- **One transaction.** `--apply` writes everything in one transaction on the core's database, through the core's
+  writer, while the core is stopped or idle. The source folder is opened read-only and never changed. A database
+  backup is taken first, as for the memory migration ([Memory](memory.md#migration)).
+
 ### Lessons Data Model
 
 Lessons data is study material: songs worked through, the words and patterns in them, and library notes. It lives
