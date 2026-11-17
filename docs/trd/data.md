@@ -63,40 +63,43 @@ The primary key is `(level, scope, key)`. Deleting a row at a level restores inh
 
 ### Setting Keys
 
-| Key                      | Type                                                                              | Default (Global)        |
-| ------------------------ | --------------------------------------------------------------------------------- | ----------------------- |
-| `character`              | Character pack id                                                                 | Set at install          |
-| `language`               | `auto` or a language code                                                         | `auto`                  |
-| `freeResponse`           | Boolean                                                                           | `false`                 |
-| `allowedSenders`         | List of subject ids, or `all`                                                     | `all`                   |
-| `model`                  | Role override, or `inherit`                                                       | `inherit`               |
-| `replyLength`            | `short`, `default`, `long`                                                        | `default`               |
-| `expressions`            | Boolean                                                                           | `true`                  |
-| `quietHours`             | Start, end and time zone                                                          | Unset                   |
-| `muted`                  | Boolean, with who and when                                                        | `false`                 |
-| `features.proactive`     | Boolean                                                                           | `false`                 |
-| `features.reminders`     | Boolean                                                                           | `true`                  |
-| `features.search`        | Boolean                                                                           | `true`                  |
-| `features.social`        | Boolean                                                                           | `true`                  |
-| `features.photos`        | Boolean                                                                           | `true`                  |
-| `features.media`         | Boolean                                                                           | `true`                  |
-| `features.memory`        | Boolean: memory for this chat ([Memory](memory.md#per-chat-switch))               | `true`                  |
-| `features.voice`         | Boolean                                                                           | `false`                 |
-| `features.lessons`       | Boolean                                                                           | `false`                 |
-| `features.reports`       | Boolean                                                                           | `true`                  |
-| `features.research`      | Boolean: `/research` jobs and their PDF reports                                   | `true`                  |
-| `report.format`          | Reserved: a per-chat report format profile ([Research](research.md#the-renderer)) | unset: `render.report`  |
-| `report.defaultFormat`   | `pdf` or `markdown`: the format of `/doc` when the message names none             | `pdf`                   |
-| `features.owner`         | Boolean: the owner's market and coding-session tools                              | `false`                 |
-| `features.toolFooter`    | Boolean                                                                           | `true`                  |
-| `nameCall`               | Boolean: answer a group message that only names the character                     | `false`                 |
-| `nameCall.names`         | 1 to 5 names, each 2 to 24 letters, digits or spaces                              | unset: the card's names |
-| `reactions`              | Boolean: passive emoji reactions to members' messages                             | `false`                 |
-| `reactions.chance`       | Integer 0 to 100: percent chance to react when a rule trips                       | `33`                    |
-| `commands.maxPerMessage` | Integer 1 to 5: commands run from one message                                     | `1`                     |
-| `tools.maxPerMessage`    | Integer 1 to 8: tool calls one reply may make                                     | `3`                     |
-| `footerEmoji`            | One emoji, at most 8 characters                                                   | unset: the card's icon  |
-| `mcp.<server id>`        | Boolean                                                                           | `false`                 |
+| Key                      | Type                                                                                     | Default (Global)        |
+| ------------------------ | ---------------------------------------------------------------------------------------- | ----------------------- |
+| `character`              | Character pack id                                                                        | Set at install          |
+| `language`               | `auto` or a language code                                                                | `auto`                  |
+| `freeResponse`           | Boolean                                                                                  | `false`                 |
+| `allowedSenders`         | List of subject ids, or `all`                                                            | `all`                   |
+| `model`                  | Role override, or `inherit`                                                              | `inherit`               |
+| `replyLength`            | `short`, `default`, `long`                                                               | `default`               |
+| `expressions`            | Boolean                                                                                  | `true`                  |
+| `quietHours`             | Start, end and time zone                                                                 | Unset                   |
+| `muted`                  | Boolean, with who and when                                                               | `false`                 |
+| `features.proactive`     | Boolean                                                                                  | `false`                 |
+| `features.reminders`     | Boolean                                                                                  | `true`                  |
+| `features.search`        | Boolean                                                                                  | `true`                  |
+| `features.social`        | Boolean                                                                                  | `true`                  |
+| `features.photos`        | Boolean                                                                                  | `true`                  |
+| `features.media`         | Boolean                                                                                  | `true`                  |
+| `features.memory`        | Boolean: memory for this chat ([Memory](memory.md#per-chat-switch))                      | `true`                  |
+| `features.context`       | Boolean: replay the chat log as context ([Prompt Engine](prompt-engine.md#live-context)) | `true`                  |
+| `context.maxMessages`    | Integer 0 to 100: chat-log messages replayed per turn                                    | `40`                    |
+| `memory.pageMessages`    | Integer 5 to 50: messages that close a memory episode                                    | `25`                    |
+| `features.voice`         | Boolean                                                                                  | `false`                 |
+| `features.lessons`       | Boolean                                                                                  | `false`                 |
+| `features.reports`       | Boolean                                                                                  | `true`                  |
+| `features.research`      | Boolean: `/research` jobs and their PDF reports                                          | `true`                  |
+| `report.format`          | Reserved: a per-chat report format profile ([Research](research.md#the-renderer))        | unset: `render.report`  |
+| `report.defaultFormat`   | `pdf` or `markdown`: the format of `/doc` when the message names none                    | `pdf`                   |
+| `features.owner`         | Boolean: the owner's market and coding-session tools                                     | `false`                 |
+| `features.toolFooter`    | Boolean                                                                                  | `true`                  |
+| `nameCall`               | Boolean: answer a group message that only names the character                            | `false`                 |
+| `nameCall.names`         | 1 to 5 names, each 2 to 24 letters, digits or spaces                                     | unset: the card's names |
+| `reactions`              | Boolean: passive emoji reactions to members' messages                                    | `false`                 |
+| `reactions.chance`       | Integer 0 to 100: percent chance to react when a rule trips                              | `33`                    |
+| `commands.maxPerMessage` | Integer 1 to 5: commands run from one message                                            | `1`                     |
+| `tools.maxPerMessage`    | Integer 1 to 8: tool calls one reply may make                                            | `3`                     |
+| `footerEmoji`            | One emoji, at most 8 characters                                                          | unset: the card's icon  |
+| `mcp.<server id>`        | Boolean                                                                                  | `false`                 |
 
 Each optional chat feature is one `features.*` key. A tool or behaviour names the key that enables it.
 

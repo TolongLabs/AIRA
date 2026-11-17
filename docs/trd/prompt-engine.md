@@ -31,6 +31,17 @@ Real character packs are private. They never enter the repository, the release i
   default character changes, the core writes that pack's line to `<hostDataDir>/gateway/unavailable.txt`, where the
   gateway's failure helper reads it. See [System](system.md#gateway-helper-modules).
 
+## Live Context
+
+The chat log is replayed to the model as the window: the chat's newest messages from the last `records.windowDays`
+days, at most `context.maxMessages` (default 40, 0 to 100), oldest first. Both values are per chat.
+
+- `features.context` off: the window holds only the messages this turn answers. AIRA still answers, without the
+  earlier conversation. Messages are still logged, because memory reads the log; memory is governed by
+  `features.memory` alone.
+- 40 messages and the 25-message memory page are unmeasured defaults. A harness benchmark of reply quality and cost
+  against window size follows.
+
 ## Prompt Blocks
 
 The system prompt is assembled in a fixed order. Blocks 1 to 3 are stable per character and form the cached prefix.

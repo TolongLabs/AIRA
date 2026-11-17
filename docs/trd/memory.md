@@ -44,7 +44,8 @@ All memory is rows in `memory_item`.
 ![Memory write path: an episode closes, is queued, admitted by the judge, extracted by the main model, checked, confirmed and applied in one transaction](../diagrams/memory-write-path.svg)
 
 1. **Capture.** Each delivered turn appends its messages to `session_message`.
-2. **Close.** An episode closes after `memory.episodeIdleMs` without a message, or `memory.episodeMaxMessages`.
+2. **Close.** An episode closes after `memory.episodeIdleMs` without a message, or after the chat's
+   `memory.pageMessages` messages (default 25; `memory.episodeMaxMessages` in `config.yml` is the fallback).
 3. **Queue.** A job row is written to `memory_job`, and the chat's cursor moves to the last message the job
    covers, in one transaction. The queue lives in SQLite and survives a restart. The job holds the range and the
    count of its messages. A job that later finds fewer messages than it counted fails as `episode_pruned`: it
