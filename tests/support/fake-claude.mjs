@@ -114,7 +114,7 @@ process.stdout.write(
     type: 'result',
     subtype: 'success',
     is_error: false,
-    usage: { input_tokens: 100, output_tokens: 25, cache_read_input_tokens: 10 },
+    usage: { input_tokens: 100, output_tokens: 25, cache_read_input_tokens: 10, cache_creation_input_tokens: 5 },
     total_cost_usd: 0.012,
     result: JSON.stringify({
       args,

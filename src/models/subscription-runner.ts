@@ -35,6 +35,7 @@ interface RunnerResultLine {
     input_tokens?: unknown
     output_tokens?: unknown
     cache_read_input_tokens?: unknown
+    cache_creation_input_tokens?: unknown
   }
 }
 
@@ -221,10 +222,13 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
           } else {
             const durationMs = Math.max(0, now().getTime() - startedAt.getTime())
             const model = initModel ?? (options.model || 'subscription')
+            // The program reports input without its cache reads and writes; count them in, as the API runner does.
+            const cacheRead = Number(lastResult.usage?.cache_read_input_tokens ?? 0)
+            const cacheWrite = Number(lastResult.usage?.cache_creation_input_tokens ?? 0)
             const usage: ModelUsage = {
-              inputTokens: Number(lastResult.usage?.input_tokens ?? 0),
+              inputTokens: Number(lastResult.usage?.input_tokens ?? 0) + cacheRead + cacheWrite,
               outputTokens: Number(lastResult.usage?.output_tokens ?? 0),
-              cachedTokens: Number(lastResult.usage?.cache_read_input_tokens ?? 0)
+              cachedTokens: cacheRead
             }
             const costUsd = typeof lastResult.total_cost_usd === 'number' ? lastResult.total_cost_usd : 0
             const call: ModelCallRecord = {
