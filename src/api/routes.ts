@@ -1,4 +1,5 @@
 import type { PackSet } from '../character/loader.js'
+import { readFeedback } from '../feedback/view.js'
 import { DEFAULT_TOOL_LABELS, plainLabel } from '../format/footer.js'
 import { listChatItems } from '../memory/store.js'
 import { buildReport, newestSnapshotFile } from '../records/report.js'
@@ -246,6 +247,7 @@ function handleCharacters(deps: SiteApiDeps): RouteResult {
 }
 
 const TURN_BY_ID = /^\/api\/turns\/([^/]+)$/
+const FEEDBACK_BY_ID = /^\/api\/feedback\/([^/]+)$/
 const STATIC_ROUTES = new Set([
   '/api/health',
   '/api/chats',
@@ -258,7 +260,7 @@ const STATIC_ROUTES = new Set([
 ])
 
 export function isKnownRoute(pathname: string): boolean {
-  return STATIC_ROUTES.has(pathname) || TURN_BY_ID.test(pathname)
+  return STATIC_ROUTES.has(pathname) || TURN_BY_ID.test(pathname) || FEEDBACK_BY_ID.test(pathname)
 }
 
 export async function dispatchGet(deps: SiteApiDeps, url: URL): Promise<RouteResult> {
@@ -270,6 +272,17 @@ export async function dispatchGet(deps: SiteApiDeps, url: URL): Promise<RouteRes
   if (path === '/api/turns') return handleTurns(deps, url.searchParams)
   const turnMatch = TURN_BY_ID.exec(path)
   if (turnMatch?.[1] !== undefined) return handleTurnById(deps, turnMatch[1])
+  const feedbackMatch = FEEDBACK_BY_ID.exec(path)
+  if (feedbackMatch?.[1] !== undefined) {
+    let id: string
+    try {
+      id = decodeURIComponent(feedbackMatch[1])
+    } catch {
+      return error(400, 'invalid_report_id')
+    }
+    const view = deps.storage.read((db) => readFeedback(db, id))
+    return view ? ok(view) : error(404, 'not_found')
+  }
   if (path === '/api/report') return handleReport(deps)
   if (path === '/api/memory') return handleMemory(deps, url.searchParams)
   if (path === '/api/characters') return handleCharacters(deps)

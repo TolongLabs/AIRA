@@ -62,15 +62,18 @@ function when(iso: unknown, timeZone: string): string {
 
 const REPEAT_WORDS: Record<string, string> = { daily: 'every day', weekly: 'every week', monthly: 'every month' }
 
-/** The answer of a direct command, written by code from the tool's result. It holds no persona text. */
+/** The answer of a direct command, written by code; only `/report` receives its fixed character-pack line. */
 export function renderDirect(
   tool: string,
   result: Extract<ToolResult, { ok: true }>,
-  options: { timeZone: string } = { timeZone: 'Asia/Kuala_Lumpur' }
+  options: { timeZone: string; feedbackLine?: string | undefined } = { timeZone: 'Asia/Kuala_Lumpur' }
 ): string {
   if (result.receipt?.kind === 'mute.on') return 'Proactive messages are off for this chat.'
   if (result.receipt?.kind === 'mute.off') return 'Proactive messages are on for this chat.'
   const data = (result.data ?? {}) as Record<string, unknown>
+  if (tool === 'feedback_link' && typeof data['url'] === 'string') {
+    return `${options.feedbackLine ?? 'Use this form to report a problem.'}\n${data['url']}`
+  }
   if ((tool === 'research_start' || tool === 'report_pdf') && typeof data['text'] === 'string') return data['text']
   if (tool === 'help' && Array.isArray(data['commands'])) {
     const rows = data['commands'] as { command: string; usage: string; description?: string }[]
@@ -172,7 +175,9 @@ export function createCommandRouter(
           ...(kind === 'direct' ? { args: definition?.command?.directArgs?.(item.name, rest) ?? {} } : {})
         })
       }
-      return matches
+      // Feedback always answers directly, including when trailing text contains more slash commands.
+      const feedback = matches.find((match) => match.tool === 'feedback_link')
+      return feedback ? [feedback] : matches
     },
 
     async runDirect(match, context) {
@@ -192,7 +197,10 @@ export function createCommandRouter(
       }
       return {
         ok: true,
-        text: renderDirect(match.tool, result, options),
+        text: renderDirect(match.tool, result, {
+          ...options,
+          feedbackLine: context.character.lines.feedback
+        }),
         receipts: result.receipt ? [result.receipt.receiptId] : []
       }
     },

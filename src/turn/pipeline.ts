@@ -722,7 +722,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         now
       )
       opened = true
-      log.info('turn.received', { chatId: chat.chatId, messages: batch.length })
+      log.info('turn.received', { messages: batch.length })
 
       const timing = storage.read(
         (db) =>

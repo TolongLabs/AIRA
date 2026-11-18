@@ -16,17 +16,17 @@ Packs are read from two places. A pack on the data volume wins over one in the r
 
 Real character packs are private. They never enter the repository, the release image, test fixtures or recordings.
 
-| File        | Holds                                                                                                                                                                                                                                         | Required |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| `card.yml`  | Id, display name, aliases, languages, core identity, speech rules, default reply length, tool footer                                                                                                                                          | Yes      |
-| `moods.yml` | The mood list: key, detection rules, tone guidance, openers, endings, faces, beats; face groups and beat lines                                                                                                                                | Yes      |
-| `lines.yml` | Fixed lines for errors, limits, refusals, busy, unreadable media, unavailable, and the optional research lines (`researchStarted`, `researchTopic`, `researchBusy`, `researchFailed`, `offerPdf`; a pack without them gets neutral fallbacks) | Yes      |
-| `stickers/` | Expression images per mood, already converted to WhatsApp sticker format                                                                                                                                                                      | No       |
+| File        | Holds                                                                                                                                                           | Required |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `card.yml`  | Id, display name, aliases, languages, core identity, speech rules, default reply length, tool footer                                                            | Yes      |
+| `moods.yml` | The mood list: key, detection rules, tone guidance, openers, endings, faces, beats; face groups and beat lines                                                  | Yes      |
+| `lines.yml` | Fixed lines for errors, limits, refusals, busy, slow, unreadable media, fallback and unavailable. Optional `feedback` and research lines get neutral fallbacks. | Yes      |
+| `stickers/` | Expression images per mood, already converted to WhatsApp sticker format                                                                                        | No       |
 
 - A pack that fails validation is not loaded. A chat bound to it stops with an operator alert. It never falls back to
   another character (PRD FR-9).
-- Every mood named in the rules must exist in `moods.yml`. Every line kind the core can send must exist in
-  `lines.yml`. The validator checks both.
+- Every mood named in the rules must exist in `moods.yml`. The validator checks required lines and validates any
+  optional lines provided in `lines.yml`.
 - Cross references are checked too. The default mood must exist in the map. Every pattern must compile with the
   `iu` flags. Every sticker a mood names must exist under `stickers/` and pass the WebP checks. Every face group
   and beat a mood names must be defined. The loader collects every fault and throws one `PackError` that lists
@@ -35,6 +35,9 @@ Real character packs are private. They never enter the repository, the release i
 - The `unavailable` line is what a chat sees when the core cannot be reached. At start-up, and whenever the global
   default character changes, the core writes that pack's line to `<hostDataDir>/gateway/unavailable.txt`, where the
   gateway's failure helper reads it. See [System](system.md#gateway-helper-modules).
+- The optional `feedback` line introduces the private form link returned by `/report`. A pack without this line gets
+  a plain prompt from code. Code appends the link on its own line. The prompt contains no URL, identity or report
+  reference, and no model sees the report context.
 
 ![How a character pack is loaded and validated](../diagrams/pack-loading.svg)
 

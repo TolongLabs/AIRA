@@ -36,6 +36,7 @@ describe('character pack loader', () => {
     for (const kind of LINE_KINDS) {
       expect(pack.lines[kind].length).toBeGreaterThan(0)
     }
+    expect(pack.lines.feedback).toBe('Tell me what went wrong using this form.')
     const neutral = pack.moods.get('neutral')
     expect(neutral).toBeDefined()
     expect(neutral?.patterns.length).toBeGreaterThan(0)
@@ -122,6 +123,13 @@ describe('character pack loader', () => {
     writeFileSync(linesPath, withoutUnavailable)
     const error = expectPackError(() => loadPack(dir, 'repository'))
     expect(error.message).toContain('lines.yml: unavailable:')
+  })
+
+  it('validates the optional feedback line when a pack provides it', () => {
+    const dir = copyExamplePack(tmpDir())
+    const path = join(dir, 'lines.yml')
+    writeFileSync(path, readFileSync(path, 'utf8').replace(/^feedback:.*$/m, "feedback: ''"))
+    expect(expectPackError(() => loadPack(dir, 'repository')).message).toContain('lines.yml: feedback:')
   })
 
   it('rejects an empty line and a line with a line break', () => {

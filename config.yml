@@ -23,6 +23,13 @@ tools:
   timeBudgetMs: 15000 # Limit on total tool time in one turn
   defaultTimeoutMs: 15000 # Timeout when a tool sets none
 
+# Owned by docs/trd/tools.md. The host supplies the form details; empty leaves /report unavailable.
+feedback:
+  formUrl: ''
+  referenceEntryId: ''
+  pollMinutes: 5
+  refTtlHours: 168
+
 # Owned by docs/trd/tools.md
 owner:
   marketsConfig: '' # The markets config the alerts timer reads, as mounted: /owner/config/markets.yaml. Host only
@@ -139,6 +146,7 @@ records:
   retentionDays: 90 # Turn and child records
   diagnosticsHours: 72 # Verbatim failed-turn diagnostics
   windowDays: 7 # Conversation window messages
+  feedbackDays: 90 # Submitted feedback answers; cleared without archival
 
 # Owned by docs/trd/records.md
 log:

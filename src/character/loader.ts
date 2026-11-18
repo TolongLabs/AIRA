@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { parse } from 'yaml'
 import type { z } from 'zod'
-import { cardSchema, type LineKind, linesSchema, moodsSchema, PACK_ID } from './schema.js'
+import { cardSchema, linesSchema, moodsSchema, PACK_ID } from './schema.js'
 import { readWebpInfo, stickerFault } from './webp.js'
 
 export class PackError extends Error {
@@ -41,8 +41,7 @@ export interface Pack {
   }
   defaultMood: string
   moods: Map<string, Mood>
-  lines: Record<LineKind, string> &
-    Partial<Record<'researchStarted' | 'researchTopic' | 'researchBusy' | 'researchFailed' | 'offerPdf', string>>
+  lines: z.infer<typeof linesSchema>
 }
 
 function readAndValidate<T>(dir: string, file: string, schema: z.ZodType<T>, faults: string[]): T | undefined {

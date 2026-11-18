@@ -110,8 +110,9 @@ tool and says the rest in their own words.
 | Groups       | A message that starts with a registered command addresses AIRA by itself. A command later in a group message needs the message to address AIRA as usual                   |
 | Reply-to     | When the message replies to another, the quoted message is given to the commands as context                                                                               |
 
-- **A message whose only command is a direct one** (`/help`, `/reminders`, `/mute` or `/unmute`) is answered by code
-  with no model call, wherever the command stands. The words after it are its arguments, as in `/mute 2 hours`.
+- **A message whose only command is a direct one** (`/help`, `/reminders`, `/mute`, `/unmute` or `/report`) is
+  answered by code with no model call, wherever the command stands. The words after it are its arguments, as in
+  `/mute 2 hours`.
 - **Anything else with commands** is one model turn. Every named skill-style tool is offered alone until it has been
   called once; then the chat's other tools are offered as usual. A direct command next to others is ordinary text,
   because the model is never offered a direct command's tool. The model writes one reply that covers them
@@ -148,9 +149,10 @@ tool and says the rest in their own words.
 
 ### Direct Command Answers
 
-A character pack has no template for a command answer yet, so code writes the answer of a direct command from the
-tool's result in plain words: a list for `/help`, `/list` and `/reminders`, one fixed sentence for `/mute` and
-`/unmute`. The answer still passes the cleaning chain and the bubble splitter.
+A character pack has no general template for a command answer yet, so code writes the answer of a direct command from
+the tool's result in plain words: a list for `/help`, `/list` and `/reminders`, one fixed sentence for `/mute` and
+`/unmute`. `/report` uses the pack's optional `feedback` line or a plain prompt from code, followed by the form link. The answer still passes the
+cleaning chain and the bubble splitter.
 
 - `/help` lists each command with a plain one-line text written for members, never the description the model reads. A
   command with no plain entry of its own (such as `/lyrics`, `/song` or `/word`) falls back to the first sentence of
@@ -160,6 +162,8 @@ tool's result in plain words: a list for `/help`, `/list` and `/reminders`, one 
 - An answer never shows a raw field name, an internal id or a UTC timestamp. Pack templates for these answers
   are a later change to the pack contract.
 - `/research` and `/pdf` pass the handler's character-line text through instead of a fixed sentence.
+- `/report` exposes no WhatsApp id, subject id, chat id or conversation text in its URL. The only value sent to Google
+  is the opaque reference in the form's `feedback.referenceEntryId` field.
 
 ## Tool Set
 
@@ -180,14 +184,13 @@ tool's result in plain words: a list for `/help`, `/list` and `/reminders`, one 
 | `reminder_cancel` | Cancels one reminder                                                       | both     | `/cancel`          | Skill-style | `features.reminders` |
 | `set_mute`        | Stops or resumes proactive messages                                        | both     | `/mute`, `/unmute` | Direct      | none                 |
 | `make_report`     | Writes one document as Markdown or PDF ([Research](research.md#documents)) | both     | `/doc`             | Skill-style | `features.reports`   |
+| `feedback_link`   | Opens a private feedback report and returns its Google Form link           | explicit | `/report`          | Direct      | `features.feedback`  |
 | `research_start`  | Starts a research job ([Research](research.md))                            | explicit | `/research`        | Direct      | `features.research`  |
 | `report_pdf`      | Renders the open offer's findings as a PDF                                 | explicit | `/pdf`             | Direct      | `features.research`  |
 | `lingo_note`      | Files what one of this chat's words means                                  | implicit | none               |             | none                 |
 | `help`            | Lists the commands this chat may use                                       | explicit | `/help`            | Direct      | none                 |
 | `list`            | Lists the tools and features switched on                                   | explicit | `/list`            | Direct      | none                 |
 
-- **Not built yet:** `make_report` answers to `/report` and always writes a `.md` file. It takes no format argument,
-  so PDF output is not built (src/tools/core/report.ts:33).
 - `make_report` caps the title at 120 characters and the body at 50,000 characters.
 - `read_page` reads through Exa's contents endpoint, with a live crawl when Exa has no copy, so a page that refuses
   plain fetches (such as openai.com, measured 403) still reads. A plain fetch is the fallback when Exa is off or fails.
@@ -214,6 +217,57 @@ tool's result in plain words: a list for `/help`, `/list` and `/reminders`, one 
 - `research_start` refuses a second concurrent job per chat. A topic that names a pdf or a report presets the PDF want.
 - `report_pdf` carries its own 25-second timeout, above the 15-second default.
 - Media watching is not a tool. It runs at intake. See [Models](models.md#media-watching).
+
+### Feedback Reports
+
+`/report` is a direct command. Words after it are ignored and it does not call a model. When `features.feedback` is on
+and `feedback.formUrl` is set, `feedback_link` does this in one transaction:
+
+1. Reuse the sender's unexpired open report in this chat, if one exists. Otherwise create a report with a random,
+   10-character, 50-bit reference from `crypto.randomBytes` that expires after `feedback.refTtlHours`.
+2. Store `turn_id` for the command and `turn_ids` as JSON containing the five newest turn ids in this chat.
+3. Store the command result and one `feedback.opened` receipt containing only the report id and opaque reference.
+
+Code then returns the pack's optional `feedback` line or a plain prompt, and on its own line a URL built from `feedback.formUrl`, with the
+reference written into the query field named by `feedback.referenceEntryId`. A create or URL-building failure returns
+the pack's `error` line. Repeating `/report` while that report is open returns the same
+URL without another row or receipt. A report in `received`, `closed` or `expired` is not reused. When the feature is
+off or the form URL is empty, `/report` is ordinary text and `/help` omits it.
+
+The Google Form owns the member-facing questions. Its linked Apps Script exposes rows in this shape:
+
+```json
+{
+  "rows": [
+    {
+      "seq": 1,
+      "ref": "opaque reference",
+      "submittedAt": "2026-11-18T00:00:00.000Z",
+      "answers": {
+        "whatWentWrong": "...",
+        "expected": "...",
+        "kind": "...",
+        "when": "...",
+        "severity": "..."
+      }
+    }
+  ]
+}
+```
+
+The `feedback_sync` job authenticates with `FEEDBACK_SYNC_SECRET` at `FEEDBACK_SYNC_URL`. Only while an open report
+exists, it POSTs `{ "secret", "after", "limit": 100 }` with a 10-second timeout. It validates the whole response
+before changing the database and requires strictly increasing positive integer `seq` values. A sequence already at or
+below the cursor is a replay and changes nothing. A new sequence with a reference already consumed by an earlier
+accepted submission is rejected as reference reuse. A valid first submission stores the checked answers and marks its
+report `received`. An unknown, expired or used reference stores no answers and writes `feedback_rejected`. Every row
+moves `feedback_cursor.after` in the same transaction as the report update or failure row; network I/O and response
+validation happen outside that transaction. A wrong secret, timeout or malformed batch writes `feedback_sync_failed`,
+keeps the cursor and never delays a reply.
+
+Google receives only the opaque reference and the form answers. It never receives AIRA's chat, subject, sender,
+message or turn ids. The form URL, response sheet and Apps Script deployment are private operator configuration, and
+none of their live values enter this repository.
 
 ### Search Provider
 
@@ -471,11 +525,19 @@ registry over that protocol so both runners use identical tools. See [Models](mo
 
 ## Configuration
 
-| Key                      | Default | Effect                                                                           |
-| ------------------------ | ------- | -------------------------------------------------------------------------------- |
-| `tools.maxCallsPerTurn`  | 8       | Ceiling on tool calls in one turn; each chat sets `tools.maxPerMessage` below it |
-| `tools.timeBudgetMs`     | 15000   | Limit on total tool time in one turn                                             |
-| `tools.defaultTimeoutMs` | 15000   | Timeout when a tool sets none                                                    |
-| `search.provider`        | `off`   | Web search backend, or `off`                                                     |
-| `mcp.servers`            | `[]`    | External tool servers                                                            |
-| `lessons.lyricsProvider` | `off`   | The lyrics provider, or `off`                                                    |
+| Key                         | Default | Effect                                                                              |
+| --------------------------- | ------- | ----------------------------------------------------------------------------------- |
+| `tools.maxCallsPerTurn`     | 8       | Ceiling on tool calls in one turn; each chat sets `tools.maxPerMessage` below it    |
+| `tools.timeBudgetMs`        | 15000   | Limit on total tool time in one turn                                                |
+| `tools.defaultTimeoutMs`    | 15000   | Timeout when a tool sets none                                                       |
+| `search.provider`           | `off`   | Web search backend, or `off`                                                        |
+| `mcp.servers`               | `[]`    | External tool servers                                                               |
+| `lessons.lyricsProvider`    | `off`   | The lyrics provider, or `off`                                                       |
+| `feedback.formUrl`          | `''`    | Google Form responder URL; empty leaves `feedback_link` unavailable                 |
+| `feedback.referenceEntryId` | `''`    | Google Form entry id for the opaque reference; empty leaves the command unavailable |
+| `feedback.pollMinutes`      | `5`     | Minutes between sync attempts while an open report exists                           |
+| `feedback.refTtlHours`      | `168`   | Hours before an unused opaque reference expires                                     |
+
+`FEEDBACK_SYNC_URL` and `FEEDBACK_SYNC_SECRET` are required together in the host environment before sync can run.
+They have no checked-in values. `feedback.formUrl` and `feedback.referenceEntryId` are empty in the repository's
+default configuration; the host supplies the deployed form contract.

@@ -7,6 +7,7 @@ const emptySchema = z.strictObject({})
 /** What `/help` says for a command, in plain words for members. The tool description is written for the model. */
 const HELP_TEXT: Readonly<Record<string, string>> = {
   cancel: 'Cancels one of your reminders.',
+  doc: 'Writes a long answer as a document.',
   forget: 'Forgets one thing I remembered.',
   help: 'Lists the commands you can use here.',
   history: 'Searches what was said in this chat.',
@@ -19,7 +20,7 @@ const HELP_TEXT: Readonly<Record<string, string>> = {
   reminders: 'Lists the reminders in this chat.',
   research: 'Researches a topic and sends findings here.',
   pdf: 'Makes a PDF from your open research offer.',
-  report: 'Writes a long answer as a document.',
+  report: 'Opens the private feedback form for this conversation.',
   search: 'Searches the web.',
   read: 'Reads a web page.',
   photo: 'Sends a photo.'

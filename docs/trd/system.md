@@ -20,6 +20,9 @@ How the processes fit together, what the gateway and the core promise each other
 - **Gateway:** receives and sends WhatsApp messages, keeps its sessions, and runs its cron. It calls the core as its
   model. Its fallback provider list is empty.
 - **Core:** owns the turn. It resolves the chat, builds the prompt, runs the loop, cleans the reply and returns it.
+- **Feedback Apps Script:** the core's only feedback integration is an outbound TLS POST while an open report exists.
+  The Apps Script cannot call the host. It receives only the shared secret, cursor and limit, and returns form rows;
+  the member's WhatsApp identity and conversation never leave AIRA.
 - **Host Runner Service:** exists only when the subscription transport is selected. It runs the `claude` program on
   the host with the owner's login and exposes it to the core on a loopback port. See [Models](models.md).
 - **Owner Tools:** market alerts, news digest, session notices and file sending keep running as they do today.

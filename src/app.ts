@@ -8,6 +8,8 @@ import { loadPacks, type PackSet } from './character/loader.js'
 import { writeUnavailableLine } from './character/unavailable.js'
 import { ConfigError } from './config/loader.js'
 import type { Config } from './config/schema.js'
+import { expireFeedback, pruneFeedbackAnswers } from './feedback/store.js'
+import { createFeedbackSync, type FeedbackSync } from './feedback/sync.js'
 import { withAttachments } from './format/attachments.js'
 import { createReplyCleaner } from './format/clean.js'
 import { writeChatFlags } from './gateway/chat-flags.js'
@@ -86,7 +88,9 @@ export const SECRET_NAMES = [
   'EXA_API_KEY',
   'RUNNER_TOKEN',
   'OPENAI_API_KEY',
-  'SITE_TOKEN'
+  'SITE_TOKEN',
+  'FEEDBACK_SYNC_SECRET',
+  'FEEDBACK_SYNC_URL'
 ] as const
 
 /** How often the memory worker looks for a closed episode or a due job. */
@@ -127,6 +131,7 @@ export interface App {
   memory?: MemoryWorker
   /** The research worker. Its timer runs it; a test or an operator may run one tick. */
   research: ResearchWorker
+  feedback: FeedbackSync
   server: Server
   siteServer?: Server
   alerter: Alerter
@@ -472,24 +477,42 @@ export async function createApp(options: AppOptions): Promise<App> {
       })
     })
     closers.push(worker.start(1000))
-    registerCoreTools(registry, {
-      research,
-      noteRenderer: (doc, format) => renderNote(doc, format, config.render ?? {}),
-      reportFormat: config.render?.report ?? reportFormatSchema.parse({}),
-      post: createSocialPostPort(viewer, replyReader),
-      memory: createMemoryPort({
-        storage,
-        judge: memoryJudge,
-        verifyThreshold: config.judge.memoryVerify,
-        timeoutMs: config.judge.timeoutMs
-      }),
-      // The plain reader refuses private addresses, also after a redirect; the Exa reader falls back to it.
-      page,
-      schedule,
-      ...(search ? { search } : {}),
-      ...options.ports,
-      filesDir: paths.files
+    registerCoreTools(
+      registry,
+      {
+        research,
+        noteRenderer: (doc, format) => renderNote(doc, format, config.render ?? {}),
+        reportFormat: config.render?.report ?? reportFormatSchema.parse({}),
+        post: createSocialPostPort(viewer, replyReader),
+        memory: createMemoryPort({
+          storage,
+          judge: memoryJudge,
+          verifyThreshold: config.judge.memoryVerify,
+          timeoutMs: config.judge.timeoutMs
+        }),
+        // The plain reader refuses private addresses, also after a redirect; the Exa reader falls back to it.
+        page,
+        schedule,
+        ...(search ? { search } : {}),
+        ...options.ports,
+        filesDir: paths.files
+      },
+      { feedback: config.feedback }
+    )
+    const feedback = createFeedbackSync({
+      storage,
+      url: env['FEEDBACK_SYNC_URL'] ?? '',
+      secret: env['FEEDBACK_SYNC_SECRET'] ?? '',
+      enabled: () =>
+        Boolean(config.feedback.formUrl && config.feedback.referenceEntryId) &&
+        listChats(storage).some((chat) => resolveSettings(storage, chat)['features.feedback']?.value === true),
+      redactor,
+      logger,
+      now,
+      onFailure: () => alerter.raise('feedback_sync_failed', {})
     })
+    closers.push(feedback.start(config.feedback.pollMinutes * 60_000))
+    void feedback.tick()
     // The lessons and library tools, behind `features.lessons`. No lyrics provider is built: those two tools say so.
     registerLessonTools(registry, { ...options.ports, filesDir: paths.files })
     // The owner's market and coding-session tools, behind `features.owner`.
@@ -703,7 +726,9 @@ export async function createApp(options: AppOptions): Promise<App> {
         const runId = storage.tx((db) => startJobRun(db, { kind: 'retention', jobId }, now))
         let outcome = 'failed'
         let counts: Record<string, number> | undefined
+        let feedbackExpired = 0
         try {
+          feedbackExpired = storage.tx((db) => expireFeedback(db, now().toISOString()))
           const result =
             config.archive.enabled === 'on'
               ? (
@@ -738,6 +763,17 @@ export async function createApp(options: AppOptions): Promise<App> {
             )
           )
         } finally {
+          // Normal retention owns answer pruning. A paused or failed archive must not extend private retention.
+          if (outcome !== 'ok') {
+            const cleared = storage.tx((db) =>
+              pruneFeedbackAnswers(
+                db,
+                new Date(now().getTime() - config.records.feedbackDays * 86_400_000).toISOString()
+              )
+            )
+            counts = { ...counts, feedback_answers: (counts?.['feedback_answers'] ?? 0) + cleared }
+          }
+          counts = { ...counts, feedback_expired: feedbackExpired }
           storage.tx((db) => endJobRun(db, runId, { outcome, counts }, now))
         }
       })()
@@ -814,6 +850,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       registry,
       ...(memory ? { memory } : {}),
       research: worker,
+      feedback,
       server,
       ...(siteServer ? { siteServer } : {}),
       alerter,

@@ -8,8 +8,9 @@ import { RenderError } from '../../src/render/render.js'
 import { type NoteDocument, noteDocumentSchema } from '../../src/render/types.js'
 import { ensureChat, setChatStatus } from '../../src/settings/chats.js'
 import { resolveSettings, setSetting } from '../../src/settings/settings.js'
-import { openTurn, receiveInbound } from '../../src/storage/turns.js'
-import { CORE_TOOL_NAMES, registerCoreTools } from '../../src/tools/core/index.js'
+import { closeTurn, openTurn, receiveInbound } from '../../src/storage/turns.js'
+import { createCommandRouter } from '../../src/tools/commands.js'
+import { CORE_TOOL_NAMES, type CoreToolOptions, registerCoreTools } from '../../src/tools/core/index.js'
 import { INTAKE_REFUSAL } from '../../src/tools/core/web.js'
 import {
   createFetchPagePort,
@@ -32,7 +33,10 @@ afterEach(() => {
 })
 
 let seq = 0
-function setup(ports: Partial<ToolPorts> = {}, options: { now?: () => Date } = {}) {
+function setup(
+  ports: Partial<ToolPorts> = {},
+  options: { now?: () => Date; feedback?: CoreToolOptions['feedback'] } = {}
+) {
   const storage = tmpStorage()
   const filesDir = ports.filesDir ?? tmpDir('aira-files-')
   const registry = createToolRegistry({
@@ -42,7 +46,7 @@ function setup(ports: Partial<ToolPorts> = {}, options: { now?: () => Date } = {
     redactor: createRedactor(),
     now: options.now
   })
-  registerCoreTools(registry, { ...ports, filesDir })
+  registerCoreTools(registry, { ...ports, filesDir }, options.feedback ? { feedback: options.feedback } : undefined)
   const makeCtx = (overrides: { waId?: string; senderId?: string } = {}): TurnContext => {
     seq++
     const chat = ensureChat(storage, { waId: overrides.waId ?? `fake-chat-${seq}`, type: 'group' })
@@ -139,10 +143,10 @@ function makeFakePorts() {
 }
 
 describe('core tools', () => {
-  it('registerCoreTools registers the exact eighteen tools in CORE_TOOL_NAMES', () => {
+  it('registerCoreTools registers the exact nineteen tools in CORE_TOOL_NAMES', () => {
     const { registry } = setup()
     expect(registry.toolNames()).toEqual([...CORE_TOOL_NAMES])
-    expect(CORE_TOOL_NAMES).toHaveLength(18)
+    expect(CORE_TOOL_NAMES).toHaveLength(19)
   })
 
   it('memory tools: note, recall, forget, history_search, lingo_note and chat isolation', async () => {
@@ -697,6 +701,87 @@ describe('core tools', () => {
       expect(data.features['features.reminders']).toBe(true)
       expect(data.features['features.lessons']).toBe(false)
     }
+  })
+
+  it('feedback link is private, direct, and reuses one open report and receipt', async () => {
+    const now = () => new Date('2026-11-18T00:00:00.000Z')
+    const feedback = {
+      formUrl: 'https://form.invalid/viewform',
+      referenceEntryId: '12345',
+      refTtlHours: 168
+    }
+    const { storage, registry, makeCtx } = setup({}, { now, feedback })
+    const ctx1 = makeCtx({ waId: 'feedback-chat@g.us', senderId: 'feedback-member' })
+    setSetting(storage, {
+      level: 'chat',
+      scope: ctx1.chat.chatId,
+      key: 'features.feedback',
+      value: true,
+      actor: 'test'
+    })
+    ctx1.settings = resolveSettings(storage, ctx1.chat)
+
+    expect(registry.commands(ctx1)).toContainEqual({
+      name: 'report',
+      tool: 'feedback_link',
+      kind: 'direct',
+      usage: '/report'
+    })
+    expect(registry.get('feedback_link')?.command?.directArgs?.('report', 'these words are ignored')).toEqual({})
+    const first = await registry.call('feedback_link', {}, ctx1, { callId: 'feedback-1', source: 'command' })
+    expect(first).toMatchObject({ ok: true, receipt: { kind: 'feedback.opened' } })
+    if (!first.ok) throw new Error('feedback link failed')
+    const firstData = first.data as { reference: string; url: string }
+    expect(firstData.reference).toMatch(/^[a-z2-7]{10}$/)
+    const url = new URL(firstData.url)
+    expect(url.searchParams.get('usp')).toBe('pp_url')
+    expect(url.searchParams.get('entry.12345')).toBe(firstData.reference)
+    expect(firstData.url).not.toContain(ctx1.chat.chatId)
+    expect(firstData.url).not.toContain(ctx1.senderId)
+    expect(closeTurn(storage, { turnId: ctx1.turnId, state: 'delivered', reply: 'feedback link' }, now)).toBe(true)
+
+    const ctx2 = makeCtx({ waId: 'feedback-chat@g.us', senderId: 'feedback-member' })
+    ctx2.settings = resolveSettings(storage, ctx2.chat)
+    const second = await registry.call('feedback_link', {}, ctx2, { callId: 'feedback-2', source: 'command' })
+    expect(second).toMatchObject({
+      ok: true,
+      data: firstData,
+      receipt: { receiptId: first.receipt?.receiptId, kind: 'feedback.opened' }
+    })
+    expect(await registry.call('feedback_link', {}, ctx2, { callId: 'feedback-2', source: 'command' })).toMatchObject({
+      ok: true,
+      data: firstData,
+      receipt: { receiptId: first.receipt?.receiptId, kind: 'feedback.opened' }
+    })
+    expect(storage.read((db) => db.prepare('SELECT count(*) FROM feedback_report').pluck().get())).toBe(1)
+    expect(
+      storage.read((db) => db.prepare("SELECT count(*) FROM receipt WHERE tool = 'feedback_link'").pluck().get())
+    ).toBe(1)
+    expect(
+      storage.read((db) => db.prepare("SELECT count(*) FROM tool_result WHERE tool = 'feedback_link'").pluck().get())
+    ).toBe(2)
+  })
+
+  it('feedback command is absent when its feature or form configuration is off', () => {
+    const empty = setup()
+    const emptyCtx = empty.makeCtx()
+    expect(empty.registry.commands(emptyCtx).map((entry) => entry.name)).not.toContain('report')
+    expect(createCommandRouter(empty.registry).match('/report please', emptyCtx)).toEqual([])
+
+    const configured = setup(
+      {},
+      {
+        feedback: {
+          formUrl: 'https://form.invalid/viewform',
+          referenceEntryId: '12345',
+          refTtlHours: 168
+        }
+      }
+    )
+    const configuredCtx = configured.makeCtx()
+    expect(configured.registry.commands(configuredCtx).map((entry) => entry.name)).not.toContain('report')
+    expect(createCommandRouter(configured.registry).match('/report please', configuredCtx)).toEqual([])
+    expect(configured.registry.commands(configuredCtx).map((entry) => entry.name)).toContain('doc')
   })
 
   it('unavailable when port is missing and error when port rejects', async () => {

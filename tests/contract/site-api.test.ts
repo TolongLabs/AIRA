@@ -40,6 +40,7 @@ describe('site API read routes', () => {
       '/api/settings?level=global&scope=',
       '/api/turns',
       '/api/turns/turn-missing',
+      '/api/feedback/report-missing',
       '/api/report',
       '/api/memory?chat=c_test',
       '/api/characters',
@@ -223,6 +224,44 @@ describe('site API read routes', () => {
     const res = await apiFetch(siteUrl, '/api/report', { token: TOKEN })
     expect(res.status).toBe(404)
     expect(await res.json()).toEqual({ error: 'no_snapshot' })
+  })
+
+  it('shows feedback answers beside their chat turns only through the protected API', async () => {
+    const { app, siteUrl, gateway, chatId } = await startWithSite()
+    await gateway.send(msg('feedback-context', 'A message for context'))
+    const turnId = app.storage.read((db) => db.prepare('SELECT turn_id FROM turn LIMIT 1').pluck().get()) as string
+    const at = new Date().toISOString()
+    app.storage.tx((db) =>
+      db
+        .prepare(
+          `INSERT INTO feedback_report
+       (report_id, ref, chat_id, subject_id, turn_id, turn_ids, state, issued_at, expires_at, received_at, form_seq, answers)
+       VALUES (?, ?, ?, ?, ?, ?, 'received', ?, ?, ?, 1, ?)`
+        )
+        .run(
+          'fb_api_test',
+          'ABCDE23456',
+          chatId,
+          'test-subject',
+          turnId,
+          JSON.stringify([turnId]),
+          at,
+          at,
+          at,
+          JSON.stringify({ whatWentWrong: 'Test feedback', expected: '', kind: 'Other', when: '', severity: '' })
+        )
+    )
+    expect((await apiFetch(siteUrl, '/api/feedback/fb_api_test')).status).toBe(401)
+    const response = await apiFetch(siteUrl, '/api/feedback/fb_api_test', { token: TOKEN })
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      report: { answers: { whatWentWrong: string } }
+      turns: { turn: { turn_id: string } }[]
+    }
+    expect(body.report.answers.whatWentWrong).toBe('Test feedback')
+    expect(body.turns[0]?.turn.turn_id).toBe(turnId)
+    expect(JSON.stringify(body)).not.toContain('ABCDE23456')
+    expect((await apiFetch(siteUrl, '/api/feedback/missing', { token: TOKEN })).status).toBe(404)
   })
 
   it('returns 405 on non-GET for known routes and 404 on unknown routes', async () => {

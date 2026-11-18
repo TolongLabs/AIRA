@@ -97,6 +97,7 @@ interface StoredReceiptRow {
   kind: string
   target: string | null
   state: string | null
+  chat_id: string
 }
 
 function formatZodIssues(error: z.ZodError): string {
@@ -204,13 +205,22 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
     if (row.tool !== def.name || row.chat_id !== chatId) {
       return { ok: false, kind: 'invalid', reason: 'call id belongs to another call' }
     }
-    const parsed = JSON.parse(row.result) as { ok: true; data: unknown }
+    const parsed = JSON.parse(row.result) as { ok: true; data: unknown; receiptId?: string }
     const receiptRow = deps.storage.read(
       (db) =>
         db
-          .prepare('SELECT receipt_id, call_id, tool, kind, target, state FROM receipt WHERE call_id = ?')
-          .get(callId) as StoredReceiptRow | undefined
+          .prepare(
+            `SELECT receipt_id, call_id, chat_id, tool, kind, target, state FROM receipt
+             WHERE ${parsed.receiptId === undefined ? 'call_id' : 'receipt_id'} = ?`
+          )
+          .get(parsed.receiptId ?? callId) as StoredReceiptRow | undefined
     )
+    if (!receiptRow && def.mutates) {
+      return { ok: false, kind: 'error', reason: 'stored tool result has no receipt' }
+    }
+    if (receiptRow && (receiptRow.chat_id !== chatId || receiptRow.tool !== def.name)) {
+      return { ok: false, kind: 'invalid', reason: 'stored receipt belongs to another call' }
+    }
     const receipt: Receipt | undefined = receiptRow
       ? {
           receiptId: receiptRow.receipt_id,
@@ -258,35 +268,68 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
       const out = deps.storage.tx((db) => {
         const { data, receipt: draft } = write(db)
         const at = isoNow(now)
-        const receiptId = `r_${randomBytes(6).toString('hex')}`
+        const reused = draft.reuseReceiptId
+          ? (db
+              .prepare(
+                'SELECT receipt_id, call_id, chat_id, tool, kind, target, state FROM receipt WHERE receipt_id = ?'
+              )
+              .get(draft.reuseReceiptId) as StoredReceiptRow | undefined)
+          : undefined
+        if (draft.reuseReceiptId !== undefined) {
+          if (
+            reused === undefined ||
+            reused.chat_id !== context.chat.chatId ||
+            reused.tool !== def.name ||
+            reused.kind !== draft.kind ||
+            reused.target !== (draft.target ?? null)
+          ) {
+            throw new Error(`tool ${def.name} tried to reuse an unrelated receipt`)
+          }
+        }
+        const receiptId = reused?.receipt_id ?? `r_${randomBytes(6).toString('hex')}`
         db.prepare(
           `INSERT INTO tool_result (call_id, turn_id, chat_id, tool, result, created_at)
            VALUES (?, ?, ?, ?, ?, ?)`
-        ).run(call.callId, context.turnId, context.chat.chatId, def.name, JSON.stringify({ ok: true, data }), at)
-
-        const stateJson = draft.state === undefined ? null : JSON.stringify(draft.state)
-        db.prepare(
-          `INSERT INTO receipt (receipt_id, call_id, turn_id, chat_id, tool, kind, target, state, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).run(
-          receiptId,
           call.callId,
           context.turnId,
           context.chat.chatId,
           def.name,
-          draft.kind,
-          draft.target ?? null,
-          stateJson,
+          JSON.stringify({ ok: true, data, ...(reused ? { receiptId: reused.receipt_id } : {}) }),
           at
         )
 
+        if (!reused) {
+          const stateJson = draft.state === undefined ? null : JSON.stringify(draft.state)
+          db.prepare(
+            `INSERT INTO receipt (receipt_id, call_id, turn_id, chat_id, tool, kind, target, state, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).run(
+            receiptId,
+            call.callId,
+            context.turnId,
+            context.chat.chatId,
+            def.name,
+            draft.kind,
+            draft.target ?? null,
+            stateJson,
+            at
+          )
+        }
+
         const receipt: Receipt = {
           receiptId,
-          callId: call.callId,
+          callId: reused?.call_id ?? call.callId,
           tool: def.name,
-          kind: draft.kind,
-          ...(draft.target !== undefined ? { target: draft.target } : {}),
-          ...(draft.state !== undefined ? { state: draft.state } : {})
+          kind: reused?.kind ?? draft.kind,
+          ...((reused?.target ?? draft.target) !== undefined && (reused?.target ?? draft.target) !== null
+            ? { target: (reused?.target ?? draft.target) as string }
+            : {}),
+          ...(reused?.state !== undefined && reused.state !== null
+            ? { state: JSON.parse(reused.state) as Record<string, unknown> }
+            : draft.state !== undefined
+              ? { state: draft.state }
+              : {})
         }
         return { data, receipt }
       })

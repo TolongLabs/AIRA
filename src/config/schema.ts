@@ -65,6 +65,14 @@ const offsiteObject = z
 const offsiteSchema = z.preprocess((value) => (value === 'off' ? { kind: 'off' } : value), offsiteObject)
 
 export const configSchema = z.strictObject({
+  feedback: z
+    .strictObject({
+      formUrl: z.union([z.literal(''), z.url().refine((value) => new URL(value).protocol === 'https:')]).default(''),
+      referenceEntryId: z.string().regex(/^\d*$/).default(''),
+      pollMinutes: count.default(5),
+      refTtlHours: count.default(168)
+    })
+    .prefault({}),
   research: z
     .strictObject({
       maxSearches: count.max(6).default(6),
@@ -244,7 +252,8 @@ export const configSchema = z.strictObject({
   records: z.strictObject({
     retentionDays: count,
     diagnosticsHours: count,
-    windowDays: count
+    windowDays: count,
+    feedbackDays: count.default(90)
   }),
   log: z.strictObject({
     level: z.enum(['error', 'warn', 'info', 'debug'])

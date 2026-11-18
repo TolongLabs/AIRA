@@ -85,6 +85,16 @@ is cleared in `finally`. Nothing waits without a limit.
 - Storage that fails around a turn resolves an empty reply and sends nothing. Nothing was acknowledged, so no pack
   line is sent.
 
+## Feedback Sync
+
+The `feedback_sync` background job runs every `feedback.pollMinutes` only while at least one report is `open`. Runs do
+not overlap. It POSTs to the Apps Script endpoint with a 10-second timeout, and all network I/O and batch validation
+happen outside a database transaction. With no open report, no outbound call happens.
+
+A wrong secret, timeout, network failure or malformed response writes `feedback_sync_failed`, keeps the cursor and
+waits for the next interval. A bad row writes `feedback_rejected` while its sequence advances, so one unusable form
+submission cannot block later rows. Neither failure reaches a chat or delays a reply.
+
 ## Start-Up And Shutdown
 
 - Start-up validates `config.yml`, every character pack, the database schema and every chat's binding. A deployment
@@ -103,7 +113,7 @@ The operator reads this file; direct delivery to the owner's chat is not configu
 alert kind and timestamp, never message text or identity. Alerts are rate limited per kind.
 Spend alerts are raised when a recorded call crosses 80% or 100% of the monthly budget. Unmarked gateway
 requests raise a binding alert. Start-up faults raise a deploy health alert when storage is available. Kinds: invalid pack or binding, auth failure on a model role, breaker open, memory job failed
-after its last retry, spend at 80% and 100%, migration or deploy health failure.
+after its last retry, feedback sync failure, spend at 80% and 100%, migration or deploy health failure.
 
 ## Configuration
 

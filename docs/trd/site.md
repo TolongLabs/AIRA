@@ -22,6 +22,7 @@ The existing owner site, revamped as the chatbot's console, with a character stu
 | Dashboard              | Kept as it is. Reads the legacy `/api/dashboard`, not turn records             |
 | Library, Graph         | Kept as they are. Read the legacy API, not the core's `/api/memory`            |
 | Reminders              | Kept as it is. The Cron page reads the legacy `/api/cron` job list             |
+| Feedback               | No page in this change; maintainers use the protected API or CLI               |
 | Markets, Notices, Send | Kept as they are. Only the shared shell changes with the rest of the site      |
 
 ![Which client and API each site page uses](../diagrams/site-pages.svg)
@@ -49,6 +50,7 @@ the footer route. No sticker, preview or memory forget route exists.
 | `GET`  | `/api/turns/:id`             | One turn with its model, tool and failure rows    | Read   | `src/api/routes.ts` |
 | `GET`  | `/api/report`                | Latency, failure, cost and fallback figures       | Read   | `src/api/routes.ts` |
 | `GET`  | `/api/memory`                | One chat's memory items (`chat` is required)      | Read   | `src/api/routes.ts` |
+| `GET`  | `/api/feedback/:id`          | One report's answers beside its referenced turns  | Read   | `src/api/routes.ts` |
 
 - Requests are JSON with a declared content type. Other content types are refused.
 - The Origin and Host headers are checked on every write.
@@ -72,17 +74,18 @@ the footer route. No sticker, preview or memory forget route exists.
 
 ### Read Routes
 
-| Route                 | Answer                                                                                                                                                                                                                                                    |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/health`     | `status` (`ready` or `starting`), `version`, `activeTurns`, and per model role whether it is configured and whether its breaker is open                                                                                                                   |
-| `GET /api/chats`      | `chats`: each chat's id, WhatsApp id, type, label, status, and every setting key with its value and the level it came from                                                                                                                                |
-| `GET /api/settings`   | With `level` and `scope`: the raw values set at that one level. A bad level or scope gets 400                                                                                                                                                             |
-| `GET /api/turns`      | The newest turn rows, newest first, at most `limit` (default 50, at most 200), optionally for one `chat` and `before` a time. A `limit` outside 1 to 200 gets 400 `invalid_limit`; a `before` that is not an ISO-8601 timestamp gets 400 `invalid_before` |
-| `GET /api/turns/:id`  | One turn row with its model calls, tool calls and failure rows. The id is URL-decoded; a malformed escape gets 400 `invalid_turn_id`                                                                                                                      |
-| `GET /api/report`     | The figures of `bun run report`, always over the last 7 days, read from the newest verified snapshot. With no snapshot it gets 404 `no_snapshot`                                                                                                          |
-| `GET /api/memory`     | With `chat` (required, else 400): that chat's memory items: id, kind, subject, key, value, status, updated time                                                                                                                                           |
-| `GET /api/characters` | `characters`: each loaded pack's id, display name, source (`repository` or `data`) and languages. `faults`: each pack that did not load, with its id and reason                                                                                           |
-| `GET /api/tools`      | `features`: tools grouped by feature `key`, each with `name`, `mode` (`implicit`, `explicit` or `both`) and slash-prefixed `commands`, read from the registry                                                                                             |
+| Route                   | Answer                                                                                                                                                                                                                                                    |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/health`       | `status` (`ready` or `starting`), `version`, `activeTurns`, and per model role whether it is configured and whether its breaker is open                                                                                                                   |
+| `GET /api/chats`        | `chats`: each chat's id, WhatsApp id, type, label, status, and every setting key with its value and the level it came from                                                                                                                                |
+| `GET /api/settings`     | With `level` and `scope`: the raw values set at that one level. A bad level or scope gets 400                                                                                                                                                             |
+| `GET /api/turns`        | The newest turn rows, newest first, at most `limit` (default 50, at most 200), optionally for one `chat` and `before` a time. A `limit` outside 1 to 200 gets 400 `invalid_limit`; a `before` that is not an ISO-8601 timestamp gets 400 `invalid_before` |
+| `GET /api/turns/:id`    | One turn row with its model calls, tool calls and failure rows. The id is URL-decoded; a malformed escape gets 400 `invalid_turn_id`                                                                                                                      |
+| `GET /api/report`       | The figures of `bun run report`, always over the last 7 days, read from the newest verified snapshot. With no snapshot it gets 404 `no_snapshot`                                                                                                          |
+| `GET /api/memory`       | With `chat` (required, else 400): that chat's memory items: id, kind, subject, key, value, status, updated time                                                                                                                                           |
+| `GET /api/characters`   | `characters`: each loaded pack's id, display name, source (`repository` or `data`) and languages. `faults`: each pack that did not load, with its id and reason                                                                                           |
+| `GET /api/tools`        | `features`: tools grouped by feature `key`, each with `name`, `mode` (`implicit`, `explicit` or `both`) and slash-prefixed `commands`, read from the registry                                                                                             |
+| `GET /api/feedback/:id` | One report by `report_id`: state, issued and received times, checked answers, and the existing turn records named by `turn_ids`. It never returns `ref`; unknown ids get 404. Answers are untrusted text and never enter a model prompt                   |
 
 ### Write Routes
 

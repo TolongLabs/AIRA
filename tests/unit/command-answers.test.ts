@@ -24,6 +24,14 @@ describe('direct command answers', () => {
     )
   })
 
+  it('puts the character feedback line before the private form URL', () => {
+    const text = renderDirect('feedback_link', ok({ url: 'https://form.invalid/viewform?entry.1=abcdefghij' }), {
+      ...tz,
+      feedbackLine: 'Tell me what went wrong using this form.'
+    })
+    expect(text).toBe('Tell me what went wrong using this form.\nhttps://form.invalid/viewform?entry.1=abcdefghij')
+  })
+
   it('names tools and features in words, never as ids', () => {
     const text = renderDirect(
       'list',
