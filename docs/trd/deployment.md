@@ -23,9 +23,10 @@ one night.
 - A release re-tags that same image; nothing is rebuilt.
 - Multi-stage build, non-root user, one writable data volume. The image holds the core, the built site, the example
   character pack and the prompts. Real character packs are private and live on the data volume.
-- A separate stage installs production dependencies from `package.json` and `bun.lock` alone. The runtime image
-  copies `node_modules` before the application output, so a code-only change reuses that layer and a deploy pulls a
-  few MB.
+- A separate stage installs production dependencies from `package.json` and `bun.lock` alone, with the version and
+  the `prepare` script taken out of `package.json` first, so a release bump changes nothing it reads. The runtime
+  image copies `node_modules` before the application output, so a code-only change or a release reuses that layer
+  and a deploy pulls a few MB.
 - No secret and no chat data is in the image. Secrets come from the host's `.env`. Data lives on the volume.
 
 ## Host Layout
