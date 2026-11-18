@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.2.0](https://github.com/TolongLabs/AIRA/compare/v1.1.0...v1.2.0) (2026-11-18)
+
+
+### Features
+
+* **gateway:** send autofetch media from the core ([a0170bf](https://github.com/TolongLabs/AIRA/commit/a0170bfb2aae53ff64c820ca390885bbefffdc4c)), closes [#214](https://github.com/TolongLabs/AIRA/issues/214)
+* **media:** answer group post links with media ([29abbe6](https://github.com/TolongLabs/AIRA/commit/29abbe6ef586789cf097cf2bf58a53ea0c8e7e65)), closes [#214](https://github.com/TolongLabs/AIRA/issues/214)
+* **migration:** map the old autofetch permission ([8f25066](https://github.com/TolongLabs/AIRA/commit/8f25066224f5be53631179835a75616bd01bf71d)), closes [#214](https://github.com/TolongLabs/AIRA/issues/214)
+* **site:** switch post media per group ([a749d32](https://github.com/TolongLabs/AIRA/commit/a749d323b9a1182836a3182250804716c997d963)), closes [#214](https://github.com/TolongLabs/AIRA/issues/214)
+
+
+### Bug Fixes
+
+* **deploy:** ignore the version in the deps layer ([ce4f2ac](https://github.com/TolongLabs/AIRA/commit/ce4f2ac552c0dda5755e3ad707985ed3b083676d)), closes [#226](https://github.com/TolongLabs/AIRA/issues/226)
+* **deploy:** pull a few MB on a code-only deploy ([c6e7c49](https://github.com/TolongLabs/AIRA/commit/c6e7c49a8c771d5bda43a4580f26acf6737d9ec0)), closes [#224](https://github.com/TolongLabs/AIRA/issues/224)
+* **social:** follow threads short and share links ([5ffab10](https://github.com/TolongLabs/AIRA/commit/5ffab108f1a3d6ea8bd8eddd8c2237154a17aaa9)), closes [#213](https://github.com/TolongLabs/AIRA/issues/213)
+* **social:** read every photo in a shared post ([d6c6543](https://github.com/TolongLabs/AIRA/commit/d6c654369bdcbb6e6a473fd7aed58b592bd9fb31)), closes [#213](https://github.com/TolongLabs/AIRA/issues/213)
+* **social:** read facebook photo posts from pages ([2592b28](https://github.com/TolongLabs/AIRA/commit/2592b280309b92094ff058bf959f6f8420e87350))
+* **social:** read facebook video links ([bac2e27](https://github.com/TolongLabs/AIRA/commit/bac2e27a7f68c8d2f0350bbd22156ac1ea0365e1)), closes [#217](https://github.com/TolongLabs/AIRA/issues/217)
+* **social:** read instagram posts from their page ([fa6c1f0](https://github.com/TolongLabs/AIRA/commit/fa6c1f06ccd45be2514fbb71882816e0b0845d68)), closes [#217](https://github.com/TolongLabs/AIRA/issues/217)
+
 ## [1.1.0](https://github.com/TolongLabs/AIRA/compare/v1.0.0...v1.1.0) (2026-11-17)
 
 
