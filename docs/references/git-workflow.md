@@ -114,6 +114,21 @@ Always store secrets as
 never in the repository: not in a commit, a pull request, an issue, or a workflow file. `.env` stays untracked, and only
 `.env.example`, which holds placeholders, is committed. A workflow reads a secret as `${{ secrets.NAME }}`.
 
+## Release Pull Requests
+
+release-please opens and updates the release pull request. A pull request opened with the workflow's own
+`GITHUB_TOKEN` starts no workflow, so its required checks never run and it cannot merge. `release.yml` therefore mints a
+token from the TolongLabs release GitHub App (`actions/create-github-app-token`) and gives it to release-please. The
+App's id is the repository variable `RELEASE_APP_ID`, and its private key is the secret `RELEASE_APP_PRIVATE_KEY`. With
+either unset, the workflow falls back to `GITHUB_TOKEN`, and a user must push one empty commit to the release branch to
+start the checks.
+
+The App needs, on this repository only: contents read and write, pull requests read and write, issues read and write.
+
+The ruleset sets `require_extra_approval_for_unattributed_changes` to `false`. A release pull request's commits come
+from a bot, not a user, and with the setting on it needs an approval no agent account can give (owner's decision, 18 Nov
+2026).
+
 ## Setting It Up
 
 Local hooks install themselves:
@@ -172,6 +187,7 @@ gh api -X POST 'repos/TolongLabs/AIRA/rulesets' --silent --input - <<'EOF'
         "require_code_owner_review": false,
         "require_last_push_approval": false,
         "required_review_thread_resolution": true,
+        "require_extra_approval_for_unattributed_changes": false,
         "allowed_merge_methods": ["rebase"]
       }
     },
