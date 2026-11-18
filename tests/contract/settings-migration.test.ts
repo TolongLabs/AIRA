@@ -68,6 +68,7 @@ describe('settings and binding migration', () => {
       { level: 'chat', chat: GROUP, key: 'character', value: 'example' },
       { level: 'chat', chat: GROUP, key: 'features.photos', value: false },
       { level: 'chat', chat: PHONE_DM, key: 'features.photos', value: true },
+      { level: 'chat', chat: PHONE_DM, key: 'features.autofetch', value: true },
       { level: 'chat', chat: GROUP, key: 'language', value: 'en' },
       { level: 'chat', chat: GROUP, key: 'features.lessons', value: true },
       { level: 'chat', chat: DM, key: 'muted', value: { by: 'migration', at: NOW.toISOString() } }
@@ -77,7 +78,6 @@ describe('settings and binding migration', () => {
       default_permissions_no_key: 1,
       owner_no_key: 1,
       agent_no_key: 2,
-      autofetch_no_key: 1,
       mode_no_key: 2,
       phone_binding: 1,
       personality_unmapped: 1,
@@ -95,7 +95,7 @@ describe('settings and binding migration', () => {
     expect(applySettingsPlan(storage, plan, () => NOW)).toEqual({
       chatsCreated: 3,
       chatsActivated: 3,
-      settingsWritten: 7,
+      settingsWritten: 8,
       alreadySet: 0
     })
     const group = getChatByWaId(storage, GROUP)
