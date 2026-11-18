@@ -23,6 +23,9 @@ one night.
 - A release re-tags that same image; nothing is rebuilt.
 - Multi-stage build, non-root user, one writable data volume. The image holds the core, the built site, the example
   character pack and the prompts. Real character packs are private and live on the data volume.
+- A separate stage installs production dependencies from `package.json` and `bun.lock` alone. The runtime image
+  copies `node_modules` before the application output, so a code-only change reuses that layer and a deploy pulls a
+  few MB.
 - No secret and no chat data is in the image. Secrets come from the host's `.env`. Data lives on the volume.
 
 ## Host Layout
@@ -99,8 +102,11 @@ pass on a push to `main`. Deploys run one at a time. Like rokabot's, every merge
 
 1. If a turn is in flight, wait up to `AIRA_WAIT_FOR_IDLE_MS` (default 120000).
 2. Take a verified snapshot of the database. When no image runs yet, this step is skipped.
-3. Pull `sha-<7>`, rewrite `AIRA_VERSION` and `AIRA_IMAGE` in place in the install's `.env` (every other line kept;
-   a missing key is appended), and recreate the container. Start-up runs migrations inside a transaction.
+3. Pull `sha-<7>` under one 20-minute budget across up to 3 attempts. The first attempt gets 3 minutes, so a stalled
+   first connection retries quickly; each later attempt gets the time left. When the budget runs out or all 3 attempts
+   fail, the deploy fails as `pull_failed` before `.env` is touched. Otherwise
+   rewrite `AIRA_VERSION` and `AIRA_IMAGE` in place in the install's `.env` (every other line kept; a missing key is
+   appended), and recreate the container. Start-up runs migrations inside a transaction.
 4. Poll the health endpoint until ready, up to `AIRA_HEALTH_TIMEOUT_MS` (default 60000), and send one synthetic
    turn.
 5. On success: keep the previous image for rollback and remove older ones, append one JSON line (`from`, `to`,
