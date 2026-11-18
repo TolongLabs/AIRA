@@ -247,8 +247,10 @@ media folders.
    or `start=` parameter or a `#t=` fragment, in seconds or clock form), and watched for at
    most `media.maxLinkVideoSeconds` (default 600) in segments, as rule 10 sets out (measured: a 3-minute video in
    5 s, about 19,000 tokens). A longer YouTube video is clipped, never refused, and the description the model
-   receives says it covers only the first part; a private or removed video fails with reason `unavailable`. A post's video is fetched
-   under the same size and `media.maxVideoSeconds` limits as a file, falling back to its image or text only. A failed
+   receives says it covers only the first part; a private or removed video fails with reason `unavailable`. A post's
+   video is fetched under the same size and `media.maxVideoSeconds` limits as a file, and watched at once with up to
+   4 of its photos, as [Post Links](#post-links) sets out; with none of them read, its one picture, then its text
+   only. A failed
    link lookup adds an unreadable note with the platform and reason `link`; neither the note nor any log carries the
    URL. The result enters block 4 like a file's description, and failures follow rule 8. Ported from rokabot's media
    and social readers.
@@ -356,18 +358,25 @@ A social post reaches the turn through the reader in
 YouTube, TikTok, Reddit, Instagram and Bilibili.
 
 Video from a linked social post is fetched by the social tool and passed through the same watch path as a file. It
-must fit the same size limit and `media.maxVideoSeconds`. When the video does not qualify, the reader falls back to
-the post's image, and then to its text only. A remote audio download over 600 seconds is refused
+must fit the same size limit and `media.maxVideoSeconds`. A remote audio download over 600 seconds is refused
 (`src/media/link-intake.ts`).
 
+A post's photos are watched as images, at most `MAX_LINK_PHOTOS` (4) per link: the linked post's photos in order,
+then those of the earlier posts in its thread, oldest first. The video and the photos are watched at once, each its
+own call under the link's time limit. One answer enters block 4 as it is; several are merged in order, each labelled
+(`video`, `photo 2`, `earlier post, photo 1`), and the merged text names how many photos were not watched or could
+not be read. When nothing was read, the reader falls back to the post's one picture (a video's thumbnail or the link
+card's image), and then to its text only (`src/media/link-intake.ts`).
+
 The post's text, author, most-liked replies and media enter block 4 as lines with its platform, author, date, reply
-count and canonical URL (`src/media/turn-media.ts`).
+count and canonical URL. The earlier posts of its thread come first, each with its author and text
+(`src/media/turn-media.ts`).
 
 A link whose video or image intake watched is not opened again in the same turn: `read_post` and `read_page` refuse
 its canonical URL with kind `refused`, and the refusal tells the model the content is already in its context. A link
 intake read as text only, or whose watch failed, stays open, so the model may fetch the post's replies and media;
-the footer then shows that read as well. The turn records the URL so
-the tools know it (`src/turn/pipeline.ts`).
+the footer then shows that read as well. The turn records the URL so the tools know it: the post's canonical URL,
+and the shared link's own when a redirect resolved it (`src/turn/pipeline.ts`).
 
 ### Limits
 
@@ -380,6 +389,8 @@ the tools know it (`src/turn/pipeline.ts`).
 | Audio length           | Code default, 600 seconds                          | Refused as `too long`, only when the sender reported one (`src/media/limits.ts`)        |
 | One media read         | `media.timeoutMs`, 30000, at most two thirds left  | The read fails and the file is unreadable (`src/media/turn-media.ts`)                   |
 | All YouTube segments   | `media.linkWatchMs`, 12000                         | Running segments abort; answered ones still merge (`src/media/link-intake.ts`)          |
+| Photos from one link   | Code `MAX_LINK_PHOTOS`, 4                          | The rest are named as not watched (`src/media/link-intake.ts`)                          |
+| Photos kept per post   | Code `MAX_POST_PHOTOS`, 20                         | The rest are dropped (`src/social/parsers.ts`)                                          |
 | Media text in block 4  | Code `MEDIA_TEXT_BUDGET`, 4,500 characters         | Clipped evenly across the turn's items (`src/media/turn-media.ts`)                      |
 | Watcher answer         | 120 words, 300-word transcript, schema 2,000 chars | Over-long text fails validation; the file is unreadable (`src/media/gemini-watcher.ts`) |
 
@@ -424,14 +435,24 @@ covers eight platforms: X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram 
 
 - **URLs.** `parseSocialPostUrl` accepts only `https` links with no user info, port or IP host. Each platform has a
   fixed host list and an id pattern, and yields a canonical URL, an extractor URL and a lookup key. The Bluesky key
-  carries the profile; the YouTube target carries the start offset from rule 7 of Media Watching.
+  carries the profile; the YouTube target carries the start offset from rule 7 of Media Watching. Threads also takes
+  its short link (`/t/<code>`) and its share link (`/share/<id>`); both redirect to the post.
 - **Post dispatch.** X is read through the fxtwitter API, Bluesky through its public API after handle-to-DID
   resolution (video comes from the author's data server when found), and Threads through its logged-out page, which
   holds only the first batch of replies. Reddit is read through its RSS feed first: a refused feed (403 or 429) is
   reported, and a feed with no video is returned without calling yt-dlp. Every other platform is read through
   yt-dlp. When yt-dlp fails on YouTube, the oEmbed endpoint still returns the title and author.
+- **Photos.** A post keeps every photo of its own, in order, up to `MAX_POST_PHOTOS` (20): X's photos, Bluesky's
+  images, and the photo items of a Threads carousel. Its one picture (`imageUrl`) is separate: the first photo, else
+  a video's thumbnail or the link card's image. Threads is read from the page's embedded post data, never its
+  `og:image`, which for a post with no image is the author's profile picture. A post read through yt-dlp keeps no
+  photos, only the thumbnail yt-dlp reports as its one picture.
+- **Threads thread.** A Threads post that continues a thread carries the earlier posts the page holds for it
+  (`containing_thread`), oldest first, at most 3: author, text and photos.
 - **Safe fetching.** The shared fetcher rejects forbidden and non-public addresses and never follows redirects, so
-  a redirect cannot smuggle in a private host. yt-dlp runs in a fresh temporary home with an isolated environment,
+  a redirect cannot smuggle in a private host. The one exception is a Threads short or share link: its one redirect
+  is read, its `Location` must parse as a Threads post link, and that post is fetched through the same fetcher. Any
+  other redirect fails the lookup. yt-dlp runs in a fresh temporary home with an isolated environment,
   and its output is capped at 2 MiB. When the binary is missing, lookups fail as `binary_missing`.
 - **Post cache.** Successful lookups are cached by lookup key with a time limit and an entry cap; a time limit of 0
   switches the cache off. The key ignores YouTube timestamps, so a cached post is re-targeted to the link that asked
@@ -439,7 +460,7 @@ covers eight platforms: X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram 
 - **Reply dispatch.** `ReplyReader` fans out to one fetcher per platform under a single timeout, and caches successes
   per lookup key and reply limit. The reply limit is clamped to between 1 and 50. X reads the conversation API
   ranked by likes with views as the tiebreak, and strips the leading mentions every reply repeats. Bluesky reads a
-  depth-1 thread. Threads reuses its page batch. YouTube reads the Data API in relevance order and re-ranks by
+  depth-1 thread. Threads reuses its page batch, through the same redirect rule. YouTube reads the Data API in relevance order and re-ranks by
   likes; a disabled comment section is reported, not an error. TikTok reads its comment API. Reddit reads the RSS
   feed in top order, which carries no like counts, so its order is kept. Instagram reads yt-dlp's comment dump and
   keeps only top-level comments. Bilibili resolves the id to an aid and reads one page of 20.

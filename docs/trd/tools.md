@@ -194,7 +194,7 @@ tool's result in plain words: a list for `/help`, `/list` and `/reminders`, one 
   plain fetches (such as openai.com, measured 403) still reads. A plain fetch is the fallback when Exa is off or fails.
   The text is clipped to `search.pageMaxChars` and labelled untrusted.
 - `read_post` is ported from rokabot's social reader: X, Threads, Bluesky, Instagram, TikTok, Reddit, Bilibili and
-  YouTube, with the post's text, author, most-liked replies where the site gives them, and its picture or video. A
+  YouTube, with the post's text, author, most-liked replies where the site gives them, and its pictures or video. A
   YouTube video, or a post's video, is watched by the media model as in [Models](models.md#media-watching).
 - `make_report` writes the document. Sending it to the chat is a separate delivery step with its own receipt.
 - The gateway's schedule fires reminders. `reminder_set` and `reminder_cancel` change the `reminder` row in one
@@ -235,13 +235,16 @@ character.
 ### Social Post Reader
 
 `read_post` takes one `url`; its argument schema stays unchanged. `/read` routes
-only recognized post URLs to it. Profiles, home pages, Facebook and unsupported
-share links use `read_page`. Supported platforms are X, Bluesky, Threads,
-YouTube, TikTok, Reddit, Instagram and Bilibili.
+only recognized post URLs to it, Threads short and share links included.
+Profiles, home pages, Facebook and other share links use `read_page`. Supported
+platforms are X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram and
+Bilibili.
 
 The result keeps `author`, `text` and `media` URLs, and adds `platform`, `handle`,
-`createdAt`, `quotedText`, `replyCount`, `canonicalUrl`, `durationSec` and
-`replies`. One reply lookup runs in parallel with the post lookup. It returns
+`createdAt`, `quotedText`, `replyCount`, `canonicalUrl`, `durationSec`, `thread`
+and `replies`. `media` lists every photo the post keeps, else its one picture,
+then its video. `thread` lists the earlier posts of a Threads thread, oldest
+first, each with `author`, `text` and `media`. One reply lookup runs in parallel with the post lookup. It returns
 up to five top replies by default, capped at 280 characters each; reply failure
 leaves an empty list and never fails a readable post. All returned content is
 untrusted external data; the social port marks its result with `untrusted: true`.
