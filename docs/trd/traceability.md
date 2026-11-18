@@ -85,11 +85,12 @@ from this page after an audit.
 
 ## Models
 
-| ID    | Status  | Main Code Paths                                        | Test Paths                 | TRD Module | Gap                                                             |
-| ----- | ------- | ------------------------------------------------------ | -------------------------- | ---------- | --------------------------------------------------------------- |
-| FR-32 | Partial | src/models/api-runner.ts, src/models/routed-client.ts  | tests/harness              | models.md  | Both runners exist; the benchmark-backed default is unrecorded. |
-| FR-33 | Shipped | src/models/routed-client.ts                            | tests/harness              | models.md  | None.                                                           |
-| FR-45 | Shipped | src/turn/pipeline.ts, src/app.ts, src/settings/keys.ts | tests/replay/think.test.ts | models.md  | None.                                                           |
+| ID    | Status  | Main Code Paths                                                                  | Test Paths                                                               | TRD Module | Gap                                                             |
+| ----- | ------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ---------- | --------------------------------------------------------------- |
+| FR-32 | Partial | src/models/api-runner.ts, src/models/routed-client.ts                            | tests/harness                                                            | models.md  | Both runners exist; the benchmark-backed default is unrecorded. |
+| FR-33 | Shipped | src/models/routed-client.ts                                                      | tests/harness                                                            | models.md  | None.                                                           |
+| FR-45 | Shipped | src/turn/pipeline.ts, src/app.ts, src/settings/keys.ts                           | tests/replay/think.test.ts                                               | models.md  | None.                                                           |
+| FR-46 | Shipped | src/media/autofetch.ts, src/gateway/server.ts, deploy/gateway/brain/autofetch.py | tests/contract/autofetch.test.ts, deploy/gateway/tests/test_autofetch.py | system.md  | None.                                                           |
 
 ## Records And Test Harness
 

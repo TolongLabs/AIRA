@@ -101,6 +101,7 @@ The primary key is `(level, scope, key)`. Deleting a row at a level restores inh
 | `report.format`          | Reserved: a per-chat report format profile ([Research](research.md#the-renderer))        | unset: `render.report`  |
 | `report.defaultFormat`   | `pdf` or `markdown`: the format of `/doc` when the message names none                    | `pdf`                   |
 | `features.owner`         | Boolean: the owner's market and coding-session tools                                     | `false`                 |
+| `features.autofetch`     | Boolean: a group's post links get their media back ([System](system.md#autofetch))       | `false`                 |
 | `features.toolFooter`    | Boolean                                                                                  | `true`                  |
 | `nameCall`               | Boolean: answer a group message that only names the character                            | `false`                 |
 | `nameCall.names`         | 1 to 5 names, each 2 to 24 letters, digits or spaces                                     | unset: the card's names |
@@ -150,15 +151,16 @@ core stopped. A second real run changes nothing. It runs before the memory impor
 chats. The copy holds the old `bindings.yaml` and the brain folder's `language.json`, `lessons.json`, `faces.json`
 and `quiet.json`. Measured on the production host's layout, 16 Nov 2026:
 
-| Old Value                                                                                   | New                                                                                                              |
-| ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| A binding's `match` (platform `whatsapp`, kind, chat)                                       | The chat row, set `active`. A chat written as a phone number is reported (Assumption A-10)                       |
-| `defaults.personality`, a binding's `personality`                                           | `character` at the global or chat level, through the `--character` map. An unmapped name is reported and not set |
-| A binding's `permissions.photos`                                                            | `features.photos` at the chat level                                                                              |
-| `language.json`, by chat                                                                    | `language` at the chat level, when it is `auto` or a language code                                               |
-| `lessons.json`, by chat                                                                     | `features.lessons` at the chat level                                                                             |
-| `quiet.json`, a mute until a time, by chat                                                  | `muted` at the chat level when the time has not passed or the mute has no end; else skipped                      |
-| `mode`, `permissions.agent`, `permissions.autofetch`, `models`, `faces.json` tones, `owner` | No new key: reported                                                                                             |
+| Old Value                                                          | New                                                                                                              |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| A binding's `match` (platform `whatsapp`, kind, chat)              | The chat row, set `active`. A chat written as a phone number is reported (Assumption A-10)                       |
+| `defaults.personality`, a binding's `personality`                  | `character` at the global or chat level, through the `--character` map. An unmapped name is reported and not set |
+| A binding's `permissions.photos`                                   | `features.photos` at the chat level                                                                              |
+| A binding's `permissions.autofetch`                                | `features.autofetch` at the chat level, on only for the literal `on`                                             |
+| `language.json`, by chat                                           | `language` at the chat level, when it is `auto` or a language code                                               |
+| `lessons.json`, by chat                                            | `features.lessons` at the chat level                                                                             |
+| `quiet.json`, a mute until a time, by chat                         | `muted` at the chat level when the time has not passed or the mute has no end; else skipped                      |
+| `mode`, `permissions.agent`, `models`, `faces.json` tones, `owner` | No new key: reported                                                                                             |
 
 - Character pack ids are private, so the map is given on the command line and never stored in the repository.
 - A chat in a state file with no binding is created too: the old core answered it with the defaults.
