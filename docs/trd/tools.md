@@ -236,9 +236,9 @@ character.
 
 `read_post` takes one `url`; its argument schema stays unchanged. `/read` routes
 only recognized post URLs to it, Threads short and share links included.
-Profiles, home pages, Facebook and other share links use `read_page`. Supported
-platforms are X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram and
-Bilibili.
+Profiles, home pages, Facebook posts and other share links use `read_page`.
+Supported platforms are X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram,
+Bilibili and Facebook videos.
 
 The result keeps `author`, `text` and `media` URLs, and adds `platform`, `handle`,
 `createdAt`, `quotedText`, `replyCount`, `canonicalUrl`, `durationSec`, `thread`
