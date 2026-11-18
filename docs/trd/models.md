@@ -354,8 +354,8 @@ unknown (`src/media/link-segments.ts`).
 ### Post Links
 
 A social post reaches the turn through the reader in
-[Social Post And Reply Readers](#social-post-and-reply-readers). Eight platforms are covered: X, Bluesky, Threads,
-YouTube, TikTok, Reddit, Instagram and Bilibili.
+[Social Post And Reply Readers](#social-post-and-reply-readers). Nine platforms are covered: X, Bluesky, Threads,
+YouTube, TikTok, Reddit, Instagram, Bilibili and Facebook (videos only).
 
 Video from a linked social post is fetched by the social tool and passed through the same watch path as a file. It
 must fit the same size limit and `media.maxVideoSeconds`. A remote audio download over 600 seconds is refused
@@ -429,21 +429,26 @@ Every media failure is contained. The turn continues and answers in character.
 ## Social Post And Reply Readers
 
 Link intake and the social tools read public posts and their replies through one subsystem in `src/social`. It
-covers eight platforms: X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram and Bilibili.
+covers nine platforms: X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram, Bilibili and Facebook (videos only).
 
 ![How a shared link is normalised, fetched per platform, and cached](../diagrams/social-readers.svg)
 
 - **URLs.** `parseSocialPostUrl` accepts only `https` links with no user info, port or IP host. Each platform has a
   fixed host list and an id pattern, and yields a canonical URL, an extractor URL and a lookup key. The Bluesky key
   carries the profile; the YouTube target carries the start offset from rule 7 of Media Watching. Threads also takes
-  its short link (`/t/<code>`) and its share link (`/share/<id>`); both redirect to the post.
+  its short link (`/t/<code>`) and its share link (`/share/<id>`); both redirect to the post. Instagram also takes
+  `/reels/<code>` and the account name before `/p/` or `/reel/`. Facebook is taken only by its video links:
+  `/share/v/<id>`, `/share/r/<id>`, `/reel/<id>`, `/watch?v=<id>`, `/<page>/videos/<id>` and `fb.watch/<id>`. A
+  Facebook post link stays with `read_page`.
 - **Post dispatch.** X is read through the fxtwitter API, Bluesky through its public API after handle-to-DID
   resolution (video comes from the author's data server when found), and Threads through its logged-out page, which
-  holds only the first batch of replies. Reddit is read through its RSS feed first: a refused feed (403 or 429) is
-  reported, and a feed with no video is returned without calling yt-dlp. Every other platform is read through
+  holds only the first batch of replies. Instagram is read from its logged-out post page first, which carries the
+  post in the same Meta shape as Threads (`xig_polaris_media`); when the page holds no post (gated, removed or
+  refused), yt-dlp reads it. Reddit is read through its RSS feed first: a refused feed (403 or 429) is reported, and
+  a feed with no video is returned without calling yt-dlp. Facebook and every other platform are read through
   yt-dlp. When yt-dlp fails on YouTube, the oEmbed endpoint still returns the title and author.
 - **Photos.** A post keeps every photo of its own, in order, up to `MAX_POST_PHOTOS` (20): X's photos, Bluesky's
-  images, and the photo items of a Threads carousel. Its one picture (`imageUrl`) is separate: the first photo, else
+  images, and the photo items of a Threads or Instagram carousel. Its one picture (`imageUrl`) is separate: the first photo, else
   a video's thumbnail or the link card's image. Threads is read from the page's embedded post data, never its
   `og:image`, which for a post with no image is the author's profile picture. A post read through yt-dlp keeps no
   photos, only the thumbnail yt-dlp reports as its one picture.
@@ -463,7 +468,8 @@ covers eight platforms: X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram 
   depth-1 thread. Threads reuses its page batch, through the same redirect rule. YouTube reads the Data API in relevance order and re-ranks by
   likes; a disabled comment section is reported, not an error. TikTok reads its comment API. Reddit reads the RSS
   feed in top order, which carries no like counts, so its order is kept. Instagram reads yt-dlp's comment dump and
-  keeps only top-level comments. Bilibili resolves the id to an aid and reads one page of 20.
+  keeps only top-level comments. Bilibili resolves the id to an aid and reads one page of 20. Facebook has no reply
+  reader; its reply lookup fails as `unsupported`.
 - **Reply shaping.** Deleted and removed texts are dropped. Each kept reply collapses whitespace, is sliced by code
   point so a cap cannot split an emoji, and is capped at the reply character limit. Ranking is by likes, then the
   platform tiebreak, then the order the platform returned. Totals are reported when the platform gives one.
