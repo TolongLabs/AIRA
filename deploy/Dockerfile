@@ -1,6 +1,14 @@
 # Pin base image digests before the first release.
 FROM oven/bun:1-slim AS bun
 
+FROM node:24-slim AS prod-deps
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+ENV HUSKY=0
+WORKDIR /repo
+COPY package.json bun.lock ./
+RUN node -e "const fs=require('node:fs'),p=JSON.parse(fs.readFileSync('package.json','utf8'));if(p.scripts)delete p.scripts.prepare;fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')" \
+    && bun install --frozen-lockfile --production
+
 FROM node:24-slim AS build
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 ENV HUSKY=0
@@ -10,7 +18,6 @@ RUN bun install --frozen-lockfile
 RUN bun run build
 # The owner site (docs/trd/site.md#serving-the-site), built here and served by the core under /app/.
 RUN cd site && bun install --frozen-lockfile && bun run build
-RUN bun install --frozen-lockfile --production
 
 # glibc onedir distributions; hashes match the pinned release's SHA2-256SUMS.
 FROM debian:bookworm-slim AS ytdlp
@@ -88,9 +95,9 @@ COPY --from=typst /usr/local/bin/typst /usr/local/bin/typst
 COPY --from=restic /usr/local/bin/restic /usr/local/bin/restic
 ENV NODE_ENV=production
 WORKDIR /app
+COPY --from=prod-deps /repo/node_modules ./node_modules
 COPY --from=build /repo/dist ./dist
 COPY --from=build /repo/src/render/templates ./dist/src/render/templates
-COPY --from=build /repo/node_modules ./node_modules
 COPY --from=build /repo/prompts ./prompts
 COPY --from=build /repo/characters/example ./characters/example
 COPY --from=build /repo/config.yml ./config.yml
