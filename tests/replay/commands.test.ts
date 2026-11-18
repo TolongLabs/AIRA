@@ -162,16 +162,12 @@ describe('skill-style commands', () => {
     ])
   })
 
-  it('/read routes a social address to the post reader', async () => {
-    const model = queueModel([
-      { toolCalls: [{ id: 'c1', name: 'read_post', args: { url: 'https://x.com/someone/status/1' } }] },
-      { text: 'I cannot open that post.' }
-    ])
+  it('/read is no longer a command: the message goes to the model with the usual tools', async () => {
+    const model = queueModel([{ text: 'Here is what the page says.' }])
     const { gateway } = await startApp(model)
-    await gateway.send(msg('m-1', '/read https://x.com/someone/status/1'))
-    expect(names(model.requests[0])).toEqual(['read_post'])
-    await gateway.send(msg('m-2', '/read https://example.test/article'))
-    expect(names(model.requests[2])).toEqual(['read_page'])
+    await gateway.send(msg('m-1', '/read https://example.test/article'))
+    const offered = names(model.requests[0])
+    expect(offered).toEqual(expect.arrayContaining(['read_page', 'read_post', 'web_search']))
   })
 })
 
