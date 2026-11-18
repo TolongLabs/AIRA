@@ -66,6 +66,11 @@ const FEATURES: { key: string; label: string; hint: string }[] = [
   { key: 'features.reports', label: 'Reports', hint: 'Off: /doc is not offered.' },
   { key: 'features.proactive', label: 'Messages first', hint: 'Off: replies only when written to.' },
   { key: 'features.voice', label: 'Voice notes', hint: 'Off: replies are text.' },
+  {
+    key: 'features.autofetch',
+    label: 'Post media',
+    hint: "Groups only. On: a post link gets the post's photos or video back, unasked."
+  },
   { key: 'features.lessons', label: 'Lessons', hint: 'Off: songs, words and the library are not offered.' },
   {
     key: 'features.owner',
