@@ -240,8 +240,7 @@ media folders.
    the readable files and links of the turn. The main model never receives the file.
    See [Prompt Engine](prompt-engine.md#prompt-blocks).
 7. **Links.** The first link in the turn's messages to a YouTube video or a supported social post (newest message text
-   first, then quoted text) is opened at intake, at most one per turn, unless the turn's commands already name
-   `read_post` or `read_page`. `features.media` off means no file (rule 8 notes it as `off`) and no YouTube link is
+   first, then quoted text) is opened at intake, at most one per turn. `features.media` off means no file (rule 8 notes it as `off`) and no YouTube link is
    read; `features.social` off means no post link is read. A YouTube video is sent to the media model as its own
    URL (`file_data`) at low media resolution (`MEDIA_RESOLUTION_LOW`), starting from its offset if any (the `t=`
    or `start=` parameter or a `#t=` fragment, in seconds or clock form), and watched for at
@@ -320,8 +319,7 @@ The link reader also scans quoted text. A link there counts when no newer messag
 
 One link is read per turn. The reader takes the first supported target from the turn's texts, newest message first,
 then quoted text. A disabled platform never shadows a later allowed link. YouTube needs `features.media`; a post
-link needs `features.social`. A turn whose commands already name `read_post` or `read_page` reads no link
-(`src/media/link-intake.ts`, `src/turn/pipeline.ts`).
+link needs `features.social` (`src/media/link-intake.ts`, `src/turn/pipeline.ts`).
 
 A failed lookup adds one unreadable note with the platform and the reason `link`. It writes no model call, and no
 log or note carries the URL (`src/media/link-intake.ts`).
