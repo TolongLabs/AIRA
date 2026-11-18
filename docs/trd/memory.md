@@ -250,7 +250,7 @@ the core stopped. A second real run changes nothing.
   `features.photos`, `language`, `features.lessons` and `muted` settings from the old bindings, `language.json`,
   `lessons.json` and `quiet.json`. A mute that has already expired is skipped. A mute with no end still holds.
 - **What it counts and skips.** Unmapped personality names, phone-number bindings, `mode`, `permissions.agent`,
-  `permissions.autofetch`, `models`, `faces.json` tones, the owner block, unreadable bindings or state keys, and
+  `models`, `faces.json` tones, the owner block, unreadable bindings or state keys, and
   every value the key's schema refuses. Each is a reason code in the report. Nothing is guessed.
 - **What it keeps.** A value already set in the database stays. Applying a plan never replaces a setting that is
   already present.

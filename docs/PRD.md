@@ -13,7 +13,7 @@ Status: draft 0.1, 15 Nov 2026. Not yet approved by the owner.
 | Surfaces | WhatsApp DMs and small groups: mention, reply, free-response chats, and text slash commands |
 | Host     | One Linux machine on a private network, behind the Hermes Agent WhatsApp gateway            |
 | Scope    | The chatbot only. The owner's operations tools on the same machine are out of scope         |
-| Status   | 45 requirements: 23 Shipped, 20 Partial, 1 Exists (faulty), 1 Planned                       |
+| Status   | 46 requirements: 24 Shipped, 20 Partial, 1 Exists (faulty), 1 Planned                       |
 
 ## Problem
 
@@ -127,6 +127,7 @@ at this commit).
 | FR-23 | Give every tool call a timeout and a typed result. Every state change returns a receipt written by code; no receipt means it did not happen.                                                                                                                                                                                                                                                                                       | Shipped |
 | FR-24 | Ship the core tool set, each tool marked as callable by the model, by command, or both: recall, note, forget, chat history search, web search, read a page, read a social post, send a photo, set, list and cancel a reminder, mute, write a report, and note a chat's own word.                                                                                                                                                   | Shipped |
 | FR-39 | Watch media a member sends, embeds or links, including video from social posts, through a dedicated media model (planned: `gemini-3.5-flash-lite`) with its own key, under size and time limits. Say so in character when a file cannot be read.                                                                                                                                                                                   | Partial |
+| FR-46 | Send a linked post's own media in a group whose switch is on (off by default): a message with up to 3 supported post links gets each post's video and photos back, up to 10 files a post, with no reply text and no model call. Never a thumbnail, link card or profile picture. A post that cannot be read sends nothing.                                                                                                         | Shipped |
 | FR-44 | Provide the lessons and library tools behind a per-chat switch: lyrics, songs, vocabulary, glosses and the library. They follow the same registry rules and are built after the core set.                                                                                                                                                                                                                                          | Shipped |
 | FR-25 | Host external tool servers through the Model Context Protocol. A server is added in configuration with an allowlist of its tools and the chats that may use them. No external server is enabled at launch.                                                                                                                                                                                                                         | Partial |
 
@@ -198,32 +199,33 @@ at this commit).
 
 Each group of requirements has one issue. An issue lists its requirements as a checklist and links back here.
 
-| Requirements                      | Issue                                               |
-| --------------------------------- | --------------------------------------------------- |
-| FR-1 to 5                         | [#7](https://github.com/TolongLabs/AIRA/issues/7)   |
-| FR-6, FR-7, FR-9, FR-10           | [#8](https://github.com/TolongLabs/AIRA/issues/8)   |
-| FR-8                              | [#9](https://github.com/TolongLabs/AIRA/issues/9)   |
-| FR-11, FR-12, FR-14               | [#10](https://github.com/TolongLabs/AIRA/issues/10) |
-| FR-15 to 18                       | [#11](https://github.com/TolongLabs/AIRA/issues/11) |
-| FR-13                             | [#12](https://github.com/TolongLabs/AIRA/issues/12) |
-| FR-19, FR-20, FR-23, FR-24        | [#13](https://github.com/TolongLabs/AIRA/issues/13) |
-| FR-21 to 22                       | [#14](https://github.com/TolongLabs/AIRA/issues/14) |
-| FR-25                             | [#15](https://github.com/TolongLabs/AIRA/issues/15) |
-| FR-26 to 30                       | [#16](https://github.com/TolongLabs/AIRA/issues/16) |
-| FR-31                             | [#17](https://github.com/TolongLabs/AIRA/issues/17) |
-| FR-32 to 33                       | [#18](https://github.com/TolongLabs/AIRA/issues/18) |
-| FR-39                             | [#19](https://github.com/TolongLabs/AIRA/issues/19) |
-| FR-34 to 36                       | [#20](https://github.com/TolongLabs/AIRA/issues/20) |
-| FR-37 to 38                       | [#21](https://github.com/TolongLabs/AIRA/issues/21) |
-| FR-40 to 42                       | [#22](https://github.com/TolongLabs/AIRA/issues/22) |
-| NFR-7                             | [#23](https://github.com/TolongLabs/AIRA/issues/23) |
-| NFR-8                             | [#24](https://github.com/TolongLabs/AIRA/issues/24) |
-| FR-43                             | [#33](https://github.com/TolongLabs/AIRA/issues/33) |
-| Cutover readiness: NFR-1 to NFR-5 | [#32](https://github.com/TolongLabs/AIRA/issues/32) |
-| NFR-4, NFR-11                     | [#35](https://github.com/TolongLabs/AIRA/issues/35) |
-| NFR-12                            | [#36](https://github.com/TolongLabs/AIRA/issues/36) |
-| FR-44                             | [#38](https://github.com/TolongLabs/AIRA/issues/38) |
-| FR-45                             | [#90](https://github.com/TolongLabs/AIRA/issues/90) |
+| Requirements                      | Issue                                                 |
+| --------------------------------- | ----------------------------------------------------- |
+| FR-1 to 5                         | [#7](https://github.com/TolongLabs/AIRA/issues/7)     |
+| FR-6, FR-7, FR-9, FR-10           | [#8](https://github.com/TolongLabs/AIRA/issues/8)     |
+| FR-8                              | [#9](https://github.com/TolongLabs/AIRA/issues/9)     |
+| FR-11, FR-12, FR-14               | [#10](https://github.com/TolongLabs/AIRA/issues/10)   |
+| FR-15 to 18                       | [#11](https://github.com/TolongLabs/AIRA/issues/11)   |
+| FR-13                             | [#12](https://github.com/TolongLabs/AIRA/issues/12)   |
+| FR-19, FR-20, FR-23, FR-24        | [#13](https://github.com/TolongLabs/AIRA/issues/13)   |
+| FR-21 to 22                       | [#14](https://github.com/TolongLabs/AIRA/issues/14)   |
+| FR-25                             | [#15](https://github.com/TolongLabs/AIRA/issues/15)   |
+| FR-26 to 30                       | [#16](https://github.com/TolongLabs/AIRA/issues/16)   |
+| FR-31                             | [#17](https://github.com/TolongLabs/AIRA/issues/17)   |
+| FR-32 to 33                       | [#18](https://github.com/TolongLabs/AIRA/issues/18)   |
+| FR-39                             | [#19](https://github.com/TolongLabs/AIRA/issues/19)   |
+| FR-34 to 36                       | [#20](https://github.com/TolongLabs/AIRA/issues/20)   |
+| FR-37 to 38                       | [#21](https://github.com/TolongLabs/AIRA/issues/21)   |
+| FR-40 to 42                       | [#22](https://github.com/TolongLabs/AIRA/issues/22)   |
+| NFR-7                             | [#23](https://github.com/TolongLabs/AIRA/issues/23)   |
+| NFR-8                             | [#24](https://github.com/TolongLabs/AIRA/issues/24)   |
+| FR-43                             | [#33](https://github.com/TolongLabs/AIRA/issues/33)   |
+| Cutover readiness: NFR-1 to NFR-5 | [#32](https://github.com/TolongLabs/AIRA/issues/32)   |
+| NFR-4, NFR-11                     | [#35](https://github.com/TolongLabs/AIRA/issues/35)   |
+| NFR-12                            | [#36](https://github.com/TolongLabs/AIRA/issues/36)   |
+| FR-44                             | [#38](https://github.com/TolongLabs/AIRA/issues/38)   |
+| FR-45                             | [#90](https://github.com/TolongLabs/AIRA/issues/90)   |
+| FR-46                             | [#214](https://github.com/TolongLabs/AIRA/issues/214) |
 
 ## Pending Inputs
 
