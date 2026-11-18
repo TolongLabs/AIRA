@@ -1,6 +1,8 @@
 import { createLogger, type Logger } from '../records/logger.js'
 import { resolveBlueskyDid } from './blueskyDid.js'
 import { checkedFetcher, type Lookup, publicAddress } from './fetch.js'
+import { parseInstagramPage } from './instagram.js'
+import { META_PAGE_HEADERS } from './meta.js'
 import { parseBlueskyThread, parseFxTwitterResponse, parseYouTubeOEmbed, parseYtDlpMetadata } from './parsers.js'
 import { parseRedditFeedPost } from './redditFeed.js'
 import { BROWSER_USER_AGENT } from './replies/common.js'
@@ -73,7 +75,13 @@ export class SocialPostViewer {
   }
 
   async lookup(target: SocialPostTarget, signal?: AbortSignal): Promise<SocialPostLookup> {
-    if (isYtDlpPlatform(target.platform) && target.platform !== 'reddit' && !this.ytDlpAvailable) {
+    // Reddit has its feed and Instagram its page, so both still read without yt-dlp.
+    if (
+      isYtDlpPlatform(target.platform) &&
+      target.platform !== 'reddit' &&
+      target.platform !== 'instagram' &&
+      !this.ytDlpAvailable
+    ) {
       return failure(target.platform, 'binary_missing')
     }
 
@@ -249,6 +257,20 @@ export class SocialPostViewer {
     }
   }
 
+  /** Instagram's logged-out page, which carries the photo posts yt-dlp refuses. Null sends the lookup on to yt-dlp. */
+  private async lookupInstagramPage(target: SocialPostTarget, signal: AbortSignal): Promise<SocialPost | null> {
+    try {
+      const response = await this.fetcher(target.canonicalUrl, { headers: META_PAGE_HEADERS, signal })
+      if (!response.ok) {
+        await response.body?.cancel()
+        return null
+      }
+      return parseInstagramPage(await response.text(), target, this.settings.maxTextChars)
+    } catch {
+      return null
+    }
+  }
+
   private async lookupUncached(target: SocialPostTarget, signal: AbortSignal): Promise<SocialPostLookup> {
     if (target.platform === 'x') {
       const response = await this.fetcher(`https://api.fxtwitter.com/status/${target.id}`, { signal })
@@ -292,6 +314,11 @@ export class SocialPostViewer {
         }
       }
       return { status: 'found', post: parsed.post }
+    }
+
+    if (target.platform === 'instagram') {
+      const page = await this.lookupInstagramPage(target, signal)
+      if (page) return { status: 'found', post: page }
     }
 
     // yt-dlp takes ~9 s to refuse a Reddit post with no hosted video, past the lookup budget; the feed answers

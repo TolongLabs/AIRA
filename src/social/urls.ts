@@ -118,10 +118,11 @@ export function parseSocialPostUrl(value: string): SocialPostTarget | null {
   }
 
   if (platform === 'instagram') {
-    const match = url.pathname.match(/^\/(?:p|reel)\/([\w-]+)\/?$/i)
+    // A link may carry the account before the kind; `/reels/` is the plural of `/reel/`.
+    const match = url.pathname.match(/^\/(?:[\w.]+\/)?(p|reels?)\/([\w-]+)\/?$/i)
     if (!match) return null
-    const [, id = ''] = match
-    const kind = url.pathname.toLowerCase().startsWith('/reel/') ? 'reel' : 'p'
+    const [, rawKind = '', id = ''] = match
+    const kind = rawKind.toLowerCase() === 'p' ? 'p' : 'reel'
     return target('instagram', id, `https://www.instagram.com/${kind}/${id}/`)
   }
 
