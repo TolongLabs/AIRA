@@ -172,8 +172,8 @@ tool's result in plain words: a list for `/help`, `/list` and `/reminders`, one 
 | `forget`          | Forgets one named fact                                                     | both     | `/forget`          | Skill-style | none                 |
 | `history_search`  | Searches what was said in this chat before                                 | both     | `/history`         | Skill-style | none                 |
 | `web_search`      | Searches the web                                                           | both     | `/search`          | Skill-style | `features.search`    |
-| `read_page`       | Opens and reads one web page                                               | both     | `/read`            | Skill-style | `features.search`    |
-| `read_post`       | Opens one social post with its media                                       | both     | `/read`            | Skill-style | `features.social`    |
+| `read_page`       | Opens and reads one web page                                               | implicit | none               |             | `features.search`    |
+| `read_post`       | Opens one social post with its media                                       | implicit | none               |             | `features.social`    |
 | `send_photo`      | Finds one real photo and sends it                                          | both     | `/photo`           | Skill-style | `features.photos`    |
 | `reminder_set`    | Creates one reminder                                                       | both     | `/remind`          | Skill-style | `features.reminders` |
 | `reminder_list`   | Lists this chat's reminders                                                | both     | `/reminders`       | Direct      | `features.reminders` |
@@ -186,7 +186,6 @@ tool's result in plain words: a list for `/help`, `/list` and `/reminders`, one 
 | `help`            | Lists the commands this chat may use                                       | explicit | `/help`            | Direct      | none                 |
 | `list`            | Lists the tools and features switched on                                   | explicit | `/list`            | Direct      | none                 |
 
-- `/read` routes by the address: a social post or a YouTube video goes to `read_post`, anything else to `read_page`.
 - **Not built yet:** `make_report` answers to `/report` and always writes a `.md` file. It takes no format argument,
   so PDF output is not built (src/tools/core/report.ts:33).
 - `make_report` caps the title at 120 characters and the body at 50,000 characters.
@@ -234,8 +233,9 @@ character.
 
 ### Social Post Reader
 
-`read_post` takes one `url`; its argument schema stays unchanged. `/read` routes
-only recognized post URLs to it, Threads short and share links included.
+`read_post` takes one `url`; its argument schema stays unchanged. Only the
+model calls it; no command names it. A post link in a member's message is read
+at intake instead, with its media watched ([Models](models.md#post-links)).
 Profiles, home pages, Facebook posts and other share links use `read_page`.
 Supported platforms are X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram,
 Bilibili and Facebook videos.
