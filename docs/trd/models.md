@@ -353,7 +353,7 @@ unknown (`src/media/link-segments.ts`).
 
 A social post reaches the turn through the reader in
 [Social Post And Reply Readers](#social-post-and-reply-readers). Nine platforms are covered: X, Bluesky, Threads,
-YouTube, TikTok, Reddit, Instagram, Bilibili and Facebook (videos only).
+YouTube, TikTok, Reddit, Instagram, Bilibili and Facebook.
 
 Video from a linked social post is fetched by the social tool and passed through the same watch path as a file. It
 must fit the same size limit and `media.maxVideoSeconds`. A remote audio download over 600 seconds is refused
@@ -427,7 +427,7 @@ Every media failure is contained. The turn continues and answers in character.
 ## Social Post And Reply Readers
 
 Link intake and the social tools read public posts and their replies through one subsystem in `src/social`. It
-covers nine platforms: X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram, Bilibili and Facebook (videos only).
+covers nine platforms: X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram, Bilibili and Facebook.
 
 ![How a shared link is normalised, fetched per platform, and cached](../diagrams/social-readers.svg)
 
@@ -435,26 +435,29 @@ covers nine platforms: X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram, 
   fixed host list and an id pattern, and yields a canonical URL, an extractor URL and a lookup key. The Bluesky key
   carries the profile; the YouTube target carries the start offset from rule 7 of Media Watching. Threads also takes
   its short link (`/t/<code>`) and its share link (`/share/<id>`); both redirect to the post. Instagram also takes
-  `/reels/<code>` and the account name before `/p/` or `/reel/`. Facebook is taken only by its video links:
-  `/share/v/<id>`, `/share/r/<id>`, `/reel/<id>`, `/watch?v=<id>`, `/<page>/videos/<id>` and `fb.watch/<id>`. A
-  Facebook post link stays with `read_page`.
+  `/reels/<code>` and the account name before `/p/` or `/reel/`. Facebook takes its video links
+  (`/share/v/<id>`, `/share/r/<id>`, `/reel/<id>`, `/watch?v=<id>`, `/<page>/videos/<id>`, `fb.watch/<id>`) and its
+  post links (`/share/p/<id>`, `/groups/<group>/permalink/<id>`, `/groups/<group>/posts/<id>`, `/<page>/posts/<id>`,
+  `/permalink.php?story_fbid=<id>`).
 - **Post dispatch.** X is read through the fxtwitter API, Bluesky through its public API after handle-to-DID
   resolution (video comes from the author's data server when found), and Threads through its logged-out page, which
   holds only the first batch of replies. Instagram is read from its logged-out post page first, which carries the
   post in the same Meta shape as Threads (`xig_polaris_media`); when the page holds no post (gated, removed or
   refused), yt-dlp reads it. Reddit is read through its RSS feed first: a refused feed (403 or 429) is reported, and
-  a feed with no video is returned without calling yt-dlp. Facebook and every other platform are read through
-  yt-dlp. When yt-dlp fails on YouTube, the oEmbed endpoint still returns the title and author.
+  a feed with no video is returned without calling yt-dlp. A Facebook post link is read from its logged-out page:
+  the post's text, author, date and photos (`all_subattachments`, each photo's `viewer_image`); when the page holds
+  no post, or the post is a video, yt-dlp reads it. A Facebook video link and every other platform are read through yt-dlp. When yt-dlp fails on YouTube, the oEmbed endpoint still returns the title and author.
 - **Photos.** A post keeps every photo of its own, in order, up to `MAX_POST_PHOTOS` (20): X's photos, Bluesky's
-  images, and the photo items of a Threads or Instagram carousel. Its one picture (`imageUrl`) is separate: the first photo, else
+  images, the photo items of a Threads or Instagram carousel, and a Facebook post's photos. Its one picture (`imageUrl`) is separate: the first photo, else
   a video's thumbnail or the link card's image. Threads is read from the page's embedded post data, never its
   `og:image`, which for a post with no image is the author's profile picture. A post read through yt-dlp keeps no
   photos, only the thumbnail yt-dlp reports as its one picture.
 - **Threads thread.** A Threads post that continues a thread carries the earlier posts the page holds for it
   (`containing_thread`), oldest first, at most 3: author, text and photos.
 - **Safe fetching.** The shared fetcher rejects forbidden and non-public addresses and never follows redirects, so
-  a redirect cannot smuggle in a private host. The one exception is a Threads short or share link: its one redirect
-  is read, its `Location` must parse as a Threads post link, and that post is fetched through the same fetcher. Any
+  a redirect cannot smuggle in a private host. The exceptions are a Threads short or share link and a Facebook post's
+  share link: the one redirect is read, its `Location` must parse as a post link of the same platform, and that post
+  is fetched through the same fetcher. Any
   other redirect fails the lookup. yt-dlp runs in a fresh temporary home with an isolated environment,
   and its output is capped at 2 MiB. When the binary is missing, lookups fail as `binary_missing`.
 - **Post cache.** Successful lookups are cached by lookup key with a time limit and an entry cap; a time limit of 0
