@@ -12,7 +12,9 @@ import {
 import {
   createRealOps,
   DOCKER_PULL_ATTEMPTS,
+  DOCKER_PULL_BUDGET_MS,
   DOCKER_PULL_TIMEOUT_MS,
+  type RunOptions,
   SYNTHETIC_TURN_TIMEOUT_MS
 } from '../../scripts/updater/ops.js'
 import type { DeployRecord } from '../../scripts/updater/update.js'
@@ -225,10 +227,9 @@ describe('runDeployHost', () => {
     expect(alerts[0]).toContain('synthetic_turn_failed')
   })
 
-  it('a stalled pull ends the deploy as pull_failed with the core untouched', async () => {
-    vi.useFakeTimers()
-    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
-
+  function createRealPullHarness(
+    onPull: (attempt: number, options?: RunOptions) => Promise<{ code: number; stdout: string; stderr: string }>
+  ) {
     const dir = tmpDir()
     const envFile = join(dir, '.env')
     const recordFile = join(dir, 'deploys.jsonl')
@@ -236,8 +237,10 @@ describe('runDeployHost', () => {
     writeFileSync(envFile, initialEnv, 'utf8')
 
     const commands: string[][] = []
+    const pullTimeouts: (number | undefined)[] = []
     const alerts: string[] = []
     let healthCall = 0
+    let pullAttempt = 0
 
     const baseOps = createRealOps({
       image: 'ghcr.io/tolonglabs/aira',
@@ -256,17 +259,16 @@ describe('runDeployHost', () => {
           }
         }
         if (args[0] === 'pull') {
-          return new Promise((resolve) => {
-            options?.signal?.addEventListener(
-              'abort',
-              () => resolve({ code: 1, stdout: '', stderr: 'killed by SIGTERM' }),
-              { once: true }
-            )
-          })
+          pullAttempt += 1
+          pullTimeouts.push(options?.timeoutMs)
+          return onPull(pullAttempt, options)
         }
         return { code: 0, stdout: '', stderr: '' }
       },
-      fetch: (async () => {
+      fetch: (async (input: string | URL | Request) => {
+        if (String(input).endsWith('/v1/chat/completions')) {
+          return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), { status: 200 })
+        }
         healthCall += 1
         return new Response(
           JSON.stringify({ status: 'ready', activeTurns: 0, snapshot: { id: healthCall, state: 'verified' } }),
@@ -275,27 +277,49 @@ describe('runDeployHost', () => {
       }) as typeof fetch
     })
 
+    const writeEnv = vi.fn((version: string) => writeInstallEnv(envFile, 'ghcr.io/tolonglabs/aira', version))
+
     const ops: DeployHostOps = {
       ...baseOps,
-      writeEnv: (version) => writeInstallEnv(envFile, 'ghcr.io/tolonglabs/aira', version),
+      writeEnv,
       alert: async (message) => {
         alerts.push(message)
       }
     }
 
-    const resultPromise = runDeployHost(ops, defaultConfig)
-    for (let attempt = 0; attempt < DOCKER_PULL_ATTEMPTS; attempt += 1) {
-      await vi.advanceTimersByTimeAsync(DOCKER_PULL_TIMEOUT_MS + 6_000)
-    }
-    const result = await resultPromise
-    expect(commands.filter((args) => args[0] === 'pull')).toHaveLength(DOCKER_PULL_ATTEMPTS)
+    return { ops, envFile, recordFile, initialEnv, commands, pullTimeouts, alerts, writeEnv }
+  }
 
+  it('a stalled pull ends the deploy as pull_failed with the core untouched', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+
+    const { ops, envFile, recordFile, initialEnv, commands, pullTimeouts, alerts, writeEnv } = createRealPullHarness(
+      (_attempt, options) =>
+        new Promise((resolve) => {
+          options?.signal?.addEventListener(
+            'abort',
+            () => resolve({ code: 1, stdout: '', stderr: 'killed by SIGTERM' }),
+            { once: true }
+          )
+        })
+    )
+
+    const resultPromise = runDeployHost(ops, defaultConfig)
+    await vi.advanceTimersByTimeAsync(DOCKER_PULL_TIMEOUT_MS + 6_000)
+    await vi.advanceTimersByTimeAsync(DOCKER_PULL_BUDGET_MS)
+    const result = await resultPromise
+
+    expect(commands.filter((args) => args[0] === 'pull')).toHaveLength(2)
+    expect(pullTimeouts[0]).toBe(DOCKER_PULL_TIMEOUT_MS)
+    expect(pullTimeouts[1]).toBeGreaterThan(DOCKER_PULL_BUDGET_MS - DOCKER_PULL_TIMEOUT_MS - 10_000)
     expect(result).toEqual({
       action: 'failed',
       from: 'sha-0000001',
       to: 'sha-1234567',
       reason: 'pull_failed'
     })
+    expect(writeEnv).not.toHaveBeenCalled()
     expect(commands.some((args) => args.includes('up'))).toBe(false)
     expect(readFileSync(envFile, 'utf8')).toBe(initialEnv)
     const savedRecord = JSON.parse(readFileSync(recordFile, 'utf8').trim()) as DeployRecord
@@ -307,6 +331,81 @@ describe('runDeployHost', () => {
     })
     expect(alerts).toHaveLength(1)
     expect(alerts[0]).toContain('pull failed')
+  })
+
+  it('a pull that needs 15 minutes succeeds on the second attempt, after the short first one', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+
+    const fifteenMinutesMs = 15 * 60_000
+    const { ops, envFile, commands, pullTimeouts } = createRealPullHarness(
+      (_attempt, options) =>
+        new Promise((resolve) => {
+          const timer = setTimeout(() => resolve({ code: 0, stdout: '', stderr: '' }), fifteenMinutesMs)
+          options?.signal?.addEventListener(
+            'abort',
+            () => {
+              clearTimeout(timer)
+              resolve({ code: 1, stdout: '', stderr: 'killed by SIGTERM' })
+            },
+            { once: true }
+          )
+        })
+    )
+
+    const resultPromise = runDeployHost(ops, defaultConfig)
+    await vi.advanceTimersByTimeAsync(DOCKER_PULL_TIMEOUT_MS + 6_000)
+    await vi.advanceTimersByTimeAsync(fifteenMinutesMs)
+    const result = await resultPromise
+
+    expect(result).toEqual({
+      action: 'deployed',
+      from: 'sha-0000001',
+      to: 'sha-1234567'
+    })
+    expect(commands.filter((args) => args[0] === 'pull')).toHaveLength(2)
+    expect(pullTimeouts[0]).toBe(DOCKER_PULL_TIMEOUT_MS)
+    expect(readFileSync(envFile, 'utf8')).toContain('AIRA_VERSION=sha-1234567')
+  })
+
+  it('after the budget is spent, no further attempt starts and it fails as pull_failed before .env', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+
+    const firstAttemptMs = 2 * 60_000
+    const remainingMs = DOCKER_PULL_BUDGET_MS - firstAttemptMs
+    const { ops, envFile, initialEnv, commands, pullTimeouts, writeEnv } = createRealPullHarness((attempt, options) => {
+      if (attempt === 1) {
+        return new Promise((resolve) => {
+          setTimeout(() => resolve({ code: 1, stdout: '', stderr: 'connection reset' }), firstAttemptMs)
+        })
+      }
+      return new Promise((resolve) => {
+        options?.signal?.addEventListener(
+          'abort',
+          () => resolve({ code: 1, stdout: '', stderr: 'killed by SIGTERM' }),
+          { once: true }
+        )
+      })
+    })
+
+    const resultPromise = runDeployHost(ops, defaultConfig)
+    await vi.advanceTimersByTimeAsync(firstAttemptMs)
+    await vi.advanceTimersByTimeAsync(remainingMs + 6_000)
+    const result = await resultPromise
+
+    expect(pullTimeouts).toEqual([DOCKER_PULL_TIMEOUT_MS, remainingMs])
+    expect(commands.filter((args) => args[0] === 'pull')).toHaveLength(2)
+    expect(commands.filter((args) => args[0] === 'pull').length).toBeLessThan(DOCKER_PULL_ATTEMPTS)
+    expect(result).toEqual({
+      action: 'failed',
+      from: 'sha-0000001',
+      to: 'sha-1234567',
+      reason: 'pull_failed'
+    })
+    expect(writeEnv).not.toHaveBeenCalled()
+    expect(readFileSync(envFile, 'utf8')).toBe(initialEnv)
+    expect(commands.some((args) => args.includes('up'))).toBe(false)
   })
 
   it('a synthetic turn that never answers counts as failed and rolls back', async () => {

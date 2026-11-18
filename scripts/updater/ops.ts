@@ -3,9 +3,15 @@ import { appendFile, mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { DeployRecord, Release, UpdaterOps } from './update.js'
 
-/** One pull attempt. A fresh tag sometimes stalls on its first connection; a new attempt usually finishes quickly. */
+/**
+ * Shared pull budget across all attempts for one deploy. dev2 pulls at 1 to 2 MB/s (measured: 428 s, 554 s and 907 s
+ * for three images), and the deploy job caps at 30 minutes, so a 20-minute budget covers full pulls while leaving
+ * headroom for the rest of the deploy.
+ */
+export const DOCKER_PULL_BUDGET_MS = 20 * 60_000
+/** The first attempt only. A fresh tag sometimes stalls on its first connection; a new attempt usually goes through. */
 export const DOCKER_PULL_TIMEOUT_MS = 3 * 60_000
-/** Attempts per deploy, so a pull gives up after at most 9 minutes. */
+/** Maximum pull attempts sharing {@link DOCKER_PULL_BUDGET_MS}. */
 export const DOCKER_PULL_ATTEMPTS = 3
 export const DOCKER_TIMEOUT_MS = 90_000
 export const KILL_GRACE_MS = 5_000
@@ -286,17 +292,24 @@ export function createRealOps(options: RealOpsOptions): UpdaterOps {
     },
 
     async pull(version: string): Promise<void> {
+      const deadline = Date.now() + DOCKER_PULL_BUDGET_MS
       let lastError: unknown
       for (let attempt = 1; attempt <= DOCKER_PULL_ATTEMPTS; attempt += 1) {
+        const remainingMs = deadline - Date.now()
+        if (remainingMs <= 0) break
+        // The first attempt is short, so a stalled first connection retries quickly; later ones get the time left.
+        const timeoutMs = attempt === 1 ? Math.min(DOCKER_PULL_TIMEOUT_MS, remainingMs) : remainingMs
         try {
-          await execChecked(run, 'docker', ['pull', `${options.image}:${version}`])
+          await execChecked(run, 'docker', ['pull', `${options.image}:${version}`], undefined, timeoutMs)
           return
         } catch (error) {
           lastError = error
-          if (attempt < DOCKER_PULL_ATTEMPTS) process.stdout.write(`deploy: pull attempt ${attempt} failed, retrying\n`)
+          if (attempt < DOCKER_PULL_ATTEMPTS && deadline - Date.now() > 0) {
+            process.stdout.write(`deploy: pull attempt ${attempt} failed, retrying\n`)
+          }
         }
       }
-      throw lastError
+      throw lastError ?? new Error('docker pull budget exhausted')
     },
 
     async start(version: string): Promise<void> {
