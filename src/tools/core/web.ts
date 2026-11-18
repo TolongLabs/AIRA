@@ -67,15 +67,9 @@ export function readPageTool(ports: ToolPorts): ToolDefinition<z.infer<typeof ur
     name: 'read_page',
     description: 'Opens and reads one web page.',
     schema: urlSchema,
-    mode: 'both',
+    mode: 'implicit',
     mutates: false,
     feature: 'features.search',
-    command: {
-      names: ['read'],
-      kind: 'skill',
-      usage: '/read <url>',
-      route: (rest) => (parseSocialPostUrl(rest.trim().split(/\s+/)[0] ?? '') ? 'read_post' : undefined)
-    },
     async handler(args, context) {
       if (isForbiddenUrl(args.url)) {
         return { ok: false, kind: 'refused', reason: 'forbidden address' }
@@ -101,7 +95,7 @@ export function readPostTool(ports: ToolPorts): ToolDefinition<z.infer<typeof ur
     name: 'read_post',
     description: 'Opens one social post with its media.',
     schema: urlSchema,
-    mode: 'both',
+    mode: 'implicit',
     mutates: false,
     feature: 'features.social',
     async handler(args, context) {

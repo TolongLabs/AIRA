@@ -71,8 +71,6 @@ export interface ToolCommand {
   usage: string
   /** For a direct command: the tool's arguments from the command name used and the rest of the message. */
   directArgs?: (name: string, rest: string) => unknown
-  /** Names another tool that this message belongs to instead, such as a social address given to `/read`. */
-  route?: (rest: string) => string | undefined
 }
 
 export interface ToolDefinition<Args = unknown> {

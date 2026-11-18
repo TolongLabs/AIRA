@@ -283,13 +283,9 @@ describe('core tools', () => {
       data: { author: 'author1', text: 'Post from https://x.com/user/status/1', media: ['https://example.com/m.jpg'] }
     })
 
-    const readDef = registry.get('read_page')
-    expect(readDef?.command?.route?.('https://x.com/user/status/1')).toBe('read_post')
-    expect(readDef?.command?.route?.('https://sub.reddit.com/r/test')).toBeUndefined()
-    expect(readDef?.command?.route?.('https://x.com/home')).toBeUndefined()
-    expect(readDef?.command?.route?.('https://facebook.com/example_user/posts/1')).toBeUndefined()
-    expect(readDef?.command?.route?.('https://threads.com/@example_user/post/Example123')).toBe('read_post')
-    expect(readDef?.command?.route?.('https://example.com/article')).toBeUndefined()
+    // No command names either reader: a link in a message is read at intake.
+    expect(registry.get('read_page')?.command).toBeUndefined()
+    expect(registry.get('read_post')?.command).toBeUndefined()
 
     for (const badUrl of ['http://127.0.0.1/', 'http://192.168.1.10/admin', 'file:///etc/passwd']) {
       expect(

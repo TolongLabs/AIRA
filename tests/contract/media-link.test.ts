@@ -1126,14 +1126,13 @@ describe('turn pipeline link intake and media switch', () => {
     expect(capturedMedia[1]).toContain('Text for 444')
   })
 
-  it('skips link intake when /read routes to read_post or read_page', async () => {
+  it('reads the link of a /read message at intake, as /read is no longer a command', async () => {
     const { core, seenLookups, capturedMedia } = await startPipelineTest({ withReadCommand: true })
 
     await core.gateway.send(msg('m-1', '/read https://x.com/testuser/status/555'))
-    await core.gateway.send(msg('m-2', '/read https://example.com/article https://x.com/testuser/status/666'))
 
-    expect(seenLookups).toEqual([])
-    expect(capturedMedia).toEqual([undefined, undefined])
+    expect(seenLookups.map((target) => target.id)).toEqual(['555'])
+    expect(capturedMedia[0]).toBeDefined()
   })
 
   it('honours features.media and features.social switches for files, YouTube links, and social post links', async () => {

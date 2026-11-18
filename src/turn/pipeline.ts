@@ -431,8 +431,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         ...newestFirst.map((message) => message.content),
         ...newestFirst.flatMap((message) => (message.quote?.text ? [message.quote.text] : []))
       ].filter((entry) => entry.trim().length > 0)
-      const skipLinks = commands.some((command) => command.tool === 'read_post' || command.tool === 'read_page')
-      const shouldReadLinks = deps.media !== undefined && !skipLinks && (mediaOn || socialOn) && linkTexts.length > 0
+      const shouldReadLinks = deps.media !== undefined && (mediaOn || socialOn) && linkTexts.length > 0
 
       if (deps.media && (files.length > 0 || shouldReadLinks)) {
         const combined: TurnMediaResult = { readings: [], unreadable: [], calls: [] }

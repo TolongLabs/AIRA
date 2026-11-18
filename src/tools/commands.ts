@@ -161,15 +161,9 @@ export function createCommandRouter(
         if (!item) continue
         const nextStart = candidates[index + 1]?.tokenStart ?? text.length
         const rest = text.slice(item.tokenEnd, nextStart).trim()
-        let tool = item.entry.tool
+        const tool = item.entry.tool
         const definition = registry.get(tool)
-        const routed = definition?.command?.route?.(rest)
-        if (routed !== undefined && routed !== tool) {
-          if (!registry.enabled(routed, context)) continue
-          tool = routed
-        }
-        const target = registry.get(tool)
-        const kind = target === definition ? item.entry.kind : (target?.command?.kind ?? 'skill')
+        const kind = item.entry.kind
         matches.push({
           name: item.name,
           tool,
