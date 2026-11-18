@@ -236,9 +236,9 @@ character.
 `read_post` takes one `url`; its argument schema stays unchanged. Only the
 model calls it; no command names it. A post link in a member's message is read
 at intake instead, with its media watched ([Models](models.md#post-links)).
-Profiles, home pages, Facebook posts and other share links use `read_page`.
-Supported platforms are X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram,
-Bilibili and Facebook videos.
+Profiles, home pages and other share links use `read_page`. Supported platforms
+are X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram, Bilibili and
+Facebook.
 
 The result keeps `author`, `text` and `media` URLs, and adds `platform`, `handle`,
 `createdAt`, `quotedText`, `replyCount`, `canonicalUrl`, `durationSec`, `thread`
