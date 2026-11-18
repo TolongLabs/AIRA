@@ -1,6 +1,7 @@
 import { isIP } from 'node:net'
 
-export type SocialPlatform = 'x' | 'bluesky' | 'youtube' | 'tiktok' | 'reddit' | 'instagram' | 'bilibili' | 'threads'
+export type SocialPlatform =
+  'x' | 'bluesky' | 'youtube' | 'tiktok' | 'reddit' | 'instagram' | 'bilibili' | 'threads' | 'facebook'
 
 export interface SocialPostTarget {
   platform: SocialPlatform
@@ -20,7 +21,8 @@ const HOSTS: Record<SocialPlatform, string[]> = {
   reddit: ['reddit.com', 'redd.it'],
   instagram: ['instagram.com'],
   bilibili: ['bilibili.com'],
-  threads: ['threads.com', 'threads.net']
+  threads: ['threads.com', 'threads.net'],
+  facebook: ['facebook.com', 'fb.watch']
 }
 
 function hostMatches(host: string, domain: string): boolean {
@@ -48,6 +50,33 @@ function youtubeStartSec(url: URL): number | undefined {
   if (!match || match.slice(1).every((part) => part === undefined)) return undefined
   const [, hours = '0', minutes = '0', seconds = '0'] = match
   return Number(hours) * 3600 + Number(minutes) * 60 + Number(seconds)
+}
+
+/** Facebook by its video links only; a post link is left to read_page, as yt-dlp reads no photo post. */
+function facebookTarget(host: string, url: URL): SocialPostTarget | null {
+  if (hostMatches(host, 'fb.watch')) {
+    const id = url.pathname.match(/^\/([\w-]+)\/?$/)?.[1]
+    return id ? { ...target('facebook', id, `https://fb.watch/${id}/`), lookupKey: `facebook:watch:${id}` } : null
+  }
+  // A share id is not a video id, so its key keeps the two apart; yt-dlp follows the share link itself.
+  const share = url.pathname.match(/^\/share\/([vr])\/([\w-]+)\/?$/)
+  if (share) {
+    const [, kind = '', id = ''] = share
+    return {
+      ...target('facebook', id, `https://www.facebook.com/share/${kind}/${id}/`),
+      lookupKey: `facebook:share:${id}`
+    }
+  }
+  const reel = url.pathname.match(/^\/reel\/(\d+)\/?$/)?.[1]
+  if (reel) return target('facebook', reel, `https://www.facebook.com/reel/${reel}`)
+  const watch = /^\/watch\/?$/.test(url.pathname) ? url.searchParams.get('v') : null
+  if (watch && /^\d+$/.test(watch)) return target('facebook', watch, `https://www.facebook.com/watch/?v=${watch}`)
+  const video = url.pathname.match(/^\/([\w.-]+)\/videos\/(?:[\w.-]+\/)?(\d+)\/?$/)
+  if (video) {
+    const [, page = '', id = ''] = video
+    return target('facebook', id, `https://www.facebook.com/${page}/videos/${id}/`)
+  }
+  return null
 }
 
 export function parseSocialPostUrl(value: string): SocialPostTarget | null {
@@ -125,6 +154,8 @@ export function parseSocialPostUrl(value: string): SocialPostTarget | null {
     const kind = rawKind.toLowerCase() === 'p' ? 'p' : 'reel'
     return target('instagram', id, `https://www.instagram.com/${kind}/${id}/`)
   }
+
+  if (platform === 'facebook') return facebookTarget(host, url)
 
   if (platform === 'threads') {
     const short = url.pathname.match(/^\/t\/([\w-]+)\/?$/)?.[1]
