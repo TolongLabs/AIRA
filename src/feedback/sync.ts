@@ -2,13 +2,15 @@ import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 import type { Logger } from '../records/logger.js'
 import type { Redactor } from '../records/redact.js'
+import { endJobRun, startJobRun } from '../records/turn-record.js'
 import type { Storage } from '../storage/database.js'
 import { insertFailure } from '../storage/failures.js'
 import { classifyFeedbackSubmission, type FeedbackSubmission, feedbackCursor, hasOpenFeedback } from './store.js'
 
 const BATCH_LIMIT = 100
 const TIMEOUT_MS = 10_000
-const MAX_RESPONSE_BYTES = 1024 * 1024
+// A full batch can contain more than 5 MiB when JSON escapes characters as six bytes each.
+const MAX_RESPONSE_BYTES = 6 * 1024 * 1024
 const MAX_REDIRECTS = 5
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
 
@@ -141,12 +143,13 @@ async function fetchBatch(options: FeedbackSyncOptions, cursor: number, fetcher:
     }
     if (next.protocol !== 'https:') throw new SyncFailure('invalid_request')
 
-    endpoint = next
     if (response.status === 303 || ((response.status === 301 || response.status === 302) && method === 'POST')) {
       method = 'GET'
       headers = undefined
       body = undefined
     }
+    if (body !== undefined && next.origin !== endpoint.origin) throw new SyncFailure('invalid_request')
+    endpoint = next
   }
 
   if (!response.ok) throw new SyncFailure('http')
@@ -171,23 +174,23 @@ export function createFeedbackSync(options: FeedbackSyncOptions): FeedbackSync {
   let inFlight: Promise<void> | undefined
 
   const run = async (): Promise<void> => {
-    if (!options.enabled() || options.url === '' || options.secret === '') return
-    const startedAt = now().toISOString()
-    if (!options.storage.read((db) => hasOpenFeedback(db, startedAt))) return
-
+    if (options.url === '' || options.secret === '') return
     const jobId = `feedback_${randomBytes(6).toString('hex')}`
-    const runId = options.storage.tx((db) => {
-      const result = db
-        .prepare("INSERT INTO job_run (kind, job_id, started_at) VALUES ('feedback_sync', ?, ?)")
-        .run(jobId, startedAt)
-      return Number(result.lastInsertRowid)
-    })
-
-    let counts = { rows: 0, received: 0, rejected: 0, replayed: 0 }
+    let runId: number | undefined
+    let readingRemote = false
+    const counts = { rows: 0, received: 0, rejected: 0, replayed: 0 }
     try {
+      if (!options.enabled()) return
+      const startedAt = now().toISOString()
+      if (!options.storage.read((db) => hasOpenFeedback(db, startedAt))) return
+
+      const id = options.storage.tx((db) => startJobRun(db, { kind: 'feedback_sync', jobId }, now))
+      runId = id
       const cursor = options.storage.read((db) => feedbackCursor(db))
+      readingRemote = true
       const rows = await fetchBatch(options, cursor, fetcher)
-      counts = { ...counts, rows: rows.length }
+      readingRemote = false
+      counts.rows = rows.length
       for (const row of rows) {
         const classification = options.storage.tx((db) =>
           classifyFeedbackSubmission(db, row, { nowIso: now().toISOString(), jobId })
@@ -196,26 +199,14 @@ export function createFeedbackSync(options: FeedbackSyncOptions): FeedbackSync {
         else if (classification === 'rejected') counts.rejected += 1
         else counts.replayed += 1
       }
-      const endedAt = now().toISOString()
-      options.storage.tx((db) => {
-        db.prepare("UPDATE job_run SET ended_at = ?, outcome = 'ok', counts = ? WHERE id = ?").run(
-          endedAt,
-          JSON.stringify(counts),
-          runId
-        )
-      })
+      options.storage.tx((db) => endJobRun(db, id, { outcome: 'ok', counts }, now))
       log.info('feedback.synced', { jobId, ...counts })
     } catch (error) {
-      const reason = failureReason(error)
-      const endedAt = now().toISOString()
+      const reason = readingRemote ? failureReason(error) : 'storage'
       const message = options.redactor.scrub(`feedback sync failed: ${reason}`)
       try {
         options.storage.tx((db) => {
-          db.prepare("UPDATE job_run SET ended_at = ?, outcome = 'failed', counts = ? WHERE id = ?").run(
-            endedAt,
-            JSON.stringify(counts),
-            runId
-          )
+          if (runId !== undefined) endJobRun(db, runId, { outcome: 'failed', counts }, now)
           insertFailure(
             db,
             {
@@ -225,7 +216,7 @@ export function createFeedbackSync(options: FeedbackSyncOptions): FeedbackSync {
               message,
               handledBy: 'feedback_sync'
             },
-            () => new Date(endedAt)
+            now
           )
         })
       } catch (recordError) {

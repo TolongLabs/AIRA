@@ -109,9 +109,11 @@ same ids again. `pruneRecords` in `src/records/retention.ts` takes an optional `
 the same transaction with each table's rows before deletion, so an archive job can export them first.
 
 Feedback answers are the exception to archival. The daily job marks unused references expired after
-`feedback.refTtlHours` and sets `answers` to null `records.feedbackDays` after receipt. Answers never enter Parquet or
-the off-host archive. The referenced turn metadata remains governed by the existing turn-record policy. SQLite
-`secure_delete` applies when answers are cleared.
+`feedback.refTtlHours` and sets `answers` to null `records.feedbackDays` after receipt. Answers never enter Parquet.
+SQLite `secure_delete` applies when answers are cleared in the live database. Database snapshots
+follow their own retention schedule. The referenced turn metadata follows the turn-record policy. When a turn is
+pruned, stored tool results and receipts keep their call ids with their turn links cleared. The newest window row also
+keeps its cursor id when its turn is pruned.
 
 ## Operator Views
 
