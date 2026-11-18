@@ -112,8 +112,9 @@ Feedback answers are the exception to archival. The daily job marks unused refer
 `feedback.refTtlHours` and sets `answers` to null `records.feedbackDays` after receipt. Answers never enter Parquet.
 SQLite `secure_delete` applies when answers are cleared in the live database. Database snapshots
 follow their own retention schedule. The referenced turn metadata follows the turn-record policy. When a turn is
-pruned, stored tool results and receipts keep their call ids with their turn links cleared. The newest window row also
-keeps its cursor id when its turn is pruned.
+pruned, stored tool results and receipts keep their call ids with their turn links cleared. The newest window row keeps
+its cursor id. If it is a user message with a turn link, that turn stays until a newer row arrives, so the message does
+not become pending again.
 
 ## Operator Views
 
