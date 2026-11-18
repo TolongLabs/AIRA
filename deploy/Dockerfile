@@ -1,13 +1,20 @@
 # Pin base image digests before the first release.
 FROM oven/bun:1-slim AS bun
 
+# The manifest the dependency install sees: package.json without its version or the husky prepare script, so a
+# release bump leaves the dependency layer as it was (docs/trd/deployment.md#release-image).
+FROM node:24-slim AS deps-manifest
+WORKDIR /m
+COPY package.json ./
+RUN node -e "const fs=require('node:fs'),p=JSON.parse(fs.readFileSync('package.json','utf8'));delete p.version;if(p.scripts)delete p.scripts.prepare;fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
+
 FROM node:24-slim AS prod-deps
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 ENV HUSKY=0
 WORKDIR /repo
-COPY package.json bun.lock ./
-RUN node -e "const fs=require('node:fs'),p=JSON.parse(fs.readFileSync('package.json','utf8'));if(p.scripts)delete p.scripts.prepare;fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')" \
-    && bun install --frozen-lockfile --production
+COPY --from=deps-manifest /m/package.json ./package.json
+COPY bun.lock ./
+RUN bun install --frozen-lockfile --production
 
 FROM node:24-slim AS build
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
