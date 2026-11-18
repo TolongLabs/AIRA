@@ -271,6 +271,27 @@ describe('feedback persistence and sync', () => {
     ).toBe(0)
   })
 
+  it('records a preflight storage failure and recovers on the next poll', async () => {
+    const storage = tmpStorage()
+    const report = openReport(storage)
+    vi.spyOn(storage, 'read').mockImplementationOnce(() => {
+      throw new Error('test preflight failure')
+    })
+    const fetcher = vi.fn<typeof fetch>(async () => Response.json({ rows: [row(1, report.reference)], after: 1 }))
+    const sync = syncHarness(storage, { url: 'https://feedback.invalid/exec', fetch: fetcher })
+
+    await sync.tick()
+    expect(fetcher).not.toHaveBeenCalled()
+    expect(storage.read(feedbackCursor)).toBe(0)
+    expect(
+      storage.read((db) => db.prepare("SELECT message FROM failure WHERE kind = 'feedback_sync_failed'").pluck().get())
+    ).toBe('feedback sync failed: storage')
+
+    await sync.tick()
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    expect(storage.read(feedbackCursor)).toBe(1)
+  })
+
   it('refuses to send the shared secret to a non-TLS endpoint', async () => {
     const storage = tmpStorage()
     openReport(storage)
@@ -285,23 +306,28 @@ describe('feedback persistence and sync', () => {
     ).toBe(1)
   })
 
-  it('refuses an HTTPS redirect that would carry the secret to HTTP', async () => {
-    const storage = tmpStorage()
-    openReport(storage)
-    const destinations: string[] = []
-    const fetcher = vi.fn<typeof fetch>(async (input) => {
-      destinations.push(String(input))
-      return new Response(null, { status: 307, headers: { location: 'http://feedback.invalid/leak' } })
-    })
+  it.each(['http://feedback.invalid/redirect', 'https://other-origin.invalid/redirect'])(
+    'refuses a body-preserving redirect to %s',
+    async (location) => {
+      const storage = tmpStorage()
+      openReport(storage)
+      const destinations: string[] = []
+      const fetcher = vi.fn<typeof fetch>(async (input) => {
+        destinations.push(String(input))
+        return new Response(null, { status: 307, headers: { location } })
+      })
 
-    await syncHarness(storage, { url: 'https://feedback.invalid/exec', fetch: fetcher }).tick()
+      await syncHarness(storage, { url: 'https://feedback.invalid/exec', fetch: fetcher }).tick()
 
-    expect(destinations).toEqual(['https://feedback.invalid/exec'])
-    expect(storage.read(feedbackCursor)).toBe(0)
-    expect(
-      storage.read((db) => db.prepare("SELECT count(*) FROM failure WHERE kind = 'feedback_sync_failed'").pluck().get())
-    ).toBe(1)
-  })
+      expect(destinations).toEqual(['https://feedback.invalid/exec'])
+      expect(storage.read(feedbackCursor)).toBe(0)
+      expect(
+        storage.read((db) =>
+          db.prepare("SELECT count(*) FROM failure WHERE kind = 'feedback_sync_failed'").pluck().get()
+        )
+      ).toBe(1)
+    }
+  )
 
   it('follows an HTTPS 303 as GET without forwarding the secret body', async () => {
     const storage = tmpStorage()
@@ -338,6 +364,37 @@ describe('feedback persistence and sync', () => {
         db.prepare('SELECT state FROM feedback_report WHERE report_id = ?').pluck().get(report.reportId)
       )
     ).toBe('received')
+  })
+
+  it('advances past a full batch at the maximum answer sizes', async () => {
+    const storage = tmpStorage()
+    const report = openReport(storage)
+    const longAnswer = '\u0001'.repeat(4000)
+    const shortAnswer = '\u0001'.repeat(200)
+    const script = await startScript(({ limit }) => ({
+      rows: Array.from({ length: limit }, (_, index) => ({
+        ...row(index + 1, index + 1 === limit ? report.reference : '0000000000'),
+        answers: {
+          whatWentWrong: longAnswer,
+          expected: longAnswer,
+          kind: shortAnswer,
+          when: shortAnswer,
+          severity: shortAnswer
+        }
+      })),
+      after: limit
+    }))
+    try {
+      await syncHarness(storage, { url: script.url, fetch: script.fetch }).tick()
+      expect(storage.read(feedbackCursor)).toBe(100)
+      expect(
+        storage.read((db) =>
+          db.prepare('SELECT form_seq FROM feedback_report WHERE report_id = ?').pluck().get(report.reportId)
+        )
+      ).toBe(100)
+    } finally {
+      await script.close()
+    }
   })
 
   it('does not advance past a row whose transaction fails', async () => {
@@ -429,6 +486,19 @@ describe('feedback persistence and sync', () => {
     const storage = tmpStorage()
     const report = openReport(storage)
     storage.tx((db) => {
+      const turnId = 'chat-feedback-command-subject-feedback'
+      db.prepare(
+        `INSERT INTO tool_result (call_id, turn_id, chat_id, tool, result, created_at)
+         VALUES ('feedback-call', ?, 'chat-feedback', 'feedback_link', '{}', ?)`
+      ).run(turnId, NOW)
+      db.prepare(
+        `INSERT INTO receipt (receipt_id, call_id, turn_id, chat_id, tool, kind, target, created_at)
+         VALUES ('feedback-receipt', 'feedback-call', ?, 'chat-feedback', 'feedback_link', 'feedback.opened', ?, ?)`
+      ).run(turnId, report.reportId, NOW)
+      db.prepare(
+        `INSERT INTO session_message (turn_id, chat_id, role, content, created_at)
+         VALUES (?, 'chat-feedback', 'assistant', 'test reply', ?)`
+      ).run(turnId, NOW)
       db.prepare(
         `UPDATE feedback_report SET state = 'received', form_seq = 1, answers = '{}', received_at = ?
          WHERE report_id = ?`
@@ -449,6 +519,10 @@ describe('feedback persistence and sync', () => {
     expect(result.counts.turn).toBeGreaterThan(0)
     expect(result.counts.feedback_answers).toBe(1)
     expect(archivedTables).not.toContain('feedback_report')
+    for (const table of ['receipt', 'tool_result', 'session_message']) {
+      expect(storage.read((db) => db.prepare(`SELECT turn_id FROM ${table}`).all())).toEqual([{ turn_id: null }])
+    }
+    expect(() => storage.check()).not.toThrow()
     expect(
       storage.read((db) =>
         db.prepare('SELECT report_id, turn_id, answers FROM feedback_report WHERE report_id = ?').get(report.reportId)
