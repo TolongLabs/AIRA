@@ -128,6 +128,14 @@ export function parseSocialPostUrl(value: string): SocialPostTarget | null {
   if (platform === 'threads') {
     const short = url.pathname.match(/^\/t\/([\w-]+)\/?$/)?.[1]
     if (short) return target('threads', short, `https://www.threads.com/t/${short}`)
+    // A share id is not a post code, so its key keeps the two apart; the post code comes from the redirect.
+    const share = url.pathname.match(/^\/share\/([\w-]+)\/?$/)?.[1]
+    if (share) {
+      return {
+        ...target('threads', share, `https://www.threads.com/share/${share}`),
+        lookupKey: `threads:share:${share}`
+      }
+    }
     const match = url.pathname.match(/^\/@([\w.]+)\/post\/([\w-]+)(?:\/media)?\/?$/)
     if (!match) return null
     const [, profile = '', id = ''] = match

@@ -1,6 +1,6 @@
 import { array, base, capped, imageUrl, nonNegativeInteger, object, string } from './parsers.js'
 import type { SocialPost } from './types.js'
-import type { SocialPostTarget } from './urls.js'
+import { parseSocialPostUrl, type SocialPostTarget } from './urls.js'
 
 type JsonObject = Record<string, unknown>
 
@@ -16,6 +16,8 @@ export const THREADS_PAGE_HEADERS = {
   'Sec-Fetch-Site': 'none',
   'Sec-Fetch-User': '?1'
 }
+
+const REDIRECTS = new Set([301, 302, 303, 307, 308])
 
 const DATA_BLOCK = /<script type="application\/json"[^>]*\bdata-sjs\b[^>]*>([\s\S]*?)<\/script>/g
 
@@ -59,6 +61,29 @@ function firstCandidate(media: JsonObject): string | null {
 
 function firstVideoUrl(media: JsonObject): string | null {
   return imageUrl(object(array(media.video_versions)[0]).url)
+}
+
+/**
+ * The page of a Threads post. A short or share link answers with one redirect to the post, followed only when its
+ * `Location` parses as a Threads post link; that page is fetched through the same checked fetcher.
+ */
+export async function fetchThreadsPage(
+  fetcher: typeof fetch,
+  target: SocialPostTarget,
+  signal: AbortSignal
+): Promise<{ page: SocialPostTarget; response: Response } | { reason: 'redirect' }> {
+  const response = await fetcher(target.canonicalUrl, { headers: THREADS_PAGE_HEADERS, signal })
+  if (!REDIRECTS.has(response.status) || target.profile) return { page: target, response }
+  await response.body?.cancel()
+  const location = response.headers.get('location')
+  let next: SocialPostTarget | null = null
+  try {
+    next = location ? parseSocialPostUrl(new URL(location, target.canonicalUrl).href) : null
+  } catch {
+    next = null
+  }
+  if (next?.platform !== 'threads' || !next.profile) return { reason: 'redirect' }
+  return { page: next, response: await fetcher(next.canonicalUrl, { headers: THREADS_PAGE_HEADERS, signal }) }
 }
 
 function hasAudio(...media: JsonObject[]): boolean | null {
