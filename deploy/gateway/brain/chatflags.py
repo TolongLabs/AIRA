@@ -112,6 +112,14 @@ def free(chat_id: str | None) -> bool:
         return False
 
 
+def autofetch_on(chat_id: str | None) -> bool:
+    """True when the core sends a post link's media back in this chat."""
+    try:
+        return flags(chat_id).get("autofetch") is True
+    except Exception:
+        return False
+
+
 def _clamp_unit(value: object, fallback: float) -> float:
     try:
         if isinstance(value, bool) or not isinstance(value, (int, float)):

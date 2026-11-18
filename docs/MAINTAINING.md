@@ -84,6 +84,22 @@ Check: `deploy/gateway/tests/test_brain.py`.
 
 Contract: [System Architecture](trd/system.md).
 
+### Install Or Roll Back Autofetch On The Gateway
+
+When a group's post links should get their media back from the core, or the old plugin must answer again.
+
+1. Copy `deploy/gateway/brain/autofetch.py` and `chatflags.py` into `HERMES_HOME/scripts/brain/`, keeping backups.
+2. Run `patches.py --check`, then apply it: `autofetch-from-core` points the kept `whatsapp-autofetch` hook at
+   `brain.autofetch`.
+3. Switch `features.autofetch` on for each group, then restart the gateway.
+4. Roll back by restoring the adapter's backup: the hook loads the old core's plugin again.
+
+Files: `deploy/gateway/brain/autofetch.py`, `deploy/gateway/patches.py`, `src/media/autofetch.ts`.
+
+Check: `deploy/gateway/tests/test_autofetch.py`, `tests/contract/autofetch.test.ts`.
+
+Contract: [System Architecture](trd/system.md#autofetch).
+
 ## Turn
 
 ### Change The Quick-Message Batch Delay Or Its Cap
