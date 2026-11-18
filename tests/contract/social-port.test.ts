@@ -83,6 +83,26 @@ describe('social tool port', () => {
     expect(result.replies?.[0]).toEqual({ author: 'example_reply_7', text: 'a'.repeat(280), likes: 7 })
   })
 
+  it('lists every photo before the video, and no thread for a post without one', async () => {
+    const { port } = readers(async (input) =>
+      String(input).includes('/2/conversation/')
+        ? json({}, 429)
+        : json({
+            tweet: {
+              text: 'Post text',
+              media: {
+                photos: [{ url: 'https://media.example/one.jpg' }, { url: 'https://media.example/two.jpg' }],
+                videos: [{ url: 'https://media.example/video.mp4', format: 'video/mp4' }]
+              }
+            }
+          })
+    )
+    expect(await port.read(url, signal())).toMatchObject({
+      media: ['https://media.example/one.jpg', 'https://media.example/two.jpg', 'https://media.example/video.mp4'],
+      thread: []
+    })
+  })
+
   it('keeps a found post when replies fail', async () => {
     const { port } = readers(async (input) =>
       String(input).includes('/2/conversation/') ? json({}, 429) : json({ tweet: { text: 'Post text' } })

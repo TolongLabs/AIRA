@@ -18,6 +18,8 @@ const post: SocialPost = {
   photoCount: 2,
   videoCount: 1,
   imageUrl: 'https://pbs.twimg.com/photo.jpg',
+  photoUrls: [],
+  thread: [],
   externalTitle: '',
   replyCount: 193,
   durationSec: null,

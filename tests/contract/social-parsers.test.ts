@@ -79,8 +79,19 @@ describe('social post parsers', () => {
       quotedAuthorHandle: 'quotee',
       photoCount: 2,
       videoCount: 1,
-      imageUrl: 'https://pbs.twimg.com/photo-1'
+      imageUrl: 'https://pbs.twimg.com/photo-1',
+      photoUrls: ['https://pbs.twimg.com/photo-1', 'https://pbs.twimg.com/photo-2']
     })
+  })
+
+  it('keeps no photos for an X video, only its thumbnail as the one picture', () => {
+    const post = parseFxTwitterResponse(
+      { tweet: { id: '124', text: 'clip', media: { videos: [{ thumbnail_url: 'https://pbs.twimg.com/video-1' }] } } },
+      { ...xTarget, id: '124', lookupKey: 'x:124' },
+      100
+    )
+
+    expect(post).toMatchObject({ photoUrls: [], imageUrl: 'https://pbs.twimg.com/video-1', thread: [] })
   })
 
   it('normalizes a recorded Bluesky thread and external card', () => {
@@ -115,7 +126,10 @@ describe('social post parsers', () => {
               },
               media: {
                 $type: 'app.bsky.embed.images#view',
-                images: [{ fullsize: 'https://cdn.bsky.app/img/one', alt: 'first' }]
+                images: [
+                  { fullsize: 'https://cdn.bsky.app/img/one', alt: 'first' },
+                  { fullsize: 'https://cdn.bsky.app/img/two', alt: 'second' }
+                ]
               }
             }
           }
@@ -137,8 +151,12 @@ describe('social post parsers', () => {
       100
     )
 
-    expect(images?.post).toMatchObject({ imageUrl: 'https://cdn.bsky.app/img/one', quotedText: 'quoted bsky post' })
-    expect(video?.post).toMatchObject({ imageUrl: 'https://cdn.bsky.app/video-cover', videoCount: 1 })
+    expect(images?.post).toMatchObject({
+      imageUrl: 'https://cdn.bsky.app/img/one',
+      photoUrls: ['https://cdn.bsky.app/img/one', 'https://cdn.bsky.app/img/two'],
+      quotedText: 'quoted bsky post'
+    })
+    expect(video?.post).toMatchObject({ imageUrl: 'https://cdn.bsky.app/video-cover', photoUrls: [], videoCount: 1 })
   })
 
   it('selects the lowest bitrate MP4 variant from FxTwitter', () => {

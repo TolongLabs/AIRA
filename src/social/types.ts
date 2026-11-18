@@ -10,6 +10,13 @@ export interface PlayableVideo {
   hasAudio: boolean | null
 }
 
+/** An earlier post of the thread a post continues (Threads only). */
+export interface SocialThreadPost {
+  authorHandle: string
+  text: string
+  photoUrls: string[]
+}
+
 export interface SocialPost {
   platform: SocialPlatform
   id: string
@@ -23,7 +30,12 @@ export interface SocialPost {
   quotedAuthorHandle: string
   photoCount: number
   videoCount: number
+  /** The one picture that stands for the post: its first photo, else a video's thumbnail or the link card's image. */
   imageUrl: string | null
+  /** Every photo of the post's own, in order, up to MAX_POST_PHOTOS. Never a thumbnail, link card or avatar. */
+  photoUrls: string[]
+  /** The earlier posts of the thread this post continues, oldest first. Empty on every platform but Threads. */
+  thread: SocialThreadPost[]
   externalTitle: string
   replyCount: number | null
   durationSec: number | null
