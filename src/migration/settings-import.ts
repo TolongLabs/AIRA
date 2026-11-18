@@ -117,7 +117,9 @@ export function planSettingsMigration(dir: string, characters: Map<string, strin
         add({ level: 'chat', chat: waId, key: 'features.photos', value: permissions['photos'] === 'on' })
       }
       if (permissions['agent'] !== undefined) count(plan, 'agent_no_key')
-      if (permissions['autofetch'] !== undefined) count(plan, 'autofetch_no_key')
+      if (permissions['autofetch'] !== undefined) {
+        add({ level: 'chat', chat: waId, key: 'features.autofetch', value: permissions['autofetch'] === 'on' })
+      }
       if (binding['mode'] !== undefined) count(plan, 'mode_no_key')
       if (binding['models'] !== undefined) count(plan, 'models_no_key')
     }
