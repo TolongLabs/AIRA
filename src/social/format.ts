@@ -10,7 +10,8 @@ export const PLATFORM_NAMES = {
   reddit: 'Reddit',
   instagram: 'Instagram',
   bilibili: 'Bilibili',
-  threads: 'Threads'
+  threads: 'Threads',
+  facebook: 'Facebook'
 } as const
 
 export function quoted(value: string, maxLength: number): string {

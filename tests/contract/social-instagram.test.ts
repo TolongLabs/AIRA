@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { parseInstagramPage } from '../../src/social/instagram.js'
+import { ReplyReader } from '../../src/social/replies/service.js'
 import { parseSocialPostUrl } from '../../src/social/urls.js'
 import { createSocialPostViewer as buildViewer } from '../../src/social/viewer.js'
 
@@ -76,7 +77,7 @@ const carousel = {
 
 const post = parseSocialPostUrl('https://www.instagram.com/p/DPost00001/')!
 
-describe('Instagram links', () => {
+describe('Instagram and Facebook links', () => {
   it.each([
     ['a reels link', 'https://www.instagram.com/reels/DPost00001/', 'https://www.instagram.com/reel/DPost00001/'],
     [
@@ -91,6 +92,39 @@ describe('Instagram links', () => {
     ]
   ])('reads Instagram %s', (_name, url, canonicalUrl) => {
     expect(parseSocialPostUrl(url)).toMatchObject({ platform: 'instagram', id: 'DPost00001', canonicalUrl })
+  })
+
+  it.each([
+    ['a video share link', 'https://www.facebook.com/share/v/1AbCdEf9x/?mibextid=wwXIfr', 'facebook:share:1AbCdEf9x'],
+    ['a reel share link', 'https://m.facebook.com/share/r/1AbCdEf9x/', 'facebook:share:1AbCdEf9x'],
+    ['a reel', 'https://www.facebook.com/reel/1234567890', 'facebook:1234567890'],
+    ['a watch link', 'https://www.facebook.com/watch/?v=1234567890', 'facebook:1234567890'],
+    ['a watch link with no slash', 'https://web.facebook.com/watch?v=1234567890', 'facebook:1234567890'],
+    ['a page video', 'https://www.facebook.com/example.page/videos/1234567890/', 'facebook:1234567890'],
+    [
+      'a page video with a slug',
+      'https://www.facebook.com/example.page/videos/a-title/1234567890',
+      'facebook:1234567890'
+    ],
+    ['a short watch link', 'https://fb.watch/AbC12dEf/', 'facebook:watch:AbC12dEf']
+  ])('reads Facebook %s', (_name, url, lookupKey) => {
+    expect(parseSocialPostUrl(url)).toMatchObject({ platform: 'facebook', lookupKey })
+  })
+
+  it('keeps the shared Facebook link for the extractor, which follows its redirect', () => {
+    expect(parseSocialPostUrl('https://www.facebook.com/share/v/1AbCdEf9x/?mibextid=wwXIfr')).toMatchObject({
+      canonicalUrl: 'https://www.facebook.com/share/v/1AbCdEf9x/',
+      extractorUrl: 'https://www.facebook.com/share/v/1AbCdEf9x/'
+    })
+  })
+
+  it.each([
+    'https://www.facebook.com/share/p/1AbCdEf9x/',
+    'https://www.facebook.com/example.page/posts/1234567890',
+    'https://www.facebook.com/example.page',
+    'https://facebook.com.evil.com/reel/1234567890'
+  ])('leaves %s to read_page', (url) => {
+    expect(parseSocialPostUrl(url)).toBeNull()
   })
 })
 
@@ -148,7 +182,7 @@ describe('parseInstagramPage', () => {
   })
 })
 
-describe('SocialPostViewer on Instagram', () => {
+describe('SocialPostViewer on Instagram and Facebook', () => {
   it('reads an Instagram post from its page as a browser navigation, without yt-dlp', async () => {
     const fetcher = vi.fn(
       async (_input: string | URL | Request, _init?: RequestInit) => new Response(pageWith(carousel))
@@ -190,5 +224,42 @@ describe('SocialPostViewer on Instagram', () => {
     viewer.setYtDlpAvailable(false)
 
     expect(await viewer.lookup(post)).toMatchObject({ status: 'found', post: { photoCount: 2 } })
+  })
+
+  it('reads a Facebook video through yt-dlp from the shared link', async () => {
+    const target = parseSocialPostUrl('https://www.facebook.com/share/v/1AbCdEf9x/?mibextid=wwXIfr')!
+    const runExtractor = vi.fn(async () => ({
+      metadata: {
+        title: 'A clip',
+        uploader: 'Example Page',
+        duration: 11.3,
+        formats: [{ format_id: 'sd', ext: 'mp4', url: 'https://video.example/sd.mp4' }]
+      }
+    }))
+    const viewer = buildViewer(settings, {
+      fetcher: vi.fn(async () => {
+        throw new Error('unexpected fetch')
+      }),
+      runExtractor,
+      lookup: async () => ['8.8.8.8']
+    })
+
+    expect(await viewer.lookup(target)).toMatchObject({
+      status: 'found',
+      post: { platform: 'facebook', text: 'A clip', videoCount: 1, video: { url: 'https://video.example/sd.mp4' } }
+    })
+    expect(runExtractor).toHaveBeenCalledWith('yt-dlp', 'https://www.facebook.com/share/v/1AbCdEf9x/', 1000)
+  })
+
+  it('reports Facebook replies as unsupported', async () => {
+    const replies = new ReplyReader(
+      { ...settings, maxReplies: 5, maxReplyChars: 280 },
+      { fetcher: vi.fn(), runExtractor: vi.fn(), warn: vi.fn(), youtubeApiKey: () => undefined }
+    )
+    expect(await replies.read(parseSocialPostUrl('https://www.facebook.com/reel/1234567890')!)).toEqual({
+      status: 'failed',
+      platform: 'facebook',
+      reason: 'unsupported'
+    })
   })
 })

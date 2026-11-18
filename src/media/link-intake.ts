@@ -34,6 +34,7 @@ export const PLATFORM_NAME: Record<LinkPlatform, string> = {
   tiktok: 'TikTok',
   reddit: 'Reddit',
   instagram: 'Instagram',
+  facebook: 'Facebook',
   bilibili: 'Bilibili'
 }
 
