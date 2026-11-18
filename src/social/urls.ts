@@ -180,14 +180,16 @@ export function parseSocialPostUrl(value: string): SocialPostTarget | null {
   return target('bilibili', normalizedId, `https://www.bilibili.com/video/${normalizedId}`)
 }
 
-export function findSocialPostTarget(text: string): SocialPostTarget | null {
+/** Every supported post link in a text, in order. */
+export function findSocialPostTargets(text: string): SocialPostTarget[] {
   const urls = text.match(/https?:\/\/[^\s<>()[\]{}]+/gi) ?? []
-  for (const candidate of urls) {
-    const cleaned = candidate.replace(/[.,!?;:'"`]+$/g, '')
-    const parsed = parseSocialPostUrl(cleaned)
-    if (parsed) return parsed
-  }
-  return null
+  return urls
+    .map((candidate) => parseSocialPostUrl(candidate.replace(/[.,!?;:'"`]+$/g, '')))
+    .filter((parsed): parsed is SocialPostTarget => parsed !== null)
+}
+
+export function findSocialPostTarget(text: string): SocialPostTarget | null {
+  return findSocialPostTargets(text)[0] ?? null
 }
 
 export function findLinkTarget(texts: string[]): SocialPostTarget | null {

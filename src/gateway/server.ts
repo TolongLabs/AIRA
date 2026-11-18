@@ -1,4 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { z } from 'zod'
+import type { Autofetch } from '../media/autofetch.js'
 import type { FailureKind } from '../records/kinds.js'
 import type { Logger } from '../records/logger.js'
 import type { Redactor } from '../records/redact.js'
@@ -28,9 +30,13 @@ export interface GatewayServerOptions {
   auxiliaryText?: string
   maxBodyBytes?: number
   now?: () => Date
+  /** Absent: autofetch answers an empty list (docs/trd/system.md#autofetch). */
+  autofetch?: Autofetch
 }
 
 const DEFAULT_MAX_BODY = 20 * 1024 * 1024
+const AUTOFETCH_MAX_BODY = 64 * 1024
+const autofetchBody = z.strictObject({ chat: z.string().min(1).max(256), text: z.string() })
 
 function readBody(request: IncomingMessage, limit: number): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -228,6 +234,25 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
     }
   }
 
+  // A group message the gateway drops, offered for its post links' media. Nothing here keeps the text.
+  async function autofetch(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    let input: z.infer<typeof autofetchBody>
+    try {
+      const raw = await readBody(request, options.maxBodyBytes ?? DEFAULT_MAX_BODY)
+      if (Buffer.byteLength(raw) > AUTOFETCH_MAX_BODY) throw new MalformedRequestError('the request body is too large')
+      input = autofetchBody.parse(JSON.parse(raw))
+    } catch {
+      json(response, 400, { error: { message: 'the request could not be parsed', type: 'invalid_request_error' } }, log)
+      return
+    }
+    try {
+      json(response, 200, { media: options.autofetch ? await options.autofetch.fetch(input) : [] }, log)
+    } catch (error) {
+      log.error('autofetch.failed', { kind: error instanceof Error ? error.name : 'unknown' })
+      json(response, 200, { media: [] }, log)
+    }
+  }
+
   return createServer((request, response) => {
     const path = (request.url ?? '').split('?')[0]
     if (request.method === 'GET' && path === '/health') {
@@ -254,6 +279,14 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
         if (response.headersSent) response.destroy()
         else json(response, 500, { error: { message: 'the request could not be handled', type: 'server_error' } }, log)
       })
+      return
+    }
+    if (request.method === 'POST' && path === '/v1/aira/autofetch') {
+      if (!options.ready()) {
+        json(response, 503, { error: { message: 'the core is not ready', type: 'server_error' } }, log)
+        return
+      }
+      void autofetch(request, response)
       return
     }
     json(response, 404, { error: { message: 'not found', type: 'invalid_request_error' } }, log)

@@ -19,6 +19,7 @@ import {
   createSystemOneMoodJudge,
   modelRecordContext
 } from './judge/systemone.js'
+import { createAutofetch } from './media/autofetch.js'
 import { createGeminiWatcher, type MediaWatcher } from './media/gemini-watcher.js'
 import { DEFAULT_MEDIA_LIMITS } from './media/limits.js'
 import { createLinkReader } from './media/link-intake.js'
@@ -383,6 +384,16 @@ export async function createApp(options: AppOptions): Promise<App> {
     replyReader.setYtDlpAvailable(extractorAvailable)
     if (!extractorAvailable) logger.warn('social.extractor_off', { platform: 'yt-dlp', reason: 'binary_missing' })
     const hostDataDir = config.gateway.hostDataDir === '' ? paths.root : config.gateway.hostDataDir
+    // A group's post links answered with their media; the plain page port checks every download address.
+    const autofetch = createAutofetch({
+      storage,
+      viewer,
+      download: plainPage.download,
+      cacheDir: join(paths.cache, 'autofetch'),
+      hostCacheDir: join(hostDataDir, 'cache', 'autofetch'),
+      logger: logger.child({ module: 'autofetch' }),
+      now
+    })
     const research = createResearchOffers({
       storage,
       filesDir: paths.files,
@@ -754,6 +765,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       redactor,
       ready: () => ready,
       now,
+      autofetch,
       afterTurn: refreshUnavailableLine,
       health: () => ({
         snapshot: storage.read((db): Record<string, unknown> | undefined => {

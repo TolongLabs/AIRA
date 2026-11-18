@@ -118,6 +118,7 @@ export const SETTING_KEYS: Record<string, SettingDefinition> = {
   'commands.maxPerMessage': { schema: z.number().int().min(1).max(5), default: 1 },
   'tools.maxPerMessage': { schema: z.number().int().min(1).max(8), default: 3 },
   'features.owner': { schema: z.boolean(), default: false },
+  'features.autofetch': { schema: z.boolean(), default: false },
   footerEmoji: {
     schema: footerEmojiSchema
   }
