@@ -1,4 +1,5 @@
 error: 'Something went wrong on my end. Please try again in a moment.'
+feedback: 'Tell me what went wrong using this form.'
 limit: 'I have hit my usage limit for now, so I cannot reply yet.'
 refusal: 'I cannot help with that request.'
 busy: 'I am still finishing the previous message. One moment.'

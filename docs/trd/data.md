@@ -29,6 +29,7 @@ copied is specified in [Persistence](storage.md). This module owns what the tabl
 | `session_message`                                                              | The conversation window                                                                                      | [System](system.md)               |
 | `memory_item`, `memory_job`, `memory_event`                                    | Memory                                                                                                       | [Memory](memory.md)               |
 | `reminder`, `tool_result`, `receipt`                                           | Reminders, stored tool results by call id, and receipts                                                      | [Tools](tools.md)                 |
+| `feedback_report`, `feedback_cursor`                                           | Private report references, turn links, answers and the Google sync cursor                                    | [Tools](tools.md)                 |
 | `turn`, `model_call`, `tool_call`, `failure`, `job_run`, `failure_diagnostics` | Records                                                                                                      | [Records](records.md)             |
 | `spend`                                                                        | Cost per role per month                                                                                      | [Models](models.md)               |
 | `chat_state`                                                                   | Runtime state by chat and character: last opener, sticker                                                    | [Prompt Engine](prompt-engine.md) |
@@ -96,8 +97,9 @@ The primary key is `(level, scope, key)`. Deleting a row at a level restores inh
 | `memory.pageMessages`    | Integer 5 to 50: messages that close a memory episode                                    | `25`                    |
 | `features.voice`         | Boolean                                                                                  | `false`                 |
 | `features.lessons`       | Boolean                                                                                  | `false`                 |
-| `features.reports`       | Boolean                                                                                  | `true`                  |
+| `features.reports`       | Boolean: `/doc` document creation                                                        | `true`                  |
 | `features.research`      | Boolean: `/research` jobs and their PDF reports                                          | `true`                  |
+| `features.feedback`      | Boolean: `/report` private feedback links                                                | `false`                 |
 | `report.format`          | Reserved: a per-chat report format profile ([Research](research.md#the-renderer))        | unset: `render.report`  |
 | `report.defaultFormat`   | `pdf` or `markdown`: the format of `/doc` when the message names none                    | `pdf`                   |
 | `features.owner`         | Boolean: the owner's market and coding-session tools                                     | `false`                 |
@@ -116,6 +118,24 @@ The primary key is `(level, scope, key)`. Deleting a row at a level restores inh
 (`src/settings/keys.ts`).
 
 Each optional chat feature is one `features.*` key. A tool or behaviour names the key that enables it.
+
+### Feedback Data
+
+Migration `0013_feedback.sql` adds two add-only `STRICT` tables:
+
+| Table             | Fields                                                                                                                                                                                                                                                                                                        |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `feedback_report` | `report_id`, unique `ref`, `chat_id`, `subject_id`, command `turn_id`, `turn_ids` as JSON containing the chat's five newest turns, state (`open`, `received`, `closed`, `expired`), `issued_at`, `expires_at`, `received_at`, `closed_at`, `form_seq`, and Zod-checked `answers` JSON with a cap on every key |
+| `feedback_cursor` | The singleton Apps Script cursor: `after` and `updated_at`                                                                                                                                                                                                                                                    |
+
+The report's chat and requesting subject are internal ids. Identity comes from that row, never from an answer. No
+feedback table stores a WhatsApp id, phone number, form URL or Apps Script secret. The referenced turns stay in their
+existing record tables under those tables' retention rules; feedback does not copy their text.
+
+At most one `open` unexpired report exists for one `(chat_id, subject_id)` pair. Creating a report and its receipt is
+one transaction. Accepting a row, or recording `feedback_rejected`, and advancing `feedback_cursor` is one transaction.
+An unknown, expired or used reference never changes `answers`. These constraints make command retries and sync replay
+safe.
 
 The `mcp.<server id>` keys are dynamic: the part after `mcp.` holds 1 to 32 lowercase letters, digits, `_` or `-`.
 Every such key defaults to `false`.

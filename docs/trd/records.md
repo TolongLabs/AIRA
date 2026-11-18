@@ -49,6 +49,9 @@ The writers live in `src/records/turn-record.ts`: `markStage`, `updateTurnRecord
 | `job_run`        | Scheduled or background run   | Job kind, chat, started, ended, outcome                                     |
 | `setting_change` | Change to a setting or pack   | Who, when, level, key, old and new value                                    |
 
+Every feedback poll writes one `job_run` row with kind `feedback_sync`, including a no-row success and a failed
+request. A rejected form row also writes one `failure` row without storing its answer text.
+
 A file the core could not read is a handled failure: one `failure` row of kind `media_unreadable`, stage `media`, and one
 `model_call` row of role `media` for each request to the media model. See [Models](models.md#media-watching).
 
@@ -62,7 +65,7 @@ counts too. A spend write failure keeps the reply, emits a warning and records a
 One list, used by records, alerts and tests: the model kinds in [Models](models.md#failure-kinds), plus
 `tool_timeout`, `tool_error`, `tool_refused`, `judge_unavailable`, `media_unreadable`, `memory_rejected`,
 `memory_job_failed`, `config_invalid`, `binding_invalid`, `gateway_malformed`, `gateway_unmarked`, `turn_interrupted`, `storage_error`,
-`storage_low_space`, `backup_failed`, `internal`.
+`storage_low_space`, `backup_failed`, `feedback_rejected`, `feedback_sync_failed`, `internal`.
 
 The list lives in `src/records/kinds.ts`. Alert delivery follows the Deployment decisions.
 
@@ -74,6 +77,7 @@ The list lives in `src/records/kinds.ts`. Alert delivery follows the Deployment 
 - Errors are serialised with name, message and stack. A test checks that an error passed to the logger is not lost.
 - Levels: `error` for a failure that reached a user or lost work, `warn` for a handled failure, `info` for one line
   per stage, `debug` for detail that is off in production.
+- Feedback logs hold only the report id, state and answer length. They never hold an answer, reference or form URL.
 
 ## Redaction
 
@@ -83,12 +87,13 @@ The list lives in `src/records/kinds.ts`. Alert delivery follows the Deployment 
 - The default logger redacts every value found in `process.env`, not only `.env` entries. A value shorter than 6
   characters is not masked, so a short secret is not safe to rely on. Redaction lives in `src/records/redact.ts`.
 
-Verbatim text is kept in two places only:
+Verbatim text is kept in three places only:
 
 | Store                 | Holds                                                     | Retention                  |
 | --------------------- | --------------------------------------------------------- | -------------------------- |
 | `session_message`     | The conversation window the bot needs to work             | `records.windowDays`       |
 | `failure_diagnostics` | The request and reply of a failed turn, for a post-mortem | `records.diagnosticsHours` |
+| `feedback_report`     | Zod-checked answers submitted through the feedback form   | `records.feedbackDays`     |
 
 ## Retention
 
@@ -103,6 +108,11 @@ always stays: it is the high-water mark the memory cursors count from, and an em
 same ids again. `pruneRecords` in `src/records/retention.ts` takes an optional `beforeDelete` callback, called inside
 the same transaction with each table's rows before deletion, so an archive job can export them first.
 
+Feedback answers are the exception to archival. The daily job marks unused references expired after
+`feedback.refTtlHours` and sets `answers` to null `records.feedbackDays` after receipt. Answers never enter Parquet or
+the off-host archive. The referenced turn metadata remains governed by the existing turn-record policy. SQLite
+`secure_delete` applies when answers are cleared.
+
 ## Operator Views
 
 - `scripts/turn.ts <turn_id>` prints one turn: stages, model calls, tool calls, failures, in time order.
@@ -111,6 +121,9 @@ the same transaction with each table's rows before deletion, so an archive job c
   date range. `buildReport` in `src/records/report.ts` reads the newest filename-matching snapshot that passes a
   `quick_check`, unions it with any Parquet archive files, and never opens the live database.
 - The site's dashboard page shows the same figures. See [Owner Site](site.md).
+- `bun run feedback <report_id>` reads one report's answers beside the turns named by `turn_ids`. The protected
+  `GET /api/feedback/:id` route returns the same maintainer view. Neither view returns the opaque reference. There is
+  no owner-site feedback page in this change.
 
 ## Configuration
 
@@ -119,6 +132,7 @@ the same transaction with each table's rows before deletion, so an archive job c
 | `records.retentionDays`    | 90      | Turn and child records           |
 | `records.diagnosticsHours` | 72      | Verbatim failed-turn diagnostics |
 | `records.windowDays`       | 7       | Conversation window messages     |
+| `records.feedbackDays`     | 90      | Submitted feedback answers       |
 | `log.level`                | `info`  | Minimum log level                |
 
 ## Code

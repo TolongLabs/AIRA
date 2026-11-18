@@ -18,6 +18,8 @@ export interface ReceiptDraft {
   target?: string
   /** The row's new state. Ids, times and flags only: no message text. */
   state?: Record<string, unknown>
+  /** Reuses a receipt for the same tool and chat when this call found that the state change already exists. */
+  reuseReceiptId?: string
 }
 
 export interface Receipt extends ReceiptDraft {

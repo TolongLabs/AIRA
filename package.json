@@ -24,6 +24,7 @@
     "prepare": "husky",
     "diagrams": "node scripts/export-diagrams.mjs",
     "turn": "tsx scripts/turn.ts",
+    "feedback": "tsx scripts/feedback.ts",
     "report": "tsx scripts/report.ts",
     "bench": "tsx scripts/bench.ts",
     "live": "tsx scripts/live.ts",

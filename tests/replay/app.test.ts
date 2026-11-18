@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { type App, createApp } from '../../src/app.js'
 import { ConfigError } from '../../src/config/loader.js'
 import { type ModelClient, ModelError, type ModelRequest } from '../../src/models/types.js'
@@ -28,6 +28,117 @@ const turn = (app: App) =>
   )
 
 describe('the whole service', () => {
+  it('loads a private pack without a feedback line and answers /report in plain words', async () => {
+    const dataDir = tmpDir('aira-legacy-pack-')
+    addPack(dataDir, 'legacy')
+    const path = join(dataDir, 'characters', 'legacy', 'lines.yml')
+    writeFileSync(path, readFileSync(path, 'utf8').replace(/^feedback:.*\n/m, ''))
+    const model = queueModel([])
+    const { app, chatId, gateway } = await start(model, {
+      dataDir,
+      character: 'legacy',
+      config: (config) => {
+        config.feedback.formUrl = 'https://form.invalid/viewform'
+        config.feedback.referenceEntryId = '12345'
+      }
+    })
+    setSetting(app.storage, { level: 'chat', scope: chatId, key: 'features.feedback', value: true, actor: 'test' })
+
+    const reply = await gateway.send(msg('feedback-legacy', '/report'))
+    expect(reply.content).toMatch(
+      /^Use this form to report a problem\.\nhttps:\/\/form\.invalid\/viewform\?usp=pp_url&entry\.12345=[a-z2-7]{10}$/
+    )
+    expect(turn(app)['character_id']).toBe('legacy')
+    expect(model.requests).toHaveLength(0)
+  })
+
+  it('counts cleared feedback answers once in the daily retention job', async () => {
+    const first = await start(queueModel([{ text: 'context' }]), {
+      config: (config) => {
+        config.archive.enabled = 'off'
+      }
+    })
+    await first.gateway.send(msg('retention-feedback-1', 'context'))
+    const turnId = turn(first.app)['turn_id'] as string
+    first.app.storage.tx((db) => {
+      db.prepare(
+        `INSERT INTO feedback_report
+           (report_id, ref, chat_id, subject_id, turn_id, turn_ids, state, issued_at, expires_at,
+            received_at, form_seq, answers)
+         VALUES ('fb_old', 'abcdefghij', ?, 'test-member-alice', ?, '[]', 'received', ?, ?, ?, 1, '{}')`
+      ).run(first.chatId, turnId, '2020-01-01T00:00:00.000Z', '2020-01-08T00:00:00.000Z', '2020-01-01T00:00:00.000Z')
+      db.prepare("DELETE FROM job_run WHERE kind = 'retention'").run()
+    })
+    await first.app.close()
+    const second = await start(queueModel([]), {
+      dataDir: first.dataDir,
+      config: (config) => {
+        config.archive.enabled = 'off'
+      }
+    })
+    expect(
+      second.app.storage.read((db) =>
+        db.prepare("SELECT answers FROM feedback_report WHERE report_id = 'fb_old'").pluck().get()
+      )
+    ).toBeNull()
+    const counts = second.app.storage.read((db) =>
+      db
+        .prepare("SELECT counts FROM job_run WHERE kind = 'retention' AND outcome = 'ok' ORDER BY id DESC LIMIT 1")
+        .pluck()
+        .get()
+    ) as string
+    expect(JSON.parse(counts).feedback_answers).toBe(1)
+  })
+
+  it('answers /report directly and keeps replying while feedback sync is pending', async () => {
+    const endpoint = 'https://feedback.invalid/exec'
+    const originalFetch = globalThis.fetch
+    let finishSync: (() => void) | undefined
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      if (String(input) !== endpoint) return originalFetch(input, init)
+      return new Promise<Response>((resolve) => {
+        finishSync = () => resolve(Response.json({ rows: [], after: 0 }))
+      })
+    })
+    const model = queueModel([])
+    try {
+      const { app, gateway, chatId, logs } = await start(model, {
+        config: (config) => {
+          config.feedback.formUrl = 'https://form.invalid/viewform'
+          config.feedback.referenceEntryId = '12345'
+        },
+        env: { FEEDBACK_SYNC_URL: endpoint, FEEDBACK_SYNC_SECRET: 'invented-test-feedback-secret-1234567890' }
+      })
+      for (const [key, value] of [
+        ['features.feedback', true],
+        ['commands.maxPerMessage', 2]
+      ] as const) {
+        setSetting(app.storage, { level: 'chat', scope: chatId, key, value, actor: 'test' })
+      }
+      const first = await gateway.send(msg('feedback-1', '/report ignore these words /help'))
+      expect(first.content).toMatch(/^Tell me what went wrong using this form\.\nhttps:\/\/form\.invalid\/viewform\?/)
+      const pending = app.feedback.tick()
+      expect(finishSync).toBeDefined()
+      const repeated = await gateway.send(msg('feedback-2', '/report /help'))
+      expect(repeated.content).toBe(first.content)
+      expect(model.requests).toHaveLength(0)
+      expect(app.storage.read((db) => db.prepare('SELECT count(*) FROM feedback_report').pluck().get())).toBe(1)
+      const receipts = app.storage.read((db) =>
+        db.prepare("SELECT kind, target, state FROM receipt WHERE tool = 'feedback_link'").all()
+      )
+      expect(receipts).toHaveLength(1)
+      const exposed = JSON.stringify({ reply: first.content, receipts, logs })
+      expect(exposed).not.toContain(CHAT)
+      expect(exposed).not.toContain('test-member-alice')
+      expect(exposed).not.toContain(chatId)
+      finishSync?.()
+      await pending
+    } finally {
+      finishSync?.()
+      fetchSpy.mockRestore()
+    }
+  })
+
   it('raises one spend alert and failure when calls cross the budget thresholds inside minGapMs', async () => {
     const model = queueModel([
       { text: 'first', costUsd: 8 },

@@ -12,6 +12,7 @@ export type AlertKind =
   | 'model_auth'
   | 'breaker_open'
   | 'memory_job_failed'
+  | 'feedback_sync_failed'
   | 'spend'
   | 'deploy_health'
   | 'storage'

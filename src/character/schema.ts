@@ -22,7 +22,7 @@ export const footerLabelSchema = z
   })
   .pipe(z.string().trim().min(1).max(40))
 
-/** Every line kind the core can send. The validator requires each one in lines.yml. */
+/** The fixed lines required in each character pack. */
 export const LINE_KINDS = [
   'error',
   'limit',
@@ -99,6 +99,7 @@ const lineShape = Object.fromEntries(LINE_KINDS.map((kind) => [kind, lineValue])
 
 export const linesSchema = z.strictObject({
   ...lineShape,
+  feedback: lineValue.optional(),
   researchStarted: lineValue.optional(),
   researchTopic: lineValue.optional(),
   researchBusy: lineValue.optional(),

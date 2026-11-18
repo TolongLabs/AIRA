@@ -227,4 +227,19 @@ describe('add first, remove later', () => {
     })
     expect(storage.read((db) => db.prepare('SELECT count(*) FROM backup_run').pluck().get())).toBe(4)
   })
+
+  it('upgrades the schema with 0012_think by applying exactly 0013_feedback', () => {
+    const storage = tmpStorage({ migrate: false })
+    const migrations = readMigrations().filter((migration) => migration.version <= 13)
+    const previous = applyMigrations(
+      storage,
+      migrations.filter((migration) => migration.version < 13)
+    )
+    expect(previous.at(-1)).toBe(12)
+    expect(applyMigrations(storage, migrations)).toEqual([13])
+    expect(tables(storage).map((table) => table.name)).toEqual(
+      expect.arrayContaining(['feedback_report', 'feedback_cursor'])
+    )
+    expect(() => storage.check()).not.toThrow()
+  })
 })

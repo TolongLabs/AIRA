@@ -89,14 +89,15 @@ assumes all three.
 
 ### Everything In Flight Is A Row
 
-| Unit            | Table             | States                                                      | On Start-Up                                                            |
-| --------------- | ----------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Inbound message | `inbound_message` | `received`, `answered`, `dropped`                           | Unanswered rows are handled as [Interrupted Turns](#interrupted-turns) |
-| Turn            | `turn`            | `running`, `delivered`, `declined`, `failed`, `interrupted` | Every `running` row becomes `interrupted`, with a failure record       |
-| Background job  | `memory_job`      | `queued`, `leased`, `done`, `failed`                        | Every lease returns to `queued`: its owner died with the old process   |
-| Research job    | `research_job`    | `queued`, `running`, `done`, `failed`                       | A first interruption returns to `queued`; a second becomes `failed`    |
-| Reminder        | `reminder`        | `active`, `fired`, `cancelled`                              | The wanted-jobs file is rewritten; the host reconciler recreates jobs  |
-| Snapshot        | `backup_run`      | `started`, `verified`, `failed`                             | A `started` row becomes `failed` and its file is removed               |
+| Unit            | Table             | States                                                      | On Start-Up                                                             |
+| --------------- | ----------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Inbound message | `inbound_message` | `received`, `answered`, `dropped`                           | Unanswered rows are handled as [Interrupted Turns](#interrupted-turns)  |
+| Turn            | `turn`            | `running`, `delivered`, `declined`, `failed`, `interrupted` | Every `running` row becomes `interrupted`, with a failure record        |
+| Background job  | `memory_job`      | `queued`, `leased`, `done`, `failed`                        | Every lease returns to `queued`: its owner died with the old process    |
+| Research job    | `research_job`    | `queued`, `running`, `done`, `failed`                       | A first interruption returns to `queued`; a second becomes `failed`     |
+| Reminder        | `reminder`        | `active`, `fired`, `cancelled`                              | The wanted-jobs file is rewritten; the host reconciler recreates jobs   |
+| Feedback report | `feedback_report` | `open`, `received`, `closed`, `expired`                     | Open rows remain open until sync receives or the daily job expires them |
+| Snapshot        | `backup_run`      | `started`, `verified`, `failed`                             | A `started` row becomes `failed` and its file is removed                |
 
 - An inbound request is written to `inbound_message`, keyed by the chat and the gateway's message id, before any
   other work. The chat is part of the key because a message id is unique only inside its chat, and a stored reply
@@ -111,6 +112,9 @@ assumes all three.
   an attempt. One cut short by a crash does, so a job that kills the process cannot retry for ever.
 - A research job survives one interrupted attempt, never a third start. When start-up finds a `running` research job
   at its second attempt, the job becomes `failed` with an internal failure record instead of returning to `queued`.
+- Feedback sync fetches and validates outside a transaction. Each returned row updates the report or writes
+  `feedback_rejected` and advances `feedback_cursor.after` in one transaction. A kill before that transaction changes
+  nothing; a kill after it leaves both classification and cursor committed.
 - The lease helpers live in `src/storage/leases.ts`, and the start-up pass that calls them lives in
   `src/storage/recovery.ts`. Every job table joins `JOB_TABLES` there so the pass releases its leases.
 
@@ -207,7 +211,7 @@ replication of the write-ahead log is the upgrade if 15 minutes is ever too much
 ## Analytics And The Archive
 
 - The daily retention job in [Records](records.md#retention) exports rows to Parquet under `archive/`, by table and
-  month, before it deletes them. Verbatim diagnostics are never archived.
+  month, before it deletes them. Verbatim diagnostics and `feedback_report.answers` are never archived.
 - `archiveAndPrune` in `src/storage/archive.ts` collects the rows in a first pass that always rolls back, so
   nothing is deleted yet. It writes each table and month group through a temporary NDJSON file to a temporary
   Parquet file, then moves the finished file into place. Only after every file succeeds does it prune for real with
@@ -234,6 +238,8 @@ replication of the write-ahead log is the upgrade if 15 minutes is ever too much
   applied them, and they are add-first.
 - A migration that cannot keep the previous release working ships in a release marked `manual`, with its own
   rehearsed restore.
+- `0013_feedback.sql` is add-only and creates the `STRICT` `feedback_report` and `feedback_cursor` tables. The previous
+  release ignores both, so image rollback remains safe.
 
 ## Embeddings And Search
 

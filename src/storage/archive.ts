@@ -12,7 +12,7 @@ export interface ArchiveResult {
   files: string[]
 }
 
-const VERBATIM_TABLES = new Set(['session_message', 'failure_diagnostics'])
+const VERBATIM_TABLES = new Set(['session_message', 'failure_diagnostics', 'feedback_report'])
 const TABLE_PATTERN = /^[a-z_]+$/
 const MONTH_PATTERN = /^\d{4}-\d{2}$/
 const STAMP_PATTERN = /^[A-Za-z0-9_-]+$/
@@ -48,6 +48,7 @@ export async function writeParquet(
   rows: Record<string, unknown>[],
   stamp: string
 ): Promise<string> {
+  assertNotVerbatim(table)
   if (!TABLE_PATTERN.test(table)) throw new Error(`invalid archive table name: ${table}`)
   if (!MONTH_PATTERN.test(month)) throw new Error(`invalid archive month: ${month}`)
   if (!STAMP_PATTERN.test(stamp)) throw new Error(`invalid archive stamp: ${stamp}`)

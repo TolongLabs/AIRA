@@ -1,6 +1,7 @@
 import type { ToolPorts } from '../ports.js'
 import { registryDepsOf, type ToolRegistry } from '../registry.js'
 import { helpTool, listTool } from './describe.js'
+import { type FeedbackToolOptions, feedbackLinkTool } from './feedback.js'
 import { forgetTool, historySearchTool, lingoNoteTool, noteTool, recallTool } from './memory.js'
 import { setMuteTool } from './mute.js'
 import { reminderCancelTool, reminderListTool, reminderSetTool } from './reminders.js'
@@ -23,13 +24,26 @@ export const CORE_TOOL_NAMES = [
   'reminder_cancel',
   'set_mute',
   'make_report',
+  'feedback_link',
   'research_start',
   'report_pdf',
   'help',
   'list'
 ] as const
 
-export function registerCoreTools(registry: ToolRegistry, ports: ToolPorts): void {
+export interface CoreToolOptions {
+  feedback: FeedbackToolOptions
+}
+
+const DEFAULT_OPTIONS: CoreToolOptions = {
+  feedback: { formUrl: '', referenceEntryId: '', refTtlHours: 168 }
+}
+
+export function registerCoreTools(
+  registry: ToolRegistry,
+  ports: ToolPorts,
+  options: CoreToolOptions = DEFAULT_OPTIONS
+): void {
   const { storage, logger } = registryDepsOf(registry)
 
   registry.register(recallTool(ports))
@@ -46,6 +60,7 @@ export function registerCoreTools(registry: ToolRegistry, ports: ToolPorts): voi
   registry.register(reminderCancelTool(storage, ports, logger))
   registry.register(setMuteTool(storage))
   registry.register(makeReportTool(storage, ports))
+  registry.register(feedbackLinkTool(options.feedback))
   registry.register(researchStartTool(storage))
   registry.register(reportPdfTool(ports))
   registry.register(helpTool(registry))

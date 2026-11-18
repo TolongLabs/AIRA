@@ -99,6 +99,7 @@ export const SETTING_KEYS: Record<string, SettingDefinition> = {
   'report.format': { schema: reportFormatSchema.optional() },
   'report.defaultFormat': { schema: z.enum(['pdf', 'markdown']), default: 'pdf' },
   'features.reports': { schema: z.boolean(), default: true },
+  'features.feedback': { schema: z.boolean(), default: false },
   'features.toolFooter': { schema: z.boolean(), default: true },
   nameCall: { schema: z.boolean(), default: false },
   'nameCall.names': {

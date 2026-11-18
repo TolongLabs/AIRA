@@ -1,3 +1,4 @@
+import { pruneFeedbackAnswers } from '../feedback/store.js'
 import { type Db, type Storage } from '../storage/database.js'
 
 // Retention pruning by table (docs/trd/records.md#retention).
@@ -9,6 +10,7 @@ export interface RetentionConfig {
   retentionDays: number
   diagnosticsHours: number
   windowDays: number
+  feedbackDays?: number
 }
 
 export interface RetentionResult {
@@ -43,11 +45,13 @@ export function pruneRecords(
   const retentionCutoff = new Date(nowDate.getTime() - config.retentionDays * MS_PER_DAY).toISOString()
   const diagnosticsCutoff = new Date(nowDate.getTime() - config.diagnosticsHours * MS_PER_HOUR).toISOString()
   const windowCutoff = new Date(nowDate.getTime() - config.windowDays * MS_PER_DAY).toISOString()
+  const feedbackCutoff = new Date(nowDate.getTime() - (config.feedbackDays ?? 90) * MS_PER_DAY).toISOString()
   const beforeDelete = options?.beforeDelete
 
   return storage.tx((db) => {
     const counts = {
       failure_diagnostics: 0,
+      feedback_answers: pruneFeedbackAnswers(db, feedbackCutoff),
       session_message: 0,
       inbound_message: 0,
       model_call: 0,

@@ -14,6 +14,8 @@ export const FAILURE_KINDS = [
   'media_unreadable',
   'memory_rejected',
   'memory_job_failed',
+  'feedback_rejected',
+  'feedback_sync_failed',
   'config_invalid',
   'binding_invalid',
   'gateway_malformed',
