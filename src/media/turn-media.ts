@@ -237,16 +237,35 @@ function formatPostLine(link: LinkReading, budget: number): string {
   return `${prefix}${body}${suffix}`
 }
 
+/** One line per earlier post of the thread, oldest first, each clipped to an even part of `budget`. */
+function formatThreadLines(post: SocialPost, budget: number): string[] {
+  if (post.thread.length === 0) return []
+  const platform = PLATFORM_NAME[post.platform]
+  const each = Math.max(60, Math.floor(budget / post.thread.length))
+  return post.thread.map((item) => {
+    const handle = sanitizeMediaText(item.authorHandle.trim().replace(/^@+/, ''))
+    const prefix = `- earlier post (${handle ? `${platform} @${handle}` : platform}): `
+    const photos = item.photoUrls.length
+    const suffix = photos > 0 ? ` | ${photos} ${photos === 1 ? 'photo' : 'photos'}` : ''
+    const text = sanitizeMediaText(item.text.trim())
+    return `${prefix}"${clip(text || 'no text', Math.max(10, each - prefix.length - suffix.length - 2))}"${suffix}`
+  })
+}
+
 function formatLinkLines(link: LinkReading, share: number): string[] {
-  if (!link.reading) return [formatPostLine(link, share)]
-  const postBudget = Math.max(120, Math.floor(share * 0.4))
+  // The earlier posts of a thread hold the content a reply builds on, so they take up to half the post's share.
+  const threadBudget = link.post.thread.length > 0 ? Math.floor(share * (link.reading ? 0.2 : 0.5)) : 0
+  const threadLines = formatThreadLines(link.post, threadBudget)
+  const rest = share - threadLines.join('\n').length
+  if (!link.reading) return [...threadLines, formatPostLine(link, rest)]
+  const postBudget = Math.max(120, Math.floor(rest * 0.4))
   const postLine = formatPostLine(link, postBudget)
-  const readingBudget = Math.max(80, share - postLine.length)
+  const readingBudget = Math.max(80, rest - postLine.length)
   const safeDesc = sanitizeMediaText(link.reading.description)
   const safeTranscript = link.reading.transcript ? sanitizeMediaText(link.reading.transcript) : undefined
   const description = clip(safeDesc, safeTranscript ? Math.floor(readingBudget * 0.4) : readingBudget)
   const transcript = safeTranscript ? clip(safeTranscript, Math.max(0, readingBudget - description.length)) : undefined
-  const lines = [postLine, `  ${link.mediaKind ?? 'video'}: ${description}`]
+  const lines = [...threadLines, postLine, `  ${link.mediaKind ?? 'video'}: ${description}`]
   if (transcript && transcript.length > 0) lines.push(`  transcript: ${transcript}`)
   return lines
 }

@@ -20,6 +20,9 @@ import {
 
 export const DEFAULT_MAX_LINK_VIDEO_SECONDS = 600
 
+/** The most photos watched from one link (docs/trd/models.md#post-links). */
+export const MAX_LINK_PHOTOS = 4
+
 export type LinkPlatform = SocialPost['platform']
 export type LinkTarget = SocialPost['target']
 
@@ -158,6 +161,40 @@ async function lookupWithTimeout(
   } catch {
     return { status: 'failed', platform: target.platform, reason: signal.aborted ? 'timeout' : 'error' }
   }
+}
+
+/** The post's photos in watch order: its own, then those of the earlier posts of its thread, oldest first. */
+function linkPhotos(post: SocialPost): { url: string; label: string }[] {
+  const own = post.photoUrls.map((url, index) => ({ url, label: `photo ${index + 1}` }))
+  const earlier = post.thread.flatMap((item, postIndex) =>
+    item.photoUrls.map((url, index) => ({
+      url,
+      label: `earlier post${post.thread.length > 1 ? ` ${postIndex + 1}` : ''}, photo ${index + 1}`
+    }))
+  )
+  return [...own, ...earlier]
+}
+
+function plural(count: number, word: string): string {
+  return `${count} ${word}${count === 1 ? '' : 's'}`
+}
+
+/** One answer as it is; several in order, each labelled, with what was not read named at the end. */
+function mergePostReadings(
+  parts: { label: string; reading: MediaReading }[],
+  failedPhotos: number,
+  unwatchedPhotos: number
+): MediaReading {
+  const transcript = parts.find((part) => part.label === 'video')?.reading.transcript
+  if (parts.length === 1 && failedPhotos === 0 && unwatchedPhotos === 0) return parts[0]!.reading
+  const missing = [
+    ...(failedPhotos > 0 ? [`${plural(failedPhotos, 'photo')} could not be read`] : []),
+    ...(unwatchedPhotos > 0 ? [`${unwatchedPhotos} more not watched`] : [])
+  ]
+  // Block 4 folds a reading onto one line, so the parts are kept apart the way the post line keeps its fields.
+  const lines = parts.map((part) => `${part.label}: ${part.reading.description}`)
+  if (missing.length > 0) lines.push(`(${missing.join('; ')})`)
+  return { description: lines.join(' | '), ...(transcript ? { transcript } : {}) }
 }
 
 function hasPostMetadata(post: SocialPost): boolean {
@@ -367,15 +404,39 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
           return undefined
         }
 
+        // The video and the photos are watched at once, each its own call under the link's time limit.
+        const video =
+          canWatch &&
+          post.video &&
+          (post.video.bytes === null || post.video.bytes <= options.limits.maxBytes) &&
+          (post.durationSec === null || post.durationSec <= options.limits.maxVideoSeconds)
+            ? post.video
+            : null
+        const photos = canWatch ? linkPhotos(post) : []
+        const tried = photos.slice(0, MAX_LINK_PHOTOS)
+        const [videoWatch, ...photoWatches] = await Promise.all([
+          video ? watchRemoteMedia(video.url, 'video', post.durationSec ?? undefined) : undefined,
+          ...tried.map((photo) => watchRemoteMedia(photo.url, 'image'))
+        ])
+        const parts = [
+          ...(videoWatch ? [{ label: 'video', reading: videoWatch.reading }] : []),
+          ...tried.flatMap((photo, index) => {
+            const result = photoWatches[index]
+            return result ? [{ label: photo.label, reading: result.reading }] : []
+          })
+        ]
+
         let watched: { kind: 'video' | 'image'; reading: MediaReading } | undefined
-        if (canWatch && post.video) {
-          const withinBytes = post.video.bytes === null || post.video.bytes <= options.limits.maxBytes
-          const withinDuration = post.durationSec === null || post.durationSec <= options.limits.maxVideoSeconds
-          if (withinBytes && withinDuration) {
-            watched = await watchRemoteMedia(post.video.url, 'video', post.durationSec ?? undefined)
+        if (parts.length > 0) {
+          watched = {
+            kind: videoWatch ? 'video' : 'image',
+            reading: mergePostReadings(
+              parts,
+              photoWatches.filter((result) => !result).length,
+              photos.length - tried.length
+            )
           }
-        }
-        if (!watched && canWatch && post.imageUrl) {
+        } else if (canWatch && post.imageUrl && !tried.some((photo) => photo.url === post.imageUrl)) {
           watched = await watchRemoteMedia(post.imageUrl, 'image')
         }
 

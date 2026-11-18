@@ -52,6 +52,8 @@ export interface PostPort {
     quotedText?: string
     replyCount?: number | null
     canonicalUrl?: string
+    /** The earlier posts of the thread the post continues, oldest first. */
+    thread?: { author: string; text: string; media: string[] }[]
     replies?: SocialReply[]
     durationSec?: number | null
   }>

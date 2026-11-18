@@ -69,6 +69,15 @@ export function imageUrl(value: unknown): string | null {
   return /^https:\/\//i.test(url) ? url : null
 }
 
+/** The most photos a post keeps (docs/trd/models.md#social-post-and-reply-readers). */
+export const MAX_POST_PHOTOS = 20
+
+/** The usable https URLs among `values`, in order, once each, at most MAX_POST_PHOTOS. */
+export function photoList(values: unknown[]): string[] {
+  const urls = values.map(imageUrl).filter((url): url is string => url !== null)
+  return [...new Set(urls)].slice(0, MAX_POST_PHOTOS)
+}
+
 export function base(target: SocialPostTarget): SocialPost {
   return {
     platform: target.platform,
@@ -84,6 +93,8 @@ export function base(target: SocialPostTarget): SocialPost {
     photoCount: 0,
     videoCount: 0,
     imageUrl: null,
+    photoUrls: [],
+    thread: [],
     externalTitle: '',
     replyCount: null,
     durationSec: null,
@@ -111,6 +122,7 @@ export function parseFxTwitterResponse(payload: unknown, target: SocialPostTarge
   post.photoCount = photos.length
   post.videoCount = videos.length
   post.imageUrl = imageUrl(firstPhoto.url) ?? imageUrl(firstVideo.thumbnail_url)
+  post.photoUrls = photoList(photos.map((photo) => object(photo).url))
   post.replyCount = nonNegativeInteger(tweet.replies)
   post.durationSec = positiveFiniteNumber(firstVideo.duration)
 
@@ -211,6 +223,7 @@ export function parseBlueskyThread(
   post.videoCount = videos.length
   post.externalTitle = string(external.title)
   post.imageUrl = imageUrl(firstImage.fullsize) ?? imageUrl(videos[0]?.thumbnail) ?? imageUrl(external.thumb)
+  post.photoUrls = photoList(images.map((image) => object(image).fullsize))
   post.replyCount = nonNegativeInteger(postView.replyCount)
   const blob = blueskyBlob(record, string(author.did))
   return blob ? { post, blueskyBlob: blob } : { post }

@@ -1,5 +1,5 @@
-import { array, base, capped, imageUrl, nonNegativeInteger, object, string } from './parsers.js'
-import type { SocialPost } from './types.js'
+import { array, base, capped, imageUrl, nonNegativeInteger, object, photoList, string } from './parsers.js'
+import type { SocialPost, SocialThreadPost } from './types.js'
 import { parseSocialPostUrl, type SocialPostTarget } from './urls.js'
 
 type JsonObject = Record<string, unknown>
@@ -18,6 +18,9 @@ export const THREADS_PAGE_HEADERS = {
 }
 
 const REDIRECTS = new Set([301, 302, 303, 307, 308])
+
+/** The most earlier posts of a thread a post carries. */
+const MAX_THREAD_POSTS = 3
 
 const DATA_BLOCK = /<script type="application\/json"[^>]*\bdata-sjs\b[^>]*>([\s\S]*?)<\/script>/g
 
@@ -61,6 +64,34 @@ function firstCandidate(media: JsonObject): string | null {
 
 function firstVideoUrl(media: JsonObject): string | null {
   return imageUrl(object(array(media.video_versions)[0]).url)
+}
+
+/** The post's own photos: the photo items of a carousel, or the post itself when it is one photo. Never a video's cover. */
+function photoUrls(media: JsonObject): string[] {
+  const items = array(media.carousel_media).map(object)
+  if (items.length > 0) return photoList(items.filter((item) => !firstVideoUrl(item)).map(firstCandidate))
+  return firstVideoUrl(media) ? [] : photoList([firstCandidate(media)])
+}
+
+/**
+ * The earlier posts of the thread the post continues, as the page holds them, oldest first. Threads sends them in a
+ * result of their own that names the post by `id` only, as it does the replies.
+ */
+function threadPosts(results: JsonObject[], media: JsonObject, maxTextChars: number): SocialThreadPost[] {
+  const code = media.code
+  const thread = results
+    .filter((item) => item.code === code || (media.id !== undefined && item.id === media.id))
+    .map((item) => array(object(object(object(item.text_post_app_info).containing_thread).posts).edges))
+    .find((edges) => edges.length > 0)
+  return (thread ?? [])
+    .map((edge) => object(object(edge).node))
+    .filter((node) => typeof node.code === 'string' && node.code !== code)
+    .slice(-MAX_THREAD_POSTS)
+    .map((node) => ({
+      authorHandle: string(object(node.user).username),
+      text: capped(object(node.caption).text, maxTextChars),
+      photoUrls: photoUrls(node)
+    }))
 }
 
 /**
@@ -129,6 +160,8 @@ export function parseThreadsPage(html: string, target: SocialPostTarget, maxText
     post.photoCount = 1
   }
   post.imageUrl = (items[0] ? firstCandidate(items[0]) : firstCandidate(media)) ?? imageUrl(linkCard.image_url)
+  post.photoUrls = photoUrls(media)
+  post.thread = threadPosts(results, media, maxTextChars)
   if (videoSource) {
     post.video = {
       url: firstVideoUrl(videoSource) as string,

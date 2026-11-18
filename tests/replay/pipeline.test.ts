@@ -894,6 +894,8 @@ describe('intake footer kinds and URLs in pipeline', () => {
     photoCount: 0,
     videoCount: 0,
     imageUrl: null,
+    photoUrls: [],
+    thread: [],
     externalTitle: '',
     replyCount: null,
     durationSec: null,

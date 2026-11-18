@@ -30,13 +30,16 @@ export function createSocialPostPort(viewer: SocialPostViewer, replies: ReplyRea
         untrusted: true,
         author: post.authorName || post.authorHandle,
         text: post.text,
-        media: [post.imageUrl, post.video?.url].filter((value): value is string => Boolean(value)),
+        media: [...(post.photoUrls.length > 0 ? post.photoUrls : [post.imageUrl]), post.video?.url].filter(
+          (value): value is string => Boolean(value)
+        ),
         platform: post.platform,
         handle: post.authorHandle,
         createdAt: post.createdAt,
         quotedText: post.quotedText,
         replyCount: post.replyCount,
         canonicalUrl: post.canonicalUrl,
+        thread: post.thread.map((item) => ({ author: item.authorHandle, text: item.text, media: item.photoUrls })),
         replies: replyLookup?.status === 'found' ? replyLookup.replies : [],
         durationSec: post.durationSec
       }

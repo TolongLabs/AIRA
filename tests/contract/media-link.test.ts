@@ -53,6 +53,8 @@ function makePost(overrides: Partial<SocialPost> = {}): SocialPost {
     photoCount: 0,
     videoCount: 0,
     imageUrl: null,
+    photoUrls: [],
+    thread: [],
     externalTitle: '',
     replyCount: null,
     durationSec: null,
@@ -779,6 +781,144 @@ describe('createLinkReader', () => {
     expect(textRes.links?.[0]?.reading).toBeUndefined()
     expect(textRes.links?.[0]?.post.text).toBe('Check this out')
     expect(textRes.unreadable).toEqual([])
+  })
+
+  it('watches every photo of a post at once, up to 4, and names the rest', async () => {
+    let running = 0
+    let maxRunning = 0
+    const watched: string[] = []
+    const watcher: MediaWatcher = {
+      async watch(file) {
+        running++
+        maxRunning = Math.max(maxRunning, running)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        running--
+        const name = file.data.toString()
+        watched.push(name)
+        if (name === 'p3') throw new ModelError('transient', 'boom')
+        return {
+          reading: { description: `Shows ${name}` },
+          usage: { inputTokens: 10, outputTokens: 5, cachedTokens: 0 },
+          costUsd: 0,
+          model: 'fake-media-model'
+        }
+      }
+    }
+    const photoUrls = Array.from({ length: 6 }, (_, index) => `https://img.example/p${index + 1}.jpg`)
+    const reader = createLinkReader({
+      viewer: {
+        lookup: async () => ({
+          status: 'found',
+          post: makePost({ photoCount: 6, photoUrls, imageUrl: photoUrls[0]! })
+        })
+      },
+      findTarget: fakeFindTarget,
+      watcher,
+      download: async (url) => ({
+        data: Buffer.from(/\/(p\d)\.jpg$/.exec(url)?.[1] ?? '?'),
+        contentType: 'image/jpeg'
+      }),
+      model: 'fake-media-model',
+      limits: baseLimits
+    })
+
+    const result = await reader.read(['https://x.com/testuser/status/7'], 5000, { media: true, social: true })
+
+    expect(maxRunning).toBe(4)
+    expect(watched.sort()).toEqual(['p1', 'p2', 'p3', 'p4'])
+    expect(result.links?.[0]?.mediaKind).toBe('image')
+    expect(result.links?.[0]?.reading?.description).toBe(
+      [
+        'photo 1: Shows p1',
+        'photo 2: Shows p2',
+        'photo 4: Shows p4',
+        '(1 photo could not be read; 2 more not watched)'
+      ].join(' | ')
+    )
+    expect(result.calls).toHaveLength(4)
+    expect(result.calls.filter((call) => call.failureKind)).toHaveLength(1)
+  })
+
+  it('watches the photos of the earlier posts in a thread after the linked post, and a video with them', async () => {
+    const watcher: MediaWatcher = {
+      async watch(file) {
+        return {
+          reading: { description: `Shows ${file.data.toString()}` },
+          usage: { inputTokens: 10, outputTokens: 5, cachedTokens: 0 },
+          costUsd: 0,
+          model: 'fake-media-model'
+        }
+      }
+    }
+    const post = makePost({
+      platform: 'threads',
+      videoCount: 1,
+      durationSec: 10,
+      video: { url: 'https://video.example/clip.mp4', bytes: 1000, headers: null, hasAudio: true },
+      imageUrl: 'https://img.example/card.jpg',
+      thread: [
+        {
+          authorHandle: 'testuser',
+          text: 'The original post',
+          photoUrls: ['https://img.example/t1.jpg', 'https://img.example/t2.jpg']
+        }
+      ]
+    })
+    const downloaded: string[] = []
+    const reader = createLinkReader({
+      viewer: { lookup: async () => ({ status: 'found', post }) },
+      findTarget: fakeFindTarget,
+      watcher,
+      download: async (url) => {
+        downloaded.push(url)
+        return url.includes('video.')
+          ? { data: Buffer.from('clip'), contentType: 'video/mp4' }
+          : { data: Buffer.from(/\/(\w+)\.jpg$/.exec(url)?.[1] ?? '?'), contentType: 'image/jpeg' }
+      },
+      model: 'fake-media-model',
+      limits: baseLimits
+    })
+
+    const result = await reader.read(['https://x.com/testuser/status/8'], 5000, { media: true, social: true })
+
+    expect(downloaded).not.toContain('https://img.example/card.jpg')
+    expect(result.links?.[0]?.mediaKind).toBe('video')
+    expect(result.links?.[0]?.reading?.description).toBe(
+      ['video: Shows clip', 'earlier post, photo 1: Shows t1', 'earlier post, photo 2: Shows t2'].join(' | ')
+    )
+  })
+
+  it('falls back to the one picture when no photo or video could be read', async () => {
+    const watcher: MediaWatcher = {
+      async watch(file) {
+        return {
+          reading: { description: `Shows ${file.data.toString()}` },
+          usage: { inputTokens: 10, outputTokens: 5, cachedTokens: 0 },
+          costUsd: 0,
+          model: 'fake-media-model'
+        }
+      }
+    }
+    const reader = createLinkReader({
+      viewer: {
+        lookup: async () => ({
+          status: 'found',
+          post: makePost({ photoUrls: ['https://img.example/gone.jpg'], imageUrl: 'https://img.example/card.jpg' })
+        })
+      },
+      findTarget: fakeFindTarget,
+      watcher,
+      download: async (url) => {
+        if (url.includes('gone')) throw new Error('404')
+        return { data: Buffer.from('card'), contentType: 'image/jpeg' }
+      },
+      model: 'fake-media-model',
+      limits: baseLimits
+    })
+
+    const result = await reader.read(['https://x.com/testuser/status/9'], 5000, { media: true, social: true })
+
+    expect(result.links?.[0]?.reading?.description).toBe('Shows card')
   })
 
   it('logs platform and reason without URL when a link lookup fails', async () => {

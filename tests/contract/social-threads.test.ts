@@ -120,6 +120,12 @@ describe('parseThreadsPage', () => {
       photoCount: 2,
       videoCount: 1,
       imageUrl: 'https://scontent.cdninstagram.com/v/fixture-one.jpg',
+      // The second item is the clip; its cover is not a photo.
+      photoUrls: [
+        'https://scontent.cdninstagram.com/v/fixture-one.jpg',
+        'https://scontent.cdninstagram.com/v/fixture-three.jpg'
+      ],
+      thread: [],
       replyCount: 897,
       video: {
         url: 'https://instagram.fkul4-3.fna.fbcdn.net/o1/v/fixture-clip.mp4',
@@ -159,6 +165,97 @@ describe('parseThreadsPage', () => {
       replyCount: 0,
       video: null
     })
+  })
+
+  it('never takes the profile picture for a post with no image of its own', () => {
+    const page = pageWith({
+      code: 'DFixtur3abc',
+      media_type: 19,
+      caption: { text: 'A text reply' },
+      image_versions2: { candidates: [] },
+      carousel_media: null,
+      user: { username: 'poster_one', profile_pic_url: 'https://scontent.cdninstagram.com/v/t51.2885-19/avatar.jpg' },
+      text_post_app_info: {
+        reply_to_author: { profile_pic_url: 'https://scontent.cdninstagram.com/v/t51.2885-19/avatar.jpg' }
+      }
+    })
+
+    expect(parseThreadsPage(page, target, 1500)?.post).toMatchObject({ photoUrls: [], imageUrl: null, photoCount: 0 })
+  })
+
+  it('keeps a photo post as one photo and caps a carousel at 20 photos', () => {
+    const single = pageWith({
+      code: 'DFixtur3abc',
+      media_type: 1,
+      caption: { text: 'One photo' },
+      image_versions2: { candidates: [{ url: 'https://scontent.cdninstagram.com/v/single.jpg' }] },
+      user: { username: 'poster_one' }
+    })
+    const many = pageWith({
+      code: 'DFixtur3abc',
+      media_type: 8,
+      caption: { text: 'Many photos' },
+      carousel_media: Array.from({ length: 22 }, (_, index) => ({
+        media_type: 1,
+        image_versions2: { candidates: [{ url: `https://scontent.cdninstagram.com/v/p${index}.jpg` }] }
+      })),
+      user: { username: 'poster_one' }
+    })
+
+    expect(parseThreadsPage(single, target, 1500)?.post).toMatchObject({
+      photoCount: 1,
+      photoUrls: ['https://scontent.cdninstagram.com/v/single.jpg']
+    })
+    const capped = parseThreadsPage(many, target, 1500)?.post
+    expect(capped?.photoCount).toBe(22)
+    expect(capped?.photoUrls).toHaveLength(20)
+    expect(capped?.photoUrls[19]).toBe('https://scontent.cdninstagram.com/v/p19.jpg')
+  })
+
+  it('carries the earlier posts of the thread, oldest first, with their photos', () => {
+    const node = (code: string, text: string, photos: string[]) => ({
+      node: {
+        code,
+        caption: { text },
+        user: { username: 'poster_one' },
+        carousel_media: photos.map((url) => ({ media_type: 1, image_versions2: { candidates: [{ url }] } }))
+      }
+    })
+    // As measured on a live page: the post comes in one result, its thread in another that names it by id only.
+    const page = `${pageWith({
+      id: '1801_77',
+      code: 'DFixtur3abc',
+      media_type: 19,
+      caption: { text: 'The full conclusion, with the original and its replies' },
+      user: { username: 'poster_one' },
+      text_post_app_info: { is_reply: true }
+    })}${pageWith({
+      id: '1801_77',
+      text_post_app_info: {
+        containing_thread: {
+          posts: {
+            edges: [
+              node('DRoot00001', 'Has anyone tried this? I saw a test of 300 runs', [
+                'https://scontent.cdninstagram.com/v/table-1.jpg',
+                'https://scontent.cdninstagram.com/v/table-2.jpg'
+              ]),
+              node('DFixtur3abc', 'The linked post itself', [])
+            ]
+          }
+        }
+      }
+    })}`
+
+    expect(parseThreadsPage(page, target, 1500)?.post.thread).toEqual([
+      {
+        authorHandle: 'poster_one',
+        text: 'Has anyone tried this? I saw a test of 300 runs',
+        photoUrls: [
+          'https://scontent.cdninstagram.com/v/table-1.jpg',
+          'https://scontent.cdninstagram.com/v/table-2.jpg'
+        ]
+      }
+    ])
   })
 
   it('ignores related posts and returns null when the page carries no post data', () => {

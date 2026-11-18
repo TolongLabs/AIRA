@@ -348,6 +348,8 @@ describe('mediaPromptText', () => {
       photoCount: 0,
       videoCount: 1,
       imageUrl: null,
+      photoUrls: [],
+      thread: [],
       externalTitle: '',
       replyCount: 12,
       durationSec: 20,
@@ -371,6 +373,43 @@ describe('mediaPromptText', () => {
     )
   })
 
+  it('puts the earlier posts of a thread before the linked post', () => {
+    const post: SocialPost = {
+      platform: 'threads',
+      id: 'DReply0001',
+      canonicalUrl: 'https://www.threads.com/@handle/post/DReply0001',
+      target: { platform: 'threads', id: 'DReply0001' } as SocialPost['target'],
+      authorHandle: 'handle',
+      authorName: '',
+      createdAt: '2026-11-17',
+      text: 'The full conclusion',
+      quotedText: '',
+      quotedAuthorHandle: '',
+      photoCount: 0,
+      videoCount: 0,
+      imageUrl: null,
+      photoUrls: [],
+      thread: [{ authorHandle: 'handle', text: 'I saw a test of 300 runs', photoUrls: ['https://img.example/1.jpg'] }],
+      externalTitle: '',
+      replyCount: 0,
+      durationSec: null,
+      video: null
+    }
+    const text = mediaPromptText(
+      {
+        readings: [],
+        links: [{ post, mediaKind: 'image', reading: { description: 'earlier post, photo 1: A table.' } }],
+        unreadable: []
+      },
+      LINE
+    )
+    expect(text.split('\n').slice(2, 5)).toEqual([
+      '- earlier post (Threads @handle): "I saw a test of 300 runs" | 1 photo',
+      '- post (Threads @handle, 2026-11-17): "The full conclusion" | 0 replies | url: https://www.threads.com/@handle/post/DReply0001',
+      '  image: earlier post, photo 1: A table.'
+    ])
+  })
+
   it('mediaIntro: the link text says the link is already open', () => {
     const link: LinkReading = {
       post: {
@@ -387,6 +426,8 @@ describe('mediaPromptText', () => {
         photoCount: 0,
         videoCount: 1,
         imageUrl: null,
+        photoUrls: [],
+        thread: [],
         externalTitle: 'Video title',
         replyCount: null,
         durationSec: 60,
@@ -425,6 +466,8 @@ describe('mediaPromptText', () => {
         photoCount: 0,
         videoCount: 1,
         imageUrl: null,
+        photoUrls: [],
+        thread: [],
         externalTitle: '',
         replyCount: null,
         durationSec: 20,
