@@ -473,5 +473,49 @@ class GroupAddressingPatchesTest(unittest.TestCase):
         self.assertFalse(mixin._should_process_message(self.group_msg(GROUP_FREE, "random line")))
 
 
+
+ADAPTER_FIXTURE = """def _aira_autofetch():
+    \"\"\"[aira] The social plugin's auto-fetch module, or None if not loaded.\"\"\"
+    try:
+        import importlib
+        return importlib.import_module("hermes_plugins.social.autofetch")
+    except Exception:
+        return None
+"""
+
+
+class AutofetchPatchTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.tree = Path(self.dir.name) / "hermes-agent"
+        self.adapter = self.tree / "plugins" / "platforms" / "whatsapp" / "adapter.py"
+        self.adapter.parent.mkdir(parents=True)
+        self.adapter.write_text(ADAPTER_FIXTURE, encoding="utf-8")
+        (self.tree / "gateway").mkdir()
+
+    def apply(self, *, check_only: bool = False):
+        p = next(item for item in patches.patches() if item["name"] == "autofetch-from-core")
+        with redirect_stdout(io.StringIO()) as out:
+            ok = patches.apply_patch(p, self.tree, check_only=check_only, python=sys.executable)
+        return ok, out.getvalue()
+
+    def test_the_hook_loads_brain_autofetch_instead_of_the_old_plugin(self):
+        ok, out = self.apply(check_only=True)
+        self.assertFalse(ok)
+        self.assertIn("ABSENT", out)
+
+        ok, out = self.apply()
+        self.assertTrue(ok, out)
+        self.assertIn("applied, syntax and tests OK", out)
+        text = self.adapter.read_text(encoding="utf-8")
+        self.assertIn('importlib.import_module("brain.autofetch")', text)
+        self.assertNotIn("hermes_plugins.social.autofetch", text)
+
+        ok, out = self.apply()
+        self.assertTrue(ok, out)
+        self.assertIn("already applied", out)
+
+
 if __name__ == "__main__":
     unittest.main()

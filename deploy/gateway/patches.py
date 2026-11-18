@@ -140,6 +140,20 @@ fake_reactions.react_to = boom
 assert m._should_process_message(unaddressed) is False
 '''
 
+AUTOFETCH_TEST = '''import ast, sys, types
+tree = ast.parse(open(sys.argv[1], encoding="utf-8").read())
+fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_aira_autofetch")
+scope = {}
+exec(compile(ast.Module(body=[fn], type_ignores=[]), "adapter", "exec"), scope)
+fake_brain = types.ModuleType("brain")
+fake = types.ModuleType("brain.autofetch")
+fake.offer = lambda adapter, data: None
+fake_brain.autofetch = fake
+sys.modules["brain"] = fake_brain
+sys.modules["brain.autofetch"] = fake
+assert scope["_aira_autofetch"]() is fake
+'''
+
 
 def patches() -> list[dict]:
     """Every patch, in the order it is applied. Paths are relative to the gateway tree."""
@@ -615,6 +629,23 @@ async def test_reply_prefix_still_injected_when_text_in_history():
             "tests": [["{python}", "-c", PASSIVE_REACTIONS_TEST]],
             "cwd": ".",
             "why": "unaddressed group messages never reached brain.reactions",
+        },
+        {
+            "name": "autofetch-from-core",
+            "target": ADAPTER,
+            "present": "[aira] autofetch-from-core",
+            "edits": (('''        import importlib
+        return importlib.import_module("hermes_plugins.social.autofetch")
+''',
+                       '''        # [aira] autofetch-from-core: the core reads the post links and
+        # brain.autofetch sends their media (docs/trd/system.md#autofetch).
+        import importlib
+        return importlib.import_module("brain.autofetch")
+'''),),
+            "syntax": py,
+            "tests": [["{python}", "-c", AUTOFETCH_TEST, "{target}"]],
+            "cwd": ".",
+            "why": "the old core's plugin sent a Threads avatar and one image of six",
         },
     ]
 
