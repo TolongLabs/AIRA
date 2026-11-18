@@ -292,6 +292,35 @@ describe('turn view and formatting', () => {
 })
 
 describe('retention pruning', () => {
+  it('keeps the newest claimed user message attached until the window advances', () => {
+    const storage = tmpStorage()
+    const old = '2025-09-01T00:00:00.000Z'
+    const recent = '2026-01-11T00:00:00.000Z'
+    seedTurn(storage, 't-declined', { at: old })
+    closeTurn(storage, { turnId: 't-declined', state: 'declined' }, clockAt(old))
+    storage.tx((db) => {
+      db.prepare(
+        `INSERT INTO session_message (chat_id, turn_id, role, content, created_at)
+         VALUES ('chat-1', 't-declined', 'user', 'old message', ?)`
+      ).run(old)
+    })
+    const config = { retentionDays: 90, diagnosticsHours: 72, windowDays: 7 }
+    expect(pruneRecords(storage, config, { now: clockAt(recent) }).counts['turn']).toBe(0)
+    expect(storage.read((db) => db.prepare('SELECT turn_id FROM session_message').pluck().get())).toBe('t-declined')
+
+    storage.tx((db) => {
+      db.prepare(
+        `INSERT INTO session_message (chat_id, role, content, created_at)
+         VALUES ('chat-1', 'user', 'new message', ?)`
+      ).run(recent)
+    })
+    expect(pruneRecords(storage, config, { now: clockAt(recent) }).counts['turn']).toBe(1)
+    expect(storage.read((db) => db.prepare('SELECT content FROM session_message').pluck().all())).toEqual([
+      'new message'
+    ])
+    expect(() => storage.check()).not.toThrow()
+  })
+
   it('prunes old turns, children, diagnostics, and window messages while preserving running turns and setting_change', () => {
     const storage = tmpStorage()
     const redactor = createRedactor()

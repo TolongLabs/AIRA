@@ -71,7 +71,10 @@ export function pruneRecords(
       .prepare('DELETE FROM session_message WHERE created_at < ? AND id < (SELECT max(id) FROM session_message)')
       .run(windowCutoff).changes
 
-    const oldTurnsWhere = "state <> 'running' AND received_at < ?"
+    // The retained user row must stay claimed until the window high-water mark advances.
+    const oldTurnsWhere = `state <> 'running' AND received_at < ? AND turn_id IS NOT (
+      SELECT turn_id FROM session_message WHERE id = (SELECT max(id) FROM session_message) AND role = 'user'
+    )`
     const oldTurnSubquery = `turn_id IN (SELECT turn_id FROM turn WHERE ${oldTurnsWhere})`
 
     counts.failure_diagnostics += db
