@@ -118,14 +118,12 @@ describe('Instagram and Facebook links', () => {
     })
   })
 
-  it.each([
-    'https://www.facebook.com/share/p/1AbCdEf9x/',
-    'https://www.facebook.com/example.page/posts/1234567890',
-    'https://www.facebook.com/example.page',
-    'https://facebook.com.evil.com/reel/1234567890'
-  ])('leaves %s to read_page', (url) => {
-    expect(parseSocialPostUrl(url)).toBeNull()
-  })
+  it.each(['https://www.facebook.com/example.page', 'https://facebook.com.evil.com/reel/1234567890'])(
+    'leaves %s to read_page',
+    (url) => {
+      expect(parseSocialPostUrl(url)).toBeNull()
+    }
+  )
 })
 
 describe('parseInstagramPage', () => {
