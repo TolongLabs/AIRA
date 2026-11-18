@@ -1,14 +1,15 @@
 import { createLogger, type Logger } from '../records/logger.js'
 import { resolveBlueskyDid } from './blueskyDid.js'
+import { parseFacebookPage } from './facebook.js'
 import { checkedFetcher, type Lookup, publicAddress } from './fetch.js'
 import { parseInstagramPage } from './instagram.js'
-import { META_PAGE_HEADERS } from './meta.js'
+import { fetchPostPage, META_PAGE_HEADERS } from './meta.js'
 import { parseBlueskyThread, parseFxTwitterResponse, parseYouTubeOEmbed, parseYtDlpMetadata } from './parsers.js'
 import { parseRedditFeedPost } from './redditFeed.js'
 import { BROWSER_USER_AGENT } from './replies/common.js'
 import { fetchThreadsPage, parseThreadsPage } from './threads.js'
 import type { SocialPost, SocialPostLookup } from './types.js'
-import { type SocialPlatform, type SocialPostTarget } from './urls.js'
+import { isFacebookPost, type SocialPlatform, type SocialPostTarget } from './urls.js'
 import { runYtDlp } from './yt-dlp.js'
 
 export interface SocialPostSettings {
@@ -75,11 +76,12 @@ export class SocialPostViewer {
   }
 
   async lookup(target: SocialPostTarget, signal?: AbortSignal): Promise<SocialPostLookup> {
-    // Reddit has its feed and Instagram its page, so both still read without yt-dlp.
+    // Reddit has its feed, and Instagram and Facebook posts their pages, so they still read without yt-dlp.
     if (
       isYtDlpPlatform(target.platform) &&
       target.platform !== 'reddit' &&
       target.platform !== 'instagram' &&
+      !isFacebookPost(target) &&
       !this.ytDlpAvailable
     ) {
       return failure(target.platform, 'binary_missing')
@@ -271,6 +273,28 @@ export class SocialPostViewer {
     }
   }
 
+  /** A Facebook post's logged-out page, after its share link's one redirect. Null sends the lookup on to yt-dlp. */
+  private async lookupFacebookPage(target: SocialPostTarget, signal: AbortSignal): Promise<SocialPost | null> {
+    try {
+      const fetched = await fetchPostPage(
+        this.fetcher,
+        target,
+        signal,
+        (item) => isFacebookPost(item) && Boolean(item.profile)
+      )
+      if ('reason' in fetched) return null
+      if (!fetched.response.ok) {
+        await fetched.response.body?.cancel()
+        return null
+      }
+      const post = parseFacebookPage(await fetched.response.text(), fetched.page, this.settings.maxTextChars)
+      // The post keeps the link it was asked for, so its cache entry and the tools' refusal both find it.
+      return post ? { ...post, target } : null
+    } catch {
+      return null
+    }
+  }
+
   private async lookupUncached(target: SocialPostTarget, signal: AbortSignal): Promise<SocialPostLookup> {
     if (target.platform === 'x') {
       const response = await this.fetcher(`https://api.fxtwitter.com/status/${target.id}`, { signal })
@@ -318,6 +342,11 @@ export class SocialPostViewer {
 
     if (target.platform === 'instagram') {
       const page = await this.lookupInstagramPage(target, signal)
+      if (page) return { status: 'found', post: page }
+    }
+
+    if (isFacebookPost(target)) {
+      const page = await this.lookupFacebookPage(target, signal)
       if (page) return { status: 'found', post: page }
     }
 

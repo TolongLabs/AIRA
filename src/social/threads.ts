@@ -1,9 +1,7 @@
-import { fillMetaPost, type JsonObject, META_PAGE_HEADERS, metaPhotoUrls, walkPageData } from './meta.js'
+import { fetchPostPage, fillMetaPost, type JsonObject, metaPhotoUrls, walkPageData } from './meta.js'
 import { array, base, capped, imageUrl, nonNegativeInteger, object, string } from './parsers.js'
 import type { SocialPost, SocialThreadPost } from './types.js'
-import { parseSocialPostUrl, type SocialPostTarget } from './urls.js'
-
-const REDIRECTS = new Set([301, 302, 303, 307, 308])
+import type { SocialPostTarget } from './urls.js'
 
 /** The most earlier posts of a thread a post carries. */
 const MAX_THREAD_POSTS = 3
@@ -50,27 +48,13 @@ function threadPosts(results: JsonObject[], media: JsonObject, maxTextChars: num
     }))
 }
 
-/**
- * The page of a Threads post. A short or share link answers with one redirect to the post, followed only when its
- * `Location` parses as a Threads post link; that page is fetched through the same checked fetcher.
- */
-export async function fetchThreadsPage(
+/** The page of a Threads post; a short or share link has no profile until its redirect names the post. */
+export function fetchThreadsPage(
   fetcher: typeof fetch,
   target: SocialPostTarget,
   signal: AbortSignal
 ): Promise<{ page: SocialPostTarget; response: Response } | { reason: 'redirect' }> {
-  const response = await fetcher(target.canonicalUrl, { headers: META_PAGE_HEADERS, signal })
-  if (!REDIRECTS.has(response.status) || target.profile) return { page: target, response }
-  await response.body?.cancel()
-  const location = response.headers.get('location')
-  let next: SocialPostTarget | null = null
-  try {
-    next = location ? parseSocialPostUrl(new URL(location, target.canonicalUrl).href) : null
-  } catch {
-    next = null
-  }
-  if (next?.platform !== 'threads' || !next.profile) return { reason: 'redirect' }
-  return { page: next, response: await fetcher(next.canonicalUrl, { headers: META_PAGE_HEADERS, signal }) }
+  return fetchPostPage(fetcher, target, signal, (item) => Boolean(item.profile))
 }
 
 function replyNodes(info: JsonObject, key: 'direct_replies' | 'pinned_replies'): JsonObject[] {

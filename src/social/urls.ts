@@ -52,7 +52,36 @@ function youtubeStartSec(url: URL): number | undefined {
   return Number(hours) * 3600 + Number(minutes) * 60 + Number(seconds)
 }
 
-/** Facebook by its video links only; a post link is left to read_page, as yt-dlp reads no photo post. */
+/** A Facebook post's own link: the group or page it is in is its profile, which marks it resolved. */
+function facebookPost(url: URL): SocialPostTarget | null {
+  const post = (id: string, canonicalUrl: string, profile: string): SocialPostTarget => ({
+    ...target('facebook', id, canonicalUrl, profile),
+    lookupKey: `facebook:post:${id}`
+  })
+  const group = url.pathname.match(/^\/groups\/([\w.-]+)\/(?:permalink|posts)\/(\d+)\/?$/)
+  if (group) {
+    const [, name = '', id = ''] = group
+    return post(id, `https://www.facebook.com/groups/${name}/permalink/${id}/`, name)
+  }
+  const page = url.pathname.match(/^\/([\w.-]+)\/posts\/([\w-]+)\/?$/)
+  if (page) {
+    const [, name = '', id = ''] = page
+    return post(id, `https://www.facebook.com/${name}/posts/${id}`, name)
+  }
+  const story = url.searchParams.get('story_fbid')
+  const owner = url.searchParams.get('id')
+  if (url.pathname === '/permalink.php' && story && owner && /^[\w-]+$/.test(story) && /^\d+$/.test(owner)) {
+    return post(story, `https://www.facebook.com/permalink.php?story_fbid=${story}&id=${owner}`, owner)
+  }
+  return null
+}
+
+/** True for a Facebook post link, shared or resolved, which is read from its page; a video link goes to yt-dlp. */
+export function isFacebookPost(target: SocialPostTarget): boolean {
+  return target.platform === 'facebook' && target.lookupKey.startsWith('facebook:post')
+}
+
+/** Facebook by its video and post links; a profile or home page is left to read_page. */
 function facebookTarget(host: string, url: URL): SocialPostTarget | null {
   if (hostMatches(host, 'fb.watch')) {
     const id = url.pathname.match(/^\/([\w-]+)\/?$/)?.[1]
@@ -67,6 +96,15 @@ function facebookTarget(host: string, url: URL): SocialPostTarget | null {
       lookupKey: `facebook:share:${id}`
     }
   }
+  const sharedPost = url.pathname.match(/^\/share\/p\/([\w-]+)\/?$/)?.[1]
+  if (sharedPost) {
+    return {
+      ...target('facebook', sharedPost, `https://www.facebook.com/share/p/${sharedPost}/`),
+      lookupKey: `facebook:post-share:${sharedPost}`
+    }
+  }
+  const post = facebookPost(url)
+  if (post) return post
   const reel = url.pathname.match(/^\/reel\/(\d+)\/?$/)?.[1]
   if (reel) return target('facebook', reel, `https://www.facebook.com/reel/${reel}`)
   const watch = /^\/watch\/?$/.test(url.pathname) ? url.searchParams.get('v') : null

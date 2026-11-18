@@ -1,5 +1,6 @@
 import { array, capped, imageUrl, nonNegativeInteger, object, photoList, string } from './parsers.js'
 import type { SocialPost } from './types.js'
+import { parseSocialPostUrl, type SocialPostTarget } from './urls.js'
 
 // Threads and Instagram share one post shape (Meta's media model): `image_versions2`, `video_versions`,
 // `carousel_media`, `caption`, `user` and `taken_at`.
@@ -91,4 +92,31 @@ export function fillMetaPost(post: SocialPost, media: JsonObject, maxTextChars: 
       hasAudio: hasAudio(videoSource, media)
     }
   }
+}
+
+const REDIRECTS = new Set([301, 302, 303, 307, 308])
+
+/**
+ * The page of a post. A share or short link, one `resolved` says is not yet the post, answers with one redirect,
+ * followed only when its `Location` parses as a resolved post link of the same platform; that page is fetched
+ * through the same checked fetcher.
+ */
+export async function fetchPostPage(
+  fetcher: typeof fetch,
+  target: SocialPostTarget,
+  signal: AbortSignal,
+  resolved: (target: SocialPostTarget) => boolean
+): Promise<{ page: SocialPostTarget; response: Response } | { reason: 'redirect' }> {
+  const response = await fetcher(target.canonicalUrl, { headers: META_PAGE_HEADERS, signal })
+  if (!REDIRECTS.has(response.status) || resolved(target)) return { page: target, response }
+  await response.body?.cancel()
+  const location = response.headers.get('location')
+  let next: SocialPostTarget | null = null
+  try {
+    next = location ? parseSocialPostUrl(new URL(location, target.canonicalUrl).href) : null
+  } catch {
+    next = null
+  }
+  if (next?.platform !== target.platform || !resolved(next)) return { reason: 'redirect' }
+  return { page: next, response: await fetcher(next.canonicalUrl, { headers: META_PAGE_HEADERS, signal }) }
 }
