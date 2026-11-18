@@ -4,7 +4,7 @@ import { checkedFetcher, type Lookup, publicAddress } from './fetch.js'
 import { parseBlueskyThread, parseFxTwitterResponse, parseYouTubeOEmbed, parseYtDlpMetadata } from './parsers.js'
 import { parseRedditFeedPost } from './redditFeed.js'
 import { BROWSER_USER_AGENT } from './replies/common.js'
-import { parseThreadsPage, THREADS_PAGE_HEADERS } from './threads.js'
+import { fetchThreadsPage, parseThreadsPage } from './threads.js'
 import type { SocialPost, SocialPostLookup } from './types.js'
 import { type SocialPlatform, type SocialPostTarget } from './urls.js'
 import { runYtDlp } from './yt-dlp.js'
@@ -258,10 +258,12 @@ export class SocialPostViewer {
     }
 
     if (target.platform === 'threads') {
-      const response = await this.fetcher(target.canonicalUrl, { headers: THREADS_PAGE_HEADERS, signal })
-      if (!response.ok) return failure('threads', `http_${response.status}`)
-      const page = parseThreadsPage(await response.text(), target, this.settings.maxTextChars)
-      return page ? { status: 'found', post: page.post } : failure('threads', 'no_post_data')
+      const fetched = await fetchThreadsPage(this.fetcher, target, signal)
+      if ('reason' in fetched) return failure('threads', fetched.reason)
+      if (!fetched.response.ok) return failure('threads', `http_${fetched.response.status}`)
+      const page = parseThreadsPage(await fetched.response.text(), fetched.page, this.settings.maxTextChars)
+      // The post keeps the link it was asked for, so its cache entry and the tools' refusal both find it.
+      return page ? { status: 'found', post: { ...page.post, target } } : failure('threads', 'no_post_data')
     }
 
     if (target.platform === 'bluesky') {

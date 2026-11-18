@@ -1027,6 +1027,40 @@ describe('intake footer kinds and URLs in pipeline', () => {
     expect(r4.content).toBe('Here is what i saw')
   })
 
+  it('closes a watched share link under both its own address and the post it resolved to', async () => {
+    const runner = scriptedRunner(() => 'here is what i saw')
+    const post = {
+      ...makePost('threads', 'https://www.threads.com/@user/post/DPost0001'),
+      target: {
+        platform: 'threads',
+        id: 'BShare001',
+        canonicalUrl: 'https://www.threads.com/share/BShare001'
+      } as SocialPost['target']
+    }
+    const media: TurnMedia = {
+      async read() {
+        return { readings: [], unreadable: [], calls: [] }
+      },
+      async readLink() {
+        return {
+          readings: [],
+          links: [{ post, mediaKind: 'image', reading: { description: 'A table.' } }],
+          unreadable: [],
+          calls: []
+        }
+      }
+    }
+    const config = testConfig()
+    const core = await startTestCore({ runner, config, deps: { media, cleaner: createReplyCleaner(config) } })
+    core.activate(CHAT)
+    await core.gateway.send(msg('m-1', 'sum up https://www.threads.com/share/BShare001'))
+    expect(runner.inputs[0]?.context.intakeUrls).toEqual(['https://www.threads.com/@user/post/DPost0001'])
+    expect(runner.inputs[0]?.context.intakeWatchedUrls).toEqual([
+      'https://www.threads.com/@user/post/DPost0001',
+      'https://www.threads.com/share/BShare001'
+    ])
+  })
+
   it('gives a direct command no footer even when createReplyCleaner is wired with toolsOk', async () => {
     const config = testConfig()
     const runner = scriptedRunner(() => 'unused')

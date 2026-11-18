@@ -90,6 +90,15 @@ describe('Threads links', () => {
     })
   })
 
+  it('reads a share link, which Threads redirects to the full post', () => {
+    expect(parseSocialPostUrl('https://www.threads.com/share/BShare12x')).toMatchObject({
+      platform: 'threads',
+      id: 'BShare12x',
+      lookupKey: 'threads:share:BShare12x',
+      canonicalUrl: 'https://www.threads.com/share/BShare12x'
+    })
+  })
+
   it.each([
     'https://www.threads.com/@poster_one',
     'https://www.threads.com/@poster_one/post/',
@@ -175,6 +184,65 @@ describe('SocialPostViewer on Threads', () => {
     expect(headers.get('sec-fetch-dest')).toBe('document')
   })
 
+  it('follows a share link to its post and reads it there', async () => {
+    const share = parseSocialPostUrl('https://www.threads.com/share/BShare12x')!
+    const fetcher = vi.fn(async (input: string | URL | Request) =>
+      String(input).includes('/share/')
+        ? new Response(null, {
+            status: 302,
+            headers: { location: 'https://www.threads.com/@poster_one/post/DFixtur3abc?xmt=abc&slof=1' }
+          })
+        : htmlResponse(PAGE)
+    )
+    const viewer = createSocialPostViewer(settings, { fetcher })
+
+    const result = await viewer.lookup(share)
+
+    expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([
+      'https://www.threads.com/share/BShare12x',
+      'https://www.threads.com/@poster_one/post/DFixtur3abc'
+    ])
+    expect(result).toMatchObject({
+      status: 'found',
+      post: {
+        id: 'DFixtur3abc',
+        canonicalUrl: 'https://www.threads.com/@poster_one/post/DFixtur3abc',
+        target: { lookupKey: 'threads:share:BShare12x' },
+        photoCount: 2
+      }
+    })
+  })
+
+  it('follows a short link that answers 301', async () => {
+    const short = parseSocialPostUrl('https://www.threads.com/t/DFixtur3abc')!
+    const fetcher = vi.fn(async (input: string | URL | Request) =>
+      String(input).includes('/t/')
+        ? new Response(null, { status: 301, headers: { location: '/@poster_one/post/DFixtur3abc' } })
+        : htmlResponse(PAGE)
+    )
+
+    expect(await createSocialPostViewer(settings, { fetcher }).lookup(short)).toMatchObject({
+      status: 'found',
+      post: { authorHandle: 'poster_one' }
+    })
+  })
+
+  it.each([
+    ['another host', 'https://evil.example/@poster_one/post/DFixtur3abc'],
+    ['another share link', 'https://www.threads.com/share/BOther123'],
+    ['no location', '']
+  ])('refuses a redirect to %s', async (_name, location) => {
+    const share = parseSocialPostUrl('https://www.threads.com/share/BShare12x')!
+    const fetcher = vi.fn(async () => new Response(null, { status: 302, headers: location ? { location } : {} }))
+
+    expect(await createSocialPostViewer(settings, { fetcher }).lookup(share)).toEqual({
+      status: 'failed',
+      platform: 'threads',
+      reason: 'redirect'
+    })
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+
   it('reports a page without post data as unopened', async () => {
     const viewer = createSocialPostViewer(settings, { fetcher: vi.fn(async () => htmlResponse('<html></html>')) })
 
@@ -203,6 +271,25 @@ describe('fetchThreadsReplies', () => {
         { author: 'fan_two', text: 'Count me in', likes: 4 },
         { author: 'fan_five', text: 'Nice', likes: 0 }
       ]
+    })
+  })
+
+  it('reads the replies of a share link from the post it redirects to', async () => {
+    const share = parseSocialPostUrl('https://www.threads.com/share/BShare12x')!
+    const fetcher = vi.fn(async (input: string | URL | Request) =>
+      String(input).includes('/share/')
+        ? new Response(null, {
+            status: 302,
+            headers: { location: 'https://www.threads.com/@poster_one/post/DFixtur3abc' }
+          })
+        : htmlResponse(PAGE)
+    )
+
+    expect(
+      await fetchThreadsReplies(share, replyContext({ fetcher: fetcher as unknown as typeof fetch }))
+    ).toMatchObject({
+      status: 'found',
+      total: 897
     })
   })
 

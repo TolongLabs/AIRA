@@ -482,10 +482,15 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         // A link is closed to read_post and read_page only when intake watched its video or image (owner, 17 Nov).
         // Text alone, or a failed watch, leaves the tools open: they also return the replies and the media.
         context.intakeUrls = readLinks.map((link) => link.post.canonicalUrl).filter((url) => url.length > 0)
-        context.intakeWatchedUrls = readLinks
-          .filter((link) => link.reading !== undefined)
-          .map((link) => link.post.canonicalUrl)
-          .filter((url) => url.length > 0)
+        // A share link the reader resolved is closed under both its own address and the post's.
+        context.intakeWatchedUrls = [
+          ...new Set(
+            readLinks
+              .filter((link) => link.reading !== undefined)
+              .flatMap((link) => [link.post.canonicalUrl, link.post.target.canonicalUrl])
+              .filter((url): url is string => typeof url === 'string' && url.length > 0)
+          )
+        ]
         outcome.fields.mediaMs = Math.max(0, now().getTime() - mediaStartedAt)
         const promptText = mediaPromptText(combined, pack.lines.unreadableMedia)
         if (promptText.length > 0) input.media = promptText
