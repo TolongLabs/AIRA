@@ -16,6 +16,7 @@ export interface ChatFlagsEntry {
   reactionChance?: number
   names?: string[]
   free?: true
+  autofetch?: true
 }
 
 export interface ChatFlagsFile {
@@ -25,7 +26,7 @@ export interface ChatFlagsFile {
 
 export type PacksSource = PackSet | (() => PackSet)
 
-/** Builds the flags object for every active chat that has voice, reactions, name call or free response enabled. */
+/** Builds the flags object for every active chat that has voice, reactions, name call, free response or autofetch on. */
 export function buildChatFlags(storage: Storage, packs?: PacksSource): ChatFlagsFile {
   const chats: Record<string, ChatFlagsEntry> = {}
   let loaded: PackSet | undefined
@@ -45,6 +46,7 @@ export function buildChatFlags(storage: Storage, packs?: PacksSource): ChatFlags
     const chanceValue = settings['reactions.chance']?.value
     const reactionChance = typeof chanceValue === 'number' ? chanceValue / 100 : 0.33
     const free = chat.type === 'group' && settings['freeResponse']?.value === true
+    const autofetch = chat.type === 'group' && settings['features.autofetch']?.value === true && !muted
     const nameCall = chat.type === 'group' && settings['nameCall']?.value === true
     let names: string[] = []
     if (nameCall) {
@@ -52,7 +54,7 @@ export function buildChatFlags(storage: Storage, packs?: PacksSource): ChatFlags
       const pack = typeof characterId === 'string' ? getPacks()?.packs.get(characterId) : undefined
       names = resolveNames(settings, pack)
     }
-    if (!voice && !reactions && names.length === 0 && !free) continue
+    if (!voice && !reactions && names.length === 0 && !free && !autofetch) continue
     const entry: ChatFlagsEntry = {}
     if (voice) entry.voice = 'all'
     if (reactions) {
@@ -61,6 +63,7 @@ export function buildChatFlags(storage: Storage, packs?: PacksSource): ChatFlags
     }
     if (names.length > 0) entry.names = names
     if (free) entry.free = true
+    if (autofetch) entry.autofetch = true
     chats[chat.waId] = entry
   }
   return { version: 1, chats }
