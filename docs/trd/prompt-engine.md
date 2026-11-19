@@ -66,9 +66,9 @@ The system prompt is assembled in a fixed order. Blocks 1 to 3 are stable per ch
 | 6   | Reply Shape   | Drawn by code for this turn                                           | Yes              |
 
 - Blocks 4 to 6 carry only labelled data and short instructions. User text never enters the system prompt.
-- **Media in block 4.** When the sender attached files, block 4 ends with a line saying the model cannot open them,
-  then a `<media untrusted="true">` block: one line per file with its kind and description, and the transcript on a
-  second line when there is speech. Line breaks and `<media` tags are stripped from the text. The whole block is
+- **Media in block 4.** When the sender attached files, block 4 ends with a line telling the model to speak of them
+  as things it saw or heard itself, without mentioning the description, then a `<media untrusted="true">` block: one
+  line per file with its kind and description, and the transcript on a second line when there is speech. Line breaks and `<media` tags are stripped from the text. The whole block is
   clipped to 4,500 characters, shared evenly between the files, so media cannot push the prompt over its ceiling.
   A file that could not be read adds a short `<media-unreadable>` note with its kind, the reason, and the pack's
   `unreadableMedia` line. The model says that line in its own voice. A message that holds only a file has no text,

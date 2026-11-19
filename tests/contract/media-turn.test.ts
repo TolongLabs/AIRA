@@ -242,7 +242,7 @@ describe('mediaPromptText', () => {
     expect(mediaPromptText({ readings: [], unreadable: [] }, LINE)).toBe('')
   })
 
-  it('puts readings in one untrusted block and says the model cannot open the files', () => {
+  it('puts readings in one untrusted block and has the model speak of them as seen, not described', () => {
     const text = mediaPromptText(
       {
         readings: [
@@ -255,7 +255,7 @@ describe('mediaPromptText', () => {
     )
     expect(text).toBe(
       [
-        'The sender attached files. You cannot open them. This is what each one shows:',
+        'The sender attached files. This is what each one shows. Speak of them as things you saw or heard yourself, and do not mention this description:',
         '<media untrusted="true">',
         '- image: A cup of coffee.',
         '- audio: A voice message.',
@@ -363,7 +363,7 @@ describe('mediaPromptText', () => {
     const text = mediaPromptText({ readings: [], links: [link], unreadable: [] }, LINE)
     expect(text).toBe(
       [
-        'The sender shared a link. It is already open; do not open it again. This is what it shows:',
+        'The sender shared a link. It is already open; do not open it again. This is what it shows. Speak of it as something you saw yourself, and do not mention this description:',
         '<media untrusted="true">',
         '- post (X @handle, 2026-11-01): "look at this" | quoting @other: "original thought" | 12 replies | url: https://x.com/handle/status/123',
         '  video: A bicycle rolls past.',
@@ -438,14 +438,14 @@ describe('mediaPromptText', () => {
     }
     const linkOnly = mediaPromptText({ readings: [], links: [link], unreadable: [] }, LINE)
     expect(linkOnly.split('\n')[0]).toBe(
-      'The sender shared a link. It is already open; do not open it again. This is what it shows:'
+      'The sender shared a link. It is already open; do not open it again. This is what it shows. Speak of it as something you saw yourself, and do not mention this description:'
     )
     const filesAndLink = mediaPromptText(
       { readings: [{ kind: 'image', reading: { description: 'A cat.' } }], links: [link], unreadable: [] },
       LINE
     )
     expect(filesAndLink.split('\n')[0]).toBe(
-      'The sender attached files and shared a link. You cannot open them. It is already open; do not open it again. This is what each one shows:'
+      'The sender attached files and shared a link. The link is already open; do not open it again. This is what each one shows. Speak of them as things you saw or heard yourself, and do not mention this description:'
     )
   })
 
