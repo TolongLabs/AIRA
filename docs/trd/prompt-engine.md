@@ -74,6 +74,10 @@ The system prompt is assembled in a fixed order. Blocks 1 to 3 are stable per ch
   `unreadableMedia` line. The model says that line in its own voice. A message that holds only a file has no text,
   and a model API refuses an empty message, so the model sees `(no text, only a file)` in its place. See
   [Models](models.md#media-watching).
+- **Media marked on its message.** When block 4 holds media, code puts a fixed note on the line before the newest user
+  message's text: the message came with the files or link that block 4 describes. Older messages get no note.
+  Without it, a short caption such as "Explain" reads as a follow-up to the earlier topic, not as a question about the
+  file.
 - The whole prompt stays under the ceiling in `config.yml` (`prompt.maxSystemTokens`, default 8,000). A test builds
   the prompt for every pack and fails above it.
 - Block 3 ends with the tool rules when the registry supplies them for this turn. Otherwise it holds the harness

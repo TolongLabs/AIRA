@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { App } from '../../src/app.js'
 import type { MediaWatcher } from '../../src/media/gemini-watcher.js'
 import { ModelError, type ModelRequest } from '../../src/models/types.js'
+import { MEDIA_NOTE } from '../../src/prompt/builder.js'
 import type { GatewayMessage } from '../harness/gateway.js'
 import { lastTurn, msg, queueModel, startApp } from '../support/app.js'
 import { tmpDir } from '../support/tmp.js'
@@ -94,7 +95,9 @@ describe('a photo, a voice note and a document', () => {
     // The file itself and its path never reach the model.
     expect(JSON.stringify(model.requests[0])).not.toContain('img_a1b2')
     expect(JSON.stringify(model.requests[0])).not.toContain('jpeg-bytes')
-    expect(model.requests[0]?.messages).toEqual([{ role: 'user', content: '[member 1] what do you think?' }])
+    expect(model.requests[0]?.messages).toEqual([
+      { role: 'user', content: `[member 1] ${MEDIA_NOTE}\nwhat do you think?` }
+    ])
 
     expect(lastTurn(app)).toMatchObject({ chat_id: chatId, state: 'delivered', outcome: 'delivered' })
     expect(lastTurn(app)['failure_kind']).toBeNull()
@@ -113,7 +116,9 @@ describe('a photo, a voice note and a document', () => {
     )
 
     expect(delivery.content).toBe('Nice one!\n\n_🛠️ looked at an image_')
-    expect(model.requests[0]?.messages).toEqual([{ role: 'user', content: '[member 1] (no text, only a file)' }])
+    expect(model.requests[0]?.messages).toEqual([
+      { role: 'user', content: `[member 1] ${MEDIA_NOTE}\n(no text, only a file)` }
+    ])
     expect(contextOf(model.requests[0])).toContain('- image: A cat on a windowsill.')
   })
 

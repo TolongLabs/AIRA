@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { loadPack, type Pack } from '../../src/character/loader.js'
 import type { ModelClient, ModelRequest } from '../../src/models/types.js'
-import { createPromptBuilder, estimateTokens, localTimeLine } from '../../src/prompt/builder.js'
+import { createPromptBuilder, estimateTokens, localTimeLine, MEDIA_NOTE } from '../../src/prompt/builder.js'
 import { getChatState, setChatState } from '../../src/prompt/chat-state.js'
 import { createModelMoodJudge, detectMood, detectMoodByRules, type MoodJudge } from '../../src/prompt/mood.js'
 import { pick, seededRandom } from '../../src/prompt/random.js'
@@ -442,6 +442,30 @@ describe('prompt builder', () => {
       })
     )
     expect(built.messages).toEqual([{ role: 'user', content: '[Alice] first\n\n[member 2] second' }])
+  })
+
+  it('marks the newest user message as the one that carried the media, and only that one', async () => {
+    const builder = createPromptBuilder({
+      storage: tmpStorage(),
+      config: { prompt: { maxSystemTokens: 8000 }, judge: { mood: 'off', moodMinProbability: 0.3, timeoutMs: 1000 } },
+      harnessRules: 'Harness rules.',
+      newSeed: () => 1,
+      now: fixedNow
+    })
+    const window: TurnInput['window'] = [
+      { role: 'user', senderId: 's_alice', content: 'what about the free plan', at: '2026-01-02T03:00:00.000Z' },
+      { role: 'assistant', content: 'The page never names a plan.', at: '2026-01-02T03:01:00.000Z' },
+      { role: 'user', senderId: 's_alice', content: 'Explain', at: '2026-01-02T03:02:00.000Z' }
+    ]
+    const withMedia = await builder.build({
+      ...makeTurnInput({ window }),
+      media: 'The sender attached files.\n<media untrusted="true">\n- image: a diagram\n</media>'
+    })
+    expect(withMedia.messages[0]).toEqual({ role: 'user', content: 'what about the free plan' })
+    expect(withMedia.messages[2]).toEqual({ role: 'user', content: `${MEDIA_NOTE}\nExplain` })
+
+    const without = await builder.build(makeTurnInput({ window }))
+    expect(without.messages[2]).toEqual({ role: 'user', content: 'Explain' })
   })
 
   it('labels group messages by first appearance, omits labels in dm, and joins consecutive user messages', async () => {
