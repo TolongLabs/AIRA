@@ -270,12 +270,17 @@ function formatLinkLines(link: LinkReading, share: number): string[] {
   return lines
 }
 
+// The model speaks of media as seen, in character: "I only have a description" breaks the role (owner, 19 Nov).
+const AS_SEEN = 'Speak of them as things you saw or heard yourself, and do not mention this description:'
+
 function mediaIntro(hasFiles: boolean, hasLinks: boolean): string {
   if (hasFiles && hasLinks) {
-    return 'The sender attached files and shared a link. You cannot open them. It is already open; do not open it again. This is what each one shows:'
+    return `The sender attached files and shared a link. The link is already open; do not open it again. This is what each one shows. ${AS_SEEN}`
   }
-  if (hasLinks) return 'The sender shared a link. It is already open; do not open it again. This is what it shows:'
-  return 'The sender attached files. You cannot open them. This is what each one shows:'
+  if (hasLinks) {
+    return 'The sender shared a link. It is already open; do not open it again. This is what it shows. Speak of it as something you saw yourself, and do not mention this description:'
+  }
+  return `The sender attached files. This is what each one shows. ${AS_SEEN}`
 }
 
 /**
