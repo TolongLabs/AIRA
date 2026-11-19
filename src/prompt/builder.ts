@@ -14,6 +14,9 @@ import { detectLengthBypass, drawShape, shapeText } from './shape.js'
 /** What the model sees for a message with no text: a file sent with no caption. */
 const NO_TEXT = '(no text, only a file)'
 
+/** Put before the newest user message when block 4 holds media, so a caption is read as being about the file. */
+export const MEDIA_NOTE = '(This message came with the files or link described in the media block of the context.)'
+
 /** A conservative token estimate for the size ceiling: one token per three characters, rounded up. */
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 3)
@@ -101,8 +104,9 @@ function formatMessages(input: TurnInput, names: Map<string, string> = new Map()
   const isGroup = input.context.chat.type === 'group'
   const memberNumbers = new Map<string, number>()
   const messages: ModelMessage[] = []
+  const mediaIndex = input.media ? input.window.findLastIndex((message) => message.role === 'user') : -1
 
-  for (const message of input.window) {
+  for (const [index, message] of input.window.entries()) {
     if (message.role === 'assistant') {
       const replayed = forReplay(message.content)
       messages.push({ role: 'assistant', content: message.byCode ? `${CODE_REPLY_NOTE}\n${replayed}` : replayed })
@@ -110,6 +114,7 @@ function formatMessages(input: TurnInput, names: Map<string, string> = new Map()
     }
     // A file sent with no caption has no text, and a model API refuses an empty message.
     let content = withQuote(message.content.trim() === '' ? { ...message, content: NO_TEXT } : message)
+    if (index === mediaIndex) content = `${MEDIA_NOTE}\n${content}`
     if (isGroup) {
       const senderKey = message.senderId ?? ''
       let memberNumber = memberNumbers.get(senderKey)
