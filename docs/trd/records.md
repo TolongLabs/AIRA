@@ -79,6 +79,8 @@ The list lives in `src/records/kinds.ts`. Alert delivery follows the Deployment 
   per stage, `debug` for detail that is off in production.
 - Feedback logs hold only the report id, state and answer length. They never hold an answer, reference or form URL.
 
+An unknown-host social path match logs the platform and hostname. Paths and queries stay out of the log.
+
 ## Redaction
 
 - WhatsApp ids and phone-like strings are replaced with stable hashes. Configured secrets are masked. Anything

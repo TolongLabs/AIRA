@@ -355,7 +355,8 @@ unknown (`src/media/link-segments.ts`).
 
 A social post reaches the turn through the reader in
 [Social Post And Reply Readers](#social-post-and-reply-readers). Nine platforms are covered: X, Bluesky, Threads,
-YouTube, TikTok, Reddit, Instagram, Bilibili and Facebook.
+YouTube, TikTok, Reddit, Instagram, Bilibili and Facebook. Intake can look for links up to three user-message
+quote hops in the same chat. It uses the stored text and respects the existing bounds on intake lookups.
 
 Video from a linked social post is fetched by the social tool and passed through the same watch path as a file. It
 must fit the same size limit and `media.maxVideoSeconds`. A remote audio download over 600 seconds is refused
@@ -440,7 +441,11 @@ covers nine platforms: X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram, 
   `/reels/<code>` and the account name before `/p/` or `/reel/`. Facebook takes its video links
   (`/share/v/<id>`, `/share/r/<id>`, `/reel/<id>`, `/watch?v=<id>`, `/<page>/videos/<id>`, `fb.watch/<id>`) and its
   post links (`/share/p/<id>`, `/groups/<group>/permalink/<id>`, `/groups/<group>/posts/<id>`, `/<page>/posts/<id>`,
-  `/permalink.php?story_fbid=<id>`).
+  `/permalink.php?story_fbid=<id>`). Strict direct-post path shapes can also match on an unknown host, with
+  YouTube limited to official hosts. Facebook requires a long numeric id or a `pfbid` post id. An Instagram
+  `/p/<id>` match needs a hostname containing `insta`. Link extraction strips matched WhatsApp formatting marks
+  around a link and preserves unwrapped identifiers.
+  See [Social Post Reader](tools.md#social-post-reader) for supported official paths.
 - **Post dispatch.** X is read through the fxtwitter API, Bluesky through its public API after handle-to-DID
   resolution (video comes from the author's data server when found), and Threads through its logged-out page, which
   holds only the first batch of replies. Instagram is read from its logged-out post page first, which carries the
@@ -456,12 +461,11 @@ covers nine platforms: X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram, 
   photos, only the thumbnail yt-dlp reports as its one picture.
 - **Threads thread.** A Threads post that continues a thread carries the earlier posts the page holds for it
   (`containing_thread`), oldest first, at most 3: author, text and photos.
-- **Safe fetching.** The shared fetcher rejects forbidden and non-public addresses and never follows redirects, so
-  a redirect cannot smuggle in a private host. The exceptions are a Threads short or share link and a Facebook post's
-  share link: the one redirect is read, its `Location` must parse as a post link of the same platform, and that post
-  is fetched through the same fetcher. Any
-  other redirect fails the lookup. yt-dlp runs in a fresh temporary home with an isolated environment,
-  and its output is capped at 2 MiB. When the binary is missing, lookups fail as `binary_missing`.
+- **Safe fetching.** The pasted host for a shape match never enters network requests. The shared fetcher
+  rejects forbidden and non-public addresses. A share redirect is read manually only on the platform's own
+  domains, for at most two hops, and its final address must parse as the same platform. Other redirects fail.
+  yt-dlp runs in a fresh temporary home with an isolated environment and a 2 MiB output cap. When the binary
+  is missing, lookups fail as `binary_missing`.
 - **Post cache.** Successful lookups are cached by lookup key with a time limit and an entry cap; a time limit of 0
   switches the cache off. The key ignores YouTube timestamps, so a cached post is re-targeted to the link that asked
   for it. Only successes are cached.
