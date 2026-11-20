@@ -165,7 +165,7 @@ async function lookupWithTimeout(
 }
 
 /** The post's photos in watch order: its own, then those of the earlier posts of its thread, oldest first. */
-function linkPhotos(post: SocialPost): { url: string; label: string }[] {
+export function linkPhotos(post: SocialPost): { url: string; label: string }[] {
   const own = post.photoUrls.map((url, index) => ({ url, label: `photo ${index + 1}` }))
   const earlier = post.thread.flatMap((item, postIndex) =>
     item.photoUrls.map((url, index) => ({

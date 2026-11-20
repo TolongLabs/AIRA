@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { reportFormatSchema } from '../render/types.js'
+import { MAX_TIMEOUT_MS, MAX_UPLOAD_BYTES } from '../tools/identify.js'
 
 // One schema for config.yml. Every object is strict: an unknown key stops start-up (docs/trd/data.md).
 // Each group is owned by the TRD module named beside it in config.yml.
@@ -128,6 +129,13 @@ export const configSchema = z.strictObject({
     provider: z.string().min(1),
     pageMaxChars: count.default(12_000)
   }),
+  // Reverse-image hints (docs/trd/tools.md#reverse-image-hints). A value above a hard maximum stops start-up.
+  identify: z
+    .strictObject({
+      timeoutMs: ms.max(MAX_TIMEOUT_MS).default(6000),
+      maxUploadBytes: count.max(MAX_UPLOAD_BYTES).default(500_000)
+    })
+    .prefault({}),
   lessons: z
     .strictObject({
       // The lyrics provider for lyrics_search and lyrics_fetch, or `off`.

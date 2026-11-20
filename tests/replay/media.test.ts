@@ -1,10 +1,11 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { App } from '../../src/app.js'
 import type { MediaWatcher } from '../../src/media/gemini-watcher.js'
 import { ModelError, type ModelRequest } from '../../src/models/types.js'
 import { MEDIA_NOTE } from '../../src/prompt/builder.js'
+import { setSetting } from '../../src/settings/settings.js'
 import type { GatewayMessage } from '../harness/gateway.js'
 import { lastTurn, msg, queueModel, startApp } from '../support/app.js'
 import { tmpDir } from '../support/tmp.js'
@@ -330,5 +331,57 @@ describe('media is off', () => {
     expect((await gateway.send(msg('m-1', 'just text'))).content).toBe('Nice one!')
 
     expect(contextOf(model.requests[0])).not.toContain('media')
+  })
+})
+
+describe('reverse-image hints for a turn picture', () => {
+  const lookedUp = { visual_matches: [{ title: 'Example Lamp 200', link: 'https://shop.example.test/lamp' }] }
+
+  it('offers identify_image and looks up the member picture by its index', async () => {
+    const serpCalls: string[] = []
+    const realFetch = globalThis.fetch
+    vi.stubGlobal('fetch', (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(input instanceof Request ? input.url : String(input))
+      if (url.hostname !== 'serpapi.com') return realFetch(input, init)
+      serpCalls.push(`${init?.method ?? 'GET'} ${url.pathname}`)
+      return Promise.resolve(url.pathname === '/image' ? Response.json({ image_id: 'img-1' }) : Response.json(lookedUp))
+    })
+    try {
+      const answers = [
+        { toolCalls: [{ id: 'call-1', name: 'identify_image', args: { attachment: 0 } }] },
+        { text: 'Example: Nice one!' }
+      ]
+      const watcher = fakeWatcher(() => ({ description: 'A desk lamp.' }))
+      const { app, gateway, model, chatId } = await start({ watcher, answers, env: { SERPAPI_API_KEY: 'test-key' } })
+      setSetting(app.storage, { level: 'chat', scope: chatId, key: 'features.identify', value: true, actor: 'test' })
+
+      const photo = withMedia('m-1', 'what lamp is this?', [
+        { kind: 'image', path: `${HOST_CACHE}/images/img_a1b2.jpg` }
+      ])
+      await gateway.send(photo)
+
+      expect(model.requests[0]?.tools.map((tool) => tool.name)).toContain('identify_image')
+      expect(serpCalls).toEqual(['POST /image', 'GET /search'])
+      expect(model.requests[1]?.messages).toContainEqual(
+        expect.objectContaining({
+          role: 'tool',
+          name: 'identify_image',
+          content: expect.stringContaining('"hints":"unverified"')
+        })
+      )
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('is not offered without SERPAPI_API_KEY', async () => {
+    const watcher = fakeWatcher(() => ({ description: 'A desk lamp.' }))
+    const { app, gateway, model, chatId } = await start({ watcher, env: {} })
+    setSetting(app.storage, { level: 'chat', scope: chatId, key: 'features.identify', value: true, actor: 'test' })
+
+    const photo = withMedia('m-1', 'what lamp is this?', [{ kind: 'image', path: `${HOST_CACHE}/images/img_a1b2.jpg` }])
+    await gateway.send(photo)
+
+    expect(model.requests[0]?.tools.map((tool) => tool.name)).not.toContain('identify_image')
   })
 })

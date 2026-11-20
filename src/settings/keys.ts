@@ -90,6 +90,7 @@ export const SETTING_KEYS: Record<string, SettingDefinition> = {
   'features.reminders': { schema: z.boolean(), default: true },
   'features.search': { schema: z.boolean(), default: true },
   'features.social': { schema: z.boolean(), default: true },
+  'features.identify': { schema: z.boolean(), default: false },
   'features.photos': { schema: z.boolean(), default: true },
   'features.media': { schema: z.boolean(), default: true },
   'features.think': { schema: z.boolean(), default: true },
