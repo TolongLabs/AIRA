@@ -1,7 +1,7 @@
 import type { Attachment } from '../gateway/request.js'
 import type { SocialPost } from '../social/types.js'
 import type { ModelCallRecord } from '../turn/types.js'
-import { type GatewayDir, loadGatewayFile, type MediaUnreadable } from './files.js'
+import { type GatewayDir, type LoadedFile, loadGatewayFile, type MediaUnreadable } from './files.js'
 import type { MediaReading, MediaWatcher } from './gemini-watcher.js'
 import { mediaBlock, readMedia, sanitizeMediaText } from './intake.js'
 import type { MediaKind, MediaLimits } from './limits.js'
@@ -24,11 +24,20 @@ export interface TurnMediaResult {
   partial?: { kind: string; reason: MediaUnreadable }[]
   /** One row for each request to the media model, for the model_call table. */
   calls: ModelCallRecord[]
+  /** The files that are valid pictures, in the order given. Set only when a picture was checked (identify_image). */
+  pictures?: Attachment[]
 }
 
 export interface TurnMedia {
-  /** Reads the files of a turn at once, inside the turn deadline. Never throws. */
-  read(attachments: Attachment[], deadline: number, options?: { enabled?: boolean }): Promise<TurnMediaResult>
+  /**
+   * Reads the files of a turn at once, inside the turn deadline. Never throws. Each file is checked once and the check
+   * serves both the watcher and `pictures`. `pictures` also checks the pictures when no watcher reads them.
+   */
+  read(
+    attachments: Attachment[],
+    deadline: number,
+    options?: { enabled?: boolean; pictures?: boolean }
+  ): Promise<TurnMediaResult>
   /** Finds and reads at most one social or YouTube link from candidate texts, inside the turn deadline. Never throws. */
   readLink(texts: readonly string[], deadline: number, allow: LinkAllow, onMatch?: () => void): Promise<TurnMediaResult>
 }
@@ -68,28 +77,32 @@ const KIND_NAME: Record<Attachment['kind'], string> = {
   file: 'file'
 }
 
+interface OneRead {
+  reading?: { kind: MediaKind; reading: MediaReading }
+  unreadable?: { kind: string; reason: MediaUnreadable; error?: unknown }
+  call?: ModelCallRecord
+  /** The file, when it is an image attachment whose content is a picture. Set whether or not a watcher read it. */
+  picture?: Attachment
+}
+
 export function createTurnMedia(options: TurnMediaOptions): TurnMedia {
   const now = options.now ?? (() => new Date())
 
-  async function readOne(
-    attachment: Attachment,
-    timeoutMs: number
-  ): Promise<{
-    reading?: { kind: MediaKind; reading: MediaReading }
-    unreadable?: { kind: string; reason: MediaUnreadable; error?: unknown }
-    call?: ModelCallRecord
-  }> {
+  async function readOne(attachment: Attachment, deadline: number, pictures: boolean): Promise<OneRead> {
     const kind = KIND_NAME[attachment.kind]
-    if (!options.watcher) return { unreadable: { kind, reason: 'off' } }
+    // Without a watcher, only a picture that identify_image may index is checked, and nothing else is read.
+    if (!options.watcher && !(pictures && attachment.kind === 'image')) return { unreadable: { kind, reason: 'off' } }
 
     const loaded = await loadGatewayFile(attachment, options.gatewayDirs, options.limits.maxBytes)
+    const picked = isPicture(attachment, loaded) ? { picture: attachment } : {}
+    if (!options.watcher) return { unreadable: { kind, reason: 'off' }, ...picked }
     if (!loaded.ok) return { unreadable: { kind, reason: loaded.reason } }
 
     const startedAt = now()
     const outcome = await readMedia(loaded.file, {
       watcher: options.watcher,
       limits: options.limits,
-      timeoutMs
+      timeoutMs: effectiveTimeout(deadline)
     })
     if (outcome.ok) {
       return {
@@ -103,7 +116,8 @@ export function createTurnMedia(options: TurnMediaOptions): TurnMedia {
           durationMs: outcome.durationMs,
           usage: outcome.usage,
           costUsd: 0
-        }
+        },
+        ...picked
       }
     }
     // A failure kind means the watcher was called and failed. Any other refusal came from a limit, before a call.
@@ -121,7 +135,8 @@ export function createTurnMedia(options: TurnMediaOptions): TurnMedia {
               failureKind: outcome.failureKind
             }
           }
-        : {})
+        : {}),
+      ...picked
     }
   }
 
@@ -130,23 +145,26 @@ export function createTurnMedia(options: TurnMediaOptions): TurnMedia {
     return Math.max(1, Math.min(options.timeoutMs, Math.floor(((deadline - now().getTime()) * 2) / 3)))
   }
 
+  // A gateway-admitted image whose content is a picture. A watcher failure does not change this.
+  const isPicture = (attachment: Attachment, loaded: LoadedFile): boolean =>
+    attachment.kind === 'image' && loaded.ok === true && loaded.kind === 'image'
+
   return {
     async read(attachments, deadline, readOptions) {
-      if (readOptions?.enabled === false || !options.watcher) {
-        return {
-          readings: [],
-          unreadable: attachments.map((attachment) => ({ kind: KIND_NAME[attachment.kind], reason: 'off' as const })),
-          calls: []
-        }
-      }
-      const timeoutMs = effectiveTimeout(deadline)
-      const items = await Promise.all(attachments.map((attachment) => readOne(attachment, timeoutMs)))
+      const off = attachments.map((attachment) => ({ kind: KIND_NAME[attachment.kind], reason: 'off' as const }))
+      if (readOptions?.enabled === false) return { readings: [], unreadable: off, calls: [] }
+      const pictures = readOptions?.pictures === true
+      // Without a watcher, a file is checked only to index its picture; nothing is read otherwise.
+      if (!options.watcher && !pictures) return { readings: [], unreadable: off, calls: [] }
+      const items = await Promise.all(attachments.map((attachment) => readOne(attachment, deadline, pictures)))
       const result: TurnMediaResult = { readings: [], unreadable: [], calls: [] }
       for (const item of items) {
         if (item.reading) result.readings.push(item.reading)
         if (item.unreadable) result.unreadable.push(item.unreadable)
         if (item.call) result.calls.push(item.call)
       }
+      const valid = items.flatMap((item) => (item.picture ? [item.picture] : []))
+      if (pictures && valid.length > 0) result.pictures = valid
       return result
     },
 

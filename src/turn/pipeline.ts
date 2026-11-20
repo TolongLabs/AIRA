@@ -438,6 +438,8 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       // the turn: the prompt carries a note, and the failure is recorded.
       const mediaOn = !researchRow && !handover && settings['features.media']?.value !== false
       const socialOn = !researchRow && !handover && settings['features.social']?.value !== false
+      // identify_image may look up only pictures this turn validated, and only while media intake is on.
+      const identifyOn = settings['features.identify']?.value === true
       const files = mediaToRead(batch.map((waiter) => waiter.attachments ?? []))
       // Newest message text first, then the texts its quote chains reach in this chat (QUOTE_HOPS at most).
       const linkTexts = [
@@ -458,10 +460,11 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         }
         if (files.length > 0) {
           enterMediaStage()
-          const fileRead = await deps.media.read(files, context.deadline, { enabled: mediaOn })
+          const fileRead = await deps.media.read(files, context.deadline, { enabled: mediaOn, pictures: identifyOn })
           combined.readings.push(...fileRead.readings)
           combined.unreadable.push(...fileRead.unreadable)
           combined.calls.push(...fileRead.calls)
+          if (fileRead.pictures) combined.pictures = fileRead.pictures
         }
         if (shouldReadLinks) {
           const linkRead = await deps.media.readLink(
@@ -503,9 +506,9 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
               .filter((url): url is string => typeof url === 'string' && url.length > 0)
           )
         ]
-        // Pictures identify_image may look up, in index order: this turn's files, then photos of posts read at intake.
+        // identify_image's pictures, in index order: this turn's valid ones, then intake post photos.
         context.images = [
-          ...files.filter((file) => file.kind === 'image').map((attachment) => ({ kind: 'file' as const, attachment })),
+          ...(combined.pictures ?? []).map((attachment) => ({ kind: 'file' as const, attachment })),
           ...readLinks.flatMap((link) =>
             linkPhotos(link.post).map((photo) => ({ kind: 'url' as const, url: photo.url }))
           )

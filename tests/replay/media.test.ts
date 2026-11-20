@@ -3,11 +3,16 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { App } from '../../src/app.js'
 import type { MediaWatcher } from '../../src/media/gemini-watcher.js'
+import { DEFAULT_MEDIA_LIMITS } from '../../src/media/limits.js'
+import type { LinkReader } from '../../src/media/link-intake.js'
+import { createTurnMedia } from '../../src/media/turn-media.js'
 import { ModelError, type ModelRequest } from '../../src/models/types.js'
 import { MEDIA_NOTE } from '../../src/prompt/builder.js'
 import { setSetting } from '../../src/settings/settings.js'
+import type { SocialPost } from '../../src/social/types.js'
 import type { GatewayMessage } from '../harness/gateway.js'
-import { lastTurn, msg, queueModel, startApp } from '../support/app.js'
+import { CHAT, lastTurn, msg, queueModel, startApp } from '../support/app.js'
+import { scriptedRunner, startTestCore } from '../support/core.js'
 import { tmpDir } from '../support/tmp.js'
 
 // Media watching through the whole service (docs/trd/models.md#media-watching): the gateway names a saved file in a
@@ -383,5 +388,183 @@ describe('reverse-image hints for a turn picture', () => {
     await gateway.send(photo)
 
     expect(model.requests[0]?.tools.map((tool) => tool.name)).not.toContain('identify_image')
+  })
+
+  // Answers SerpApi in place of the network, and returns the requests made, as "METHOD /path".
+  function stubSerpApi(): string[] {
+    const requests: string[] = []
+    const realFetch = globalThis.fetch
+    vi.stubGlobal('fetch', (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(input instanceof Request ? input.url : String(input))
+      if (url.hostname !== 'serpapi.com') return realFetch(input, init)
+      requests.push(`${init?.method ?? 'GET'} ${url.pathname}`)
+      return Promise.resolve(url.pathname === '/image' ? Response.json({ image_id: 'img-1' }) : Response.json(lookedUp))
+    })
+    return requests
+  }
+
+  const identifyAnswers = [
+    { toolCalls: [{ id: 'call-1', name: 'identify_image', args: { attachment: 0 } }] },
+    { text: 'Example: Nice one!' }
+  ]
+
+  it('looks up the valid picture when a missing file comes before it', async () => {
+    const serpCalls = stubSerpApi()
+    try {
+      const watcher = fakeWatcher(() => ({ description: 'A desk lamp.' }))
+      const { app, gateway, model, chatId } = await start({
+        watcher,
+        answers: identifyAnswers,
+        env: { SERPAPI_API_KEY: 'test-key' }
+      })
+      setSetting(app.storage, { level: 'chat', scope: chatId, key: 'features.identify', value: true, actor: 'test' })
+      await gateway.send(
+        withMedia('m-1', 'what lamp is this?', [
+          { kind: 'image', path: `${HOST_CACHE}/images/gone.jpg` },
+          { kind: 'image', path: `${HOST_CACHE}/images/img_a1b2.jpg` }
+        ])
+      )
+
+      expect(serpCalls).toEqual(['POST /image', 'GET /search'])
+      expect(model.requests[1]?.messages).toContainEqual(
+        expect.objectContaining({
+          role: 'tool',
+          name: 'identify_image',
+          content: expect.stringContaining('"hints":"unverified"')
+        })
+      )
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('needs only SERPAPI_API_KEY when no media watcher is set, since validation alone indexes the picture', async () => {
+    const serpCalls = stubSerpApi()
+    try {
+      const { app, gateway, model, chatId } = await start({
+        answers: identifyAnswers,
+        env: { SERPAPI_API_KEY: 'test-key' }
+      })
+      setSetting(app.storage, { level: 'chat', scope: chatId, key: 'features.identify', value: true, actor: 'test' })
+      const photo = withMedia('m-1', 'what lamp is this?', [
+        { kind: 'image', path: `${HOST_CACHE}/images/img_a1b2.jpg` }
+      ])
+      await gateway.send(photo)
+
+      expect(model.requests[0]?.tools.map((tool) => tool.name)).toContain('identify_image')
+      expect(serpCalls).toEqual(['POST /image', 'GET /search'])
+      expect(model.requests[1]?.messages).toContainEqual(
+        expect.objectContaining({
+          role: 'tool',
+          name: 'identify_image',
+          content: expect.stringContaining('"hints":"unverified"')
+        })
+      )
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('finds no picture while media is off, and makes no provider call', async () => {
+    const serpCalls = stubSerpApi()
+    try {
+      const watcher = fakeWatcher(() => ({ description: 'A desk lamp.' }))
+      const { app, gateway, chatId } = await start({
+        watcher,
+        answers: identifyAnswers,
+        env: { SERPAPI_API_KEY: 'test-key' }
+      })
+      setSetting(app.storage, { level: 'chat', scope: chatId, key: 'features.identify', value: true, actor: 'test' })
+      setSetting(app.storage, { level: 'chat', scope: chatId, key: 'features.media', value: false, actor: 'test' })
+      const photo = withMedia('m-1', 'what lamp is this?', [
+        { kind: 'image', path: `${HOST_CACHE}/images/img_a1b2.jpg` }
+      ])
+      await gateway.send(photo)
+
+      expect(serpCalls).toEqual([])
+      expect(watcher.seen).toEqual([])
+      expect(rows<{ outcome: string }>(app, "SELECT outcome FROM tool_call WHERE tool = 'identify_image'")).toEqual([
+        { outcome: 'refused' }
+      ])
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
+describe('pictures and post photos in one turn', () => {
+  const POST = 'https://www.threads.com/@user/post/P1'
+  const photos = ['https://img.example/1.jpg', 'https://img.example/2.jpg']
+  const post: SocialPost = {
+    platform: 'threads',
+    id: 'P1',
+    canonicalUrl: POST,
+    target: { platform: 'threads', id: 'P1' } as SocialPost['target'],
+    authorHandle: 'user',
+    authorName: 'User',
+    createdAt: null,
+    text: 'a post',
+    quotedText: '',
+    quotedAuthorHandle: '',
+    photoCount: photos.length,
+    videoCount: 0,
+    imageUrl: null,
+    photoUrls: photos,
+    thread: [],
+    externalTitle: '',
+    replyCount: null,
+    durationSec: null,
+    video: null
+  }
+  // Opens the post only when a text holds its link. Intake reads the quoted text too.
+  const links: LinkReader = {
+    async read(texts) {
+      if (!texts.some((text) => text.includes(POST))) return { readings: [], unreadable: [], calls: [] }
+      return { readings: [], links: [{ post, mediaKind: 'image' }], unreadable: [], calls: [] }
+    }
+  }
+
+  // A reply that quotes the post and carries three pictures: one missing on disk, then two valid local ones.
+  async function imagesOfQuotingReply(mediaOn: boolean) {
+    const runner = scriptedRunner(() => 'Example: Nice one!')
+    const cache = gatewayFolder()
+    writeFileSync(join(cache, 'images', 'quoted_c3d4.jpg'), 'jpeg-bytes')
+    const media = createTurnMedia({
+      model: 'fake-media-model',
+      limits: { ...DEFAULT_MEDIA_LIMITS, maxVideoSeconds: 180 },
+      gatewayDirs: [{ host: HOST_CACHE, container: cache }],
+      timeoutMs: 1000,
+      links
+    })
+    const core = await startTestCore({ runner, deps: { media } })
+    const chatId = core.activate(CHAT)
+    setSetting(core.storage, { level: 'chat', scope: chatId, key: 'features.identify', value: true, actor: 'test' })
+    setSetting(core.storage, { level: 'chat', scope: chatId, key: 'features.media', value: mediaOn, actor: 'test' })
+    await core.gateway.send({
+      ...msg('m-1', 'what are these?'),
+      quote: { text: `look at ${POST}`, id: 'q-1' },
+      media: [
+        { kind: 'image', path: `${HOST_CACHE}/images/gone.jpg` },
+        { kind: 'image', path: `${HOST_CACHE}/images/img_a1b2.jpg` },
+        { kind: 'image', path: `${HOST_CACHE}/images/quoted_c3d4.jpg` }
+      ]
+    })
+    return runner.inputs[0]?.context.images
+  }
+
+  it('lists the valid local pictures in order, then the photos of the post named in the quoted text', async () => {
+    expect(await imagesOfQuotingReply(true)).toEqual([
+      { kind: 'file', attachment: { kind: 'image', path: `${HOST_CACHE}/images/img_a1b2.jpg` } },
+      { kind: 'file', attachment: { kind: 'image', path: `${HOST_CACHE}/images/quoted_c3d4.jpg` } },
+      { kind: 'url', url: photos[0] },
+      { kind: 'url', url: photos[1] }
+    ])
+  })
+
+  it('with media off, lists no local picture and keeps the post photos', async () => {
+    expect(await imagesOfQuotingReply(false)).toEqual([
+      { kind: 'url', url: photos[0] },
+      { kind: 'url', url: photos[1] }
+    ])
   })
 })
