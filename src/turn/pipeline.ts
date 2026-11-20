@@ -50,7 +50,7 @@ import type {
   TurnRunner,
   WindowMessage
 } from './types.js'
-import { claimPending, pendingOf, readWindow, storeUserMessage, unansweredTexts } from './window.js'
+import { claimPending, pendingOf, quoteChainTexts, readWindow, storeUserMessage, unansweredTexts } from './window.js'
 
 // The turn pipeline (docs/trd/system.md#one-turn) and turn admission (docs/trd/reliability.md).
 // One turn runs per chat. Messages that arrive close together, or while a turn runs, are answered by one turn.
@@ -438,10 +438,10 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       const mediaOn = !researchRow && !handover && settings['features.media']?.value !== false
       const socialOn = !researchRow && !handover && settings['features.social']?.value !== false
       const files = mediaToRead(batch.map((waiter) => waiter.attachments ?? []))
-      const newestFirst = [...input.pending].reverse()
+      // Newest message text first, then the texts its quote chains reach in this chat (QUOTE_HOPS at most).
       const linkTexts = [
-        ...newestFirst.map((message) => message.content),
-        ...newestFirst.flatMap((message) => (message.quote?.text ? [message.quote.text] : []))
+        ...[...input.pending].reverse().map((message) => message.content),
+        ...storage.read((db) => quoteChainTexts(db, chat.chatId, turnId))
       ].filter((entry) => entry.trim().length > 0)
       const shouldReadLinks = deps.media !== undefined && (mediaOn || socialOn) && linkTexts.length > 0
 

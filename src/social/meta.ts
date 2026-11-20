@@ -1,6 +1,6 @@
 import { array, capped, imageUrl, nonNegativeInteger, object, photoList, string } from './parsers.js'
 import type { SocialPost } from './types.js'
-import { parseSocialPostUrl, type SocialPostTarget } from './urls.js'
+import { parseOfficialSocialPostUrl, type SocialPostTarget } from './urls.js'
 
 // Threads and Instagram share one post shape (Meta's media model): `image_versions2`, `video_versions`,
 // `carousel_media`, `caption`, `user` and `taken_at`.
@@ -113,7 +113,7 @@ export async function fetchPostPage(
   const location = response.headers.get('location')
   let next: SocialPostTarget | null = null
   try {
-    next = location ? parseSocialPostUrl(new URL(location, target.canonicalUrl).href) : null
+    next = location ? parseOfficialSocialPostUrl(new URL(location, target.canonicalUrl).href) : null
   } catch {
     next = null
   }

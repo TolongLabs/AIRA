@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { fetchThreadsReplies } from '../../src/social/replies/threads.js'
 import type { ReplyFetchContext } from '../../src/social/replies/types.js'
 import { parseThreadsPage } from '../../src/social/threads.js'
-import { parseSocialPostUrl } from '../../src/social/urls.js'
+import { findSocialPostTargets, parseOfficialSocialPostUrl, parseSocialPostUrl } from '../../src/social/urls.js'
 import { createSocialPostViewer as buildViewer } from '../../src/social/viewer.js'
 
 const PAGE = readFileSync(new URL('../fixtures/social/threads-post.html', import.meta.url), 'utf8')
@@ -99,12 +99,23 @@ describe('Threads links', () => {
     })
   })
 
-  it.each([
-    'https://www.threads.com/@poster_one',
-    'https://www.threads.com/@poster_one/post/',
-    'https://threads.com.evil.com/@poster_one/post/DFixtur3abc'
-  ])('rejects %s', (url) => {
+  it.each(['https://www.threads.com/@poster_one', 'https://www.threads.com/@poster_one/post/'])('rejects %s', (url) => {
     expect(parseSocialPostUrl(url)).toBeNull()
+  })
+
+  it('matches a strict shape on an unknown host and excludes it from official redirects', () => {
+    const link = 'https://threads.com.example.test/@poster_one/post/DFixtur3abc'
+    expect(parseSocialPostUrl(link)).toMatchObject({ canonicalUrl: target.canonicalUrl, platform: 'threads' })
+    expect(parseOfficialSocialPostUrl(link)).toBeNull()
+  })
+
+  it('yields a canonical platform target and logs the hostname for a strict shape on an unknown host', () => {
+    const onUnknownHost = vi.fn()
+    const found = findSocialPostTargets('https://mirror.example/@poster_one/post/DFixtur3abc', onUnknownHost)
+    expect(found).toMatchObject([
+      { platform: 'threads', canonicalUrl: 'https://www.threads.com/@poster_one/post/DFixtur3abc' }
+    ])
+    expect(onUnknownHost).toHaveBeenCalledExactlyOnceWith({ platform: 'threads', hostname: 'mirror.example' })
   })
 })
 

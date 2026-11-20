@@ -126,18 +126,39 @@ describe('SocialPostViewer on Facebook posts', () => {
     expect(runExtractor).not.toHaveBeenCalled()
   })
 
-  it.each([
-    [
-      'a redirect to another host',
-      async () => new Response(null, { status: 302, headers: { location: 'https://evil.example/x' } })
-    ],
-    ['a page with no story', async () => new Response('<html></html>')]
-  ])('falls back to yt-dlp on %s', async (_name, fetcher) => {
+  it('refuses a share link that redirects to a foreign host, without calling the extractor', async () => {
+    const share = parseSocialPostUrl('https://www.facebook.com/share/p/1FrDwJtBqj/')!
+    const runExtractor = vi.fn(async () => ({ metadata: { title: 'From yt-dlp' } }))
+    const viewer = buildViewer(settings, {
+      fetcher: vi.fn(async () => new Response(null, { status: 302, headers: { location: 'https://evil.example/x' } })),
+      runExtractor,
+      lookup: async () => ['8.8.8.8']
+    })
+
+    expect(await viewer.lookup(share)).toEqual({ status: 'failed', platform: 'facebook', reason: 'redirect' })
+    expect(runExtractor).not.toHaveBeenCalled()
+  })
+
+  it('falls back to yt-dlp on the resolved official permalink when the resolved page has no story', async () => {
     const share = parseSocialPostUrl('https://www.facebook.com/share/p/1FrDwJtBqj/')!
     const runExtractor = vi.fn(async () => ({ metadata: { title: 'From yt-dlp', uploader: 'Example Page' } }))
-    const viewer = buildViewer(settings, { fetcher: vi.fn(fetcher), runExtractor, lookup: async () => ['8.8.8.8'] })
+    const fetcher = vi.fn(async (input: string | URL | Request) =>
+      String(input).includes('/share/')
+        ? new Response(null, {
+            status: 302,
+            headers: {
+              location: 'https://www.facebook.com/groups/12345/permalink/2921750018/?rdid=x&share_url=y'
+            }
+          })
+        : new Response('<html></html>')
+    )
+    const viewer = buildViewer(settings, { fetcher, runExtractor, lookup: async () => ['8.8.8.8'] })
 
     expect(await viewer.lookup(share)).toMatchObject({ status: 'found', post: { text: 'From yt-dlp' } })
-    expect(runExtractor).toHaveBeenCalledWith('yt-dlp', 'https://www.facebook.com/share/p/1FrDwJtBqj/', 1000)
+    expect(runExtractor).toHaveBeenCalledWith(
+      'yt-dlp',
+      'https://www.facebook.com/groups/12345/permalink/2921750018/',
+      1000
+    )
   })
 })

@@ -76,7 +76,7 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
     const at = now().getTime()
     for (const [key, time] of sentAt) if (at - time > AUTOFETCH_REPEAT_MS) sentAt.delete(key)
     const picked: SocialPostTarget[] = []
-    for (const target of findSocialPostTargets(text)) {
+    for (const target of findSocialPostTargets(text, (entry) => options.logger?.info('social.unknown_host', entry))) {
       const key = `${chatId}:${target.lookupKey}`
       if (target.platform === 'youtube' || sentAt.has(key)) continue
       if (picked.some((item) => item.lookupKey === target.lookupKey)) continue

@@ -7,6 +7,7 @@ import { fetchPostPage, META_PAGE_HEADERS } from './meta.js'
 import { parseBlueskyThread, parseFxTwitterResponse, parseYouTubeOEmbed, parseYtDlpMetadata } from './parsers.js'
 import { parseRedditFeedPost } from './redditFeed.js'
 import { BROWSER_USER_AGENT } from './replies/common.js'
+import { resolveShareLink } from './share.js'
 import { fetchThreadsPage, parseThreadsPage } from './threads.js'
 import type { SocialPost, SocialPostLookup } from './types.js'
 import { isFacebookPost, type SocialPlatform, type SocialPostTarget } from './urls.js'
@@ -47,6 +48,7 @@ const BLUESKY_PDS_TIMEOUT_MS = 1500
 export class SocialPostViewer {
   private readonly cache = new Map<string, { post: SocialPost; expiresAt: number }>()
   private readonly blueskyPdsCache = new Map<string, string>()
+  private readonly shareCache = new Map<string, { target: SocialPostTarget; expiresAt: number }>()
   private ytDlpAvailable = true
   private readonly lookupAddress: Lookup | undefined
   private readonly fetcher: typeof fetch
@@ -112,7 +114,7 @@ export class SocialPostViewer {
         else controller.signal.addEventListener('abort', finish, { once: true })
       })
       if (controller.signal.aborted) return failure(target.platform, 'timeout')
-      const result = await Promise.race([this.lookupUncached(target, controller.signal), timeout, cancelled])
+      const result = await Promise.race([this.lookupRequested(target, controller.signal), timeout, cancelled])
       if (result.status === 'found') this.setCached(target.lookupKey, result.post)
       if (result.status === 'failed') return this.reportFailure(result.platform, timedOut ? 'timeout' : result.reason)
       return result
@@ -292,6 +294,43 @@ export class SocialPostViewer {
       return post ? { ...post, target } : null
     } catch {
       return null
+    }
+  }
+
+  /** A share or short link resolves first; the post keeps the link it was asked for, so both addresses close. */
+  private async lookupRequested(requested: SocialPostTarget, signal: AbortSignal): Promise<SocialPostLookup> {
+    if (!requested.needsRedirect) return this.lookupUncached(requested, signal)
+    const resolved = await this.resolveShare(requested, signal)
+    if (!resolved) return failure(requested.platform, 'redirect')
+    const result = await this.lookupUncached(resolved, signal)
+    return result.status === 'found' ? { status: 'found', post: { ...result.post, target: requested } } : result
+  }
+
+  private async resolveShare(share: SocialPostTarget, signal: AbortSignal): Promise<SocialPostTarget | null> {
+    const cached = this.getCachedShare(share.lookupKey)
+    if (cached) return cached
+    const resolved = await resolveShareLink(share, this.fetcher, signal)
+    if (resolved) this.setCachedShare(share.lookupKey, resolved)
+    return resolved
+  }
+
+  private getCachedShare(key: string): SocialPostTarget | null {
+    const entry = this.shareCache.get(key)
+    if (!entry) return null
+    this.shareCache.delete(key)
+    if (entry.expiresAt <= this.now()) return null
+    this.shareCache.set(key, entry)
+    return entry.target
+  }
+
+  private setCachedShare(key: string, target: SocialPostTarget): void {
+    if (this.settings.cacheTtlMs === 0) return
+    this.shareCache.delete(key)
+    this.shareCache.set(key, { target, expiresAt: this.now() + this.settings.cacheTtlMs })
+    while (this.shareCache.size > this.settings.maxCacheEntries) {
+      const oldest = this.shareCache.keys().next().value
+      if (oldest === undefined) break
+      this.shareCache.delete(oldest)
     }
   }
 

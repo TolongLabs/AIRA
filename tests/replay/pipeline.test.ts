@@ -1073,6 +1073,100 @@ describe('intake footer kinds and URLs in pipeline', () => {
     ])
   })
 
+  it('reads a link up to three quote hops back in the same chat, and no further', async () => {
+    const readLink = vi.fn(async (_texts: string[]) => ({ readings: [], unreadable: [], calls: [] }))
+    const media: TurnMedia = {
+      async read() {
+        return { readings: [], unreadable: [], calls: [] }
+      },
+      readLink
+    }
+    const config = testConfig()
+    const core = await startTestCore({
+      runner: scriptedRunner(() => 'noted'),
+      config,
+      deps: { media, cleaner: createReplyCleaner(config) }
+    })
+    core.activate(CHAT)
+    const link = 'see https://x.com/example_user/status/1111'
+    await core.gateway.send(msg('m-1', link))
+    await core.gateway.send({ ...msg('m-2', 'two'), quote: { text: link, id: 'm-1' } })
+    await core.gateway.send({ ...msg('m-3', 'three'), quote: { text: 'two', id: 'm-2' } })
+    await core.gateway.send({ ...msg('m-4', 'four'), quote: { text: 'three', id: 'm-3' } })
+    // m-4 reaches m-3, m-2 and m-1: the third hop holds the link.
+    expect(readLink.mock.calls.at(-1)?.[0]).toContain(link)
+    await core.gateway.send({ ...msg('m-5', 'five'), quote: { text: 'four', id: 'm-4' } })
+    // m-5 reaches m-4, m-3 and m-2: the link is a fourth hop away.
+    expect(readLink.mock.calls.at(-1)?.[0]).not.toContain(link)
+  })
+
+  it('ends a quote chain at a forgotten message', async () => {
+    const readLink = vi.fn(async (_texts: string[]) => ({ readings: [], unreadable: [], calls: [] }))
+    const media: TurnMedia = {
+      async read() {
+        return { readings: [], unreadable: [], calls: [] }
+      },
+      readLink
+    }
+    const config = testConfig()
+    const core = await startTestCore({
+      runner: scriptedRunner(() => 'noted'),
+      config,
+      deps: { media, cleaner: createReplyCleaner(config) }
+    })
+    core.activate(CHAT)
+    const link = 'see https://x.com/example_user/status/2222'
+    await core.gateway.send(msg('m-1', link))
+    await core.gateway.send({ ...msg('m-2', 'two'), quote: { text: link, id: 'm-1' } })
+    await core.gateway.send({ ...msg('m-3', 'three'), quote: { text: 'two', id: 'm-2' } })
+    core.storage.tx((db) => db.prepare("UPDATE session_message SET content = '[removed]' WHERE mid = 'm-1'").run())
+    await core.gateway.send({ ...msg('m-4', 'four'), quote: { text: 'three', id: 'm-3' } })
+    expect(readLink.mock.calls.at(-1)?.[0]).not.toContain(link)
+  })
+
+  it('does not read the saved quote of a directly quoted message that was removed', async () => {
+    const readLink = vi.fn(async (_texts: string[]) => ({ readings: [], unreadable: [], calls: [] }))
+    const media: TurnMedia = {
+      async read() {
+        return { readings: [], unreadable: [], calls: [] }
+      },
+      readLink
+    }
+    const config = testConfig()
+    const core = await startTestCore({
+      runner: scriptedRunner(() => 'noted'),
+      config,
+      deps: { media, cleaner: createReplyCleaner(config) }
+    })
+    core.activate(CHAT)
+    const link = 'see https://x.com/example_user/status/3333'
+    await core.gateway.send(msg('m-1', link))
+    core.storage.tx((db) => db.prepare("UPDATE session_message SET content = '[removed]' WHERE mid = 'm-1'").run())
+    await core.gateway.send({ ...msg('m-2', 'two'), quote: { text: link, id: 'm-1' } })
+    expect(readLink.mock.calls.at(-1)?.[0]).toEqual(['two'])
+  })
+
+  it('resolves a quote id only among the current chat rows, and keeps the quote note when it has none', async () => {
+    const readLink = vi.fn(async (_texts: string[]) => ({ readings: [], unreadable: [], calls: [] }))
+    const media: TurnMedia = {
+      async read() {
+        return { readings: [], unreadable: [], calls: [] }
+      },
+      readLink
+    }
+    const config = testConfig()
+    const core = await startTestCore({
+      runner: scriptedRunner(() => 'noted'),
+      config,
+      deps: { media, cleaner: createReplyCleaner(config) }
+    })
+    core.activate(CHAT)
+    core.activate('test-chat-g2')
+    await core.gateway.send(msg('q-other', 'private https://x.com/example_user/status/4444', ALICE, 'test-chat-g2'))
+    await core.gateway.send({ ...msg('m-1', 'two'), quote: { text: 'the quote note', id: 'q-other' } })
+    expect(readLink.mock.calls.at(-1)?.[0]).toEqual(['two', 'the quote note'])
+  })
+
   it('gives a direct command no footer even when createReplyCleaner is wired with toolsOk', async () => {
     const config = testConfig()
     const runner = scriptedRunner(() => 'unused')

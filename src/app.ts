@@ -383,6 +383,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       config.search.provider === 'exa' && typeof exaKey === 'string' && exaKey.length > 0
         ? createExaPagePort({ apiKey: exaKey, fallback: plainPage, maxChars: config.search.pageMaxChars })
         : plainPage
+    const socialLog = logger.child({ module: 'social' })
     const viewer = new SocialPostViewer(config.social, { logger })
     const replyReader = new ReplyReader(config.social, { logger, youtubeApiKey: () => env['YOUTUBE_API_KEY'] })
     const extractorAvailable = await isYtDlpAvailable(config.social.ytDlpPath)
@@ -583,7 +584,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         ...(mediaWatcher ? { watcher: mediaWatcher } : {}),
         links: createLinkReader({
           viewer,
-          findTarget: (text) => findLinkTarget([text]),
+          findTarget: (text) => findLinkTarget([text], (entry) => socialLog.info('social.unknown_host', entry)),
           ...(mediaWatcher ? { watcher: mediaWatcher } : {}),
           download: (url, signal, maxBytes) => plainPage.download(url, signal, maxBytes),
           model: mediaModel ?? '',

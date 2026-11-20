@@ -72,12 +72,14 @@ function setup(options: { posts?: Record<string, Partial<SocialPost>>; on?: bool
   })
   const dataDir = tmpDir('aira-autofetch-')
   let clock = new Date('2026-11-18T08:00:00Z')
+  const logged: string[] = []
   const autofetch = createAutofetch({
     storage,
     viewer,
     download,
     cacheDir: join(dataDir, 'cache', 'autofetch'),
     hostCacheDir: '/host/aira/data/cache/autofetch',
+    logger: createLogger({ level: 'info', module: 'autofetch', sink: (line) => logged.push(line) }),
     now: () => clock
   })
   return {
@@ -89,6 +91,7 @@ function setup(options: { posts?: Record<string, Partial<SocialPost>>; on?: bool
     lookups,
     download,
     downloads,
+    logged,
     dataDir,
     advance: (ms: number) => {
       clock = new Date(clock.getTime() + ms)
@@ -250,6 +253,39 @@ describe('autofetch', () => {
       }
     ])
     expect(existsSync(join(env.dataDir, 'cache', 'autofetch'))).toBe(false)
+  })
+
+  it('sends a mirror-shaped Facebook video only after its first-party lookup succeeds', async () => {
+    const link = 'https://fbmirror.test/example_page/videos/12345678901234567'
+    const failed = setup()
+    expect(await failed.autofetch.fetch({ chat: failed.waId, text: link })).toEqual([])
+    expect(failed.lookups).toEqual(['facebook:12345678901234567'])
+    expect(failed.viewer.lookup).toHaveBeenCalledWith(
+      expect.objectContaining({ canonicalUrl: 'https://www.facebook.com/example_page/videos/12345678901234567/' }),
+      expect.anything()
+    )
+
+    const found = setup({
+      posts: {
+        'facebook:12345678901234567': {
+          video: { url: 'https://video.example/clip.mp4', bytes: null, headers: null, hasAudio: null }
+        }
+      }
+    })
+    const media = await found.autofetch.fetch({ chat: found.waId, text: link })
+    expect(media.map((item) => item.kind)).toEqual(['video'])
+  })
+
+  it('reports a link on an unknown host by platform and hostname only, to the logger it was given', async () => {
+    const env = setup()
+    await env.autofetch.fetch({ chat: env.waId, text: 'see https://ddinstagram.test/p/AbCdEfGhIjK?igsh=secret' })
+    const reports = env.logged
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((entry) => entry['event'] === 'social.unknown_host')
+    expect(reports).toHaveLength(1)
+    expect(reports[0]).toMatchObject({ module: 'autofetch', platform: 'instagram', hostname: 'ddinstagram.test' })
+    expect(env.logged.join('\n')).not.toContain('AbCdEfGhIjK')
+    expect(env.logged.join('\n')).not.toContain('secret')
   })
 })
 

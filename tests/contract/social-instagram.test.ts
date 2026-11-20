@@ -224,7 +224,7 @@ describe('SocialPostViewer on Instagram and Facebook', () => {
     expect(await viewer.lookup(post)).toMatchObject({ status: 'found', post: { photoCount: 2 } })
   })
 
-  it('reads a Facebook video through yt-dlp from the shared link', async () => {
+  it('reads a Facebook video through yt-dlp from the resolved official video URL', async () => {
     const target = parseSocialPostUrl('https://www.facebook.com/share/v/1AbCdEf9x/?mibextid=wwXIfr')!
     const runExtractor = vi.fn(async () => ({
       metadata: {
@@ -234,10 +234,14 @@ describe('SocialPostViewer on Instagram and Facebook', () => {
         formats: [{ format_id: 'sd', ext: 'mp4', url: 'https://video.example/sd.mp4' }]
       }
     }))
+    const fetcher = vi.fn(async () => {
+      return new Response(null, {
+        status: 302,
+        headers: { location: 'https://www.facebook.com/reel/1234567890' }
+      })
+    })
     const viewer = buildViewer(settings, {
-      fetcher: vi.fn(async () => {
-        throw new Error('unexpected fetch')
-      }),
+      fetcher,
       runExtractor,
       lookup: async () => ['8.8.8.8']
     })
@@ -246,7 +250,7 @@ describe('SocialPostViewer on Instagram and Facebook', () => {
       status: 'found',
       post: { platform: 'facebook', text: 'A clip', videoCount: 1, video: { url: 'https://video.example/sd.mp4' } }
     })
-    expect(runExtractor).toHaveBeenCalledWith('yt-dlp', 'https://www.facebook.com/share/v/1AbCdEf9x/', 1000)
+    expect(runExtractor).toHaveBeenCalledWith('yt-dlp', 'https://www.facebook.com/reel/1234567890', 1000)
   })
 
   it('reports Facebook replies as unsupported', async () => {
