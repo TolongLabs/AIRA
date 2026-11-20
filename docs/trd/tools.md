@@ -297,7 +297,16 @@ character.
 `read_post` takes one `url`; its argument schema stays unchanged. Only the
 model calls it; no command names it. A post link in a member's message is read
 at intake instead, with its media watched ([Models](models.md#post-links)).
-Profiles, home pages and other share links use `read_page`. Supported platforms
+Profiles and home pages use `read_page`. Direct post paths can also be recognised on an unknown host when
+their platform shape is strict. Lookups use the platform target. The unknown host is logged by hostname only.
+YouTube requires an official host. Instagram's `/p/<id>` needs an Instagram-like hostname on an unknown host.
+Facebook's unknown-host shapes require a long numeric id or a `pfbid` post id.
+
+Official direct paths include Reddit comment permalinks, TikTok photos, Threads posts with or without an account,
+Facebook stories and photos, Instagram TV, YouTube live and embeds, and X web-status links. Official short
+links from Reddit, TikTok, Bilibili, Threads, Facebook and Instagram resolve through the guarded social fetcher.
+The resolver allows up to two manual redirects within the platform and 1,500 ms total. The final address must
+parse as a post on the same platform. Successful resolutions use a bounded TTL cache. Supported platforms
 are X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram, Bilibili and
 Facebook.
 
@@ -312,7 +321,7 @@ untrusted external data; the social port marks its result with `untrusted: true`
 
 Post `timeout` maps to tool `timeout`, `binary_missing` to `unavailable`, and
 HTTP failures, `no_post_data`, `missing_post` and other lookup failures to
-`error`. Logs contain platform and reason only. No cookies are used. X post
+`error`. Failure logs contain platform and reason. A shape match on an unknown host records its hostname without path or query. No cookies are used. X post
 identifiers are sent to the third-party FxTwitter service. YouTube replies
 require the optional `YOUTUBE_API_KEY`; other YouTube metadata remains usable
 without it. Missing yt-dlp disables only extractor-dependent reads; Reddit
