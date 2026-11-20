@@ -497,3 +497,88 @@ describe('mediaPromptText', () => {
     expect(estimateTokens(text)).toBeLessThan(1800)
   })
 })
+
+describe('pictures for identify_image', () => {
+  const deadline = () => Date.now() + 45_000
+  const watcher: MediaWatcher = {
+    async watch() {
+      return {
+        reading: { description: 'A lamp.' },
+        usage: { inputTokens: 300, outputTokens: 20, cachedTokens: 0 },
+        costUsd: 0,
+        model: 'fake-media-model'
+      }
+    }
+  }
+  const failing: MediaWatcher = {
+    async watch() {
+      throw new Error('watcher down')
+    }
+  }
+
+  function setup(watch?: MediaWatcher) {
+    const cache = join(tmpDir('aira-pictures-'), 'cache')
+    mkdirSync(cache, { recursive: true })
+    writeFileSync(join(cache, 'a.jpg'), 'jpeg bytes')
+    writeFileSync(join(cache, 'b.ogg'), 'ogg bytes')
+    writeFileSync(join(cache, 'big.jpg'), Buffer.alloc(600_000))
+    return createTurnMedia({
+      ...(watch ? { watcher: watch } : {}),
+      model: 'fake-media-model',
+      limits: { ...DEFAULT_MEDIA_LIMITS, maxVideoSeconds: 180 },
+      gatewayDirs: [{ host: HOST, container: cache }],
+      timeoutMs: 1000
+    })
+  }
+
+  it('indexes a valid picture after a missing one, with no watcher and no media call', async () => {
+    const media = setup()
+    const result = await media.read([file('gone.jpg'), file('a.jpg')], deadline(), { pictures: true })
+    expect(result.pictures).toEqual([file('a.jpg')])
+    expect(result.readings).toEqual([])
+    expect(result.calls).toEqual([])
+    expect(result.unreadable.map((item) => item.reason)).toEqual(['off', 'off'])
+  })
+
+  it('checks pictures only when asked, so a watcher-off read has no pictures', async () => {
+    const result = await setup().read([file('a.jpg')], deadline())
+    expect(result.pictures).toBeUndefined()
+    expect(result.unreadable).toEqual([{ kind: 'image', reason: 'off' }])
+  })
+
+  it('gives no pictures in a chat with media off, even when asked', async () => {
+    const result = await setup().read([file('a.jpg')], deadline(), { enabled: false, pictures: true })
+    expect(result.pictures).toBeUndefined()
+    expect(result.unreadable).toEqual([{ kind: 'image', reason: 'off' }])
+  })
+
+  it('admits only files whose content is a picture', async () => {
+    const result = await setup().read([file('b.ogg', 'image'), file('a.jpg')], deadline(), { pictures: true })
+    expect(result.pictures).toEqual([file('a.jpg')])
+  })
+
+  it('keeps a picture over the identify cap, since the media limit admits it', async () => {
+    const result = await setup().read([file('big.jpg')], deadline(), { pictures: true })
+    expect(result.pictures).toEqual([file('big.jpg')])
+  })
+
+  it('with a watcher, a missing file is unreadable and the valid picture is still read and indexed', async () => {
+    const result = await setup(watcher).read([file('gone.jpg'), file('a.jpg')], deadline(), { pictures: true })
+    expect(result.unreadable).toEqual([{ kind: 'image', reason: 'missing' }])
+    expect(result.readings.map((item) => item.kind)).toEqual(['image'])
+    expect(result.pictures).toEqual([file('a.jpg')])
+  })
+
+  it('with a watcher, keeps the pictures in input order around a missing file', async () => {
+    const result = await setup(watcher).read([file('big.jpg'), file('gone.jpg'), file('a.jpg')], deadline(), {
+      pictures: true
+    })
+    expect(result.pictures).toEqual([file('big.jpg'), file('a.jpg')])
+  })
+
+  it('a watcher failure does not invalidate a valid picture', async () => {
+    const result = await setup(failing).read([file('a.jpg')], deadline(), { pictures: true })
+    expect(result.readings).toEqual([])
+    expect(result.pictures).toEqual([file('a.jpg')])
+  })
+})
