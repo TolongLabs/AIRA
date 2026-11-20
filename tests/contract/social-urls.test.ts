@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { findSocialPostTargets, parseSocialPostUrl } from '../../src/social/urls.js'
+import {
+  findSocialPostTargets,
+  isFacebookPost,
+  isResolvedFacebookPost,
+  parseSocialPostUrl
+} from '../../src/social/urls.js'
 
 describe('parseSocialPostUrl', () => {
   it.each([
@@ -240,5 +245,25 @@ describe('findSocialPostTargets', () => {
     const onUnknownHost = vi.fn()
     findSocialPostTargets('see https://www.instagram.com/p/AbCdEfGhIjK/', onUnknownHost)
     expect(onUnknownHost).not.toHaveBeenCalled()
+  })
+})
+
+describe('Facebook photo links', () => {
+  it.each([
+    ['photo', 'https://www.facebook.com/photo/?fbid=1234567890'],
+    ['photo.php', 'https://www.facebook.com/photo.php?fbid=1234567890']
+  ])('reads a %s link as a resolved page post with its stable key', (_name, url) => {
+    const target = parseSocialPostUrl(url)!
+    expect(target).toMatchObject({
+      lookupKey: 'facebook:photo:1234567890',
+      canonicalUrl: 'https://www.facebook.com/photo/?fbid=1234567890'
+    })
+    expect(isFacebookPost(target)).toBe(true)
+    expect(isResolvedFacebookPost(target)).toBe(true)
+  })
+
+  it('leaves a share unresolved until its redirect, and a video on yt-dlp', () => {
+    expect(isResolvedFacebookPost(parseSocialPostUrl('https://www.facebook.com/share/p/1FrDwJtBqj/')!)).toBe(false)
+    expect(isFacebookPost(parseSocialPostUrl('https://www.facebook.com/example_page/videos/1234567890')!)).toBe(false)
   })
 })

@@ -37,6 +37,7 @@ function pageWith(...stories: Record<string, unknown>[]): string {
 
 const permalink = parseSocialPostUrl('https://www.facebook.com/groups/12345/permalink/2921750018/')!
 const album = story('2921750018', { all_subattachments: { count: 2, nodes: [photo('p1'), photo('p2')] } })
+const photoPost = story('1234567890', { media: photo('ph1').media }, 'A photo from the lab.')
 
 describe('Facebook post links', () => {
   it.each([
@@ -160,5 +161,82 @@ describe('SocialPostViewer on Facebook posts', () => {
       'https://www.facebook.com/groups/12345/permalink/2921750018/',
       1000
     )
+  })
+
+  it.each([
+    ['a photo link', 'https://www.facebook.com/photo/?fbid=1234567890'],
+    ['a photo.php link', 'https://www.facebook.com/photo.php?fbid=1234567890']
+  ])('reads %s from its logged-out page, with no profile and no yt-dlp', async (_name, url) => {
+    const fetcher = vi.fn(async (_input: string | URL | Request) => new Response(pageWith(photoPost)))
+    const runExtractor = vi.fn(async () => ({ reason: 'unused' }))
+    const viewer = buildViewer(settings, { fetcher, runExtractor, lookup: async () => ['8.8.8.8'] })
+
+    expect(await viewer.lookup(parseSocialPostUrl(url)!)).toMatchObject({
+      status: 'found',
+      post: {
+        photoUrls: ['https://cdn.example/ph1.jpg'],
+        photoCount: 1,
+        imageUrl: 'https://cdn.example/ph1.jpg',
+        target: { lookupKey: 'facebook:photo:1234567890' }
+      }
+    })
+    expect(fetcher.mock.calls.map(([input]) => String(input))).toEqual([
+      'https://www.facebook.com/photo/?fbid=1234567890'
+    ])
+    expect(runExtractor).not.toHaveBeenCalled()
+  })
+
+  it('reads a photo link when yt-dlp is not installed', async () => {
+    const photoLink = parseSocialPostUrl('https://www.facebook.com/photo/?fbid=1234567890')!
+    const runExtractor = vi.fn(async () => ({ reason: 'binary_missing' }))
+    const viewer = buildViewer(settings, {
+      fetcher: vi.fn(async (_input: string | URL | Request) => new Response(pageWith(photoPost))),
+      runExtractor,
+      lookup: async () => ['8.8.8.8']
+    })
+    viewer.setYtDlpAvailable(false)
+
+    expect(await viewer.lookup(photoLink)).toMatchObject({ status: 'found', post: { photoCount: 1 } })
+    expect(runExtractor).not.toHaveBeenCalled()
+  })
+
+  it('follows a share link that resolves to a photo, and reads the photo without yt-dlp', async () => {
+    const share = parseSocialPostUrl('https://www.facebook.com/share/p/1FrDwJtBqj/')!
+    const fetcher = vi.fn(async (input: string | URL | Request) =>
+      String(input).includes('/share/')
+        ? new Response(null, {
+            status: 302,
+            headers: { location: 'https://www.facebook.com/photo/?fbid=1234567890&set=a.1' }
+          })
+        : new Response(pageWith(photoPost))
+    )
+    const runExtractor = vi.fn(async () => ({ reason: 'unused' }))
+    const viewer = buildViewer(settings, { fetcher, runExtractor, lookup: async () => ['8.8.8.8'] })
+
+    expect(await viewer.lookup(share)).toMatchObject({
+      status: 'found',
+      post: {
+        photoUrls: ['https://cdn.example/ph1.jpg'],
+        target: { lookupKey: 'facebook:post-share:1FrDwJtBqj' }
+      }
+    })
+    expect(fetcher.mock.calls.map(([input]) => String(input))).toEqual([
+      'https://www.facebook.com/share/p/1FrDwJtBqj/',
+      'https://www.facebook.com/photo/?fbid=1234567890'
+    ])
+    expect(runExtractor).not.toHaveBeenCalled()
+  })
+
+  it('falls back to yt-dlp on the photo link when its page holds no post', async () => {
+    const photoLink = parseSocialPostUrl('https://www.facebook.com/photo/?fbid=1234567890')!
+    const runExtractor = vi.fn(async () => ({ metadata: { title: 'From yt-dlp' } }))
+    const viewer = buildViewer(settings, {
+      fetcher: vi.fn(async (_input: string | URL | Request) => new Response('<html></html>')),
+      runExtractor,
+      lookup: async () => ['8.8.8.8']
+    })
+
+    expect(await viewer.lookup(photoLink)).toMatchObject({ status: 'found', post: { text: 'From yt-dlp' } })
+    expect(runExtractor).toHaveBeenCalledWith('yt-dlp', 'https://www.facebook.com/photo/?fbid=1234567890', 1000)
   })
 })

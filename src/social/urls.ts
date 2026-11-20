@@ -250,9 +250,17 @@ function facebookPost(url: URL, unknown: boolean): SocialPostTarget | null {
   return null
 }
 
-/** True for a Facebook post link, shared or resolved, which is read from its page; a video link goes to yt-dlp. */
+/** A Facebook post or photo link, shared or resolved, is read from its page; a video link goes to yt-dlp. */
 export function isFacebookPost(target: SocialPostTarget): boolean {
-  return target.platform === 'facebook' && target.lookupKey.startsWith('facebook:post')
+  return (
+    target.platform === 'facebook' &&
+    (target.lookupKey.startsWith('facebook:post') || target.lookupKey.startsWith('facebook:photo:'))
+  )
+}
+
+/** A post or photo whose address names it outright. A photo needs no profile; a share still needs its redirect. */
+export function isResolvedFacebookPost(target: SocialPostTarget): boolean {
+  return isFacebookPost(target) && (Boolean(target.profile) || target.lookupKey.startsWith('facebook:photo:'))
 }
 
 function parseFacebook(url: URL, host: string, unknown: boolean): SocialPostTarget | null {
