@@ -1,5 +1,6 @@
 import type { Pack } from '../character/loader.js'
 import type { LineKind } from '../character/schema.js'
+import type { Attachment } from '../gateway/request.js'
 import type { ModelFailureKind, ModelMessage, ModelUsage, PromptBlock, ToolSchema } from '../models/types.js'
 import type { TurnRecordFields } from '../records/turn-record.js'
 import type { Chat } from '../settings/chats.js'
@@ -37,7 +38,12 @@ export interface TurnContext {
   messageText?: string
   /** True when `/think` raised effort for this turn. */
   think?: boolean
+  /** Pictures identify_image may look up, in index order (docs/trd/tools.md#reverse-image-hints). */
+  images?: TurnImage[]
 }
+
+/** A picture of this turn: a file the gateway saved, or a photo URL of a post read at intake. */
+export type TurnImage = { kind: 'file'; attachment: Attachment } | { kind: 'url'; url: string }
 
 export interface WindowMessage {
   role: 'user' | 'assistant'

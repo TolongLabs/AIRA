@@ -1,0 +1,84 @@
+{
+  "photos": [
+    {
+      "id": "p01",
+      "class": "known",
+      "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f4/Game-Boy-FL.jpg/960px-Game-Boy-FL.jpg",
+      "license": "Public domain",
+      "source": "https://commons.wikimedia.org/wiki/File:Game-Boy-FL.jpg",
+      "expected": "Game Boy"
+    },
+    {
+      "id": "p02",
+      "class": "known",
+      "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/31/Nokia_3310_blue.jpg/960px-Nokia_3310_blue.jpg",
+      "license": "Public domain",
+      "source": "https://commons.wikimedia.org/wiki/File:Nokia_3310_blue.jpg",
+      "expected": "Nokia 3310"
+    },
+    {
+      "id": "p03",
+      "class": "known",
+      "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e9/Commodore-64-Computer-FL.jpg/960px-Commodore-64-Computer-FL.jpg",
+      "license": "Public domain",
+      "source": "https://commons.wikimedia.org/wiki/File:Commodore-64-Computer-FL.jpg",
+      "expected": "Commodore 64"
+    },
+    {
+      "id": "p04",
+      "class": "known",
+      "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c9/Polaroid_SX-70_camera.jpg/960px-Polaroid_SX-70_camera.jpg",
+      "license": "CC BY 2.0",
+      "source": "https://commons.wikimedia.org/wiki/File:Polaroid_SX-70_camera.jpg",
+      "expected": "Polaroid SX-70"
+    },
+    {
+      "id": "p05",
+      "class": "lookalike",
+      "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cd/Watara-Supervision-Tilted.jpg/960px-Watara-Supervision-Tilted.jpg",
+      "license": "Public domain",
+      "source": "https://commons.wikimedia.org/wiki/File:Watara-Supervision-Tilted.jpg",
+      "expected": "Watara Supervision"
+    },
+    {
+      "id": "p06",
+      "class": "lookalike",
+      "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cd/Speedcube_MoYu_3.jpg/960px-Speedcube_MoYu_3.jpg",
+      "license": "CC BY 4.0",
+      "source": "https://commons.wikimedia.org/wiki/File:Speedcube_MoYu_3.jpg",
+      "expected": "MoYu RS3 M 2021 Maglev"
+    },
+    {
+      "id": "p07",
+      "class": "lookalike",
+      "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e2/Fujifilm_Instax_Mini_10_P1110436.jpg/960px-Fujifilm_Instax_Mini_10_P1110436.jpg",
+      "license": "CC BY-SA 4.0",
+      "source": "https://commons.wikimedia.org/wiki/File:Fujifilm_Instax_Mini_10_P1110436.jpg",
+      "expected": "Fujifilm Instax Mini 10"
+    },
+    {
+      "id": "p08",
+      "class": "unknown",
+      "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/eb/Coffee_mug_on_table.jpg/960px-Coffee_mug_on_table.jpg",
+      "license": "CC BY-SA 4.0",
+      "source": "https://commons.wikimedia.org/wiki/File:Coffee_mug_on_table.jpg",
+      "expected": "unknown"
+    },
+    {
+      "id": "p09",
+      "class": "unknown",
+      "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/15/Red_Apple.jpg/960px-Red_Apple.jpg",
+      "license": "CC BY 2.0",
+      "source": "https://commons.wikimedia.org/wiki/File:Red_Apple.jpg",
+      "expected": "unknown"
+    },
+    {
+      "id": "p10",
+      "class": "unknown",
+      "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1f/A_Ceramic_Vase_in_Kanazawa.jpg/960px-A_Ceramic_Vase_in_Kanazawa.jpg",
+      "license": "CC BY-SA 4.0",
+      "source": "https://commons.wikimedia.org/wiki/File:A_Ceramic_Vase_in_Kanazawa.jpg",
+      "expected": "unknown"
+    }
+  ]
+}

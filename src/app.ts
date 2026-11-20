@@ -66,6 +66,7 @@ import { type DataPaths, startStorage } from './storage/startup.js'
 import { createCommandRouter } from './tools/commands.js'
 import { registerCoreTools } from './tools/core/index.js'
 import { createExaPagePort, createExaSearchPort } from './tools/exa.js'
+import { createSerpApiIdentify } from './tools/identify.js'
 import { registerLessonTools } from './tools/lessons/index.js'
 import { connectMcpServers } from './tools/mcp-client.js'
 import { registerOwnerTools } from './tools/owner/index.js'
@@ -86,6 +87,7 @@ export const SECRET_NAMES = [
   'YOUTUBE_API_KEY',
   'TYPESAFE_API_KEY',
   'EXA_API_KEY',
+  'SERPAPI_API_KEY',
   'RUNNER_TOKEN',
   'OPENAI_API_KEY',
   'SITE_TOKEN',
@@ -369,6 +371,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     writeChatFlags(storage, paths.root, packs)
     const registry = createToolRegistry({ storage, config, logger: logger.child({ module: 'tools' }), redactor, now })
     const exaKey = env['EXA_API_KEY']
+    const serpKey = env['SERPAPI_API_KEY']
     let search = options.ports?.search
     if (!search && config.search.provider === 'exa') {
       if (typeof exaKey === 'string' && exaKey.length > 0) {
@@ -499,7 +502,19 @@ export async function createApp(options: AppOptions): Promise<App> {
         ...options.ports,
         filesDir: paths.files
       },
-      { feedback: config.feedback }
+      {
+        feedback: config.feedback,
+        ...(serpKey
+          ? {
+              identify: {
+                port: createSerpApiIdentify({ apiKey: serpKey }),
+                gatewayDirs: config.media.gatewayDirs,
+                maxUploadBytes: config.identify.maxUploadBytes,
+                timeoutMs: config.identify.timeoutMs
+              }
+            }
+          : {})
+      }
     )
     const feedback = createFeedbackSync({
       storage,

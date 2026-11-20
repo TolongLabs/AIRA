@@ -2,6 +2,7 @@ import type { ToolPorts } from '../ports.js'
 import { registryDepsOf, type ToolRegistry } from '../registry.js'
 import { helpTool, listTool } from './describe.js'
 import { type FeedbackToolOptions, feedbackLinkTool } from './feedback.js'
+import { type IdentifyToolOptions, identifyImageTool } from './identify.js'
 import { forgetTool, historySearchTool, lingoNoteTool, noteTool, recallTool } from './memory.js'
 import { setMuteTool } from './mute.js'
 import { reminderCancelTool, reminderListTool, reminderSetTool } from './reminders.js'
@@ -33,6 +34,7 @@ export const CORE_TOOL_NAMES = [
 
 export interface CoreToolOptions {
   feedback: FeedbackToolOptions
+  identify?: IdentifyToolOptions
 }
 
 const DEFAULT_OPTIONS: CoreToolOptions = {
@@ -61,6 +63,7 @@ export function registerCoreTools(
   registry.register(setMuteTool(storage))
   registry.register(makeReportTool(storage, ports))
   registry.register(feedbackLinkTool(options.feedback))
+  if (options.identify) registry.register(identifyImageTool(options.identify))
   registry.register(researchStartTool(storage))
   registry.register(reportPdfTool(ports))
   registry.register(helpTool(registry))

@@ -5,6 +5,7 @@ import type { Config } from '../config/schema.js'
 import type { Attachment, GatewayRequest } from '../gateway/request.js'
 import { compactDue } from '../gateway/schedule.js'
 import { modelRecordContext } from '../judge/systemone.js'
+import { linkPhotos } from '../media/link-intake.js'
 import { mediaPromptText, mediaToRead, type TurnMedia, type TurnMediaResult } from '../media/turn-media.js'
 import { ModelError } from '../models/types.js'
 import type { FailureKind } from '../records/kinds.js'
@@ -500,6 +501,13 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
               .filter((link) => link.reading !== undefined)
               .flatMap((link) => [link.post.canonicalUrl, link.post.target.canonicalUrl])
               .filter((url): url is string => typeof url === 'string' && url.length > 0)
+          )
+        ]
+        // Pictures identify_image may look up, in index order: this turn's files, then photos of posts read at intake.
+        context.images = [
+          ...files.filter((file) => file.kind === 'image').map((attachment) => ({ kind: 'file' as const, attachment })),
+          ...readLinks.flatMap((link) =>
+            linkPhotos(link.post).map((photo) => ({ kind: 'url' as const, url: photo.url }))
           )
         ]
         outcome.fields.mediaMs = Math.max(0, now().getTime() - mediaStartedAt)
