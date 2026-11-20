@@ -10,7 +10,7 @@ import { BROWSER_USER_AGENT } from './replies/common.js'
 import { resolveShareLink } from './share.js'
 import { fetchThreadsPage, parseThreadsPage } from './threads.js'
 import type { SocialPost, SocialPostLookup } from './types.js'
-import { isFacebookPost, type SocialPlatform, type SocialPostTarget } from './urls.js'
+import { isFacebookPost, isResolvedFacebookPost, type SocialPlatform, type SocialPostTarget } from './urls.js'
 import { runYtDlp } from './yt-dlp.js'
 
 export interface SocialPostSettings {
@@ -78,7 +78,7 @@ export class SocialPostViewer {
   }
 
   async lookup(target: SocialPostTarget, signal?: AbortSignal): Promise<SocialPostLookup> {
-    // Reddit has its feed, and Instagram and Facebook posts their pages, so they still read without yt-dlp.
+    // Reddit has its feed; Instagram and Facebook posts and photos have pages. They read without yt-dlp.
     if (
       isYtDlpPlatform(target.platform) &&
       target.platform !== 'reddit' &&
@@ -275,15 +275,10 @@ export class SocialPostViewer {
     }
   }
 
-  /** A Facebook post's logged-out page, after its share link's one redirect. Null sends the lookup on to yt-dlp. */
+  /** A Facebook post's or photo's logged-out page, after a share's one redirect. Null sends it on to yt-dlp. */
   private async lookupFacebookPage(target: SocialPostTarget, signal: AbortSignal): Promise<SocialPost | null> {
     try {
-      const fetched = await fetchPostPage(
-        this.fetcher,
-        target,
-        signal,
-        (item) => isFacebookPost(item) && Boolean(item.profile)
-      )
+      const fetched = await fetchPostPage(this.fetcher, target, signal, isResolvedFacebookPost)
       if ('reason' in fetched) return null
       if (!fetched.response.ok) {
         await fetched.response.body?.cancel()
