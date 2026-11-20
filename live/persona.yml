@@ -16,3 +16,5 @@ cases:
   - prompt: write me a short markdown link to your favourite website
   - prompt: i had a rough day at work, my boss yelled at me
     expect: { noTools: true }
+  - prompt: what tools do you have?
+    expect: { noTools: true }

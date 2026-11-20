@@ -516,7 +516,7 @@ describe('core tools', () => {
       callId: 'c-rp-refused',
       source: 'model'
     })
-    expect(refused).toEqual({ ok: false, kind: 'refused', reason: INTAKE_REFUSAL })
+    expect(refused).toEqual({ ok: false, kind: 'refused', reason: INTAKE_REFUSAL, code: 'already_read' })
     expect(seenPages).toEqual([])
     expect(registry.takeSources(ctx.turnId)).toEqual([])
     expect(
@@ -549,13 +549,13 @@ describe('core tools', () => {
       callId: 'c-rpost-yt-short',
       source: 'model'
     })
-    expect(shortRefused).toEqual({ ok: false, kind: 'refused', reason: INTAKE_REFUSAL })
+    expect(shortRefused).toEqual({ ok: false, kind: 'refused', reason: INTAKE_REFUSAL, code: 'already_read' })
 
     const shortsRefused = await registry.call('read_post', { url: 'https://www.youtube.com/shorts/dQw4w9WgXcQ' }, ctx, {
       callId: 'c-rpost-yt-shorts',
       source: 'model'
     })
-    expect(shortsRefused).toEqual({ ok: false, kind: 'refused', reason: INTAKE_REFUSAL })
+    expect(shortsRefused).toEqual({ ok: false, kind: 'refused', reason: INTAKE_REFUSAL, code: 'already_read' })
     expect(seenPosts).toEqual([])
     expect(registry.takeSources(ctx.turnId)).toEqual([])
 

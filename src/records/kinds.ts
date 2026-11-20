@@ -13,6 +13,7 @@ export const FAILURE_KINDS = [
   'judge_unavailable',
   'media_unreadable',
   'memory_rejected',
+  'persona_leak',
   'memory_job_failed',
   'feedback_rejected',
   'feedback_sync_failed',

@@ -11,10 +11,20 @@ import type { SocialPost } from '../../src/social/types.js'
 import type { Db, Storage } from '../../src/storage/database.js'
 import { createCommandRouter } from '../../src/tools/commands.js'
 import { registerCoreTools } from '../../src/tools/core/index.js'
+import { outcomePayload } from '../../src/tools/outcomes.js'
 import { createToolRegistry } from '../../src/tools/registry.js'
+import type { RunResult } from '../../src/turn/types.js'
 import type { GatewayMessage } from '../harness/gateway.js'
 import { loadScenario, scenarioIds, scenarioMessages } from '../harness/scenario.js'
-import { addPack, modelError, scriptedRunner, startTestCore, testConfig } from '../support/core.js'
+import {
+  addPack,
+  modelError,
+  type RunnerInput,
+  runResult,
+  scriptedRunner,
+  startTestCore,
+  testConfig
+} from '../support/core.js'
 import { tmpDir } from '../support/tmp.js'
 
 // The turn pipeline, driven through the fake gateway over HTTP (docs/trd/harness.md#principle).
@@ -1093,5 +1103,180 @@ describe('intake footer kinds and URLs in pipeline', () => {
     const delivery = await cmdCore.gateway.send(msg('m-cmd', '/help'))
     expect(delivery.content).toContain('Commands in this chat:')
     expect(delivery.content).not.toContain('_🛠️')
+  })
+})
+
+describe('a reply that steps out of its role', () => {
+  const config = testConfig()
+  // A social reader that fails the way a removed post does. The model reads only the outcome sentence.
+  const readPost = {
+    schema: {
+      name: 'read_post',
+      description: 'Opens one social post.',
+      parameters: { type: 'object', properties: {} }
+    },
+    async call() {
+      return { ok: false, content: outcomePayload({ kind: 'error', reason: 'post read failed', code: 'read_failed' }) }
+    }
+  }
+  const readingScript = (second: string) => {
+    const seen: string[] = []
+    const runner = scriptedRunner(async (input, call) => {
+      if (call > 1) return second
+      const result = await input.tools
+        .find((tool) => tool.schema.name === 'read_post')
+        ?.call({ url: 'https://social.example/p/1' }, 'call-1', input.signal)
+      seen.push(result?.content ?? '')
+      return 'My reader could not open that post.'
+    })
+    return { runner, seen }
+  }
+
+  /** A runner that answers each call with the next text. Its result and calls take the given fields. */
+  const scripted = (
+    answers: string[],
+    result: Partial<RunResult> = {},
+    call: Partial<RunResult['calls'][number]> = {}
+  ) => {
+    const inputs: RunnerInput[] = []
+    return {
+      inputs,
+      async run(input: RunnerInput): Promise<RunResult> {
+        inputs.push(input)
+        const base = runResult(answers[inputs.length - 1] ?? '')
+        return { ...base, ...result, calls: base.calls.map((entry) => ({ ...entry, ...call })) }
+      }
+    }
+  }
+
+  it('gives the model only the outcome sentence, then delivers one regenerated reply without tools', async () => {
+    const { runner, seen } = readingScript('That post will not open for me, sorry.')
+    const core = await startTestCore({
+      runner,
+      config,
+      deps: { cleaner: createReplyCleaner(config, () => ['read_post']), tools: { offered: () => [readPost] } }
+    })
+    core.activate(CHAT)
+
+    const delivery = await core.gateway.send(msg('m-1', 'read https://social.example/p/1'))
+
+    expect(seen).toEqual([
+      JSON.stringify({
+        ok: false,
+        outcome: 'You could not get that post or page to open. It may be private, removed or blocked.'
+      })
+    ])
+    expect(seen[0]).not.toContain('post read failed')
+    expect(delivery.content).toBe('That post will not open for me, sorry.')
+    expect(runner.inputs).toHaveLength(2)
+    expect(runner.inputs[1]?.tools).toEqual([])
+    expect(runner.inputs[1]?.replyTarget).toEqual({ transport: 'api', role: 'main', model: 'scripted-model' })
+    expect(runner.inputs[1]?.messages.slice(-2)).toEqual([
+      { role: 'assistant', content: 'My reader could not open that post.' },
+      { role: 'user', content: expect.stringContaining('stepped out of your role') }
+    ])
+    const failures = rows<{ kind: string; handled_by: string; message: string }>(
+      core.storage,
+      "SELECT kind, handled_by, message FROM failure WHERE kind = 'persona_leak'"
+    )
+    expect(failures).toEqual([
+      { kind: 'persona_leak', handled_by: 'regenerate', message: expect.stringContaining('my_tools') }
+    ])
+    expect(JSON.stringify(failures)).not.toContain('could not open that post')
+    expect(rows(core.storage, 'SELECT attempts, input_tokens, output_tokens, cost_usd FROM turn')).toEqual([
+      { attempts: 2, input_tokens: 20, output_tokens: 10, cost_usd: 0.002 }
+    ])
+  })
+
+  it('delivers the pack line when the regenerated reply steps out of its role too', async () => {
+    const { runner } = readingScript('My scraper failed again.')
+    const core = await startTestCore({
+      runner,
+      config,
+      deps: { cleaner: createReplyCleaner(config, () => ['read_post']), tools: { offered: () => [readPost] } }
+    })
+    core.activate(CHAT)
+
+    const delivery = await core.gateway.send(msg('m-1', 'read https://social.example/p/1'))
+
+    expect(runner.inputs).toHaveLength(2)
+    expect(delivery.content).toBe(core.packs().packs.get('example')?.lines.error)
+    expect(rows(core.storage, "SELECT kind, handled_by FROM failure WHERE kind = 'persona_leak'")).toEqual([
+      { kind: 'persona_leak', handled_by: 'line:error' }
+    ])
+    expect(rows(core.storage, 'SELECT request, reply FROM failure_diagnostics')).toEqual([
+      { request: 'read https://social.example/p/1', reply: null }
+    ])
+  })
+
+  it('regenerates on the fallback route that gave the reply, and delivers its answer', async () => {
+    const runner = scripted(
+      ['My reader could not open that post.', 'That post will not open for me, sorry.'],
+      { role: 'fallback', model: 'fallback-model', transport: 'api' },
+      { role: 'fallback', model: 'fallback-model' }
+    )
+    const core = await startTestCore({
+      runner,
+      config,
+      deps: { cleaner: createReplyCleaner(config, () => ['read_post']), tools: { offered: () => [readPost] } }
+    })
+    core.activate(CHAT)
+
+    const delivery = await core.gateway.send(msg('m-1', 'read https://social.example/p/1'))
+
+    expect(delivery.content).toBe('That post will not open for me, sorry.')
+    expect(runner.inputs[1]?.replyTarget).toEqual({ transport: 'api', role: 'fallback', model: 'fallback-model' })
+    expect(rows(core.storage, 'SELECT model, attempts, input_tokens FROM turn')).toEqual([
+      { model: 'fallback-model', attempts: 2, input_tokens: 20 }
+    ])
+  })
+
+  it('skips the regeneration when the last call is too long for the time left', async () => {
+    const slowConfig = testConfig((c) => {
+      c.llm.turnDeadlineMs = 30_000
+    })
+    const runner = scripted(['My reader could not open that post.'], {}, { durationMs: 60_000 })
+    const core = await startTestCore({
+      runner,
+      config: slowConfig,
+      deps: { cleaner: createReplyCleaner(slowConfig, () => ['read_post']), tools: { offered: () => [readPost] } }
+    })
+    core.activate(CHAT)
+
+    const delivery = await core.gateway.send(msg('m-1', 'read https://social.example/p/1'))
+
+    expect(runner.inputs).toHaveLength(1)
+    expect(delivery.content).toBe(core.packs().packs.get('example')?.lines.error)
+  })
+
+  it('skips the regeneration when the deadline has passed by the first answer', async () => {
+    let clock = Date.parse('2026-11-21T10:00:00Z')
+    const clockConfig = testConfig((c) => {
+      c.llm.turnDeadlineMs = 5_000
+    })
+    const inputs: RunnerInput[] = []
+    const runner = {
+      inputs,
+      async run(input: RunnerInput): Promise<RunResult> {
+        inputs.push(input)
+        clock += 5_000
+        return runResult('My reader could not open that post.')
+      }
+    }
+    const core = await startTestCore({
+      runner,
+      config: clockConfig,
+      deps: {
+        now: () => new Date(clock),
+        cleaner: createReplyCleaner(clockConfig, () => ['read_post']),
+        tools: { offered: () => [readPost] }
+      }
+    })
+    core.activate(CHAT)
+
+    const delivery = await core.gateway.send(msg('m-1', 'read https://social.example/p/1'))
+
+    expect(inputs).toHaveLength(1)
+    expect(delivery.content).toBe(core.packs().packs.get('example')?.lines.error)
   })
 })

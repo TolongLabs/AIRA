@@ -8,6 +8,7 @@ import { resolveSettings, setSetting } from '../../src/settings/settings.js'
 import type { Storage } from '../../src/storage/database.js'
 import { openTurn, receiveInbound } from '../../src/storage/turns.js'
 import { registerCoreTools } from '../../src/tools/core/index.js'
+import { TOOL_FAILURE_KINDS } from '../../src/tools/outcomes.js'
 import type { MemoryPort, SchedulePort } from '../../src/tools/ports.js'
 import { createToolRegistry, type ToolRegistry } from '../../src/tools/registry.js'
 import type { ToolDefinition } from '../../src/tools/types.js'
@@ -631,9 +632,9 @@ describe('registry registration, filtering, records and offered tools', () => {
     const invalidOffer = await offered[0]?.call({ secretInput: 'x' }, 'c-off-2', controller.signal)
     expect(invalidOffer?.ok).toBe(false)
     expect(invalidOffer?.content).not.toContain('"x"')
-    const parsedFail = JSON.parse(invalidOffer?.content ?? '{}') as { error: string; reason: string }
-    expect(parsedFail.error).toBe('invalid')
-    expect(parsedFail.reason).toContain('secretInput')
+    const parsedFail = JSON.parse(invalidOffer?.content ?? '{}') as { ok: boolean; outcome: string }
+    expect(parsedFail.ok).toBe(false)
+    expect(parsedFail.outcome).toMatch(/^Try once more with corrected details: .*secretInput/)
 
     const recordedArgs = storage.read(
       (db) =>
@@ -642,6 +643,37 @@ describe('registry registration, filtering, records and offered tools', () => {
     expect(recordedArgs).toHaveLength(2)
     expect(recordedArgs[0]?.args_shape).toBe(JSON.stringify({ secretInput: 'string' }))
     expect(recordedArgs[0]?.args_shape).not.toContain('hello')
+  })
+
+  it('the model reads a plain outcome for every failure kind and code, never the raw reason', async () => {
+    const storage = tmpStorage()
+    const registry = makeRegistry(storage)
+    const context = makeContext(storage)
+    const RAW = 'RAW_REASON_MARKER'
+    const failures = [
+      ...TOOL_FAILURE_KINDS.map((kind) => ({ kind })),
+      { kind: 'error' as const, code: 'read_failed' as const },
+      { kind: 'refused' as const, code: 'already_read' as const }
+    ]
+    failures.forEach((failure, index) => {
+      registry.register({
+        name: `raw_${index}`,
+        description: 'Fails with a raw reason.',
+        schema: z.strictObject({}),
+        mode: 'implicit',
+        mutates: false,
+        handler: () => ({ ok: false, ...failure, reason: RAW })
+      })
+    })
+
+    const offered = registry.offered(context)
+    expect(offered).toHaveLength(failures.length)
+    for (const tool of offered) {
+      const result = await tool.call({}, `c-${tool.schema.name}`, new AbortController().signal)
+      expect(result.ok, tool.schema.name).toBe(false)
+      expect(result.content, tool.schema.name).not.toContain(RAW)
+      expect(JSON.parse(result.content)).toEqual({ ok: false, outcome: expect.any(String) })
+    }
   })
 
   it('writes failure rows of the right kind for timeout, error and refused', async () => {
@@ -709,10 +741,9 @@ describe('registry registration, filtering, records and offered tools', () => {
     const offered = registry.offered(context)
     const webSearch = offered.find((tool) => tool.schema.name === 'web_search')!
     const modelOutcome = await webSearch.call({ query: 'test' }, 'c-port-boom', new AbortController().signal)
-    expect(modelOutcome).toEqual({
-      ok: false,
-      content: JSON.stringify({ error: 'error', reason: 'search failed' })
-    })
+    expect(modelOutcome.ok).toBe(false)
+    expect(JSON.parse(modelOutcome.content)).toEqual({ ok: false, outcome: expect.any(String) })
+    expect(modelOutcome.content).not.toContain('search failed')
     expect(modelOutcome.content).not.toContain('boom')
 
     await registry.call('recall', { query: 'test' }, context, { callId: 'c-mem-boom', source: 'model' })

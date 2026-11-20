@@ -1148,7 +1148,7 @@ describe('turn pipeline link intake and media switch', () => {
     expect(seenWatchFiles).toEqual([])
     expect(seenWatchUrls).toEqual([])
     expect(seenLookups).toEqual([])
-    expect(capturedMedia[0]).toContain('- image: could not be read (media reading is off)')
+    expect(capturedMedia[0]).toContain('(The image could not be opened.)')
     expect(capturedMedia[0]).not.toContain('ytNoMedia1')
 
     await core.gateway.send(msg('m-2', 'https://www.youtube.com/watch?v=ytSkipped https://x.com/testuser/status/777'))
@@ -1199,12 +1199,12 @@ describe('turn pipeline link intake and media switch', () => {
     const r1 = await core.gateway.send(msg('m-1', `see ${failedUrl}`))
     expect(r1.content).toBe('okay!')
     expect(capturedMedia[0]).toContain('<media-unreadable>')
-    expect(capturedMedia[0]).toContain('- X link: could not be read (could not open link)')
+    expect(capturedMedia[0]).toContain('(The X post could not be opened.)')
     expect(capturedMedia[0]).not.toContain(failedUrl)
 
     const r2 = await core.gateway.send(msg('m-2', `watch ${privateYtUrl}`))
     expect(r2.content).toBe('okay!')
-    expect(capturedMedia[1]).toContain('- YouTube video: could not be read (private or removed)')
+    expect(capturedMedia[1]).toContain('(The YouTube video could not be opened.)')
     expect(capturedMedia[1]).not.toContain(privateYtUrl)
 
     const failures = core.storage.read(

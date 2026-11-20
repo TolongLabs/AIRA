@@ -209,7 +209,7 @@ describe('a file that cannot be read', () => {
     expect(delivery.content).toBe('Nice one!')
     const context = contextOf(model.requests[0])
     expect(context).toContain(
-      `<media-unreadable>\n- image: could not be read (the read failed)\nTell the sender so in your own voice, in the sense of: "${UNREADABLE_LINE}"\n</media-unreadable>`
+      `<media-unreadable>\n(The image could not be opened.)\nTell the sender so in your own voice, in the sense of: "${UNREADABLE_LINE}"\n</media-unreadable>`
     )
     expect(context).not.toContain('<media untrusted')
     expect(lastTurn(app)).toMatchObject({ state: 'delivered', outcome: 'delivered' })
@@ -235,7 +235,7 @@ describe('a file that cannot be read', () => {
     expect(delivery.content).toBe('Nice one!')
     expect(watcher.seen).toEqual([])
     const context = contextOf(model.requests[0])
-    expect(context).toContain('- image: could not be read (not available to read)')
+    expect(context).toContain('(The image could not be opened.)')
     expect(JSON.stringify(model.requests[0])).not.toContain('id_ed25519')
     expect(rows(app, "SELECT * FROM model_call WHERE role = 'media'")).toEqual([])
     expect(rows(app, 'SELECT kind FROM failure')).toEqual([{ kind: 'media_unreadable' }, { kind: 'media_unreadable' }])
@@ -254,7 +254,7 @@ describe('a file that cannot be read', () => {
 
     const context = contextOf(model.requests[0])
     expect(context).toContain('- image: A red bicycle against a brick wall.')
-    expect(context).toContain('- document: could not be read (file not found)')
+    expect(context).toContain('(The document could not be opened.)')
     expect(watcher.seen).toHaveLength(1)
   })
 
@@ -318,7 +318,7 @@ describe('media is off', () => {
     expect(logs.filter((line) => line['event'] === 'media.off')).toEqual([
       expect.objectContaining({ reason: 'no_key' })
     ])
-    expect(contextOf(model.requests[0])).toContain('- image: could not be read (media reading is off)')
+    expect(contextOf(model.requests[0])).toContain('(The image could not be opened.)')
     expect(lastTurn(app)).toMatchObject({ state: 'delivered' })
     expect(rows(app, "SELECT * FROM model_call WHERE role = 'media'")).toEqual([])
     expect(rows(app, 'SELECT kind FROM failure')).toEqual([{ kind: 'media_unreadable' }])

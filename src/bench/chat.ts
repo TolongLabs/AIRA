@@ -130,6 +130,8 @@ export interface ChatSession {
     /** The names of the tools the turn called, in call order. */
     tools: string[]
   }>
+  /** The registry's tool names, for the live checks' fourth-wall check. A fake session may leave them out. */
+  toolNames?: readonly string[]
   close(): Promise<void>
 }
 
@@ -198,6 +200,7 @@ export async function openChatSession(options: {
     let lastTurnId: unknown
 
     return {
+      toolNames: app.registry.toolNames(),
       async send(text: string) {
         seq += 1
         const mid = `bench-${run}-${seq}`

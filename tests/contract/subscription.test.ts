@@ -10,7 +10,7 @@ import { createSubscriptionRunner, renderPrompt, renderSystem } from '../../src/
 import { createToolServer, type ToolServer } from '../../src/models/tool-server.js'
 import { ModelError } from '../../src/models/types.js'
 import { createLogger } from '../../src/records/logger.js'
-import type { OfferedTool, RunResult, TurnContext, TurnRunner } from '../../src/turn/types.js'
+import type { OfferedTool, ReplyTarget, RunResult, TurnContext, TurnRunner } from '../../src/turn/types.js'
 
 const RUNNER_PATH = path.resolve('deploy/host-runner/runner.mjs')
 const FAKE_CLAUDE_PATH = path.resolve('tests/support/fake-claude.mjs')
@@ -104,11 +104,15 @@ function makeContext(turnId = 'turn-sub-1', deadlineOffsetMs = 4_000): TurnConte
   } as TurnContext
 }
 
-function makeFallback(text = 'fallback reply'): TurnRunner & { calls: number } {
+type RunInput = Parameters<TurnRunner['run']>[0]
+
+function makeFallback(text = 'fallback reply'): TurnRunner & { calls: number; inputs: RunInput[] } {
   const runner = {
     calls: 0,
-    async run(): Promise<RunResult> {
+    inputs: [] as RunInput[],
+    async run(input: RunInput): Promise<RunResult> {
       runner.calls += 1
+      runner.inputs.push(input)
       return {
         text,
         usage: { inputTokens: 2, outputTokens: 3, cachedTokens: 0 },
@@ -855,6 +859,136 @@ describe('the subscription transport', () => {
           expect(line).not.toContain(secret)
         }
       }
+    })
+  })
+
+  describe('no tools and regeneration routes', () => {
+    const system = [{ name: 'core' as const, text: 'Rules.' }]
+    const messages = [{ role: 'user' as const, content: 'hello' }]
+
+    it('runs a turn with no tools through the real runner, which requires the tool envelope', async () => {
+      const { server, url } = await startToolServer()
+      const runner = createSubscriptionRunner({
+        subscription: { runnerUrl, toolServerUrl: url },
+        model: '',
+        effort: '',
+        runnerToken: RUNNER_TOKEN,
+        toolServer: server,
+        breaker: createBreaker({ breakerMs: 60_000 }),
+        logger: createLogger({ level: 'error', module: 'sub-test' })
+      })
+
+      const result = await runner.run({
+        system,
+        messages,
+        tools: [],
+        context: makeContext('turn-no-tools'),
+        signal: new AbortController().signal
+      })
+
+      // The fake program echoes the tools its MCP session lists. No tool was offered, so the list is empty.
+      expect(JSON.parse(result.text)).toMatchObject({ tools: [], calls: [] })
+      expect(result.calls).toHaveLength(1)
+    })
+
+    it('regenerates on the API route that gave the reply, without starting the program', async () => {
+      const { server, url } = await startToolServer()
+      const fallback = makeFallback('regenerated')
+      let programRequests = 0
+      const runner = createSubscriptionRunner({
+        subscription: { runnerUrl: 'http://127.0.0.1:9', toolServerUrl: url },
+        model: '',
+        effort: '',
+        runnerToken: RUNNER_TOKEN,
+        toolServer: server,
+        breaker: createBreaker({ breakerMs: 60_000 }),
+        fallback,
+        logger: createLogger({ level: 'error', module: 'sub-test' }),
+        fetch: async () => {
+          programRequests += 1
+          throw new Error('the program must not run')
+        }
+      })
+      const replyTarget: ReplyTarget = { transport: 'api', role: 'fallback', model: 'fallback-model' }
+
+      const result = await runner.run({
+        system,
+        messages,
+        tools: [],
+        context: makeContext('turn-regen-api'),
+        signal: new AbortController().signal,
+        replyTarget
+      })
+
+      expect(result).toMatchObject({ text: 'regenerated', role: 'fallback', transport: 'api' })
+      // The fallback runner has one slot, its main model. That slot is the route that gave the reply.
+      expect(fallback.inputs[0]?.replyTarget).toEqual({ transport: 'api', role: 'main', model: 'fallback-model' })
+      expect(programRequests).toBe(0)
+    })
+
+    it('fails a regeneration on the program route rather than moving to the fallback', async () => {
+      const { server, url } = await startToolServer()
+      const fallback = makeFallback()
+      const runner = createSubscriptionRunner({
+        subscription: { runnerUrl: 'http://127.0.0.1:9', toolServerUrl: url },
+        model: '',
+        effort: '',
+        runnerToken: RUNNER_TOKEN,
+        toolServer: server,
+        breaker: createBreaker({ breakerMs: 60_000 }),
+        fallback,
+        logger: createLogger({ level: 'error', module: 'sub-test' }),
+        fetch: async () => {
+          throw new TypeError('connection refused')
+        }
+      })
+
+      await expect(
+        runner.run({
+          system,
+          messages,
+          tools: [],
+          context: makeContext('turn-regen-sub'),
+          signal: new AbortController().signal,
+          replyTarget: { transport: 'subscription', role: 'main', model: 'claude-test' }
+        })
+      ).rejects.toMatchObject({ kind: 'transient' })
+      expect(fallback.calls).toBe(0)
+    })
+
+    it('fails a regeneration on the program route while its breaker is open, with no call', async () => {
+      const { server, url } = await startToolServer()
+      const fallback = makeFallback()
+      const breaker = createBreaker({ breakerMs: 60_000 })
+      breaker.open('main')
+      let programRequests = 0
+      const runner = createSubscriptionRunner({
+        subscription: { runnerUrl: 'http://127.0.0.1:9', toolServerUrl: url },
+        model: '',
+        effort: '',
+        runnerToken: RUNNER_TOKEN,
+        toolServer: server,
+        breaker,
+        fallback,
+        logger: createLogger({ level: 'error', module: 'sub-test' }),
+        fetch: async () => {
+          programRequests += 1
+          throw new Error('the program must not run')
+        }
+      })
+
+      await expect(
+        runner.run({
+          system,
+          messages,
+          tools: [],
+          context: makeContext('turn-regen-open'),
+          signal: new AbortController().signal,
+          replyTarget: { transport: 'subscription', role: 'main', model: 'claude-test' }
+        })
+      ).rejects.toMatchObject({ kind: 'rate_limit' })
+      expect(fallback.calls).toBe(0)
+      expect(programRequests).toBe(0)
     })
   })
 })

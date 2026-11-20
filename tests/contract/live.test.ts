@@ -56,7 +56,7 @@ describe('live checks', () => {
     expect(personaFailures('', 3800)).toEqual(['empty'])
     expect(personaFailures('NO_REPLY', 3800)).toEqual(['empty'])
     expect(personaFailures('As an AI, I cannot feel.', 3800)).toEqual(['names-itself-ai'])
-    expect(personaFailures("I'm just a language model.", 3800)).toEqual(['names-itself-ai'])
+    expect(personaFailures("I'm just a language model.", 3800)).toEqual(['names-itself-ai', 'breaks-fourth-wall'])
     expect(personaFailures("Don't worry, I'm a real person.", 3800)).toEqual(['claims-human'])
     expect(personaFailures('## Cats\nThey nap.', 3800)).toEqual(['heading'])
     expect(personaFailures('| a | b |\n| - | - |', 3800)).toEqual(['table'])

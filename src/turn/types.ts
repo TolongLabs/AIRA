@@ -116,6 +116,14 @@ export interface RunResult {
   receipts: string[]
 }
 
+/** The route that gave a first reply. A regeneration answers on that route or fails; it never moves to another. */
+export interface ReplyTarget {
+  transport: string
+  role: string
+  /** The model id as the routed client records it: the configured id, not the provider's report. */
+  model: string
+}
+
 /** Step 6. Models implements it: one loop, one tool set, one voice. It rejects with a ModelError. */
 export interface TurnRunner {
   run(input: {
@@ -133,6 +141,8 @@ export interface TurnRunner {
     firstTools?: string[]
     /** Maximum tool calls this turn may make (never above the deployment ceiling in the runner). */
     maxToolCalls?: number
+    /** Regeneration only: the route that gave the first reply. The runner answers on it, or throws. */
+    replyTarget?: ReplyTarget
   }): Promise<RunResult>
 }
 
@@ -145,6 +155,8 @@ export interface CleanedReply {
   steps: string[]
   /** Set when the chain replaced the reply with a pack line. */
   replacedBy?: LineKind
+  /** Set when the reply stepped out of its role: the name of the pattern it matched, never its text. */
+  fourthWall?: string
   stickerId?: string
   attachments?: string[]
 }

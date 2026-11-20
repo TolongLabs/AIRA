@@ -265,10 +265,11 @@ export async function createApp(options: AppOptions): Promise<App> {
     /** The API runner on one model, with an optional second model behind it. */
     const apiRunner = (first: RoleTargets, second: RoleTargets | undefined, roleBreaker: Breaker): TurnRunner =>
       createApiRunner({
-        clientFor: (onCall, onSpendError, think) =>
+        clientFor: (onCall, onSpendError, think, route) =>
           createRoutedClient({
             main: think ? first.deep : first.normal,
             fallback: second ? (think ? second.deep : second.normal) : undefined,
+            ...(route ? { pin: route } : {}),
             config,
             breaker: roleBreaker,
             storage,

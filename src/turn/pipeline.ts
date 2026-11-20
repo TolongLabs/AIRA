@@ -41,6 +41,7 @@ import type {
   ModelCallRecord,
   PromptBuilder,
   ReplyCleaner,
+  ReplyTarget,
   RunResult,
   ToolOffer,
   TurnContext,
@@ -61,6 +62,16 @@ type ScheduledRequest = Extract<GatewayRequest, { type: 'scheduled' }>
 /** The sender of a gateway job's instruction in the window. Not a member: memory never quotes it. */
 const ROUTINE_SENDER = 'routine'
 const JOB_WINDOW_MS = 10 * 60_000
+
+/** Sent after a reply that stepped out of its role: the same thing again, in character (docs/trd/prompt-engine.md). */
+const FOURTH_WALL_NOTE =
+  'Your last reply stepped out of your role. Say the same thing again as your character, without naming tools, ' +
+  'errors or systems.'
+
+type CleanedRun = ReturnType<ReplyCleaner['clean']> & {
+  error?: unknown
+  warnings?: { kind?: FailureKind; error: unknown; handledBy?: string }[]
+}
 
 export interface TurnReply {
   /** The content for the gateway. Empty means: send nothing. */
@@ -386,6 +397,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     const commands = researchRow || handover ? [] : (deps.commands?.match(text, context) ?? [])
     let built: BuiltPrompt
     let run: RunResult
+    let modelMs = 0
     if (commands.length > 0) {
       stage('command')
       context.kind = 'command'
@@ -551,6 +563,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       )
       const abort = new AbortController()
       const timer = setTimeout(() => abort.abort(), Math.max(0, context.deadline - now().getTime()))
+      const runStartedAt = now().getTime()
       try {
         if (researchRow?.findings && deps.hooks?.spendAllows?.() === false) {
           const findings = reportDocumentSchema.parse(JSON.parse(researchRow.findings))
@@ -597,6 +610,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       } finally {
         clearTimeout(timer)
         stamp('model_done')
+        modelMs = now().getTime() - runStartedAt
       }
       // Older runner seams may only return calls; the callback owns calls from current runners.
       for (const call of run.calls) if (!outcome.calls.includes(call)) outcome.calls.push(call)
@@ -618,14 +632,93 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
 
     // 7. Clean: the cleaning chain, the renderer, the bubbles.
     stage('clean')
-    let cleaned: ReturnType<ReplyCleaner['clean']> & {
-      error?: unknown
-      warnings?: { kind?: FailureKind; error: unknown; handledBy?: string }[]
+    const cleanRun = (reply: RunResult): CleanedRun => {
+      try {
+        return deps.cleaner.clean({ text: reply.text, context, built, run: reply })
+      } catch (error) {
+        return { content: '', bubbleCount: 0, steps: [], error }
+      }
     }
-    try {
-      cleaned = deps.cleaner.clean({ text: run.text, context, built, run })
-    } catch (error) {
-      cleaned = { content: '', bubbleCount: 0, steps: [], error }
+    // A reply that steps out of its role gets one regeneration, with no tools, on the route that gave it. It runs only
+    // when the deadline leaves time for a call as long as the last model call; the same prompt answers.
+    const regenerateInRole = async (first: RunResult): Promise<RunResult | undefined> => {
+      const successful = first.calls.filter((call) => call.error === undefined)
+      const last = successful[successful.length - 1]
+      const replyTarget: ReplyTarget | undefined = last
+        ? { transport: last.transport, role: last.role, model: last.model }
+        : undefined
+      const remaining = context.deadline - now().getTime()
+      // A run with tools can hold several calls, so one call's own time is the estimate for another.
+      const estimate = last?.durationMs ?? modelMs
+      if (!replyTarget || remaining <= 0 || remaining < estimate) return undefined
+      const abort = new AbortController()
+      const timer = setTimeout(() => abort.abort(), Math.max(0, remaining))
+      try {
+        return await Promise.race([
+          deps.runner.run({
+            system: built.system,
+            messages: [
+              ...built.messages,
+              { role: 'assistant', content: first.text },
+              { role: 'user', content: FOURTH_WALL_NOTE }
+            ],
+            tools: [],
+            replyTarget,
+            context,
+            signal: abort.signal,
+            maxToolCalls: 0,
+            onCall: (call) => {
+              outcome.calls.push(call)
+            },
+            onSpendError: (error) => {
+              log.warn('model.spend_failed', { kind: 'storage_error' })
+              outcome.failures.push({ stage: 'run', kind: 'storage_error', error, handledBy: 'reply' })
+            }
+          }),
+          new Promise<never>((_, reject) =>
+            abort.signal.addEventListener('abort', () =>
+              reject(new ModelError('transient', 'the turn deadline passed'))
+            )
+          )
+        ])
+      } catch {
+        return undefined
+      } finally {
+        clearTimeout(timer)
+      }
+    }
+    let cleaned = cleanRun(run)
+    if (cleaned.fourthWall !== undefined) {
+      // The flagged reply stays out of the diagnostics: the pattern's name is all the failure keeps.
+      if (outcome.diagnostics) delete outcome.diagnostics.reply
+      const firstSteps = cleaned.steps
+      const why = new Error(cleaned.fourthWall)
+      const again = await regenerateInRole(run)
+      const second = again ? cleanRun(again) : undefined
+      // A regeneration call counts as an attempt, whether or not it answered. Runners that report calls through
+      // onCall add them already; the others are added here.
+      if (again) for (const call of again.calls) if (!outcome.calls.includes(call)) outcome.calls.push(call)
+      Object.assign(outcome.fields, { attempts: outcome.calls.filter((call) => call.role !== 'media').length })
+      if (again) {
+        // The regenerated call's tokens and cost count even when its reply is flagged and the pack line is sent.
+        Object.assign(outcome.fields, {
+          inputTokens: (outcome.fields.inputTokens ?? run.usage.inputTokens) + again.usage.inputTokens,
+          outputTokens: (outcome.fields.outputTokens ?? run.usage.outputTokens) + again.usage.outputTokens,
+          cachedTokens: (outcome.fields.cachedTokens ?? run.usage.cachedTokens) + again.usage.cachedTokens,
+          costUsd: (outcome.fields.costUsd ?? run.costUsd) + again.costUsd
+        } satisfies TurnRecordFields)
+      }
+      if (!again || !second || second.fourthWall !== undefined || second.error !== undefined) {
+        fail('clean', 'persona_leak', why, 'line:error')
+        Object.assign(outcome.fields, { cleaningSteps: firstSteps } satisfies TurnRecordFields)
+        stamp('cleaned')
+        outcome.state = 'failed'
+        outcome.fields.outcome = 'failed'
+        outcome.content = pack.lines.error
+        return outcome
+      }
+      fail('clean', 'persona_leak', why, 'regenerate')
+      cleaned = { ...second, steps: [...firstSteps, ...second.steps] }
     }
     Object.assign(outcome.fields, {
       cleaningSteps: cleaned.steps,

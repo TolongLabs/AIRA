@@ -13,3 +13,5 @@ cases:
     expect: { tools: [reminder_list] }
   - prompt: find out when the next total solar eclipse is visible from Asia
     expect: { tools: [web_search] }
+  # Link intake can attempt this before the model runs. Test delivery and persona without requiring a retry.
+  - prompt: read https://www.reddit.com/r/example/comments/removed1/removed_post/ and tell me what it says

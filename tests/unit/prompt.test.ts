@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { loadPack, type Pack } from '../../src/character/loader.js'
 import type { ModelClient, ModelRequest } from '../../src/models/types.js'
-import { createPromptBuilder, estimateTokens, localTimeLine, MEDIA_NOTE } from '../../src/prompt/builder.js'
+import {
+  createPromptBuilder,
+  estimateTokens,
+  FOURTH_WALL_RULE,
+  localTimeLine,
+  MEDIA_NOTE
+} from '../../src/prompt/builder.js'
 import { getChatState, setChatState } from '../../src/prompt/chat-state.js'
 import { createModelMoodJudge, detectMood, detectMoodByRules, type MoodJudge } from '../../src/prompt/mood.js'
 import { pick, seededRandom } from '../../src/prompt/random.js'
@@ -382,7 +388,7 @@ describe('prompt builder', () => {
 
     const built = await builder.build(input)
     expect(built.system.map((b) => b.name)).toEqual(['core', 'speech', 'harness', 'context', 'tone', 'shape'])
-    expect(built.system[2]?.text).toBe('Harness rules text.\n\nTool rules text.')
+    expect(built.system[2]?.text).toBe(['Harness rules text.', FOURTH_WALL_RULE, 'Tool rules text.'].join('\n\n'))
     expect(built.system[3]?.text).toContain('Chat type: dm')
     expect(built.system[3]?.text).toContain('Time: Friday 2026-01-02 03:04, UTC (UTC+00:00).')
     expect(built.system[3]?.text).toContain('<memory untrusted="true">\n- recalled fact one\n</memory>')

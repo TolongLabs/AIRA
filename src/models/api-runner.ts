@@ -2,7 +2,9 @@ import type { LlmRequest, LlmResponse, RunAsyncToolRequest } from '@google/adk'
 import { BaseLlm, type BaseLlmConnection, BaseTool, InMemoryRunner, LlmAgent } from '@google/adk'
 import type { Content, FunctionDeclaration } from '@google/genai'
 import { createLogger, type Logger } from '../records/logger.js'
-import type { ModelCallRecord, OfferedTool, RunResult, TurnRunner } from '../turn/types.js'
+import { outcomePayload } from '../tools/outcomes.js'
+import type { ModelCallRecord, OfferedTool, ReplyTarget, RunResult, TurnRunner } from '../turn/types.js'
+import type { ReplyRoute } from './routed-client.js'
 import {
   type ModelClient,
   ModelError,
@@ -23,7 +25,9 @@ export interface ApiRunnerOptions {
   clientFor: (
     onCall: (record: ModelCallRecord) => void,
     onSpendError?: (error: unknown) => void,
-    think?: boolean
+    think?: boolean,
+    /** A regeneration's route, the model that gave the first reply. Absent: the normal routing. */
+    route?: ReplyRoute
   ) => ModelClient
   /** The model id asked of the client. A routed client replaces it per role. */
   model: string
@@ -185,7 +189,7 @@ class SeamTool extends BaseTool {
     if (state.toolCalls >= state.maxCalls) state.chainLimit ??= 'calls'
     else if (state.toolMs >= options.limits.timeBudgetMs) state.chainLimit ??= 'time'
     if (state.chainLimit) {
-      return { content: JSON.stringify({ error: 'refused', reason: 'the tool limit for this turn is reached' }) }
+      return { content: outcomePayload({ kind: 'refused', reason: 'tool limit', code: 'tool_limit' }) }
     }
     state.toolCalls += 1
     const firstIndex = state.firstTools.indexOf(this.name)
@@ -202,13 +206,22 @@ class SeamTool extends BaseTool {
         options.logger ??
         createLogger({ level: 'warn', module: 'api_runner', ...(options.now ? { now: options.now } : {}) })
       log.warn('api_tool_failed', { turnId: state.turnId, tool: this.name, error })
-      return { content: JSON.stringify({ error: 'error', reason: 'the tool failed' }) }
+      return { content: outcomePayload({ kind: 'error', reason: 'tool threw' }) }
     } finally {
       state.toolMs += now().getTime() - started
       if (state.toolCalls >= state.maxCalls) state.chainLimit ??= 'calls'
       else if (state.toolMs >= options.limits.timeBudgetMs) state.chainLimit ??= 'time'
     }
   }
+}
+
+/** The route a regeneration stays on: the configured role and model, as the routed client names them. */
+function routeOf(target: ReplyTarget | undefined): ReplyRoute | undefined {
+  if (target === undefined) return undefined
+  if (target.role !== 'main' && target.role !== 'fallback') {
+    throw new ModelError('transient', 'the reply route is unknown')
+  }
+  return { role: target.role, model: target.model }
 }
 
 export function createApiRunner(options: ApiRunnerOptions): TurnRunner {
@@ -222,7 +235,8 @@ export function createApiRunner(options: ApiRunnerOptions): TurnRunner {
       firstTools,
       maxToolCalls,
       onCall,
-      onSpendError
+      onSpendError,
+      replyTarget
     }): Promise<RunResult> {
       const calls: ModelCallRecord[] = []
       const offeredNames = new Set(tools.map((tool) => tool.schema.name))
@@ -236,7 +250,8 @@ export function createApiRunner(options: ApiRunnerOptions): TurnRunner {
             onCall?.(record)
           },
           onSpendError,
-          Boolean(context.think)
+          Boolean(context.think),
+          routeOf(replyTarget)
         ),
         signal,
         turnId: context.turnId,

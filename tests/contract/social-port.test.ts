@@ -117,7 +117,12 @@ describe('social tool port', () => {
   ])('maps HTTP %i to a bounded tool failure', async (status, kind, reason) => {
     const { port } = readers(async () => new Response('private response', { status }))
     const tool = readPostTool({ post: port, filesDir: '/tmp' })
-    expect(await tool.handler({ url }, { signal: signal() } as ToolContext)).toEqual({ ok: false, kind, reason })
+    expect(await tool.handler({ url }, { signal: signal() } as ToolContext)).toEqual({
+      ok: false,
+      kind,
+      reason,
+      code: 'read_failed'
+    })
   })
 
   it('returns timeout even when an injected fetch ignores cancellation', async () => {
@@ -126,7 +131,8 @@ describe('social tool port', () => {
     expect(await tool.handler({ url }, { signal: signal() } as ToolContext)).toEqual({
       ok: false,
       kind: 'timeout',
-      reason: 'timeout'
+      reason: 'timeout',
+      code: 'read_failed'
     })
   })
 
@@ -138,7 +144,8 @@ describe('social tool port', () => {
     expect(await tool.handler({ url: 'https://youtu.be/example123' }, { signal: signal() } as ToolContext)).toEqual({
       ok: false,
       kind: 'unavailable',
-      reason: 'binary_missing'
+      reason: 'binary_missing',
+      code: 'read_failed'
     })
     expect(await port.read(url, signal())).toMatchObject({ text: 'Still readable' })
   })
