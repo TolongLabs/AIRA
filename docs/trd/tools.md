@@ -304,9 +304,10 @@ Facebook's unknown-host shapes require a long numeric id or a `pfbid` post id.
 
 Official direct paths include Reddit comment permalinks, TikTok photos, Threads posts with or without an account,
 Facebook stories and photos, Instagram TV, YouTube live and embeds, and X web-status links. Official short
-links from Reddit, TikTok, Bilibili, Threads, Facebook and Instagram resolve through the guarded social fetcher.
-The resolver allows up to two manual redirects within the platform and 1,500 ms total. The final address must
-parse as a post on the same platform. Successful resolutions use a bounded TTL cache. Supported platforms
+links from Reddit, TikTok, Bilibili, Facebook and Instagram use a shared guarded resolver. It allows up to two
+manual redirects within the platform and 1,500 ms total. Successful resolutions use a bounded TTL cache.
+Threads keeps its existing one-hop guarded page lookup. The final address must parse as a post on the same platform.
+Facebook photo paths use the HTML post reader before falling back to the extractor. Supported platforms
 are X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram, Bilibili and
 Facebook.
 
