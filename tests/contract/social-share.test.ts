@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
-import { resolveShareLink } from '../../src/social/share.js'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { resolveShareLink, SHARE_TIMEOUT_MS } from '../../src/social/share.js'
 import { parseSocialPostUrl } from '../../src/social/urls.js'
 import { SocialPostViewer } from '../../src/social/viewer.js'
 
@@ -8,6 +8,13 @@ const REDDIT_SHARE = parseSocialPostUrl('https://www.reddit.com/r/example_sub/s/
 const TIKTOK_SHORT = parseSocialPostUrl('https://vm.tiktok.com/ZMexample/')!
 
 const redirect = (location: string, status = 302) => new Response(null, { status, headers: { location } })
+
+/** A redirect whose body never finishes cancelling. */
+const stuckRedirect = (location: string) =>
+  new Response(new ReadableStream({ cancel: () => new Promise<void>(() => {}) }), {
+    status: 302,
+    headers: { location }
+  })
 
 /** A fetcher that answers each address with its own response, and throws for an address it was not given. */
 function routes(answers: Record<string, () => Response>) {
@@ -112,6 +119,55 @@ describe('resolveShareLink', () => {
     })
     expect(await resolveShareLink(share, fetcher)).toBeNull()
     expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('resolveShareLink wall-time budget', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('returns a redirect whose body cancel never settles, and leaves no timer behind', async () => {
+    vi.useFakeTimers()
+    const fetcher = routes({
+      'https://www.reddit.com/r/example_sub/s/AbC123xyz/': () =>
+        stuckRedirect('https://www.reddit.com/r/example_sub/comments/abc123/a_post/?share_id=x')
+    })
+    expect(await resolveShareLink(REDDIT_SHARE, fetcher)).toMatchObject({ platform: 'reddit', id: 'abc123' })
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('never passes a redirect that arrives after the budget to the next hop', async () => {
+    vi.useFakeTimers()
+    const next = routes({
+      'https://www.tiktok.com/t/ZTexample/': () =>
+        redirect('https://www.tiktok.com/@example_user/video/1234567890', 301)
+    })
+    let answerFirstHop: (response: Response) => void = () => {}
+    const fetcher = vi.fn((input: string | URL | Request) =>
+      String(input) === 'https://vm.tiktok.com/ZMexample/'
+        ? new Promise<Response>((resolve) => {
+            answerFirstHop = resolve
+          })
+        : next(input)
+    )
+    const pending = resolveShareLink(TIKTOK_SHORT, fetcher)
+    await vi.advanceTimersByTimeAsync(SHARE_TIMEOUT_MS)
+    expect(await pending).toBeNull()
+
+    answerFirstHop(redirect('https://www.tiktok.com/t/ZTexample/'))
+    await vi.advanceTimersByTimeAsync(SHARE_TIMEOUT_MS)
+    expect(fetcher).toHaveBeenCalledOnce()
+  })
+
+  it('ends at the caller abort and leaves no timer behind', async () => {
+    vi.useFakeTimers()
+    const controller = new AbortController()
+    const fetcher = vi.fn(async () => new Promise<Response>(() => {}))
+    const pending = resolveShareLink(REDDIT_SHARE, fetcher, controller.signal)
+    controller.abort()
+    expect(await pending).toBeNull()
+    expect(vi.getTimerCount()).toBe(0)
   })
 })
 
