@@ -296,10 +296,12 @@ character.
 ### Reverse-Image Hints
 
 `identify_image` is a read-only implicit tool. It requires `features.identify` and `SERPAPI_API_KEY`. The
-zero-based `attachment` index selects a validated image from this turn, followed by the quoted image and
-then post photos from link intake. An unknown index makes no provider request.
+zero-based `attachment` index selects a validated member image from this turn, followed by a validated quoted
+image when present and then post photos from link intake. Local images enter the list only while media intake
+is enabled for the chat. An unknown index makes no provider request.
 
-The tool uploads a local image only when called. It refuses local images larger than 500 KB. SerpApi returns
+The tool uploads a local image only when called. A local image larger than 500 KB yields a plain outcome and
+no matches or upload. SerpApi returns
 an image id from its [Image API](https://serpapi.com/image-api). Google Lens receives that id, or the public
 URL of a post photo. Upload and search together have a 6-second limit and count as one tool call. The result
 has up to five matches with title, domain, link and price when present. It carries `untrusted: true` and
