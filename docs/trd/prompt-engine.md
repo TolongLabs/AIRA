@@ -70,8 +70,7 @@ The system prompt is assembled in a fixed order. Blocks 1 to 3 are stable per ch
   as things it saw or heard itself, without mentioning the description, then a `<media untrusted="true">` block: one
   line per file with its kind and description, and the transcript on a second line when there is speech. Line breaks and `<media` tags are stripped from the text. The whole block is
   clipped to 4,500 characters, shared evenly between the files, so media cannot push the prompt over its ceiling.
-  A file that could not be read adds a short `<media-unreadable>` note with its kind, the reason, and the pack's
-  `unreadableMedia` line. The model says that line in its own voice. A message that holds only a file has no text,
+  A file or link that could not be opened adds a plain outcome note. The model expresses the outcome in character. A message that holds only a file has no text,
   and a model API refuses an empty message, so the model sees `(no text, only a file)` in its place. See
   [Models](models.md#media-watching).
 - **Media marked on its message.** When block 4 holds media, code puts a fixed note on the line before the newest user
@@ -167,6 +166,7 @@ record.
 6. Guard faces: inside a face, `*`, `_`, `~` and `` ` `` become their full-width forms (`＊ ＿ ～ ｀`), so
    WhatsApp and the gateway's Markdown conversion never read them as formatting. WhatsApp has no escape character.
 7. Check for leaked prompt text against the fixed blocks. A hit replaces the reply with the pack's fallback line.
+   Then check for role breaks as described in [Staying In Role](#staying-in-role).
 8. Render for WhatsApp.
 9. Split into bubbles.
 10. Capitalise the first letter of each bubble and each paragraph. The step skips a bubble that starts with code, a link, a command or
@@ -181,6 +181,17 @@ A throw anywhere in the chain returns empty content with zero bubbles and the st
 then sends nothing for that turn (`src/format/clean.ts`).
 
 ![How a reply passes the cleaning chain, bubbles and the sticker line](../diagrams/cleaning-chain.svg)
+
+### Staying In Role
+
+A fixed prompt rule asks every character to describe what it could see or do in its own voice. Failures in the
+media and link intake use plain sentences that the character can express naturally.
+
+After the prompt leak check, `fourthWall` flags internal mechanism phrases and tool names before rendering.
+Tool names with underscores or dots match as whole words. Other tool names match in backticks or call syntax.
+The turn tries one regeneration with the same prompt and model, with tools disabled, when the deadline allows.
+If regeneration cannot run or still breaks role, the turn delivers the pack's in-character error line.
+The cleaner records `fourth_wall`. The failure stores only the matched pattern name as `persona_leak`.
 
 ## Tool Footer
 

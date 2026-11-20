@@ -64,7 +64,7 @@ counts too. A spend write failure keeps the reply, emits a warning and records a
 
 One list, used by records, alerts and tests: the model kinds in [Models](models.md#failure-kinds), plus
 `tool_timeout`, `tool_error`, `tool_refused`, `judge_unavailable`, `media_unreadable`, `memory_rejected`,
-`memory_job_failed`, `config_invalid`, `binding_invalid`, `gateway_malformed`, `gateway_unmarked`, `turn_interrupted`, `storage_error`,
+`persona_leak`, `memory_job_failed`, `config_invalid`, `binding_invalid`, `gateway_malformed`, `gateway_unmarked`, `turn_interrupted`, `storage_error`,
 `storage_low_space`, `backup_failed`, `feedback_rejected`, `feedback_sync_failed`, `internal`.
 
 The list lives in `src/records/kinds.ts`. Alert delivery follows the Deployment decisions.
