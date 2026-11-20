@@ -24,6 +24,13 @@ list is maintained by hand.
 
 ![One tool call, from offering to receipt and outcome](../diagrams/tool-call.svg)
 
+### Failed Calls
+
+The model receives `{ ok: false, outcome }` for a failed call. Code chooses the fixed plain outcome by failure
+kind and optional typed refusal code. Invalid arguments can include schema guidance so the model can correct
+the call. Internal kinds and reasons go to tool call and failure records. Runner-generated failures use the same
+outcomes.
+
 ## Atomic Tools
 
 A tool does one thing, and that thing happens fully or not at all.

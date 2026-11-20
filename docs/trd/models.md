@@ -141,8 +141,10 @@ it safely. When `transport: subscription` is set:
 
 ### Run Request
 
-The core sends one request per turn to `POST <runnerUrl>/run`, with the shared secret `RUNNER_TOKEN` as a bearer
-token. The service answers with the program's output lines as they arrive, one JSON object per line.
+The core sends one request per model run to `POST <runnerUrl>/run`, with the shared secret `RUNNER_TOKEN` as a
+bearer token. The service answers with the program's output lines as they arrive, one JSON object per line.
+A turn can start one additional run when the [role check](prompt-engine.md#staying-in-role) flags a reply.
+The additional run uses the same model and an empty tool session.
 
 | Field       | Meaning                                                                        |
 | ----------- | ------------------------------------------------------------------------------ |
