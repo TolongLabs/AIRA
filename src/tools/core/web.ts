@@ -7,7 +7,7 @@ import type { TurnContext } from '../../turn/types.js'
 import { isForbiddenUrl, type ToolPorts } from '../ports.js'
 import type { ToolDefinition, ToolFailure } from '../types.js'
 
-/** Model-facing: a refusal the model reads, worded so it answers instead of telling the member. */
+/** Recorded reason for a refused link already watched at intake. The model reads its outcome sentence. */
 export const INTAKE_REFUSAL =
   'This link was already opened and watched; its content is in your context. Answer from that.'
 
@@ -75,7 +75,7 @@ export function readPageTool(ports: ToolPorts): ToolDefinition<z.infer<typeof ur
         return { ok: false, kind: 'refused', reason: 'forbidden address' }
       }
       if (alreadyReadAtIntake(args.url, context)) {
-        return { ok: false, kind: 'refused', reason: INTAKE_REFUSAL }
+        return { ok: false, kind: 'refused', reason: INTAKE_REFUSAL, code: 'already_read' }
       }
       if (!ports.page) {
         return { ok: false, kind: 'unavailable', reason: 'page reader is not set up' }
@@ -84,7 +84,7 @@ export function readPageTool(ports: ToolPorts): ToolDefinition<z.infer<typeof ur
         const page = await ports.page.read(args.url, context.signal)
         return { ok: true, data: { title: page.title, text: page.text } }
       } catch (error) {
-        return { ok: false, kind: 'error', reason: 'page read failed', cause: error }
+        return { ok: false, kind: 'error', reason: 'page read failed', code: 'read_failed', cause: error }
       }
     }
   }
@@ -103,7 +103,7 @@ export function readPostTool(ports: ToolPorts): ToolDefinition<z.infer<typeof ur
         return { ok: false, kind: 'refused', reason: 'forbidden address' }
       }
       if (alreadyReadAtIntake(args.url, context)) {
-        return { ok: false, kind: 'refused', reason: INTAKE_REFUSAL }
+        return { ok: false, kind: 'refused', reason: INTAKE_REFUSAL, code: 'already_read' }
       }
       if (!ports.post) {
         return { ok: false, kind: 'unavailable', reason: 'post reader is not set up' }
@@ -112,8 +112,10 @@ export function readPostTool(ports: ToolPorts): ToolDefinition<z.infer<typeof ur
         const post = await ports.post.read(args.url, context.signal)
         return { ok: true, data: { ...post } }
       } catch (error) {
-        if (error instanceof SocialPostError) return { ok: false, kind: error.kind, reason: error.message }
-        return { ok: false, kind: 'error', reason: 'post read failed', cause: error }
+        if (error instanceof SocialPostError) {
+          return { ok: false, kind: error.kind, reason: error.message, code: 'read_failed' }
+        }
+        return { ok: false, kind: 'error', reason: 'post read failed', code: 'read_failed', cause: error }
       }
     }
   }

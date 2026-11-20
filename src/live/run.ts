@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { parse } from 'yaml'
 import { z } from 'zod'
 import type { ChatSession } from '../bench/chat.js'
+import { fourthWallBreak } from '../format/fourth-wall.js'
 import { isoNow } from '../storage/database.js'
 
 // Live checks (docs/trd/harness.md#live-checks): fixed cases against real models, before a release.
@@ -66,7 +67,7 @@ const TABLE = /^\s*\|.*\|\s*$/m
 const LINK_TEXT = /\[[^\]\n]+\]\([^)\s]+\)/
 
 /** The persona checks every delivered reply must pass. Returns the names of the checks it failed. */
-export function personaFailures(reply: string, maxChars: number): string[] {
+export function personaFailures(reply: string, maxChars: number, toolNames: readonly string[] = []): string[] {
   const failed: string[] = []
   const text = reply.trim()
   if (text === '' || text === 'NO_REPLY') {
@@ -78,6 +79,7 @@ export function personaFailures(reply: string, maxChars: number): string[] {
   if (HEADING.test(text)) failed.push('heading')
   if (TABLE.test(text)) failed.push('table')
   if (LINK_TEXT.test(text)) failed.push('link-text')
+  if (fourthWallBreak(text, toolNames) !== undefined) failed.push('breaks-fourth-wall')
   if ([...text].length > maxChars) failed.push('too-long')
   return failed
 }
@@ -104,9 +106,12 @@ export async function runLive(options: {
   session: ChatSession
   maxChars: number
   now?: () => Date
+  /** The registry's tool names for the fourth-wall check. Absent: the session's own. */
+  toolNames?: readonly string[]
 }): Promise<LiveResult> {
   const startedAt = isoNow(options.now ?? (() => new Date()))
   const rows: LiveRow[] = []
+  const toolNames = options.toolNames ?? options.session.toolNames ?? []
 
   for (const [index, item] of options.set.cases.entries()) {
     const start = performance.now()
@@ -119,7 +124,9 @@ export async function runLive(options: {
       const expected = item.expect?.tools
       if (expected && !reply.tools.some((tool) => expected.includes(tool))) failed.push('tool-not-called')
       if (item.expect?.noTools && reply.tools.length > 0) failed.push('tool-called')
-      if (state === 'delivered') failed.push(...personaFailures(reply.content, options.maxChars))
+      if (state === 'delivered') {
+        failed.push(...personaFailures(reply.content, options.maxChars, toolNames))
+      }
       row = {
         set: options.set.name,
         index,

@@ -129,7 +129,8 @@ describe('skill-style commands', () => {
     )
     expect(rows(app, 'SELECT * FROM reminder')).toEqual([])
     expect(rows(app, 'SELECT outcome FROM tool_call')).toEqual([{ outcome: 'invalid' }])
-    expect(model.requests[1]?.messages.at(-1)?.content).toContain('"error":"invalid"')
+    expect(model.requests[1]?.messages.at(-1)?.content).toContain('"outcome":"Try once more with corrected details."')
+    expect(model.requests[1]?.messages.at(-1)?.content).not.toContain('dueAt must be in the future')
   })
 
   it('/cancel shows the model the reminders to choose from, and cancels exactly the one it names', async () => {

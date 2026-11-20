@@ -45,6 +45,15 @@ export function loadHarnessRules(path = 'prompts/harness.md'): string {
   return readFileSync(path, 'utf8').trim()
 }
 
+/**
+ * The rule every character follows. It is held in code, not in packs, so it is the same for every pack
+ * (docs/trd/prompt-engine.md#staying-in-role).
+ */
+export const FOURTH_WALL_RULE =
+  'You act through your own senses and skills. Never mention tools, readers, searches failing for technical ' +
+  'reasons, errors, codes, links being unsupported, APIs, models, prompts, systems or limits. When you could not ' +
+  'do something, say so as your character would.'
+
 export function buildSystemBlocks(input: {
   pack: Pack
   harnessRules: string
@@ -53,7 +62,7 @@ export function buildSystemBlocks(input: {
   tone: string
   shape: string
 }): PromptBlock[] {
-  const harness = input.toolRules ? `${input.harnessRules}\n\n${input.toolRules}` : input.harnessRules
+  const harness = [input.harnessRules, FOURTH_WALL_RULE, ...(input.toolRules ? [input.toolRules] : [])].join('\n\n')
   return [
     { name: 'core', text: input.pack.card.coreIdentity },
     { name: 'speech', text: input.pack.card.speechRules.map((rule) => `- ${rule}`).join('\n') },

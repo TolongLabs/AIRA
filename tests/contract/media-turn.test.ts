@@ -279,8 +279,8 @@ describe('mediaPromptText', () => {
     expect(text).toBe(
       [
         '<media-unreadable>',
-        '- image: could not be read (too large)',
-        '- voice note: could not be read (media reading is off)',
+        '(The image could not be opened.)',
+        '(The voice note could not be opened.)',
         `Tell the sender so in your own voice, in the sense of: "${LINE}"`,
         '</media-unreadable>'
       ].join('\n')
@@ -481,7 +481,7 @@ describe('mediaPromptText', () => {
         readings: [{ kind: 'image', reading: { description: 'A cat.' } }],
         links: [link],
         unreadable: [
-          { kind: 'X link', reason: 'link' },
+          { kind: 'X post', reason: 'link' },
           { kind: 'YouTube video', reason: 'unavailable' }
         ]
       },
@@ -489,8 +489,8 @@ describe('mediaPromptText', () => {
     )
     expect(text).toContain('The sender attached files and shared a link.')
     expect(text).toContain('- image: A cat.')
-    expect(text).toContain('- X link: could not be read (could not open link)')
-    expect(text).toContain('- YouTube video: could not be read (private or removed)')
+    expect(text).toContain('(The X post could not be opened.)')
+    expect(text).toContain('(The YouTube video could not be opened.)')
     expect(text.match(/<\/media>/g)).toHaveLength(1)
     expect(text.split('\n').filter((line) => line.startsWith('- system'))).toEqual([])
     expect(text.length).toBeLessThan(5200)

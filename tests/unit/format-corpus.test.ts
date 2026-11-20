@@ -54,6 +54,25 @@ describe('format corpus gate', () => {
     expect(CORPUS.length).toBeGreaterThanOrEqual(30)
   })
 
+  it('no corpus reply steps out of its role', () => {
+    const toolNames = ['search', 'read_post', 'read_page', 'web_search', 'reminder_set', 'note', 'help', 'list']
+    const flagged = CORPUS.flatMap((raw) => {
+      const { fourthWall } = cleanReply(raw, {
+        toolNames,
+        speakerNames: ['Nova'],
+        lengthBypass: true,
+        shape: {},
+        fixedBlocks: [],
+        leakCheck: false,
+        fallbackLine: 'Fallback line.',
+        bubbleMaxChars: 700,
+        maxBubbles: 3
+      })
+      return fourthWall === undefined ? [] : [{ raw, fourthWall }]
+    })
+    expect(flagged).toEqual([])
+  })
+
   it.each(CORPUS.map((text, index) => [index, text]))(
     'produces valid WhatsApp markup and bubbles for corpus item #%i',
     (_index, raw) => {

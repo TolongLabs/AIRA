@@ -5,6 +5,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { Logger } from '../records/logger.js'
+import { outcomePayload } from '../tools/outcomes.js'
 import type { OfferedTool } from '../turn/types.js'
 
 const MAX_BODY_BYTES = 1024 * 1024
@@ -120,15 +121,13 @@ export function createToolServer(options: {
       if (!tool) {
         return {
           isError: true,
-          content: [{ type: 'text', text: JSON.stringify({ error: 'refused', reason: 'unknown tool' }) }]
+          content: [{ type: 'text', text: outcomePayload({ kind: 'refused', reason: 'unknown tool' }) }]
         }
       }
       if (session.firstTool !== undefined && toolName !== session.firstTool) {
         return {
           isError: true,
-          content: [
-            { type: 'text', text: JSON.stringify({ error: 'refused', reason: 'another tool is required first' }) }
-          ]
+          content: [{ type: 'text', text: outcomePayload({ kind: 'refused', reason: 'not now', code: 'not_now' }) }]
         }
       }
 
@@ -141,7 +140,7 @@ export function createToolServer(options: {
           content: [
             {
               type: 'text',
-              text: JSON.stringify({ error: 'refused', reason: 'the tool limit for this turn is reached' })
+              text: outcomePayload({ kind: 'refused', reason: 'tool limit', code: 'tool_limit' })
             }
           ]
         }
@@ -163,7 +162,7 @@ export function createToolServer(options: {
         options.logger.warn('mcp_tool_failed', { turnId: session.turnId, tool: toolName, error })
         return {
           isError: true,
-          content: [{ type: 'text', text: JSON.stringify({ error: 'error', reason: 'the tool failed' }) }]
+          content: [{ type: 'text', text: outcomePayload({ kind: 'error', reason: 'tool threw' }) }]
         }
       } finally {
         state.toolMs += now().getTime() - started

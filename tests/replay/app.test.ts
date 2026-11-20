@@ -590,11 +590,15 @@ describe('the whole service', () => {
       { toolCalls: [{ id: 'c1', name: 'read_page', args: { url: 'http://127.0.0.1:1/private' } }] },
       { text: 'I cannot open that address.' }
     ])
-    const { gateway } = await startApp(model)
+    const { app, gateway } = await startApp(model)
     await gateway.send(msg('m-1', 'read http://127.0.0.1:1/private for me'))
     const toolResult = model.requests[1]?.messages.at(-1)?.content ?? ''
-    expect(toolResult).toContain('forbidden address')
+    expect(toolResult).toContain('You cannot do that here.')
+    expect(toolResult).not.toContain('forbidden address')
     expect(toolResult).not.toContain('not set up')
+    expect(
+      app.storage.read((db) => db.prepare('SELECT outcome FROM tool_call').all()) as { outcome: string }[]
+    ).toEqual([{ outcome: 'refused' }])
   })
 
   it('alerts the operator when a write fails with an I/O error, and keeps running', async () => {

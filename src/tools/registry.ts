@@ -5,6 +5,7 @@ import type { Redactor } from '../records/redact.js'
 import { recordFailure, recordToolCall } from '../records/turn-record.js'
 import { type Db, isoNow, type Storage } from '../storage/database.js'
 import type { OfferedTool, TurnContext } from '../turn/types.js'
+import { outcomePayload } from './outcomes.js'
 import type { Receipt, ReceiptDraft, ToolContext, ToolDefinition, ToolResult } from './types.js'
 
 const TOOL_NAME = /^[a-z][a-z0-9_]{1,39}$/
@@ -555,10 +556,7 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
           ...(result.receipt ? { receiptId: result.receipt.receiptId } : {})
         }
       }
-      return {
-        ok: false,
-        content: JSON.stringify({ error: result.kind, reason: result.reason })
-      }
+      return { ok: false, content: outcomePayload(result) }
     }
 
   const registry: ToolRegistry = {
@@ -660,7 +658,7 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
           } else {
             const parsed = def.schema.safeParse(args)
             if (!parsed.success) {
-              result = { ok: false, kind: 'invalid', reason: formatZodIssues(parsed.error) }
+              result = { ok: false, kind: 'invalid', reason: formatZodIssues(parsed.error), code: 'schema' }
             } else {
               const ran = await runHandler(def, parsed.data, context, call)
               result = ran.result

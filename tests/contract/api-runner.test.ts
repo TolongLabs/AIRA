@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { createApiRunner } from '../../src/models/api-runner.js'
+import { createBreaker } from '../../src/models/breaker.js'
+import { createRoutedClient } from '../../src/models/routed-client.js'
 import { type ModelClient, ModelError, type ModelRequest, type ModelResponse } from '../../src/models/types.js'
 import { createLogger } from '../../src/records/logger.js'
-import type { OfferedTool, TurnContext } from '../../src/turn/types.js'
+import type { OfferedTool, ReplyTarget, TurnContext } from '../../src/turn/types.js'
+import { fakeModel, textResponse } from '../support/fake-model.js'
+import { tmpStorage } from '../support/tmp.js'
 
 // The API runner: the agent kit's loop on the model seam, with the two chain limits (docs/trd/tools.md).
 
@@ -158,7 +162,10 @@ describe('the API runner', () => {
     const result = await run(model, [broken], { logger })
     expect(result.text).toBe('I could not look that up')
     const toolMessage = model.requests[1]?.messages.at(-1)
-    expect(toolMessage).toMatchObject({ role: 'tool', content: '{"error":"error","reason":"the tool failed"}' })
+    expect(toolMessage).toMatchObject({
+      role: 'tool',
+      content: '{"ok":false,"outcome":"That did not work this time."}'
+    })
     expect(logs).toEqual([
       expect.objectContaining({
         level: 'warn',
@@ -278,5 +285,90 @@ describe('the API runner', () => {
     expect(capResult).toMatchObject({ text: 'capped at ceiling', chainLimit: 'calls' })
     expect(capLog).toHaveLength(2)
     expect(capModel.requests[2]?.tools).toEqual([])
+  })
+})
+
+describe('the reply route of a regeneration', () => {
+  const limits = { maxCallsPerTurn: 4, timeBudgetMs: 15_000 }
+  const replyTarget = (role: string): ReplyTarget => ({ transport: 'api', role, model: 'fb-m' })
+  const request: ModelRequest = { role: 'main', model: 'main-m', system, messages: window, tools: [], params: {} }
+
+  it('asks the client for the route that gave the reply, and for none on a first answer', async () => {
+    const routes: unknown[] = []
+    const model = queueModel([{ text: 'again' }])
+    const runner = createApiRunner({
+      clientFor: (_onCall, _onSpendError, _think, route) => {
+        routes.push(route)
+        return model
+      },
+      model: 'main-model',
+      limits
+    })
+    const signal = new AbortController().signal
+    await runner.run({ system, messages: window, tools: [], context, signal, replyTarget: replyTarget('fallback') })
+    await runner.run({ system, messages: window, tools: [], context, signal })
+    expect(routes).toEqual([{ role: 'fallback', model: 'fb-m' }, undefined])
+  })
+
+  it('refuses a reply route whose role is not one of the routed roles', async () => {
+    const model = queueModel([{ text: 'unused' }])
+    const runner = createApiRunner({ clientFor: () => model, model: 'main-model', limits })
+    const signal = new AbortController().signal
+    await expect(
+      runner.run({ system, messages: window, tools: [], context, signal, replyTarget: replyTarget('judge') })
+    ).rejects.toMatchObject({ kind: 'transient' })
+    expect(model.requests).toHaveLength(0)
+  })
+
+  const routedConfig = { llm: { maxRetries: 0, monthlyBudgetUsd: 50 } }
+  const pinnedClient = (
+    pin: { role: 'main' | 'fallback'; model: string },
+    main: ModelClient,
+    fallback?: ModelClient,
+    breaker = createBreaker({ breakerMs: 60_000 })
+  ) =>
+    createRoutedClient({
+      main: { client: main, model: 'main-m' },
+      ...(fallback ? { fallback: { client: fallback, model: 'fb-m' } } : {}),
+      config: routedConfig,
+      breaker,
+      storage: tmpStorage(),
+      transport: 'api',
+      pin
+    })
+
+  it('answers only from the pinned role and model', async () => {
+    const main = fakeModel([textResponse('from main')])
+    const fallback = fakeModel([textResponse('from fallback')])
+    const client = pinnedClient({ role: 'fallback', model: 'fb-m' }, main, fallback)
+    expect((await client.call(request)).text).toBe('from fallback')
+    expect(main.requests).toHaveLength(0)
+    expect(fallback.requests[0]).toMatchObject({ role: 'fallback', model: 'fb-m' })
+  })
+
+  it('fails on the pinned target instead of moving to another', async () => {
+    const main = fakeModel([new ModelError('transient', 'main is down')])
+    const fallback = fakeModel([textResponse('never')])
+    const client = pinnedClient({ role: 'main', model: 'main-m' }, main, fallback)
+    await expect(client.call(request)).rejects.toMatchObject({ kind: 'transient' })
+    expect(fallback.requests).toHaveLength(0)
+  })
+
+  it('refuses a pinned route that is not configured, or whose role is rate limited', async () => {
+    const main = fakeModel([textResponse('unused')])
+    const breaker = createBreaker({ breakerMs: 60_000 })
+    breaker.open('main')
+    await expect(pinnedClient({ role: 'fallback', model: 'fb-m' }, main).call(request)).rejects.toMatchObject({
+      kind: 'transient'
+    })
+    await expect(pinnedClient({ role: 'main', model: 'other-m' }, main).call(request)).rejects.toMatchObject({
+      kind: 'transient'
+    })
+    await expect(
+      pinnedClient({ role: 'main', model: 'main-m' }, main, undefined, breaker).call(request)
+    ).rejects.toMatchObject({
+      kind: 'rate_limit'
+    })
+    expect(main.requests).toHaveLength(0)
   })
 })

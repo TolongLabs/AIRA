@@ -7,8 +7,14 @@ import type { TurnContext } from '../turn/types.js'
 
 export type ToolMode = 'both' | 'implicit' | 'explicit'
 
-/** What a failed call returns to the model: a kind it can read and a short reason. Never an exception. */
+/** What a failed call returns to the model: a kind, and an optional code that picks its plain outcome sentence. */
 export type ToolFailureKind = 'timeout' | 'refused' | 'invalid' | 'unavailable' | 'error'
+
+/**
+ * Picks the sentence the model reads for a failed call (src/tools/outcomes.ts). A handler sets it when its kind does
+ * not say what the character should say. `schema` marks invalid arguments whose issue text the model needs.
+ */
+export type FailureCode = 'already_read' | 'read_failed' | 'schema' | 'tool_limit' | 'not_now'
 
 /** What a state change was: built by code from the committed result, never from the model's words. */
 export interface ReceiptDraft {
@@ -31,7 +37,9 @@ export interface Receipt extends ReceiptDraft {
 export type ToolFailure = {
   ok: false
   kind: ToolFailureKind
+  /** Internal: recorded in the tool call and failure records. Sent to the model only as schema guidance. */
   reason: string
+  code?: FailureCode
   /** Internal error that caused the failure; recorded for diagnostics, never sent to the model. */
   cause?: unknown
 }

@@ -1,5 +1,5 @@
 import type { Logger } from '../records/logger.js'
-import type { ModelCallRecord, RunResult, TurnRunner } from '../turn/types.js'
+import type { ModelCallRecord, ReplyTarget, RunResult, TurnRunner } from '../turn/types.js'
 import type { Breaker } from './breaker.js'
 import type { ToolServer } from './tool-server.js'
 import { ModelError, type ModelFailureKind, type ModelMessage, type ModelUsage, type PromptBlock } from './types.js'
@@ -94,22 +94,38 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
 
   return {
     async run(input): Promise<RunResult> {
-      const runFallback = async (error: ModelError, failedCall?: ModelCallRecord): Promise<RunResult> => {
-        if (error.kind !== 'refusal' && options.fallback && !input.signal.aborted) {
-          const fallback = await options.fallback.run({
-            ...input,
-            onCall: (call) => {
-              call.role = 'fallback'
-              input.onCall?.(call)
-            }
-          })
-          return {
-            ...fallback,
-            role: 'fallback',
-            calls: failedCall ? [failedCall, ...fallback.calls] : fallback.calls
+      const pinned = input.replyTarget
+      // The fallback model's answer, recorded under the fallback role.
+      const answerFromFallback = async (
+        fallback: TurnRunner,
+        failedCall?: ModelCallRecord,
+        replyTarget?: ReplyTarget
+      ): Promise<RunResult> => {
+        const answer = await fallback.run({
+          ...input,
+          replyTarget,
+          onCall: (call) => {
+            call.role = 'fallback'
+            input.onCall?.(call)
           }
+        })
+        return {
+          ...answer,
+          role: 'fallback',
+          calls: failedCall ? [failedCall, ...answer.calls] : answer.calls
+        }
+      }
+      // A regeneration stays on the route that gave the reply: it fails rather than moving to another model.
+      const runFallback = async (error: ModelError, failedCall?: ModelCallRecord): Promise<RunResult> => {
+        if (!pinned && error.kind !== 'refusal' && options.fallback && !input.signal.aborted) {
+          return answerFromFallback(options.fallback, failedCall)
         }
         throw error
+      }
+      if (pinned?.transport === 'api') {
+        if (!options.fallback) throw new ModelError('transient', 'the reply route is not configured')
+        // The fallback runner has one slot, its main model, and that slot is the route that gave the reply.
+        return answerFromFallback(options.fallback, undefined, { ...pinned, role: 'main' })
       }
 
       if (options.breaker.isOpen('main')) {
@@ -141,6 +157,8 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
         const payload: Record<string, unknown> = {
           system,
           prompt,
+          // The envelope always names the tool server. With no tools offered its session lists none, so the program
+          // has no tools (docs/trd/models.md#run-request).
           tools: { url: options.subscription.toolServerUrl, token: session.token },
           timeoutMs
         }

@@ -10,6 +10,12 @@ export interface RoutedTarget {
   effort?: string
 }
 
+/** One reply's route: the configured role and model that gave it. */
+export interface ReplyRoute {
+  role: 'main' | 'fallback'
+  model: string
+}
+
 export interface RoutedClientOptions {
   main: RoutedTarget
   fallback?: RoutedTarget
@@ -26,6 +32,8 @@ export interface RoutedClientOptions {
   /** Waits between retries. Replaced in tests. Default: a timer that the signal can cut short. */
   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>
   now?: () => Date
+  /** A regeneration's route. Only this role and model answer, and no other target does. */
+  pin?: ReplyRoute
 }
 
 function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -179,6 +187,15 @@ export function createRoutedClient(options: RoutedClientOptions): ModelClient {
       }
 
       const attemptState = { count: 0 }
+      if (options.pin) {
+        const { role, model } = options.pin
+        const target = role === 'main' ? options.main : options.fallback
+        if (!target || target.model !== model) throw new ModelError('transient', 'the reply route is not configured')
+        if (options.breaker.isOpen(role)) throw new ModelError('rate_limit', 'the reply route is rate limited')
+        const result = await callTarget(role, target, request, attemptState, signal)
+        if (result.ok) return result.response
+        throw result.error
+      }
       let lastError: ModelError | undefined
 
       if (!options.breaker.isOpen('main')) {

@@ -162,19 +162,6 @@ function clip(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, Math.max(0, max - 1)).trimEnd()}…`
 }
 
-const REASON_TEXT: Record<MediaUnreadable, string> = {
-  off: 'media reading is off',
-  refused: 'not available to read',
-  missing: 'file not found',
-  'unsupported type': 'unsupported type',
-  'empty file': 'empty file',
-  'too large': 'too large',
-  'too long': 'too long',
-  unavailable: 'private or removed',
-  link: 'could not open link',
-  unreadable: 'the read failed'
-}
-
 function formatAuthor(post: SocialPost): string {
   const handle = post.authorHandle.trim()
   if (handle) {
@@ -308,7 +295,10 @@ export function mediaPromptText(
   if (result.unreadable.length > 0) {
     parts.push(
       '<media-unreadable>',
-      ...result.unreadable.map((item) => `- ${item.kind}: could not be read (${REASON_TEXT[item.reason]})`),
+      ...result.unreadable.map((item) => {
+        const displayKind = item.kind.endsWith(' link') ? `${item.kind.slice(0, -5)} post` : item.kind
+        return `(The ${displayKind} could not be opened.)`
+      }),
       `Tell the sender so in your own voice, in the sense of: "${unreadableLine}"`,
       '</media-unreadable>'
     )

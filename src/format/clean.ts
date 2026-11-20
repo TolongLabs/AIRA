@@ -10,6 +10,7 @@ import {
   RESEARCH_MAX_CHARS,
   RESEARCH_TOOLS
 } from './footer.js'
+import { fourthWallBreak } from './fourth-wall.js'
 import { renderWhatsApp } from './render.js'
 
 // Seven-step reply cleaning chain (docs/trd/prompt-engine.md#cleaning-chain).
@@ -44,6 +45,8 @@ export interface CleanOptions {
   footerOff?: boolean
   footerEmoji?: string
   sources?: string[]
+  /** False for text code wrote (a direct command's answer), which never steps out of role. */
+  fourthWall?: boolean
 }
 
 const ELLIPSIS = String.fromCodePoint(0x2026)
@@ -479,6 +482,15 @@ export function cleanReply(text: string, options: CleanOptions): CleanReplyResul
       steps.push('leak')
     }
 
+    // A reply that steps out of its role is not rendered: the pipeline regenerates it once, or sends the pack's line.
+    if (replacedBy === undefined && options.fourthWall !== false) {
+      const broke = fourthWallBreak(current, options.toolNames)
+      if (broke !== undefined) {
+        steps.push('fourth_wall')
+        return { content: '', bubbleCount: 0, steps, fourthWall: broke }
+      }
+    }
+
     const afterRender = renderWhatsApp(parseBlocks(current))
     if (afterRender !== current) {
       steps.push('render')
@@ -561,6 +573,7 @@ export function createReplyCleaner(
           fixedBlocks,
           leakCheck: config.format.leakCheck === 'on',
           fallbackLine: context.character.lines.fallback,
+          fourthWall: !directCommand && run?.model !== '',
           bubbleMaxChars: config.format.bubbleMaxChars,
           maxBubbles: config.format.maxBubbles,
           // A direct command runs no model and gets no footer.
