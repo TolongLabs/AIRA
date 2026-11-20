@@ -12,7 +12,8 @@ export type ToolFailureKind = 'timeout' | 'refused' | 'invalid' | 'unavailable' 
 
 /**
  * Picks the sentence the model reads for a failed call (src/tools/outcomes.ts). A handler sets it when its kind does
- * not say what the character should say. `schema` marks invalid arguments whose issue text the model needs.
+ * not say what the character should say. `read_failed` is for kind `error` only: a timeout or unavailable read keeps
+ * its kind sentence. `schema` marks invalid arguments whose issue text the model needs.
  */
 export type FailureCode = 'already_read' | 'read_failed' | 'schema' | 'tool_limit' | 'not_now'
 

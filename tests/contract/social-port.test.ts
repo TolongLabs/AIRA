@@ -3,6 +3,7 @@ import { createSocialPostPort } from '../../src/social/port.js'
 import { ReplyReader } from '../../src/social/replies/service.js'
 import { SocialPostViewer } from '../../src/social/viewer.js'
 import { readPostTool } from '../../src/tools/core/web.js'
+import { outcomePayload } from '../../src/tools/outcomes.js'
 import type { ToolContext } from '../../src/tools/types.js'
 
 const settings = {
@@ -131,8 +132,7 @@ describe('social tool port', () => {
     expect(await tool.handler({ url }, { signal: signal() } as ToolContext)).toEqual({
       ok: false,
       kind: 'timeout',
-      reason: 'timeout',
-      code: 'read_failed'
+      reason: 'timeout'
     })
   })
 
@@ -144,10 +144,30 @@ describe('social tool port', () => {
     expect(await tool.handler({ url: 'https://youtu.be/example123' }, { signal: signal() } as ToolContext)).toEqual({
       ok: false,
       kind: 'unavailable',
-      reason: 'binary_missing',
-      code: 'read_failed'
+      reason: 'binary_missing'
     })
     expect(await port.read(url, signal())).toMatchObject({ text: 'Still readable' })
+  })
+
+  it('gives the model the sentence for its failure kind, and the failed-read one only for an error', async () => {
+    const modelSentence = async (reader: ReturnType<typeof readers>, target: string) => {
+      const result = await readPostTool({ post: reader.port, filesDir: '/tmp' }).handler({ url: target }, {
+        signal: signal()
+      } as ToolContext)
+      if (result.ok) throw new Error('expected a failed read')
+      return JSON.parse(outcomePayload(result)).outcome
+    }
+    const timedOut = readers(async () => new Promise<Response>(() => {}), { timeoutMs: 10 })
+    const missingExtractor = readers(async () => json({ tweet: { text: 'Still readable' } }))
+    missingExtractor.viewer.setYtDlpAvailable(false)
+    missingExtractor.replies.setYtDlpAvailable(false)
+    const httpError = readers(async () => new Response('private response', { status: 404 }))
+
+    expect(await modelSentence(timedOut, url)).toBe('It took too long, so you stopped trying for now.')
+    expect(await modelSentence(missingExtractor, 'https://youtu.be/example123')).toBe('You cannot do that here.')
+    expect(await modelSentence(httpError, url)).toBe(
+      'You could not get that post or page to open. It may be private, removed or blocked.'
+    )
   })
 
   it('rejects unsupported paths before starting I/O', async () => {
