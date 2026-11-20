@@ -463,7 +463,8 @@ covers nine platforms: X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram, 
   (`containing_thread`), oldest first, at most 3: author, text and photos.
 - **Safe fetching.** The pasted host for a shape match never enters network requests. The shared fetcher
   rejects forbidden and non-public addresses. A share redirect is read manually only on the platform's own
-  domains, for at most two hops, and its final address must parse as the same platform. Other redirects fail.
+  domains, for at most two hops. Threads keeps its existing one-hop page lookup. The final address must parse
+  as the same platform. Other redirects fail.
   yt-dlp runs in a fresh temporary home with an isolated environment and a 2 MiB output cap. When the binary
   is missing, lookups fail as `binary_missing`.
 - **Post cache.** Successful lookups are cached by lookup key with a time limit and an entry cap; a time limit of 0
