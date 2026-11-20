@@ -177,6 +177,47 @@ describe('the API runner', () => {
     ])
   })
 
+  it('retries a failed model step with the member message and the tool exchange intact', async () => {
+    const requests: ModelRequest[] = []
+    const model: ModelClient = {
+      async call(request) {
+        requests.push(structuredClone(request))
+        if (requests.length === 1) return response({ toolCalls: [call('a')] })
+        if (requests.length === 2) throw Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' })
+        return response({ text: 'the answer is 42' })
+      }
+    }
+    const client = createRoutedClient({
+      main: { client: model, model: 'main-model' },
+      config: { llm: { maxRetries: 2, monthlyBudgetUsd: 50 } },
+      breaker: createBreaker({ breakerMs: 1000 }),
+      storage: tmpStorage(),
+      transport: 'api',
+      sleep: async () => {}
+    })
+    const runner = createApiRunner({
+      clientFor: () => client,
+      model: 'main-model',
+      limits: { maxCallsPerTurn: 4, timeBudgetMs: 15_000 }
+    })
+    const result = await runner.run({
+      system,
+      messages: window,
+      tools: [lookupTool()],
+      context,
+      signal: new AbortController().signal
+    })
+    expect(result.text).toBe('the answer is 42')
+    expect(requests).toHaveLength(3)
+    const exchange = [
+      { role: 'user', content: 'what is the answer?' },
+      { role: 'assistant', content: '', toolCalls: [call('a')] },
+      { role: 'tool', toolCallId: 'a', name: 'lookup', content: JSON.stringify({ found: 'a' }) }
+    ]
+    expect(requests[1]?.messages).toEqual(exchange)
+    expect(requests[2]?.messages).toEqual(exchange)
+  })
+
   it.each(['refusal', 'budget', 'auth', 'transient'] as const)(
     'rejects with the %s failure of the model',
     async (kind) => {
