@@ -113,7 +113,10 @@ export function readPostTool(ports: ToolPorts): ToolDefinition<z.infer<typeof ur
         return { ok: true, data: { ...post } }
       } catch (error) {
         if (error instanceof SocialPostError) {
-          return { ok: false, kind: error.kind, reason: error.message, code: 'read_failed' }
+          // read_failed names an error only; timeout and unavailable keep their own kind sentence.
+          return error.kind === 'error'
+            ? { ok: false, kind: 'error', reason: error.message, code: 'read_failed' }
+            : { ok: false, kind: error.kind, reason: error.message }
         }
         return { ok: false, kind: 'error', reason: 'post read failed', code: 'read_failed', cause: error }
       }
