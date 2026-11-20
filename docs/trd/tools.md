@@ -185,6 +185,7 @@ cleaning chain and the bubble splitter.
 | `web_search`      | Searches the web                                                           | both     | `/search`          | Skill-style | `features.search`    |
 | `read_page`       | Opens and reads one web page                                               | implicit | none               |             | `features.search`    |
 | `read_post`       | Opens one social post with its media                                       | implicit | none               |             | `features.social`    |
+| `identify_image`  | Finds unverified reverse-image hints for a turn image                      | implicit | none               |             | `features.identify`  |
 | `send_photo`      | Finds one real photo and sends it                                          | both     | `/photo`           | Skill-style | `features.photos`    |
 | `reminder_set`    | Creates one reminder                                                       | both     | `/remind`          | Skill-style | `features.reminders` |
 | `reminder_list`   | Lists this chat's reminders                                                | both     | `/reminders`       | Direct      | `features.reminders` |
@@ -291,6 +292,18 @@ character.
 - A fetch guard wraps every page and post read. It refuses non-http(s) addresses, credentials, localhost and private
   or link-local IPs. The page fetch re-checks DNS after each redirect, follows at most 3 redirects, and caps bodies
   at 2 MB and text at 8,000 characters.
+
+### Reverse-Image Hints
+
+`identify_image` is a read-only implicit tool. It requires `features.identify` and `SERPAPI_API_KEY`. The
+zero-based `attachment` index selects a validated image from this turn, followed by the quoted image and
+then post photos from link intake. An unknown index makes no provider request.
+
+The tool uploads a local image only when called. It refuses local images larger than 500 KB. SerpApi returns
+an image id from its [Image API](https://serpapi.com/image-api). Google Lens receives that id, or the public
+URL of a post photo. Upload and search together have a 6-second limit and count as one tool call. The result
+has up to five matches with title, domain, link and price when present. It carries `untrusted: true` and
+`hints: 'unverified'`. An exact product name needs a matching maker or shop listing found through `web_search`.
 
 ### Social Post Reader
 

@@ -42,6 +42,11 @@ search:
   pageMaxChars: 12000 # Longest page text read_page passes on
 
 # Owned by docs/trd/tools.md
+identify:
+  timeoutMs: 6000 # Total time for upload and reverse-image search
+  maxUploadBytes: 500000 # Largest local image sent to SerpApi
+
+# Owned by docs/trd/tools.md
 lessons:
   lyricsProvider: 'off' # The lyrics provider, or off
 
