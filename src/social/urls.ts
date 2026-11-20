@@ -11,6 +11,8 @@ export interface SocialPostTarget {
   extractorUrl: string
   profile?: string
   startSec?: number
+  /** A share or short link. Its address names no post, so resolveShareLink follows it before the lookup. */
+  needsRedirect?: boolean
 }
 
 const HOSTS: Record<SocialPlatform, string[]> = {
@@ -20,10 +22,22 @@ const HOSTS: Record<SocialPlatform, string[]> = {
   tiktok: ['tiktok.com'],
   reddit: ['reddit.com', 'redd.it'],
   instagram: ['instagram.com'],
-  bilibili: ['bilibili.com'],
+  bilibili: ['bilibili.com', 'b23.tv'],
   threads: ['threads.com', 'threads.net'],
   facebook: ['facebook.com', 'fb.watch']
 }
+
+// Tried in this order on a host that is no platform's own. YouTube is host-only and never matches there.
+const UNKNOWN_HOST_PLATFORMS: SocialPlatform[] = [
+  'x',
+  'bluesky',
+  'tiktok',
+  'reddit',
+  'instagram',
+  'threads',
+  'facebook',
+  'bilibili'
+]
 
 function hostMatches(host: string, domain: string): boolean {
   return host === domain || host.endsWith(`.${domain}`)
@@ -36,9 +50,21 @@ function platformForHost(host: string): SocialPlatform | null {
   return null
 }
 
+/** True when `hostname` is one of the platform's own domains, subdomains included. */
+export function platformOwnsHost(hostname: string, platform: SocialPlatform): boolean {
+  return HOSTS[platform].some((domain) => hostMatches(hostname, domain))
+}
+
 function target(platform: SocialPlatform, id: string, canonicalUrl: string, profile?: string): SocialPostTarget {
   return { platform, id, lookupKey: `${platform}:${id}`, canonicalUrl, extractorUrl: canonicalUrl, profile }
 }
+
+function shareTarget(platform: SocialPlatform, id: string, canonicalUrl: string, lookupKey: string): SocialPostTarget {
+  return { ...target(platform, id, canonicalUrl), lookupKey, needsRedirect: true }
+}
+
+// Each parser reads one platform's paths. On a host that is no platform's own (`unknown`) it accepts only the
+// strict shapes, and it always returns the target on the platform's own address, never on the pasted host.
 
 const YOUTUBE_CLOCK_TIME = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/
 
@@ -52,25 +78,173 @@ function youtubeStartSec(url: URL): number | undefined {
   return Number(hours) * 3600 + Number(minutes) * 60 + Number(seconds)
 }
 
+function parseYouTube(url: URL, host: string, unknown: boolean): SocialPostTarget | null {
+  if (unknown) return null
+  const id = hostMatches(host, 'youtu.be')
+    ? url.pathname.match(/^\/([\w-]+)\/?$/)?.[1]
+    : url.pathname === '/watch'
+      ? url.searchParams.get('v')
+      : url.pathname.match(/^\/(?:shorts|live|embed)\/([\w-]+)\/?$/)?.[1]
+  if (!id || !/^[\w-]+$/.test(id)) return null
+  const canonicalUrl = `https://www.youtube.com/watch?v=${id}`
+  return { ...target('youtube', id, canonicalUrl), startSec: youtubeStartSec(url) }
+}
+
+function parseX(url: URL, unknown: boolean): SocialPostTarget | null {
+  const web = url.pathname.match(/^\/i\/web\/status\/(\d+)\/?$/)?.[1]
+  const status = web === undefined ? url.pathname.match(/^\/(\w+)\/status\/(\d+)(?:\/.*)?$/i) : null
+  const id = web ?? status?.[2]
+  if (!id || (unknown && !/^\d{15,20}$/.test(id))) return null
+  return target('x', id, `https://x.com/i/status/${id}`, status?.[1])
+}
+
+const BLUESKY_ACCOUNT = /^(?:[\w-]+(?:\.[\w-]+)+|did:[a-z]+:[\w.:%-]+)$/i
+
+function parseBluesky(url: URL, unknown: boolean): SocialPostTarget | null {
+  const match = url.pathname.match(/^\/profile\/([^/]+)\/post\/([a-z0-9]+)\/?$/i)
+  if (!match) return null
+  const [, profile = '', id = ''] = match
+  // A mirror host must name the account as a handle or DID. The platform's own host takes any profile, as before.
+  if (unknown && !BLUESKY_ACCOUNT.test(profile)) return null
+  return {
+    ...target('bluesky', id, `https://bsky.app/profile/${profile}/post/${id}`, profile),
+    lookupKey: `bluesky:${profile.toLowerCase()}:${id}`
+  }
+}
+
+function parseTikTok(url: URL, host: string, unknown: boolean): SocialPostTarget | null {
+  const video = url.pathname.match(/^\/@([\w.-]+)\/video\/(\d+)\/?$/i)
+  if (video) {
+    const [, profile = '', id = ''] = video
+    return target('tiktok', id, `https://www.tiktok.com/@${profile}/video/${id}`, profile)
+  }
+  if (unknown) return null
+  const photo = url.pathname.match(/^\/@([\w.-]+)\/photo\/(\d+)\/?$/i)
+  if (photo) {
+    const [, profile = '', id = ''] = photo
+    return target('tiktok', id, `https://www.tiktok.com/@${profile}/photo/${id}`, profile)
+  }
+  if (/^v[mt]\.tiktok\.com$/.test(host)) {
+    const code = url.pathname.match(/^\/([\w-]+)\/?$/)?.[1]
+    if (code) return shareTarget('tiktok', code, `https://${host}/${code}/`, `tiktok:share:${code}`)
+  }
+  const short = url.pathname.match(/^\/t\/([\w-]+)\/?$/)?.[1]
+  return short ? shareTarget('tiktok', short, `https://www.tiktok.com/t/${short}/`, `tiktok:share:${short}`) : null
+}
+
+function parseReddit(url: URL, host: string, unknown: boolean): SocialPostTarget | null {
+  if (!unknown && hostMatches(host, 'redd.it')) {
+    const id = url.pathname.match(/^\/([a-z0-9]+)\/?$/i)?.[1]
+    return id ? target('reddit', id, `https://www.reddit.com/comments/${id}/`) : null
+  }
+  // A comment permalink names its post, then a slug, then the comment; the comment id is not kept.
+  const comments =
+    url.pathname.match(/^\/r\/[\w-]+\/comments\/([a-z0-9]+)(?:\/[^/]*)?(?:\/[a-z0-9]+)?\/?$/i)?.[1] ??
+    (unknown ? undefined : url.pathname.match(/^\/comments\/([a-z0-9]+)\/?$/i)?.[1])
+  if (comments) return target('reddit', comments, `https://www.reddit.com/comments/${comments}/`)
+  if (unknown) return null
+  const share = url.pathname.match(/^\/((?:r|u)\/[\w-]+)\/s\/([\w-]+)\/?$/i)
+  if (!share) return null
+  const [, base = '', code = ''] = share
+  return shareTarget('reddit', code, `https://www.reddit.com/${base}/s/${code}/`, `reddit:share:${code}`)
+}
+
+function parseInstagram(url: URL, host: string, unknown: boolean): SocialPostTarget | null {
+  if (!unknown) {
+    const share = url.pathname.match(/^\/share\/(?:(p|reel)\/)?([\w-]+)\/?$/i)
+    if (share) {
+      const [, kind, code = ''] = share
+      const path = kind ? `${kind.toLowerCase()}/` : ''
+      return shareTarget(
+        'instagram',
+        code,
+        `https://www.instagram.com/share/${path}${code}/`,
+        `instagram:share:${code}`
+      )
+    }
+    const tv = url.pathname.match(/^\/tv\/([\w-]+)\/?$/)?.[1]
+    if (tv) return target('instagram', tv, `https://www.instagram.com/tv/${tv}/`)
+  }
+  // A link may carry the account before the kind, but `/share/` is never an account. `/reels/` is the plural of `/reel/`.
+  const match = url.pathname.match(/^\/(?:(?!share\/)[\w.]+\/)?(p|reels?)\/([\w-]+)\/?$/i)
+  if (!match) return null
+  const [, rawKind = '', id = ''] = match
+  const kind = rawKind.toLowerCase() === 'p' ? 'p' : 'reel'
+  if (unknown && (!/^[\w-]{11}$/.test(id) || (kind === 'p' && !host.includes('insta')))) return null
+  return target('instagram', id, `https://www.instagram.com/${kind}/${id}/`)
+}
+
+function parseBilibili(url: URL, host: string, unknown: boolean): SocialPostTarget | null {
+  const video = url.pathname.match(unknown ? /^\/video\/(BV[\da-z]{10})\/?$/i : /^\/video\/(BV[\da-z]+|av\d+)\/?$/i)
+  if (video) {
+    const id = video[1] ?? ''
+    const normalizedId = /^av/i.test(id) ? id.toLowerCase() : `BV${id.slice(2)}`
+    return target('bilibili', normalizedId, `https://www.bilibili.com/video/${normalizedId}`)
+  }
+  if (unknown || !hostMatches(host, 'b23.tv')) return null
+  const code = url.pathname.match(/^\/([\w-]+)\/?$/)?.[1]
+  return code ? shareTarget('bilibili', code, `https://b23.tv/${code}`, `bilibili:share:${code}`) : null
+}
+
+function parseThreads(url: URL, unknown: boolean): SocialPostTarget | null {
+  // Threads writes a handle as `%40`; the path is read with the `@` a member would type.
+  const path = url.pathname.replace(/%40/gi, '@')
+  const match = path.match(/^\/@([\w.]+)\/post\/([\w-]+)(?:\/media)?\/?$/)
+  if (match) {
+    const [, profile = '', id = ''] = match
+    return target('threads', id, `https://www.threads.com/@${profile}/post/${id}`, profile)
+  }
+  if (unknown) return null
+  const post = path.match(/^\/post\/([\w-]+)\/?$/)?.[1]
+  if (post) return target('threads', post, `https://www.threads.com/post/${post}`)
+  // A short or share id is not a post code, so its key keeps the two apart; the post code comes from the redirect.
+  const short = path.match(/^\/t\/([\w-]+)\/?$/)?.[1]
+  if (short) return target('threads', short, `https://www.threads.com/t/${short}`)
+  const share = path.match(/^\/share\/([\w-]+)\/?$/)?.[1]
+  if (share) {
+    return {
+      ...target('threads', share, `https://www.threads.com/share/${share}`),
+      lookupKey: `threads:share:${share}`
+    }
+  }
+  return null
+}
+
+const NUMERIC_ID = /^\d+$/
+// On a mirror host a Facebook id must be long enough to be distinctive; the address is rebuilt from it.
+const LONG_NUMERIC_ID = /^\d{15,}$/
+
 /** A Facebook post's own link: the group or page it is in is its profile, which marks it resolved. */
-function facebookPost(url: URL): SocialPostTarget | null {
+function facebookPost(url: URL, unknown: boolean): SocialPostTarget | null {
   const post = (id: string, canonicalUrl: string, profile: string): SocialPostTarget => ({
     ...target('facebook', id, canonicalUrl, profile),
     lookupKey: `facebook:post:${id}`
   })
-  const group = url.pathname.match(/^\/groups\/([\w.-]+)\/(?:permalink|posts)\/(\d+)\/?$/)
-  if (group) {
-    const [, name = '', id = ''] = group
-    return post(id, `https://www.facebook.com/groups/${name}/permalink/${id}/`, name)
+  if (!unknown) {
+    const group = url.pathname.match(/^\/groups\/([\w.-]+)\/(?:permalink|posts)\/(\d+)\/?$/)
+    if (group) {
+      const [, name = '', id = ''] = group
+      return post(id, `https://www.facebook.com/groups/${name}/permalink/${id}/`, name)
+    }
   }
   const page = url.pathname.match(/^\/([\w.-]+)\/posts\/([\w-]+)\/?$/)
   if (page) {
     const [, name = '', id = ''] = page
-    return post(id, `https://www.facebook.com/${name}/posts/${id}`, name)
+    // On a mirror host only a pfbid names a post; any other id is too generic.
+    return !unknown || /^pfbid[a-z0-9]+$/i.test(id)
+      ? post(id, `https://www.facebook.com/${name}/posts/${id}`, name)
+      : null
   }
+  if (unknown) return null
   const story = url.searchParams.get('story_fbid')
   const owner = url.searchParams.get('id')
-  if (url.pathname === '/permalink.php' && story && owner && /^[\w-]+$/.test(story) && /^\d+$/.test(owner)) {
+  if (
+    (url.pathname === '/permalink.php' || url.pathname === '/story.php') &&
+    story &&
+    owner &&
+    /^[\w-]+$/.test(story) &&
+    NUMERIC_ID.test(owner)
+  ) {
     return post(story, `https://www.facebook.com/permalink.php?story_fbid=${story}&id=${owner}`, owner)
   }
   return null
@@ -81,43 +255,73 @@ export function isFacebookPost(target: SocialPostTarget): boolean {
   return target.platform === 'facebook' && target.lookupKey.startsWith('facebook:post')
 }
 
-/** Facebook by its video and post links; a profile or home page is left to read_page. */
-function facebookTarget(host: string, url: URL): SocialPostTarget | null {
+function parseFacebook(url: URL, host: string, unknown: boolean): SocialPostTarget | null {
   if (hostMatches(host, 'fb.watch')) {
     const id = url.pathname.match(/^\/([\w-]+)\/?$/)?.[1]
-    return id ? { ...target('facebook', id, `https://fb.watch/${id}/`), lookupKey: `facebook:watch:${id}` } : null
+    return id ? shareTarget('facebook', id, `https://fb.watch/${id}/`, `facebook:watch:${id}`) : null
   }
-  // A share id is not a video id, so its key keeps the two apart; yt-dlp follows the share link itself.
-  const share = url.pathname.match(/^\/share\/([vr])\/([\w-]+)\/?$/)
-  if (share) {
-    const [, kind = '', id = ''] = share
-    return {
-      ...target('facebook', id, `https://www.facebook.com/share/${kind}/${id}/`),
-      lookupKey: `facebook:share:${id}`
+  const numericId = unknown ? LONG_NUMERIC_ID : NUMERIC_ID
+  if (!unknown) {
+    // A share id is not a video id, so its key keeps the two apart. Each share is resolved through its redirect.
+    const share = url.pathname.match(/^\/share\/(?:(p|v|r)\/)?([\w-]+)\/?$/)
+    if (share) {
+      const [, kind, id = ''] = share
+      if (kind === 'p') {
+        return shareTarget('facebook', id, `https://www.facebook.com/share/p/${id}/`, `facebook:post-share:${id}`)
+      }
+      if (kind) {
+        return shareTarget('facebook', id, `https://www.facebook.com/share/${kind}/${id}/`, `facebook:share:${id}`)
+      }
+      // A bare share may name a post or a video; its redirect says which.
+      return shareTarget('facebook', id, `https://www.facebook.com/share/${id}/`, `facebook:short:${id}`)
+    }
+    const photo = /^\/photo(?:\.php)?\/?$/.test(url.pathname) ? url.searchParams.get('fbid') : null
+    if (photo && NUMERIC_ID.test(photo)) {
+      return {
+        ...target('facebook', photo, `https://www.facebook.com/photo/?fbid=${photo}`),
+        lookupKey: `facebook:photo:${photo}`
+      }
     }
   }
-  const sharedPost = url.pathname.match(/^\/share\/p\/([\w-]+)\/?$/)?.[1]
-  if (sharedPost) {
-    return {
-      ...target('facebook', sharedPost, `https://www.facebook.com/share/p/${sharedPost}/`),
-      lookupKey: `facebook:post-share:${sharedPost}`
-    }
-  }
-  const post = facebookPost(url)
+  const post = facebookPost(url, unknown)
   if (post) return post
   const reel = url.pathname.match(/^\/reel\/(\d+)\/?$/)?.[1]
-  if (reel) return target('facebook', reel, `https://www.facebook.com/reel/${reel}`)
+  if (reel && numericId.test(reel)) return target('facebook', reel, `https://www.facebook.com/reel/${reel}`)
   const watch = /^\/watch\/?$/.test(url.pathname) ? url.searchParams.get('v') : null
-  if (watch && /^\d+$/.test(watch)) return target('facebook', watch, `https://www.facebook.com/watch/?v=${watch}`)
-  const video = url.pathname.match(/^\/([\w.-]+)\/videos\/(?:[\w.-]+\/)?(\d+)\/?$/)
-  if (video) {
+  if (watch && numericId.test(watch)) return target('facebook', watch, `https://www.facebook.com/watch/?v=${watch}`)
+  const videoPath = unknown ? /^\/([\w.-]+)\/videos\/(\d+)\/?$/ : /^\/([\w.-]+)\/videos\/(?:[\w.-]+\/)?(\d+)\/?$/
+  const video = url.pathname.match(videoPath)
+  if (video && numericId.test(video[2] ?? '')) {
     const [, page = '', id = ''] = video
     return target('facebook', id, `https://www.facebook.com/${page}/videos/${id}/`)
   }
   return null
 }
 
-export function parseSocialPostUrl(value: string): SocialPostTarget | null {
+function parseFor(platform: SocialPlatform, url: URL, host: string, unknown: boolean): SocialPostTarget | null {
+  switch (platform) {
+    case 'x':
+      return parseX(url, unknown)
+    case 'bluesky':
+      return parseBluesky(url, unknown)
+    case 'youtube':
+      return parseYouTube(url, host, unknown)
+    case 'tiktok':
+      return parseTikTok(url, host, unknown)
+    case 'reddit':
+      return parseReddit(url, host, unknown)
+    case 'instagram':
+      return parseInstagram(url, host, unknown)
+    case 'bilibili':
+      return parseBilibili(url, host, unknown)
+    case 'threads':
+      return parseThreads(url, unknown)
+    case 'facebook':
+      return parseFacebook(url, host, unknown)
+  }
+}
+
+function parseUrl(value: string, officialOnly: boolean): SocialPostTarget | null {
   let url: URL
   try {
     url = new URL(value.trim())
@@ -138,101 +342,64 @@ export function parseSocialPostUrl(value: string): SocialPostTarget | null {
 
   const host = url.hostname.toLowerCase()
   const platform = platformForHost(host)
-  if (!platform) return null
-
-  if (platform === 'x') {
-    const match = url.pathname.match(/^\/([\w]+)\/status\/(\d+)(?:\/.*)?$/i)
-    if (!match) return null
-    const [, profile = '', id = ''] = match
-    return target('x', id, `https://x.com/i/status/${id}`, profile)
+  if (platform) return parseFor(platform, url, host, false)
+  if (officialOnly) return null
+  for (const candidate of UNKNOWN_HOST_PLATFORMS) {
+    const parsed = parseFor(candidate, url, host, true)
+    if (parsed) return parsed
   }
-
-  if (platform === 'bluesky') {
-    const match = url.pathname.match(/^\/profile\/([^/]+)\/post\/([a-z0-9]+)\/?$/i)
-    if (!match) return null
-    const [, profile = '', id = ''] = match
-    return {
-      ...target('bluesky', id, `https://bsky.app/profile/${profile}/post/${id}`, profile),
-      lookupKey: `bluesky:${profile.toLowerCase()}:${id}`
-    }
-  }
-
-  if (platform === 'youtube') {
-    const id = hostMatches(host, 'youtu.be')
-      ? url.pathname.match(/^\/([\w-]+)\/?$/)?.[1]
-      : url.pathname === '/watch'
-        ? url.searchParams.get('v')
-        : url.pathname.match(/^\/shorts\/([\w-]+)\/?$/)?.[1]
-    if (!id || !/^[\w-]+$/.test(id)) return null
-    const canonicalUrl = `https://www.youtube.com/watch?v=${id}`
-    return { ...target('youtube', id, canonicalUrl), startSec: youtubeStartSec(url) }
-  }
-
-  if (platform === 'tiktok') {
-    const match = url.pathname.match(/^\/@([\w.-]+)\/video\/(\d+)\/?$/i)
-    if (!match) return null
-    const [, profile = '', id = ''] = match
-    return target('tiktok', id, `https://www.tiktok.com/@${profile}/video/${id}`, profile)
-  }
-
-  if (platform === 'reddit') {
-    const id = hostMatches(host, 'redd.it')
-      ? url.pathname.match(/^\/([a-z0-9]+)\/?$/i)?.[1]
-      : (url.pathname.match(/^\/r\/[\w-]+\/comments\/([a-z0-9]+)(?:\/[^/]*)?\/?$/i)?.[1] ??
-        url.pathname.match(/^\/comments\/([a-z0-9]+)\/?$/i)?.[1])
-    if (!id) return null
-    return target('reddit', id, `https://www.reddit.com/comments/${id}/`)
-  }
-
-  if (platform === 'instagram') {
-    // A link may carry the account before the kind; `/reels/` is the plural of `/reel/`.
-    const match = url.pathname.match(/^\/(?:[\w.]+\/)?(p|reels?)\/([\w-]+)\/?$/i)
-    if (!match) return null
-    const [, rawKind = '', id = ''] = match
-    const kind = rawKind.toLowerCase() === 'p' ? 'p' : 'reel'
-    return target('instagram', id, `https://www.instagram.com/${kind}/${id}/`)
-  }
-
-  if (platform === 'facebook') return facebookTarget(host, url)
-
-  if (platform === 'threads') {
-    const short = url.pathname.match(/^\/t\/([\w-]+)\/?$/)?.[1]
-    if (short) return target('threads', short, `https://www.threads.com/t/${short}`)
-    // A share id is not a post code, so its key keeps the two apart; the post code comes from the redirect.
-    const share = url.pathname.match(/^\/share\/([\w-]+)\/?$/)?.[1]
-    if (share) {
-      return {
-        ...target('threads', share, `https://www.threads.com/share/${share}`),
-        lookupKey: `threads:share:${share}`
-      }
-    }
-    const match = url.pathname.match(/^\/@([\w.]+)\/post\/([\w-]+)(?:\/media)?\/?$/)
-    if (!match) return null
-    const [, profile = '', id = ''] = match
-    return target('threads', id, `https://www.threads.com/@${profile}/post/${id}`, profile)
-  }
-
-  const id = url.pathname.match(/^\/video\/(BV[\da-z]+|av\d+)\/?$/i)?.[1]
-  if (!id) return null
-  const normalizedId = id.startsWith('av') ? id.toLowerCase() : `BV${id.slice(2)}`
-  return target('bilibili', normalizedId, `https://www.bilibili.com/video/${normalizedId}`)
+  return null
 }
 
-/** Every supported post link in a text, in order. */
-export function findSocialPostTargets(text: string): SocialPostTarget[] {
-  const urls = text.match(/https?:\/\/[^\s<>()[\]{}]+/gi) ?? []
-  return urls
-    .map((candidate) => parseSocialPostUrl(candidate.replace(/[.,!?;:'"`]+$/g, '')))
-    .filter((parsed): parsed is SocialPostTarget => parsed !== null)
+/** A post link on any host. A link on an unknown host has the platform's own address as its target. */
+export function parseSocialPostUrl(value: string): SocialPostTarget | null {
+  return parseUrl(value, false)
 }
 
-export function findSocialPostTarget(text: string): SocialPostTarget | null {
-  return findSocialPostTargets(text)[0] ?? null
+/** A post link on a platform's own domain only. Used for the address a redirect names. */
+export function parseOfficialSocialPostUrl(value: string): SocialPostTarget | null {
+  return parseUrl(value, true)
 }
 
-export function findLinkTarget(texts: string[]): SocialPostTarget | null {
+// A link starts at `http`, and may carry WhatsApp format marks in front of it when they are not part of a word.
+const LINK_CANDIDATE = /(?:(?<!\w)[*_~]+)?https?:\/\/[^\s<>()[\]{}]+/gi
+const TRAILING_PUNCTUATION = /[.,!?;:'"`]+$/
+const FORMAT_MARKS = '*_~'
+
+/** Drops trailing punctuation and the format marks that wrap a link in pairs, nested or not. */
+function unwrapLink(candidate: string): string {
+  let link = candidate.replace(TRAILING_PUNCTUATION, '')
+  for (;;) {
+    const mark = link.charAt(0)
+    if (mark === '' || !FORMAT_MARKS.includes(mark) || link.length < 2 || !link.endsWith(mark)) return link
+    link = link.slice(1, -1).replace(TRAILING_PUNCTUATION, '')
+  }
+}
+
+/** Receives a link's platform and hostname when its host is no platform's own. Never its path or query. */
+export type UnknownHostReport = (entry: { platform: SocialPlatform; hostname: string }) => void
+
+/** Every supported post link in a text, in order. A link on an unknown host is reported by platform and hostname. */
+export function findSocialPostTargets(text: string, onUnknownHost?: UnknownHostReport): SocialPostTarget[] {
+  const targets: SocialPostTarget[] = []
+  for (const candidate of text.match(LINK_CANDIDATE) ?? []) {
+    const link = unwrapLink(candidate)
+    const found = parseSocialPostUrl(link)
+    if (!found) continue
+    const hostname = new URL(link).hostname.toLowerCase()
+    if (onUnknownHost && platformForHost(hostname) === null) onUnknownHost({ platform: found.platform, hostname })
+    targets.push(found)
+  }
+  return targets
+}
+
+export function findSocialPostTarget(text: string, onUnknownHost?: UnknownHostReport): SocialPostTarget | null {
+  return findSocialPostTargets(text, onUnknownHost)[0] ?? null
+}
+
+export function findLinkTarget(texts: string[], onUnknownHost?: UnknownHostReport): SocialPostTarget | null {
   for (const text of texts) {
-    const target = findSocialPostTarget(text)
+    const target = findSocialPostTarget(text, onUnknownHost)
     if (target) return target
   }
   return null

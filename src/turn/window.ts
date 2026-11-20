@@ -1,3 +1,4 @@
+import { FORGOTTEN_MESSAGE } from '../memory/types.js'
 import { type Db, isoNow, type Storage } from '../storage/database.js'
 import type { WindowMessage } from './types.js'
 
@@ -129,4 +130,51 @@ export function unansweredTexts(db: Db, chatId: string): string[] {
     )
     .pluck()
     .all(chatId) as string[]
+}
+
+/** Quote hops a link may be read through, counted from the message a member quotes. */
+export const QUOTE_HOPS = 3
+
+/**
+ * The stored texts of the user messages a quote chain reaches, from the quoted message up, in this chat only. A
+ * missing or empty message ends the chain, as does a removed one. A quoted message that is itself removed returns
+ * 'removed', so the saved quote note is not read in its place.
+ */
+function storedQuoteTexts(db: Db, chatId: string, quoteId: string): string[] | 'removed' {
+  const texts: string[] = []
+  let mid: string | null = quoteId
+  for (let hop = 0; hop < QUOTE_HOPS && mid !== null; hop++) {
+    const row = db
+      .prepare(
+        `SELECT content, quote_mid FROM session_message
+         WHERE chat_id = ? AND role = 'user' AND mid = ? ORDER BY id DESC LIMIT 1`
+      )
+      .get(chatId, mid) as { content: string; quote_mid: string | null } | undefined
+    if (row?.content === FORGOTTEN_MESSAGE) return hop === 0 ? 'removed' : texts
+    if (!row || row.content.trim() === '') break
+    texts.push(row.content)
+    mid = row.quote_mid
+  }
+  return texts
+}
+
+/**
+ * The texts a turn's messages reach through their quotes, newest message first. Each follows its stored quote chain
+ * in the same chat for up to QUOTE_HOPS messages. A message whose chain reaches nothing keeps its quote note, unless
+ * the quoted message was removed: then nothing is read, not even the saved note.
+ */
+export function quoteChainTexts(db: Db, chatId: string, turnId: string): string[] {
+  const rows = db
+    .prepare(
+      `SELECT quote, quote_mid FROM session_message
+       WHERE chat_id = ? AND turn_id = ? AND role = 'user' ORDER BY id DESC`
+    )
+    .all(chatId, turnId) as { quote: string | null; quote_mid: string | null }[]
+  return rows.flatMap((row) => {
+    const note = row.quote === null || row.quote.trim() === '' ? [] : [row.quote]
+    if (row.quote_mid === null) return note
+    const stored = storedQuoteTexts(db, chatId, row.quote_mid)
+    if (stored === 'removed') return []
+    return stored.length > 0 ? stored : note
+  })
 }
