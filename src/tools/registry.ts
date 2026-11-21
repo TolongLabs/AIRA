@@ -4,6 +4,7 @@ import type { Logger } from '../records/logger.js'
 import type { Redactor } from '../records/redact.js'
 import { recordFailure, recordToolCall } from '../records/turn-record.js'
 import { type Db, isoNow, type Storage } from '../storage/database.js'
+import { type SourceLookup, searchLookup } from '../turn/sources.js'
 import type { OfferedTool, TurnContext } from '../turn/types.js'
 import { outcomePayload } from './outcomes.js'
 import type { Receipt, ReceiptDraft, ToolContext, ToolDefinition, ToolResult } from './types.js'
@@ -13,6 +14,7 @@ const EXTERNAL_TOOL_NAME = /^[a-z][a-z0-9_-]{0,31}\.[A-Za-z0-9_-]{1,64}$/
 const COMMAND_NAME = /^[a-z][a-z0-9]{1,19}$/
 const FORBIDDEN_ARG_KEYS = new Set(['action', 'operation', 'op'])
 const MAX_EXTERNAL_TEXT_CHARS = 8_000
+const READ_TOOLS: ReadonlySet<string> = new Set(['read_page', 'read_post'])
 
 /** The name a model sees: model APIs accept no dot in a function name, so the dot is written as two underscores. */
 export function wireName(name: string): string {
@@ -42,6 +44,13 @@ export interface RegistryDeps {
   now?: () => Date
 }
 
+/** A URL the reply footer names: one a page or post tool read, or one a search found. */
+export interface SourceUse {
+  url: string
+  lookup: SourceLookup
+  kind: 'read' | 'found'
+}
+
 export interface CommandEntry {
   name: string
   tool: string
@@ -59,7 +68,7 @@ export interface ToolRegistry {
   /** Every registered tool name, for the cleaning chain's narration check. */
   toolNames(): string[]
   /** The URLs a turn read or found, pages read first, then search results in rank order. Read once, then gone. */
-  takeSources(turnId: string): string[]
+  takeSources(turnId: string): SourceUse[]
   /** May this chat use this tool, in any mode? Feature switch and permission. */
   enabled(name: string, context: TurnContext): boolean
   /** The tools the model may call this turn: mode `both` or `implicit`, and enabled. Implements `ToolOffer`. */
@@ -173,6 +182,14 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
 
   const offeredDefs = (context: TurnContext): ToolDefinition[] =>
     [...tools.values()].filter((def) => (def.mode === 'both' || def.mode === 'implicit') && enabled(def.name, context))
+
+  // Once a page or post is read, core state changes are refused for the rest of the turn, except the turn's
+  // command tool. Undefined when the call may run.
+  const readTainted = (def: ToolDefinition, context: TurnContext): ToolResult | undefined => {
+    if (!def.mutates || !context.sources.readThisTurn()) return undefined
+    if (context.kind === 'command' && context.commandTool === def.name) return undefined
+    return { ok: false, kind: 'refused', reason: 'state change after a page read', code: 'after_read' }
+  }
 
   const offeredExternals = (context: TurnContext): ExternalTool[] =>
     [...externalTools.values()].filter((ext) => isExternalEnabled(ext, context))
@@ -404,29 +421,38 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
     }
   }
 
-  // Sources for the reply footer (docs/trd/prompt-engine.md#tool-footer). Kept in memory for the turn only.
-  const sources = new Map<string, { read: string[]; found: string[] }>()
-  const noteSources = (turnId: string, name: string, args: unknown, data: unknown): void => {
-    const entry = sources.get(turnId) ?? { read: [], found: [] }
-    if ((name === 'read_page' || name === 'read_post') && typeof (args as { url?: unknown })?.url === 'string') {
-      entry.read.push((args as { url: string }).url)
+  // Sources for the reply footer (docs/trd/prompt-engine.md#tool-footer), kept in memory for the turn only. A read of
+  // a seen address marks the turn read, which withdraws state changes (see readTainted).
+  const footer = new Map<string, { read: SourceUse[]; found: SourceUse[] }>()
+  const noteSources = (name: string, args: unknown, data: unknown, context: TurnContext, callId: string): void => {
+    const uses = footer.get(context.turnId) ?? { read: [], found: [] }
+    if (name === 'read_page' || name === 'read_post') {
+      context.sources.markRead()
+      const seen = context.sources.find(args as { url?: string; source?: string })
+      if (seen === undefined) return
+      uses.read.push({ url: seen.url, lookup: seen.lookup, kind: 'read' })
     } else if (name === 'web_search') {
+      const lookup = searchLookup(callId)
       const results = (data as { results?: { url?: unknown }[] })?.results ?? []
-      for (const result of results) if (typeof result.url === 'string') entry.found.push(result.url)
+      for (const result of results) {
+        if (typeof result.url !== 'string') continue
+        context.sources.add(result.url, lookup)
+        uses.found.push({ url: result.url, lookup, kind: 'found' })
+      }
     } else return
-    sources.set(turnId, entry)
+    footer.set(context.turnId, uses)
   }
 
   const recordOutcome = (
     name: string,
     args: unknown,
     context: TurnContext,
-    source: 'model' | 'command',
+    call: { callId: string; source: 'model' | 'command' },
     startedAt: Date,
     outcome: ToolResult,
     error: unknown
   ): void => {
-    if (outcome.ok) noteSources(context.turnId, name, args, outcome.data)
+    if (outcome.ok) noteSources(name, args, outcome.data, context, call.callId)
     const durationMs = Math.max(0, now().getTime() - startedAt.getTime())
     const outcomeLabel = outcome.ok ? 'ok' : outcome.kind
     const receiptId = outcome.ok ? outcome.receipt?.receiptId : undefined
@@ -435,7 +461,7 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
         recordToolCall(db, {
           turnId: context.turnId,
           tool: name,
-          source,
+          source: call.source,
           startedAt,
           durationMs,
           outcome: outcomeLabel,
@@ -559,6 +585,57 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
       return { ok: false, content: outcomePayload(result) }
     }
 
+  // One call, without the waiting and tracking `call` adds. A failure is a typed result, never a throw.
+  const dispatch = async (
+    name: string,
+    args: unknown,
+    context: TurnContext,
+    call: { callId: string; source: 'model' | 'command'; signal?: AbortSignal }
+  ): Promise<ToolResult> => {
+    const startedAt = now()
+    let result: ToolResult
+    let error: unknown
+
+    const def = tools.get(name)
+    const ext = def ? undefined : externalTools.get(name)
+    if (def) {
+      const refused = checkAccess(def, call.source, context) ?? readTainted(def, context)
+      if (refused) {
+        result = refused
+      } else {
+        const stored = readStoredResult(def, call.callId, context.chat.chatId)
+        if (stored) {
+          result = stored
+        } else {
+          const parsed = def.schema.safeParse(args)
+          if (!parsed.success) {
+            result = { ok: false, kind: 'invalid', reason: formatZodIssues(parsed.error), code: 'schema' }
+          } else {
+            const ran = await runHandler(def, parsed.data, context, call)
+            result = ran.result
+            error = ran.error
+          }
+        }
+      }
+    } else if (ext) {
+      const refused = checkExternalAccess(ext, call.source, context)
+      if (refused) {
+        result = refused
+      } else if (typeof args !== 'object' || args === null || Array.isArray(args)) {
+        result = { ok: false, kind: 'invalid', reason: 'arguments must be an object' }
+      } else {
+        const ran = await runExternal(ext, args, call.signal)
+        result = ran.result
+        error = ran.error
+      }
+    } else {
+      result = { ok: false, kind: 'unavailable', reason: 'no such tool' }
+    }
+
+    recordOutcome(name, args, context, call, startedAt, result, error)
+    return result
+  }
+
   const registry: ToolRegistry = {
     register<Args>(definition: ToolDefinition<Args>): void {
       validateDefinition(definition, tools, commandOwners)
@@ -591,9 +668,9 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
       return [...tools.values()]
     },
 
-    takeSources(turnId: string): string[] {
-      const entry = sources.get(turnId)
-      sources.delete(turnId)
+    takeSources(turnId: string): SourceUse[] {
+      const entry = footer.get(turnId)
+      footer.delete(turnId)
       return entry ? [...entry.read, ...entry.found] : []
     },
 
@@ -610,7 +687,8 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
           description: def.description,
           parameters: z.toJSONSchema(def.schema) as Record<string, unknown>
         },
-        call: makeOfferedCall(def.name, context)
+        call: makeOfferedCall(def.name, context),
+        available: () => readTainted(def, context) === undefined
       }))
       const extOffered: OfferedTool[] = offeredExternals(context).map((ext) => ({
         schema: {
@@ -641,48 +719,12 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
     },
 
     async call(name, args, context, call): Promise<ToolResult> {
-      const startedAt = now()
-      let result: ToolResult
-      let error: unknown
-
       const def = tools.get(name)
-      const ext = def ? undefined : externalTools.get(name)
-      if (def) {
-        const refused = checkAccess(def, call.source, context)
-        if (refused) {
-          result = refused
-        } else {
-          const stored = readStoredResult(def, call.callId, context.chat.chatId)
-          if (stored) {
-            result = stored
-          } else {
-            const parsed = def.schema.safeParse(args)
-            if (!parsed.success) {
-              result = { ok: false, kind: 'invalid', reason: formatZodIssues(parsed.error), code: 'schema' }
-            } else {
-              const ran = await runHandler(def, parsed.data, context, call)
-              result = ran.result
-              error = ran.error
-            }
-          }
-        }
-      } else if (ext) {
-        const refused = checkExternalAccess(ext, call.source, context)
-        if (refused) {
-          result = refused
-        } else if (typeof args !== 'object' || args === null || Array.isArray(args)) {
-          result = { ok: false, kind: 'invalid', reason: 'arguments must be an object' }
-        } else {
-          const ran = await runExternal(ext, args, call.signal)
-          result = ran.result
-          error = ran.error
-        }
-      } else {
-        result = { ok: false, kind: 'unavailable', reason: 'no such tool' }
-      }
-
-      recordOutcome(name, args, context, call.source, startedAt, result, error)
-      return result
+      // A core state change waits for the page reads still running in this turn, so its check sees their outcome.
+      if (def?.mutates) await context.sources.settled()
+      const run = dispatch(name, args, context, call)
+      if (READ_TOOLS.has(name)) context.sources.track(run)
+      return run
     },
 
     rulesText(context: TurnContext): string {

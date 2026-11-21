@@ -12,6 +12,7 @@ import { TOOL_FAILURE_KINDS } from '../../src/tools/outcomes.js'
 import type { MemoryPort, SchedulePort } from '../../src/tools/ports.js'
 import { createToolRegistry, type ToolRegistry } from '../../src/tools/registry.js'
 import type { ToolDefinition } from '../../src/tools/types.js'
+import { createTurnSources } from '../../src/turn/sources.js'
 import type { TurnContext } from '../../src/turn/types.js'
 import { tmpDir, tmpStorage } from '../support/tmp.js'
 
@@ -47,7 +48,8 @@ function makeContext(
     settings: resolveSettings(storage, chat),
     kind: 'reply',
     delivery: { kind: 'reply' },
-    deadline: Date.now() + 10_000
+    deadline: Date.now() + 10_000,
+    sources: createTurnSources()
   }
 }
 

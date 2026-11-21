@@ -7,6 +7,7 @@ import type { Chat } from '../settings/chats.js'
 import type { Resolved } from '../settings/settings.js'
 import type { Db } from '../storage/database.js'
 import type { DeliveryKind } from './deliver.js'
+import type { TurnSources } from './sources.js'
 
 // The turn context and the seams of the turn pipeline (docs/trd/system.md#one-turn).
 // The pipeline owns the order of the steps. Each seam is one step that another module implements.
@@ -24,6 +25,8 @@ export interface TurnContext {
   delivery: DeliveryKind
   /** When all model work of this turn must end, in milliseconds since the epoch. */
   deadline: number
+  /** The turn's URLs, registered at steps 2 and 5. Read tools open only these (docs/trd/tools.md#turn-sources). */
+  sources: TurnSources
   /** For a skill-style command: the tool the command names. Its call is recorded with source `command`. */
   commandTool?: string
   /** Read sources of a completed research job, supplied by code for its footer. */
@@ -84,6 +87,8 @@ export interface PromptBuilder {
 
 export interface OfferedTool {
   schema: ToolSchema
+  /** False while withdrawn from later model steps. A call the model still makes is refused by the registry. */
+  available?(): boolean
   /** Runs one call. It never throws: a failure is a typed result. */
   call(
     args: unknown,

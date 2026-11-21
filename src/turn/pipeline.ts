@@ -36,6 +36,7 @@ import { type Db, isoNow, type Storage } from '../storage/database.js'
 import { advanceTurn, closeTurn, closeTurnAsFailed, openTurn, receiveInbound } from '../storage/turns.js'
 import type { Alerter } from './alerts.js'
 import { type DeliveryKind, type DeliverySettings, mayDeliver } from './deliver.js'
+import { createTurnSources } from './sources.js'
 import type {
   BuiltPrompt,
   CommandRouter,
@@ -277,6 +278,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       kind: newest.scheduled ? 'scheduled' : 'reply',
       delivery,
       deadline: now().getTime() + config.llm.turnDeadlineMs,
+      sources: createTurnSources(),
       ...(think ? { think: true } : {})
     }
     outcome.context = context
@@ -345,6 +347,21 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     outcome.fields.windowSize = input.window.length
     outcome.diagnostics = { request: input.pending.map((message) => message.content).join('\n\n') }
     context.messageText = outcome.diagnostics.request
+    // One quote-chain snapshot covers both the seen-URL registry (earliest first) and link intake (newest first).
+    const quoteTexts = storage.read((db) => quoteChainTexts(db, chat.chatId, turnId))
+    const pendingSet = new Set(input.pending)
+    for (const message of input.window) {
+      if (pendingSet.has(message)) continue
+      if (message.quote) context.sources.addText(message.quote.text, 'quote')
+      context.sources.addText(message.content, 'message')
+    }
+    for (const text of [...quoteTexts].reverse()) {
+      context.sources.addText(text, 'quote')
+    }
+    for (const message of input.pending) {
+      if (message.quote) context.sources.addText(message.quote.text, 'quote')
+      context.sources.addText(message.content, 'message')
+    }
 
     // 4. Command check. Command tokens anywhere in the message name the tools to offer first.
     const text = input.pending[input.pending.length - 1]?.content ?? ''
@@ -442,10 +459,9 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       const identifyOn = settings['features.identify']?.value === true
       const files = mediaToRead(batch.map((waiter) => waiter.attachments ?? []))
       // Newest message text first, then the texts its quote chains reach in this chat (QUOTE_HOPS at most).
-      const linkTexts = [
-        ...[...input.pending].reverse().map((message) => message.content),
-        ...storage.read((db) => quoteChainTexts(db, chat.chatId, turnId))
-      ].filter((entry) => entry.trim().length > 0)
+      const linkTexts = [...[...input.pending].reverse().map((message) => message.content), ...quoteTexts].filter(
+        (entry) => entry.trim().length > 0
+      )
       const shouldReadLinks = deps.media !== undefined && (mediaOn || socialOn) && linkTexts.length > 0
 
       if (deps.media && (files.length > 0 || shouldReadLinks)) {
@@ -506,6 +522,11 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
               .filter((url): url is string => typeof url === 'string' && url.length > 0)
           )
         ]
+        for (const link of readLinks) {
+          for (const url of [link.post.canonicalUrl, link.post.target.canonicalUrl]) {
+            if (typeof url === 'string') context.sources.add(url, 'intake')
+          }
+        }
         // identify_image's pictures, in index order: this turn's valid ones, then intake post photos.
         context.images = [
           ...(combined.pictures ?? []).map((attachment) => ({ kind: 'file' as const, attachment })),

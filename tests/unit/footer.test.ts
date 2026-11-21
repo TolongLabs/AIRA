@@ -4,6 +4,7 @@ import { isFace } from '../../src/character/schema.js'
 import { type CleanOptions, cleanReply, createReplyCleaner, guardFaces } from '../../src/format/clean.js'
 import { buildFooter, capitaliseBubble, forReplay } from '../../src/format/footer.js'
 import { BUBBLE_BREAK } from '../../src/gateway/response.js'
+import { createTurnSources } from '../../src/turn/sources.js'
 import type { BuiltPrompt, RunResult, TurnContext } from '../../src/turn/types.js'
 
 const base: CleanOptions = {
@@ -65,6 +66,7 @@ describe('createReplyCleaner intake and tool footers', () => {
     kind: 'reply',
     delivery: { kind: 'reply' },
     deadline: Date.now() + 10_000,
+    sources: createTurnSources(),
     ...overrides
   })
 

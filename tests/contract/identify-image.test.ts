@@ -15,6 +15,7 @@ import { identifyImageTool } from '../../src/tools/core/identify.js'
 import { registerCoreTools } from '../../src/tools/core/index.js'
 import { createSerpApiIdentify } from '../../src/tools/identify.js'
 import { createToolRegistry } from '../../src/tools/registry.js'
+import { createTurnSources } from '../../src/turn/sources.js'
 import type { TurnContext, TurnImage } from '../../src/turn/types.js'
 import { tmpDir, tmpStorage } from '../support/tmp.js'
 
@@ -105,6 +106,7 @@ function setup(fake?: ReturnType<typeof fakeFetch>, overrides: { timeoutMs?: num
       kind: 'reply',
       delivery: { kind: 'reply' },
       deadline: Date.now() + 10_000,
+      sources: createTurnSources(),
       images
     }
   }

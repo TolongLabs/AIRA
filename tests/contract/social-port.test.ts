@@ -5,6 +5,7 @@ import { SocialPostViewer } from '../../src/social/viewer.js'
 import { readPostTool } from '../../src/tools/core/web.js'
 import { outcomePayload } from '../../src/tools/outcomes.js'
 import type { ToolContext } from '../../src/tools/types.js'
+import { createTurnSources } from '../../src/turn/sources.js'
 
 const settings = {
   timeoutMs: 100,
@@ -18,6 +19,13 @@ const settings = {
 const url = 'https://x.com/example_user/status/123'
 const signal = () => new AbortController().signal
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
+
+/** A turn that has seen the given links, so the reader may open them. */
+function seeing(...links: string[]) {
+  const sources = createTurnSources()
+  for (const link of links) sources.add(link, 'message')
+  return sources
+}
 
 function readers(fetcher: typeof fetch, overrides: Partial<typeof settings> = {}) {
   const dependencies = {
@@ -118,7 +126,7 @@ describe('social tool port', () => {
   ])('maps HTTP %i to a bounded tool failure', async (status, kind, reason) => {
     const { port } = readers(async () => new Response('private response', { status }))
     const tool = readPostTool({ post: port, filesDir: '/tmp' })
-    expect(await tool.handler({ url }, { signal: signal() } as ToolContext)).toEqual({
+    expect(await tool.handler({ url }, { signal: signal(), sources: seeing(url) } as ToolContext)).toEqual({
       ok: false,
       kind,
       reason,
@@ -129,7 +137,7 @@ describe('social tool port', () => {
   it('returns timeout even when an injected fetch ignores cancellation', async () => {
     const { port } = readers(async () => new Promise<Response>(() => {}), { timeoutMs: 10 })
     const tool = readPostTool({ post: port, filesDir: '/tmp' })
-    expect(await tool.handler({ url }, { signal: signal() } as ToolContext)).toEqual({
+    expect(await tool.handler({ url }, { signal: signal(), sources: seeing(url) } as ToolContext)).toEqual({
       ok: false,
       kind: 'timeout',
       reason: 'timeout'
@@ -141,18 +149,22 @@ describe('social tool port', () => {
     viewer.setYtDlpAvailable(false)
     replies.setYtDlpAvailable(false)
     const tool = readPostTool({ post: port, filesDir: '/tmp' })
-    expect(await tool.handler({ url: 'https://youtu.be/example123' }, { signal: signal() } as ToolContext)).toEqual({
-      ok: false,
-      kind: 'unavailable',
-      reason: 'binary_missing'
-    })
+    const youtube = 'https://youtu.be/example123'
+    expect(await tool.handler({ url: youtube }, { signal: signal(), sources: seeing(youtube) } as ToolContext)).toEqual(
+      {
+        ok: false,
+        kind: 'unavailable',
+        reason: 'binary_missing'
+      }
+    )
     expect(await port.read(url, signal())).toMatchObject({ text: 'Still readable' })
   })
 
   it('gives the model the sentence for its failure kind, and the failed-read one only for an error', async () => {
     const modelSentence = async (reader: ReturnType<typeof readers>, target: string) => {
       const result = await readPostTool({ post: reader.port, filesDir: '/tmp' }).handler({ url: target }, {
-        signal: signal()
+        signal: signal(),
+        sources: seeing(target)
       } as ToolContext)
       if (result.ok) throw new Error('expected a failed read')
       return JSON.parse(outcomePayload(result)).outcome

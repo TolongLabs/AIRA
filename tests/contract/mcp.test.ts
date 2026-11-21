@@ -8,6 +8,7 @@ import type { Storage } from '../../src/storage/database.js'
 import { openTurn, receiveInbound } from '../../src/storage/turns.js'
 import { connectMcpServers, type McpHost } from '../../src/tools/mcp-client.js'
 import { createToolRegistry, type ToolRegistry } from '../../src/tools/registry.js'
+import { createTurnSources } from '../../src/turn/sources.js'
 import type { TurnContext } from '../../src/turn/types.js'
 import { tmpStorage } from '../support/tmp.js'
 
@@ -63,7 +64,8 @@ function makeContext(storage: Storage, options: { chatWaId?: string; mcpFeature?
     settings: resolveSettings(storage, chat),
     kind: 'reply',
     delivery: { kind: 'reply' },
-    deadline: Date.now() + 10_000
+    deadline: Date.now() + 10_000,
+    sources: createTurnSources()
   }
 }
 

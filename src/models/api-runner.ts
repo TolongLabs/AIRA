@@ -123,11 +123,12 @@ class SeamLlm extends BaseLlm {
       system: state.system,
       messages: [...state.messages, ...loopMessages(llmRequest.contents, (callId) => state.replays.get(callId))],
       // When a chain limit is reached, the tool list is withdrawn and the model answers with what it has.
-      // For commands, only the named tools not yet called are offered until each has been called once.
+      // For commands, only the named tools not yet called are offered until each has been called once. A tool the
+      // registry has withdrawn this turn (a state change after a page read) is not declared; its call is still refused.
       tools: state.chainLimit
         ? []
         : state.tools
-            .filter((tool) => allowed === undefined || allowed.has(tool.schema.name))
+            .filter((tool) => (allowed === undefined || allowed.has(tool.schema.name)) && tool.available?.() !== false)
             .map((tool) => tool.schema),
       params: this.options.params ?? {}
     }

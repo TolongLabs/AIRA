@@ -12,6 +12,7 @@ import { marketTools } from '../../src/tools/owner/market-tools.js'
 import type { MarketsPort } from '../../src/tools/owner/markets.js'
 import { loadWatchConfig, watchlistFor } from '../../src/tools/owner/watch-config.js'
 import { createToolRegistry } from '../../src/tools/registry.js'
+import { createTurnSources } from '../../src/turn/sources.js'
 import type { TurnContext } from '../../src/turn/types.js'
 import { tmpDir, tmpStorage } from '../support/tmp.js'
 
@@ -101,7 +102,8 @@ function setup(options: { markets?: MarketsPort; configPath?: string } = {}) {
       settings,
       kind: 'reply',
       delivery: { kind: 'reply' },
-      deadline: Date.now() + 10_000
+      deadline: Date.now() + 10_000,
+      sources: createTurnSources()
     }
   }
 

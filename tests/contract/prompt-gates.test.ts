@@ -3,6 +3,7 @@ import { loadPack, loadPacks, type Mood } from '../../src/character/loader.js'
 import { loadConfig } from '../../src/config/loader.js'
 import { buildSystemBlocks, createPromptBuilder, estimateTokens, loadHarnessRules } from '../../src/prompt/builder.js'
 import { FACE_LIMIT, LENGTH_CHARS } from '../../src/prompt/shape.js'
+import { createTurnSources } from '../../src/turn/sources.js'
 import type { TurnInput } from '../../src/turn/types.js'
 import { tmpStorage } from '../support/tmp.js'
 
@@ -94,7 +95,8 @@ describe('prompt gates', () => {
         settings: {},
         kind: 'reply',
         delivery: { kind: 'reply' },
-        deadline: Date.UTC(2026, 0, 2, 3, 5, 0)
+        deadline: Date.UTC(2026, 0, 2, 3, 5, 0),
+        sources: createTurnSources()
       },
       window: [message],
       pending: [message]
