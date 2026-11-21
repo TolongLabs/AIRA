@@ -345,7 +345,10 @@ Facebook photo paths use the HTML post reader before falling back to the extract
 are X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram, Bilibili and
 Facebook.
 
-The result keeps `author`, `text` and `media` URLs, and adds `platform`, `handle`,
+The model receives an untrusted result with a readable or partial status, a platform display name and a post.
+A partial result gives its missing fields and a fixed sentence describing what was visible. A failed read uses
+the ordinary tool failure outcome. Reader names, attempts, reasons and timings stay in records.
+The post keeps `author`, `text` and `media` URLs, and adds `platform`, `handle`,
 `createdAt`, `quotedText`, `replyCount`, `canonicalUrl`, `durationSec`, `thread`
 and `replies`. `media` lists every photo the post keeps, else its one picture,
 then its video. `thread` lists the earlier posts of a Threads thread, oldest
@@ -362,18 +365,25 @@ require the optional `YOUTUBE_API_KEY`; other YouTube metadata remains usable
 without it. Missing yt-dlp disables only extractor-dependent reads; Reddit
 text and image feeds remain readable.
 
+A chain runs readers in priority order within one social lookup deadline. Later readers can fill missing
+fields without replacing a value already found, except that a photo list can improve a single picture.
+A platform name or known access-block stub does not count as text. Any usable post fields can produce a
+partial result. Only a first-party API can stop the chain on a confirmed private or removed post.
+
 Social settings (kept here because the media configuration table is maintained
 by the link-intake work order):
 
-| Key                      | Default  | Effect                                               |
-| ------------------------ | -------- | ---------------------------------------------------- |
-| `social.timeoutMs`       | 6000     | Hard deadline per lookup                             |
-| `social.cacheTtlMs`      | 900000   | Successful lookup cache lifetime; 0 disables caching |
-| `social.maxCacheEntries` | 256      | Maximum entries per LRU cache                        |
-| `social.maxTextChars`    | 1500     | Post text limit                                      |
-| `social.maxReplies`      | 5        | Replies returned, at most 50                         |
-| `social.maxReplyChars`   | 280      | Reply text limit, in Unicode code points             |
-| `social.ytDlpPath`       | `yt-dlp` | Metadata extractor binary                            |
+| Key                          | Default  | Effect                                                |
+| ---------------------------- | -------- | ----------------------------------------------------- |
+| `social.timeoutMs`           | 6000     | Hard deadline per lookup                              |
+| `social.httpReaderTimeoutMs` | 2500     | Limit per HTTP reader, clipped to the lookup deadline |
+| `social.ytDlpTimeoutMs`      | 4500     | Limit per extractor, clipped to the lookup deadline   |
+| `social.cacheTtlMs`          | 900000   | Successful lookup cache lifetime; 0 disables caching  |
+| `social.maxCacheEntries`     | 256      | Maximum entries per LRU cache                         |
+| `social.maxTextChars`        | 1500     | Post text limit                                       |
+| `social.maxReplies`          | 5        | Replies returned, at most 50                          |
+| `social.maxReplyChars`       | 280      | Reply text limit, in Unicode code points              |
+| `social.ytDlpPath`           | `yt-dlp` | Metadata extractor binary                             |
 
 ### Lessons And Library
 

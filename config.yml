@@ -114,6 +114,8 @@ media:
 # Owned by docs/trd/reliability.md
 social:
   timeoutMs: 6000
+  httpReaderTimeoutMs: 2500
+  ytDlpTimeoutMs: 4500
   cacheTtlMs: 900000
   maxCacheEntries: 256
   maxTextChars: 1500

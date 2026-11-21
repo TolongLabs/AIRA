@@ -359,7 +359,8 @@ YouTube, TikTok, Reddit, Instagram, Bilibili and Facebook. Intake can look for l
 quote hops in the same chat. It uses the stored text and respects the existing bounds on intake lookups.
 
 Video from a linked social post is fetched by the social tool and passed through the same watch path as a file. It
-must fit the same size limit and `media.maxVideoSeconds`. A remote audio download over 600 seconds is refused
+must fit the same size limit and `media.maxVideoSeconds`. The downloader uses a reader-supplied user agent
+and referrer for that video when present. A remote audio download over 600 seconds is refused
 (`src/media/link-intake.ts`).
 
 A post's photos are watched as images, at most `MAX_LINK_PHOTOS` (4) per link: the linked post's photos in order,
@@ -373,6 +374,8 @@ The post's text, author, most-liked replies and media enter block 4 as lines wit
 count and canonical URL. The earlier posts of its thread come first, each with its author and text
 (`src/media/turn-media.ts`).
 
+A failed social link attempted at intake is recorded for this turn under its original and resolved URL when
+available. Either page or post reading returns the same plain refusal if the model asks for that failed link.
 A link whose video or image intake watched is not opened again in the same turn: `read_post` and `read_page` refuse
 its canonical URL with kind `refused`, and the refusal tells the model the content is already in its context. A link
 intake read as text only, or whose watch failed, stays open, so the model may fetch the post's replies and media;
@@ -446,6 +449,12 @@ covers nine platforms: X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram, 
   `/p/<id>` match needs a hostname containing `insta`. Link extraction strips matched WhatsApp formatting marks
   around a link and preserves unwrapped identifiers.
   See [Social Post Reader](tools.md#social-post-reader) for supported official paths.
+- **Ordered readers.** A lookup resolves share links first, then runs the platform's normal readers in order.
+  Later readers fill gaps only, and run only when they can supply a missing field. Finish on author plus text
+  or media for text and photo posts, with any known video filled. Video-first targets need author, text
+  and playable video. YouTube needs author, text or a title, and duration. A verified terminal result from
+  a first-party API can stop the chain. A deadline or exhausted chain returns a partial result when any
+  author, text, media or video was found. Intake identifies which fields it could see.
 - **Post dispatch.** X is read through the fxtwitter API, Bluesky through its public API after handle-to-DID
   resolution (video comes from the author's data server when found), and Threads through its logged-out page, which
   holds only the first batch of replies. Instagram is read from its logged-out post page first, which carries the
