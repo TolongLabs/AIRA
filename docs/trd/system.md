@@ -268,6 +268,12 @@ and declares them in `<hostDataDir>/gateway/chats.json`, which the gateway reads
 
 ### Autofetch
 
+Exclude all YouTube URLs, including Shorts, before allocating a lookup slot. Select only typed native
+attachments owned by the resolved post, video first and photos in post order. The source response must
+prove both identity and type. Keep verified photos when a video is ineligible. Reject group videos with
+unknown or unreliable duration, live streams and playlists before downloading. The 180-second inclusive
+group limit is a proposal. The separate watching setting does not govern group delivery.
+
 In a group with `features.autofetch` on, a message with a supported post link gets the post's own media back: no
 reply text, no model call and no turn. The gateway still drops the message at its mention gate. The adapter's
 auto-fetch hook hands it to `brain.autofetch` first, which asks the core.
@@ -275,16 +281,21 @@ auto-fetch hook hands it to `brain.autofetch` first, which asks the core.
 | Step | Who               | What                                                                                                                                                                                                                                       |
 | ---- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 1    | `brain.autofetch` | Skips a DM, the bot's own message, a chat without `autofetch: true` in `chats.json`, and text with no `http` link. Otherwise it posts `{ "chat": "<whatsapp chat id>", "text": "<message text>" }` to the core, one job per chat at a time |
-| 2    | The core          | Answers only an active group with `features.autofetch` on that is not muted. It takes up to 3 supported post links from the text, skipping YouTube and any link it sent media for in that chat in the last 10 minutes                      |
+| 2    | The core          | Answers only an active group with `features.autofetch` on that is not muted. It takes up to 3 supported post links from the text, skipping excluded platforms and repeated targets in the ten-minute selection window                      |
 | 3    | The core          | Reads each post through the [social reader](models.md#social-post-and-reply-readers) and takes its own media: its video, then its photos, at most 10 files a post. Never its one picture: a thumbnail, link card or avatar                 |
-| 4    | The core          | Downloads each file through the page fetcher into `cache/autofetch/`, named by its SHA-256, and answers `{ "media": [{ "kind": "image", "path": "<host path>" }] }` in order                                                               |
-| 5    | `brain.autofetch` | Sends each file through the adapter: `send_video` for a video, `send_image_file` for an image                                                                                                                                              |
+| 4    | The core          | Downloads each file to `cache/autofetch/`, named by its SHA-256, and returns ordered `media` and a `deliveryKey` when files are ready                                                                                                      |
+| 5    | `brain.autofetch` | Claims the batch once through core, then calls `send_video` or `send_image_file` for each slot and reports adapter outcomes                                                                                                                |
 
-- **Limits.** 3 links a message, 10 files a post, an image up to 8 MB (jpeg, png, webp or gif), a video up to 16 MB
-  (mp4). The repeat window is 10 minutes, kept in memory and lost on a restart. The helper waits 90 s for the core.
-- **Records.** One `job_run` row for each request that found a link: kind `autofetch`, the internal chat id, outcome
-  `sent`, `nothing` or `failed`, and counts of links, images, videos and failed files. Neither the text nor a URL is
-  stored or logged, on either side.
+- **Limits.** Three links per message and ten files per post. Images up to 8 MB and MP4 up to 16 MB
+  require matching media signatures. Downloads keep HTTPS redirects on the asset origin and send no cookies.
+  Each file has up to 10 s within the 60 s core job deadline. The gateway waits up to 90 s for the core.
+- **Repeats.** Core reserves a keyed digest of the chat and target for ten minutes, including failed reads.
+  Resolved aliases must also win the canonical target reservation. Reservations survive restart.
+- **Records.** A recognized target can create a `job_run` even when selection skips it. Outcomes include
+  `ready`, `nothing`, `failed` and `interrupted`. A returned batch has an ordered slot list and a
+  short-lived opaque key. The gateway calls `POST /v1/aira/autofetch/claim` with the key and, after adapter
+  calls, `POST /v1/aira/autofetch/complete` with the key and an ordered boolean outcome per slot.
+  A missing completion leaves delivery unknown. Core invalidates unclaimed batches on restart.
 - **Failure is silent.** Nobody asked the bot anything, so a post that cannot be read, a file over its limit or a
   refused download sends nothing to the chat.
 - **Cache.** `cache/autofetch/` is trimmed by the disk guard with the rest of the cache and is not in the off-host

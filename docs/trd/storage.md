@@ -210,6 +210,11 @@ replication of the write-ahead log is the upgrade if 15 minutes is ever too much
 
 ## Analytics And The Archive
 
+Social operational records follow the parent record retention window. Archive permitted structured fields
+before pruning children and then parents. Raw URLs, post IDs, identifiers from share tokens, content,
+headers and file paths stay out of social telemetry and archive rows. Keep delivery acknowledgement keys
+and temporary repeat claims out of analytics exports.
+
 - The daily retention job in [Records](records.md#retention) exports rows to Parquet under `archive/`, by table and
   month, before it deletes them. Verbatim diagnostics and `feedback_report.answers` are never archived.
 - `archiveAndPrune` in `src/storage/archive.ts` collects the rows in a first pass that always rolls back, so
