@@ -308,9 +308,19 @@ character.
 - With `exa` set and no key in the environment, start-up logs `search.off` and the tool stays unavailable. The rest
   of the core is not affected.
 - A fetch guard wraps every page and post read. It refuses non-http(s) addresses, credentials, localhost and private
-  or link-local IPs. The page fetch re-checks DNS after each redirect, follows at most 3 redirects, and caps bodies
+  or link-local IPs. The page fetch re-checks DNS after each redirect, follows at most 5 redirects, and caps bodies
   at 2 MB and text at 8,000 characters. `read_page` accepts one seen `url` or `source` id from
   [Turn Sources](#turn-sources).
+
+### Page Reads
+
+A plain page fetch follows up to five manual redirects. Every hop goes through the public-address guard.
+Keep a request-local jar of cookie names and values per host. Send those cookies only back to that host
+during the same lookup, then discard them.
+
+Exa and the plain fetch share a block-page check. A short page holding only the site name, or a page under
+1,000 characters with an access-block marker, is a failed read. A blocked Exa result tries the plain fetch.
+An empty page with an access-block marker in its title also counts as a failed read. A normal short page remains readable.
 
 ### Reverse-Image Hints
 
