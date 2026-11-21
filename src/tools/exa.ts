@@ -199,6 +199,7 @@ export function createExaPagePort(options: {
 
   return {
     async read(url, signal) {
+      signal.throwIfAborted()
       const page = await viaExa(url, signal)
       if (page) return page
       signal.throwIfAborted()

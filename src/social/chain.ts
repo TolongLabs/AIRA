@@ -255,8 +255,13 @@ export async function runChain(
 
   for (const reader of readers) {
     // A preview picture keeps the chain open for a mirror that can name the original photo.
-    const wantsOriginal = previewMedia && reader.kind === 'mirror_api' && (acc.photoUrls?.length ?? 0) === 0
-    if (isComplete(acc, shape) && !wantsOriginal) break
+    const previewOnly = previewMedia && (acc.photoUrls?.length ?? 0) === 0
+    const wantsOriginal = previewOnly && reader.kind === 'mirror_api'
+    if (isComplete(acc, shape) && !wantsOriginal) {
+      // A complete post with only a preview skips other readers until a mirror can name the original.
+      if (previewOnly) continue
+      break
+    }
     const missing: PostField[] = wantsOriginal ? [...missingFields(acc, shape), 'media'] : missingFields(acc, shape)
     if (!reader.provides.some((field) => missing.includes(field))) continue
     if (!reader.isConfigured()) continue

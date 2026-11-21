@@ -4,7 +4,10 @@ const BLOCK_MARKERS = [
   'just a moment',
   'blocked by network security',
   'log in to continue',
-  'captcha',
+  'complete the captcha',
+  'solve the captcha',
+  'captcha challenge',
+  'attention required',
   'verify you are human',
   'are you a robot',
   'enable javascript and cookies'

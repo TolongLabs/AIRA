@@ -58,9 +58,14 @@ describe('search depth', () => {
   })
 
   it('keeps the first results when only the retry search fails', async () => {
+    const twoFields = [...fields, { kind: 'other' as const, subject: 'seasonal drinks' }]
     const search = vi.fn().mockResolvedValueOnce([menu]).mockRejectedValueOnce(new Error('http status 429'))
-    const { brief } = await createSearchDepth({ search: { search } }).deep({ query, localQuery, fields }, context())
+    const { brief } = await createSearchDepth({ search: { search } }).deep(
+      { query, localQuery, fields: twoFields },
+      context()
+    )
     expect(search).toHaveBeenCalledTimes(2)
+    expect(brief.passages).toEqual([{ source: 's1', url: sourceUrl, text: 'See our seasonal drinks.' }])
     expect(brief.stillMissing).toBe('Still missing: Oat latte (price).')
   })
 
