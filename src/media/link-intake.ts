@@ -20,6 +20,8 @@ import {
   planLinkSegments
 } from './link-segments.js'
 
+import { COMPRESSION_MAX_INPUT_BYTES, COMPRESSION_MAX_SECONDS, type CompressVideo, isMp4 } from './video-compression.js'
+
 export const DEFAULT_MAX_LINK_VIDEO_SECONDS = 600
 
 /** The most photos watched from one link (docs/trd/models.md#post-links). */
@@ -84,6 +86,7 @@ export interface LinkReaderOptions {
   findTarget: (text: string) => LinkTarget | null | undefined
   watcher?: MediaWatcher
   download?: PagePort['download']
+  compressVideo?: CompressVideo
   model: string
   limits: MediaLimits & {
     maxLinkVideoSeconds?: number
@@ -410,6 +413,11 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
         const calls: ModelCallRecord[] = []
         const canWatch = Boolean(options.watcher) && allow.media && Boolean(options.download)
 
+        const videoDownloadLimit =
+          options.compressVideo && (post.durationSec ?? 0) <= COMPRESSION_MAX_SECONDS
+            ? Math.max(options.limits.maxBytes, COMPRESSION_MAX_INPUT_BYTES)
+            : options.limits.maxBytes
+
         async function watchRemoteMedia(
           url: string,
           expectedKind: 'video' | 'image',
@@ -419,7 +427,8 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
           if (!options.download || !options.watcher) return undefined
           let downloaded: { data: Buffer; contentType: string }
           try {
-            downloaded = await options.download(url, controller.signal, options.limits.maxBytes, headers)
+            const cap = expectedKind === 'video' ? videoDownloadLimit : options.limits.maxBytes
+            downloaded = await options.download(url, controller.signal, cap, headers)
           } catch (error) {
             const status = error instanceof Error ? /^http status (\d{3})$/.exec(error.message)?.[1] : undefined
             options.logger?.warn('media.link_download_failed', {
@@ -433,10 +442,19 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
             expectedKind === 'image' ? normalizeImageMime(downloaded.contentType) : downloaded.contentType
           if (mediaKindOf(contentType) !== expectedKind) return undefined
 
+          let data = downloaded.data
+          if (expectedKind === 'video' && data.length > options.limits.maxBytes) {
+            if (contentType.split(';')[0]?.trim().toLowerCase() !== 'video/mp4') return undefined
+            const compressed = await options
+              .compressVideo?.(data, options.limits.maxBytes, options.limits.maxVideoSeconds, controller.signal)
+              .catch(() => undefined)
+            if (!compressed || !isMp4(compressed) || controller.signal.aborted) return undefined
+            data = compressed
+          }
           const startedAt = now()
           const outcome = await readMedia(
             {
-              data: downloaded.data,
+              data,
               contentType,
               ...(durationSeconds !== undefined ? { durationSeconds } : {})
             },
@@ -458,7 +476,7 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
         const video =
           canWatch &&
           post.video &&
-          (post.video.bytes === null || post.video.bytes <= options.limits.maxBytes) &&
+          (post.video.bytes === null || post.video.bytes <= videoDownloadLimit) &&
           (post.durationSec === null || post.durationSec <= options.limits.maxVideoSeconds)
             ? post.video
             : null

@@ -27,6 +27,7 @@ import { createGeminiWatcher, type MediaWatcher } from './media/gemini-watcher.j
 import { DEFAULT_MEDIA_LIMITS } from './media/limits.js'
 import { createLinkReader } from './media/link-intake.js'
 import { createTurnMedia } from './media/turn-media.js'
+import { createVideoCompressor } from './media/video-compression.js'
 import { createMemoryPort } from './memory/port.js'
 import { presentLabels, recallForTurn } from './memory/recall.js'
 import type { MemoryJudge } from './memory/types.js'
@@ -397,7 +398,9 @@ export async function createApp(options: AppOptions): Promise<App> {
     if (!extractorAvailable) logger.warn('social.extractor_off', { platform: 'yt-dlp', reason: 'binary_missing' })
     const hostDataDir = config.gateway.hostDataDir === '' ? paths.root : config.gateway.hostDataDir
     // Social downloads keep user agent and referrer on the asset origin and carry no cookies.
+    const compressVideo = createVideoCompressor()
     const autofetch = createAutofetch({
+      compressVideo,
       storage,
       viewer,
       download: createFetchPagePort({ sameOriginCookieless: true }).download,
@@ -604,6 +607,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       media: createTurnMedia({
         ...(mediaWatcher ? { watcher: mediaWatcher } : {}),
         links: createLinkReader({
+          compressVideo,
           viewer,
           findTarget: (text) => findLinkTarget([text], (entry) => socialLog.info('social.unknown_host', entry)),
           ...(mediaWatcher ? { watcher: mediaWatcher } : {}),

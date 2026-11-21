@@ -5,7 +5,12 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildChatFlags } from '../../src/gateway/chat-flags.js'
 import { createGatewayServer } from '../../src/gateway/server.js'
-import { type Autofetch, type AutofetchMedia, createAutofetch } from '../../src/media/autofetch.js'
+import {
+  type Autofetch,
+  type AutofetchMedia,
+  type AutofetchOptions,
+  createAutofetch
+} from '../../src/media/autofetch.js'
 import { claimAutofetchDelivery } from '../../src/records/autofetch.js'
 import { createLogger } from '../../src/records/logger.js'
 import { createRedactor } from '../../src/records/redact.js'
@@ -53,7 +58,14 @@ function post(target: SocialPostTarget, overrides: Partial<SocialPost> = {}): So
   }
 }
 
-function setup(options: { posts?: Record<string, Partial<SocialPost>>; on?: boolean; type?: 'group' | 'dm' } = {}) {
+function setup(
+  options: {
+    posts?: Record<string, Partial<SocialPost>>
+    on?: boolean
+    type?: 'group' | 'dm'
+    compressVideo?: AutofetchOptions['compressVideo']
+  } = {}
+) {
   const storage = tmpStorage()
   const waId = options.type === 'dm' ? DM : GROUP
   const chat = ensureChat(storage, { waId, type: options.type ?? 'group' })
@@ -87,6 +99,7 @@ function setup(options: { posts?: Record<string, Partial<SocialPost>>; on?: bool
     storage,
     viewer,
     download,
+    ...(options.compressVideo ? { compressVideo: options.compressVideo } : {}),
     cacheDir: join(dataDir, 'cache', 'autofetch'),
     hostCacheDir: '/host/aira/data/cache/autofetch',
     logger: createLogger({ level: 'info', module: 'autofetch', sink: (line) => logged.push(line) }),
@@ -574,5 +587,33 @@ describe('POST /v1/aira/autofetch', () => {
     const response = await post({ chat: GROUP, text: 'https://x.com/someone/status/1' })
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ media: [] })
+  })
+})
+
+it('caches the bounded compressed MP4 and keeps gateway delivery pending', async () => {
+  const clipUrl = 'https://video.example/oversized.mp4'
+  const output = testMediaBytes('mp4', clipUrl)
+  const input = Buffer.alloc(16_000_001)
+  output.copy(input)
+  const compressVideo = vi.fn<NonNullable<AutofetchOptions['compressVideo']>>(async () => output)
+  const env = setup({
+    posts: { 'x:1': { video: { url: clipUrl, bytes: input.length, headers: null, hasAudio: false } } },
+    compressVideo
+  })
+  env.download.mockResolvedValueOnce({ data: input, contentType: 'video/mp4' })
+  const result = await env.autofetch.batch({ chat: env.waId, text: 'https://x.com/example/status/1' })
+  expect(env.download).toHaveBeenCalledWith(clipUrl, expect.any(AbortSignal), 48_000_000, null)
+  expect(compressVideo).toHaveBeenCalledTimes(1)
+  const args = compressVideo.mock.calls[0]!
+  expect(args[0] === input).toBe(true)
+  expect(args.slice(1)).toEqual([16_000_000, 180, expect.any(AbortSignal)])
+  expect(result.deliveryKey).toBeTruthy()
+  expect(result.media).toHaveLength(1)
+  expect(readFileSync(join(env.dataDir, 'cache', 'autofetch', `${sha(output)}.mp4`))).toEqual(output)
+  expect(env.storage.read((db) => db.prepare('SELECT downloaded_files FROM social_lookup').get())).toEqual({
+    downloaded_files: 1
+  })
+  expect(env.storage.read((db) => db.prepare('SELECT outcomes FROM autofetch_delivery').get())).toEqual({
+    outcomes: null
   })
 })

@@ -11,6 +11,7 @@ import { findSocialPostTargets, parseOfficialSocialPostUrl, type SocialPostTarge
 import type { Db, Storage } from '../storage/database.js'
 import { writeFileAtomic } from '../storage/files.js'
 import type { PagePort } from '../tools/ports.js'
+import { COMPRESSION_MAX_INPUT_BYTES, COMPRESSION_MAX_SECONDS, type CompressVideo, isMp4 } from './video-compression.js'
 
 // A group's post links answered with the posts' own media (docs/trd/system.md#autofetch).
 
@@ -43,7 +44,7 @@ function matchesSignature(mime: string, data: Buffer): boolean {
     case 'image/gif':
       return data.toString('latin1', 0, 6) === 'GIF87a' || data.toString('latin1', 0, 6) === 'GIF89a'
     case 'video/mp4':
-      return data.length >= 16 && data.toString('latin1', 4, 8) === 'ftyp'
+      return isMp4(data)
     default:
       return false
   }
@@ -75,6 +76,7 @@ export interface AutofetchOptions {
     ): Promise<SocialPostLookup>
   }
   download: PagePort['download']
+  compressVideo?: CompressVideo
   /** `<dataDir>/cache/autofetch`, where the core writes. */
   cacheDir: string
   /** The same folder as the gateway sees it on the host. */
@@ -187,23 +189,42 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
   }
 
   async function save(
-    item: { kind: AutofetchMedia['kind']; url: string; headers?: Record<string, string> | null },
+    item: ReturnType<typeof postMedia>[number],
     signal: AbortSignal
   ): Promise<{ downloaded: boolean; media?: AutofetchMedia }> {
     let downloaded = false
     const maxBytes = item.kind === 'video' ? AUTOFETCH_MAX_VIDEO_BYTES : AUTOFETCH_MAX_IMAGE_BYTES
     try {
       const budget = AbortSignal.any([signal, AbortSignal.timeout(AUTOFETCH_ASSET_TIMEOUT_MS)])
-      const file = await options.download(item.url, budget, maxBytes, item.headers)
+      const compressor =
+        item.kind === 'video' && (item.durationSec ?? Infinity) <= COMPRESSION_MAX_SECONDS
+          ? options.compressVideo
+          : undefined
+      const file = await options.download(
+        item.url,
+        budget,
+        compressor ? COMPRESSION_MAX_INPUT_BYTES : maxBytes,
+        item.headers
+      )
       if (budget.aborted) return { downloaded }
       const mime = file.contentType.split(';')[0]?.trim().toLowerCase() ?? ''
       const ext = EXTENSIONS[mime]
       const kindMatches = item.kind === 'video' ? mime === 'video/mp4' : mime.startsWith('image/')
-      if (!ext || !kindMatches || file.data.length > maxBytes || !matchesSignature(mime, file.data))
+      if (
+        !ext ||
+        !kindMatches ||
+        file.data.length > (compressor ? COMPRESSION_MAX_INPUT_BYTES : maxBytes) ||
+        !matchesSignature(mime, file.data)
+      )
         return { downloaded }
       downloaded = true
-      const name = `${createHash('sha256').update(file.data).digest('hex')}${ext}`
-      writeFileAtomic(join(options.cacheDir, name), file.data)
+      const data =
+        file.data.length <= maxBytes
+          ? file.data
+          : await compressor?.(file.data, maxBytes, COMPRESSION_MAX_SECONDS, signal)
+      if (!data || signal.aborted || data.length > maxBytes || !matchesSignature(mime, data)) return { downloaded }
+      const name = `${createHash('sha256').update(data).digest('hex')}${ext}`
+      writeFileAtomic(join(options.cacheDir, name), data)
       return { downloaded, media: { kind: item.kind, path: join(options.hostCacheDir, name) } }
     } catch {
       return { downloaded }

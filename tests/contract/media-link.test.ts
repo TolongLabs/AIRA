@@ -1403,3 +1403,39 @@ describe('turn pipeline link intake and media switch', () => {
     expect(JSON.stringify(logs)).not.toContain(partialUrl)
   })
 })
+
+it('watches a compressed linked MP4 that exceeds the watcher budget', async () => {
+  const input = Buffer.concat([Buffer.from('00000010667479706d70343200000000', 'hex'), Buffer.alloc(100)])
+  const output = input.subarray(0, 32)
+  const post = makePost({
+    durationSec: 20,
+    video: { url: 'https://video.example/large.mp4', bytes: input.length, headers: null, hasAudio: true }
+  })
+  const reader = createLinkReader({
+    viewer: { lookup: async () => ({ status: 'found', post }) },
+    findTarget: fakeFindTarget,
+    watcher: {
+      async watch(file) {
+        expect(file.data).toEqual(output)
+        return {
+          reading: { description: 'Compressed video' },
+          usage: { inputTokens: 10, outputTokens: 2, cachedTokens: 0 },
+          costUsd: 0,
+          model: 'test'
+        }
+      }
+    },
+    download: async (_url, _signal, maxBytes) => {
+      if (maxBytes < input.length) throw new Error('response exceeds size limit')
+      return { data: input, contentType: 'video/mp4' }
+    },
+    compressVideo: async (data) => {
+      expect(data).toEqual(input)
+      return output
+    },
+    model: 'test',
+    limits: { ...DEFAULT_MEDIA_LIMITS, maxVideoSeconds: 180, maxBytes: 64 }
+  })
+  const result = await reader.read(['https://x.com/testuser/status/99'], 5000, { media: true, social: true })
+  expect(result.links?.[0]?.reading?.description).toBe('Compressed video')
+})
