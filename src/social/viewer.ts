@@ -1,10 +1,16 @@
 import { createLogger, type Logger } from '../records/logger.js'
 import { type ChainAttempt, type ChainOutcome, runChain } from './chain.js'
 import { checkedFetcher, type Lookup } from './fetch.js'
-import { BlueskyPdsDirectory, DEFAULT_HTTP_READER_TIMEOUT_MS, DEFAULT_YTDLP_TIMEOUT_MS, readersFor } from './readers.js'
+import {
+  BlueskyPdsDirectory,
+  DEFAULT_HTTP_READER_TIMEOUT_MS,
+  DEFAULT_YTDLP_TIMEOUT_MS,
+  readersFor,
+  requiresExtractor
+} from './readers.js'
 import { resolveShareLink } from './share.js'
-import type { PostField, SocialPost, SocialPostLookup } from './types.js'
-import { isFacebookPost, type SocialPlatform, type SocialPostTarget } from './urls.js'
+import type { PostField, SocialLookupTrace, SocialPost, SocialPostLookup } from './types.js'
+import type { SocialPlatform, SocialPostTarget } from './urls.js'
 import { runYtDlp } from './yt-dlp.js'
 
 export interface SocialPostSettings {
@@ -33,13 +39,6 @@ type ReadResult =
 
 function failure(platform: SocialPlatform, reason: string, canonicalUrl?: string): SocialPostLookup {
   return { status: 'failed', platform, reason, ...(canonicalUrl ? { canonicalUrl } : {}) }
-}
-
-/** Platforms whose posts only the extractor can read. Reddit, Instagram and Facebook posts also have page readers. */
-function isYtDlpPlatform(target: SocialPostTarget): boolean {
-  if (target.platform === 'x' || target.platform === 'bluesky' || target.platform === 'threads') return false
-  if (target.platform === 'reddit' || target.platform === 'instagram' || isFacebookPost(target)) return false
-  return true
 }
 
 function found(post: SocialPost, missing: PostField[], target: SocialPostTarget): SocialPostLookup {
@@ -143,15 +142,22 @@ export class SocialPostViewer {
     this.ytDlpAvailable = available
   }
 
-  async lookup(target: SocialPostTarget, signal?: AbortSignal): Promise<SocialPostLookup> {
+  async lookup(
+    target: SocialPostTarget,
+    signal?: AbortSignal,
+    observe?: (trace: SocialLookupTrace) => void
+  ): Promise<SocialPostLookup> {
     // Without the extractor, a platform that needs it stays unreadable. That is expected, not a fault to warn about.
-    if (isYtDlpPlatform(target) && !this.ytDlpAvailable) return failure(target.platform, 'binary_missing')
+    if (requiresExtractor(target) && !this.ytDlpAvailable) return failure(target.platform, 'binary_missing')
     const cached = this.getCached(target.lookupKey)
     // The cache key ignores timestamps, so the cached post's target may carry another link's `t=`.
-    if (cached) return found(cached.post, cached.missing, target)
+    if (cached) {
+      observe?.({ reason: 'cache_hit', attempts: [] })
+      return found(cached.post, cached.missing, target)
+    }
     if (signal?.aborted) return failure(target.platform, 'timeout')
 
-    const result = await this.read(target, signal)
+    const result = await this.read(target, signal, observe)
     if (result.status === 'failed') return this.reportFailure(target.platform, result.reason, result.canonicalUrl)
     this.setCached(target.lookupKey, result.post, result.missing)
     return found(result.post, result.missing, target)
@@ -186,7 +192,11 @@ export class SocialPostViewer {
   }
 
   /** One lookup under the deadline: a share resolves first, then the platform's reader chain runs. */
-  private async read(requested: SocialPostTarget, signal?: AbortSignal): Promise<ReadResult> {
+  private async read(
+    requested: SocialPostTarget,
+    signal?: AbortSignal,
+    observe?: (trace: SocialLookupTrace) => void
+  ): Promise<ReadResult> {
     if (this.settings.timeoutMs <= 0) {
       this.logLookup(requested.platform, 'failed', [], 'timeout')
       return { status: 'failed', reason: 'timeout' }
@@ -231,6 +241,7 @@ export class SocialPostViewer {
           budgetMs: this.settings.timeoutMs
         }
       )
+      observe?.({ attempts: outcome.attempts })
       if (outcome.status === 'failed') {
         const reason = controller.signal.aborted ? 'timeout' : reasonOf(outcome)
         this.logLookup(requested.platform, 'failed', outcome.attempts, reason)

@@ -1,4 +1,4 @@
-import { array, capped, imageUrl, nonNegativeInteger, object, photoList, string } from './parsers.js'
+import { array, capped, imageUrl, nativePhotos, nonNegativeInteger, object, photoList, string } from './parsers.js'
 import type { SocialPost } from './types.js'
 import { parseOfficialSocialPostUrl, type SocialPostTarget } from './urls.js'
 
@@ -53,8 +53,8 @@ export function firstVideoUrl(media: JsonObject): string | null {
 /** The post's own photos: the photo items of a carousel, or the post itself when it is one photo. Never a video's cover. */
 export function metaPhotoUrls(media: JsonObject): string[] {
   const items = array(media.carousel_media).map(object)
-  if (items.length > 0) return photoList(items.filter((item) => !firstVideoUrl(item)).map(firstCandidate))
-  return firstVideoUrl(media) ? [] : photoList([firstCandidate(media)])
+  const candidates = items.length > 0 ? items : [media]
+  return photoList(candidates.filter((item) => item.media_type === 1 && !firstVideoUrl(item)).map(firstCandidate))
 }
 
 function hasAudio(...media: JsonObject[]): boolean | null {
@@ -66,8 +66,8 @@ function hasAudio(...media: JsonObject[]): boolean | null {
 export function fillMetaPost(post: SocialPost, media: JsonObject, maxTextChars: number): void {
   const user = object(media.user)
   const items = array(media.carousel_media).map(object)
-  const videoItems = items.filter((item) => firstVideoUrl(item))
-  const videoSource = firstVideoUrl(media) ? media : videoItems[0]
+  const videoItems = items.filter((item) => item.media_type === 2 || firstVideoUrl(item))
+  const videoSource = firstVideoUrl(media) ? media : videoItems.find((item) => firstVideoUrl(item))
   const takenAt = nonNegativeInteger(media.taken_at)
 
   post.authorHandle = string(user.username)
@@ -77,13 +77,14 @@ export function fillMetaPost(post: SocialPost, media: JsonObject, maxTextChars: 
   if (items.length > 0) {
     post.photoCount = items.length - videoItems.length
     post.videoCount = videoItems.length
-  } else if (firstVideoUrl(media)) {
+  } else if (media.media_type === 2 || firstVideoUrl(media)) {
     post.videoCount = 1
-  } else if (firstCandidate(media)) {
+  } else if (media.media_type === 1 && firstCandidate(media)) {
     post.photoCount = 1
   }
   post.imageUrl = items[0] ? firstCandidate(items[0]) : firstCandidate(media)
   post.photoUrls = metaPhotoUrls(media)
+  if (media.code === post.target.id) post.attachments = nativePhotos(post.target.lookupKey, post.photoUrls)
   if (videoSource) {
     post.video = {
       url: firstVideoUrl(videoSource) as string,

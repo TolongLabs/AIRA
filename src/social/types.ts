@@ -17,7 +17,13 @@ export interface SocialThreadPost {
   photoUrls: string[]
 }
 
+/** A native rendition supported by the same response that established the post identity. */
+export type PostAttachment =
+  | { kind: 'image'; url: string; owner: string }
+  | { kind: 'video'; owner: string; video: PlayableVideo; durationSec: number }
+
 export interface SocialPost {
+  attachments?: PostAttachment[]
   platform: SocialPlatform
   id: string
   canonicalUrl: string
@@ -49,6 +55,11 @@ export type SocialPostLookup =
   | { status: 'found'; post: SocialPost; missing?: PostField[] }
   | { status: 'failed'; platform: SocialPlatform; reason: string; canonicalUrl?: string }
   | { status: 'none' }
+
+export interface SocialLookupTrace {
+  reason?: string
+  attempts: readonly { readerId: string; ok: boolean; reason?: string; ms: number }[]
+}
 
 export interface SocialReply {
   author: string

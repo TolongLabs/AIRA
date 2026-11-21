@@ -396,11 +396,11 @@ export async function createApp(options: AppOptions): Promise<App> {
     replyReader.setYtDlpAvailable(extractorAvailable)
     if (!extractorAvailable) logger.warn('social.extractor_off', { platform: 'yt-dlp', reason: 'binary_missing' })
     const hostDataDir = config.gateway.hostDataDir === '' ? paths.root : config.gateway.hostDataDir
-    // A group's post links answered with their media; the plain page port checks every download address.
+    // Social downloads keep user agent and referrer on the asset origin and carry no cookies.
     const autofetch = createAutofetch({
       storage,
       viewer,
-      download: plainPage.download,
+      download: createFetchPagePort({ sameOriginCookieless: true }).download,
       cacheDir: join(paths.cache, 'autofetch'),
       hostCacheDir: join(hostDataDir, 'cache', 'autofetch'),
       logger: logger.child({ module: 'autofetch' }),
@@ -838,6 +838,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     let siteServer: Server | undefined
     if (siteToken !== undefined && siteToken.length >= MIN_SITE_TOKEN_LENGTH) {
       siteServer = createSiteApiServer({
+        extractorAvailable,
         token: siteToken,
         allowedOrigins: config.site.allowedOrigins,
         registry,

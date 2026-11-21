@@ -101,6 +101,12 @@ export function pruneRecords(
       [retentionCutoff],
       beforeDelete
     )
+    db.prepare('DELETE FROM autofetch_delivery_key WHERE expires_at <= ?').run(nowIso)
+    db.prepare('DELETE FROM autofetch_repeat WHERE expires_at <= ?').run(nowIso)
+    const oldJob = 'job_run_id IN (SELECT id FROM job_run WHERE started_at < ?)'
+    db.prepare(`DELETE FROM autofetch_delivery_key WHERE ${oldJob}`).run(retentionCutoff)
+    deleteRows(db, 'social_lookup', oldJob, [retentionCutoff], beforeDelete)
+    deleteRows(db, 'autofetch_delivery', oldJob, [retentionCutoff], beforeDelete)
     counts.job_run += deleteRows(db, 'job_run', 'started_at < ?', [retentionCutoff], beforeDelete)
     counts.inbound_message += deleteRows(
       db,

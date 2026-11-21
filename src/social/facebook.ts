@@ -1,5 +1,15 @@
 import { type JsonObject, walkPageData } from './meta.js'
-import { array, base, capped, imageUrl, nonNegativeInteger, object, photoList, string } from './parsers.js'
+import {
+  array,
+  base,
+  capped,
+  imageUrl,
+  nativePhotos,
+  nonNegativeInteger,
+  object,
+  photoList,
+  string
+} from './parsers.js'
 import type { SocialPost } from './types.js'
 import type { SocialPostTarget } from './urls.js'
 
@@ -26,15 +36,19 @@ function attachmentMedia(story: JsonObject): JsonObject[] {
 /** The linked post from its logged-out page, or null when the page holds no post or the post is a video. */
 export function parseFacebookPage(html: string, target: SocialPostTarget, maxTextChars: number): SocialPost | null {
   const found = stories(html)
-  const story = found.find((item) => item.post_id === target.id) ?? found[0]
+  const photoLink = target.lookupKey.startsWith('facebook:photo:')
+  const story = found.find((item) =>
+    photoLink
+      ? attachmentMedia(item).some((asset) => asset.__typename === 'Photo' && asset.id === target.id)
+      : item.post_id === target.id
+  )
   if (!story) return null
   const media = attachmentMedia(story)
-  // A video post is read through yt-dlp, which finds its playable file.
-  if (media.some((item) => item.__typename === 'Video')) return null
+  const videoCount = media.filter((item) => item.__typename === 'Video').length
 
   const photos = photoList(
     media
-      .filter((item) => item.__typename === 'Photo')
+      .filter((item) => item.__typename === 'Photo' && (!photoLink || item.id === target.id))
       .map(
         (item) =>
           imageUrl(object(item.viewer_image).uri) ??
@@ -42,6 +56,8 @@ export function parseFacebookPage(html: string, target: SocialPostTarget, maxTex
           imageUrl(object(item.image).uri)
       )
   )
+  if (photos.length === 0 && videoCount > 0) return null
+
   const message = object(
     object(object(object(object(object(object(story.comet_sections).content).story).comet_sections).message).story)
       .message
@@ -53,7 +69,9 @@ export function parseFacebookPage(html: string, target: SocialPostTarget, maxTex
   post.createdAt = createdAt === null ? null : new Date(createdAt * 1000).toISOString().slice(0, 10)
   post.text = capped(message.text ?? object(story.message).text, maxTextChars)
   post.photoUrls = photos
+  post.attachments = nativePhotos(target.lookupKey, photos)
   post.photoCount = photos.length
+  post.videoCount = videoCount
   post.imageUrl = photos[0] ?? null
   return post
 }

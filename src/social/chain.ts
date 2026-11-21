@@ -68,6 +68,7 @@ const STUBS: ReadonlySet<string> = new Set(['log in', 'login', 'sign in', 'signi
 /** Text-and-photo posts, video-first posts (TikTok, Bilibili, Facebook video) and YouTube need different fields. */
 function shapeOf(target: SocialPostTarget): Shape {
   if (target.platform === 'youtube') return 'youtube'
+  if (target.platform === 'tiktok' && new URL(target.canonicalUrl).pathname.includes('/photo/')) return 'photo'
   if (target.platform === 'tiktok' || target.platform === 'bilibili') return 'video'
   if (target.platform === 'facebook' && !isFacebookPost(target)) return 'video'
   return 'photo'
@@ -169,6 +170,11 @@ function clean(post: Partial<SocialPost>, platform: SocialPlatform): Partial<Soc
   if (out.text !== undefined && isBlockStub(out.text, platform)) out.text = ''
   if (out.externalTitle !== undefined && isBlockStub(out.externalTitle, platform)) out.externalTitle = ''
   if (out.photoUrls) out.photoUrls = out.photoUrls.filter(isValidMediaUrl)
+  if (out.attachments) {
+    out.attachments = out.attachments.filter((item) =>
+      isValidMediaUrl(item.kind === 'image' ? item.url : item.video.url)
+    )
+  }
   if (out.imageUrl && !isValidMediaUrl(out.imageUrl)) out.imageUrl = null
   if (out.video && !isValidMediaUrl(out.video.url)) out.video = null
   if (out.thread) {

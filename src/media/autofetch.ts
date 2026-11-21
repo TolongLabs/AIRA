@@ -1,12 +1,14 @@
-import { createHash } from 'node:crypto'
+import { createHash, createHmac } from 'node:crypto'
 import { join } from 'node:path'
+import { recordAutofetchHandoff, recordAutofetchLookup } from '../records/autofetch.js'
 import type { Logger } from '../records/logger.js'
 import { endJobRun, startJobRun } from '../records/turn-record.js'
 import { getChatByWaId } from '../settings/chats.js'
 import { resolveSettings } from '../settings/settings.js'
-import type { SocialPost, SocialPostLookup } from '../social/types.js'
-import { findSocialPostTargets, type SocialPostTarget } from '../social/urls.js'
-import type { Storage } from '../storage/database.js'
+import { groupOperations } from '../social/readers.js'
+import type { SocialLookupTrace, SocialPost, SocialPostLookup } from '../social/types.js'
+import { findSocialPostTargets, parseOfficialSocialPostUrl, type SocialPostTarget } from '../social/urls.js'
+import type { Db, Storage } from '../storage/database.js'
 import { writeFileAtomic } from '../storage/files.js'
 import type { PagePort } from '../tools/ports.js'
 
@@ -18,6 +20,7 @@ export const AUTOFETCH_MAX_IMAGE_BYTES = 8_000_000
 export const AUTOFETCH_MAX_VIDEO_BYTES = 16_000_000
 export const AUTOFETCH_REPEAT_MS = 10 * 60_000
 const AUTOFETCH_TIMEOUT_MS = 60_000
+const AUTOFETCH_ASSET_TIMEOUT_MS = 10_000
 
 const EXTENSIONS: Record<string, string> = {
   'image/jpeg': '.jpg',
@@ -28,20 +31,49 @@ const EXTENSIONS: Record<string, string> = {
   'video/mp4': '.mp4'
 }
 
+function matchesSignature(mime: string, data: Buffer): boolean {
+  switch (mime) {
+    case 'image/jpeg':
+    case 'image/jpg':
+      return data.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))
+    case 'image/png':
+      return data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+    case 'image/webp':
+      return data.toString('latin1', 0, 4) === 'RIFF' && data.toString('latin1', 8, 12) === 'WEBP'
+    case 'image/gif':
+      return data.toString('latin1', 0, 6) === 'GIF87a' || data.toString('latin1', 0, 6) === 'GIF89a'
+    case 'video/mp4':
+      return data.length >= 16 && data.toString('latin1', 4, 8) === 'ftyp'
+    default:
+      return false
+  }
+}
+
 export interface AutofetchMedia {
   kind: 'image' | 'video'
   /** The file's path on the host, where the gateway reads it. */
   path: string
 }
 
+export interface AutofetchBatch {
+  media: AutofetchMedia[]
+  deliveryKey?: string
+}
+
 export interface Autofetch {
   /** The media to send for one group message, in order. Empty when nothing applies. Never throws for a post. */
-  fetch(input: { chat: string; text: string }): Promise<AutofetchMedia[]>
+  fetch(input: { chat: string; text: string }): Promise<AutofetchBatch>
 }
 
 export interface AutofetchOptions {
   storage: Storage
-  viewer: { lookup(target: SocialPostTarget, signal?: AbortSignal): Promise<SocialPostLookup> }
+  viewer: {
+    lookup(
+      target: SocialPostTarget,
+      signal?: AbortSignal,
+      observe?: (trace: SocialLookupTrace) => void
+    ): Promise<SocialPostLookup>
+  }
   download: PagePort['download']
   /** `<dataDir>/cache/autofetch`, where the core writes. */
   cacheDir: string
@@ -51,18 +83,47 @@ export interface AutofetchOptions {
   now?: () => Date
 }
 
-/** The post's own media, video first, at most AUTOFETCH_MAX_FILES. Never its one picture. */
 function postMedia(
-  post: SocialPost
+  post: SocialPost,
+  target: SocialPostTarget
 ): { kind: AutofetchMedia['kind']; url: string; headers?: Record<string, string> | null }[] {
-  const video = post.video ? [{ kind: 'video' as const, url: post.video.url, headers: post.video.headers }] : []
-  const photos = post.photoUrls.map((url) => ({ kind: 'image' as const, url }))
-  return [...video, ...photos].slice(0, AUTOFETCH_MAX_FILES)
+  const resolved = parseOfficialSocialPostUrl(post.canonicalUrl)
+  if (
+    !resolved ||
+    resolved.platform !== target.platform ||
+    post.platform !== target.platform ||
+    resolved.id !== post.id
+  ) {
+    return []
+  }
+  const threadsAlias = target.platform === 'threads' && /^\/(?:t|share)\//.test(new URL(target.canonicalUrl).pathname)
+  if (resolved.lookupKey !== target.lookupKey && !target.needsRedirect && !threadsAlias) return []
+  const operations = groupOperations(resolved.platform)
+  const attachments = (post.attachments ?? []).filter(
+    (item) => item.owner === resolved.lookupKey && operations.includes(item.kind === 'image' ? 'photos' : 'video')
+  )
+  const video = attachments.find(
+    (item) => item.kind === 'video' && Number.isFinite(item.durationSec) && item.durationSec > 0
+  )
+  const photos = attachments.flatMap((item) => (item.kind === 'image' ? [{ kind: item.kind, url: item.url }] : []))
+  return [
+    ...(video?.kind === 'video' ? [{ kind: video.kind, url: video.video.url, headers: video.video.headers }] : []),
+    ...photos
+  ].slice(0, AUTOFETCH_MAX_FILES)
 }
 
 export function createAutofetch(options: AutofetchOptions): Autofetch {
   const now = options.now ?? (() => new Date())
-  const sentAt = new Map<string, number>()
+  options.storage.tx((db) => {
+    db.prepare(
+      "UPDATE job_run SET outcome = 'interrupted', ended_at = ? WHERE kind = 'autofetch' AND ended_at IS NULL"
+    ).run(now().toISOString())
+    db.prepare(
+      `DELETE FROM autofetch_delivery_key WHERE job_run_id IN (
+      SELECT job_run_id FROM autofetch_delivery WHERE claimed_at IS NULL
+    )`
+    ).run()
+  })
 
   /** True when the chat may get autofetch: an active group with the switch on, not muted. */
   function allowedChat(waId: string): string | undefined {
@@ -73,47 +134,76 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
     return chat.chatId
   }
 
-  /** Up to AUTOFETCH_MAX_LINKS new links, YouTube aside; each is marked sent at once, so a repeat waits. */
-  function freshTargets(chatId: string, text: string): SocialPostTarget[] {
-    const at = now().getTime()
-    for (const [key, time] of sentAt) if (at - time > AUTOFETCH_REPEAT_MS) sentAt.delete(key)
-    const picked: SocialPostTarget[] = []
-    for (const target of findSocialPostTargets(text, (entry) => options.logger?.info('social.unknown_host', entry))) {
-      const key = `${chatId}:${target.lookupKey}`
-      if (target.platform === 'youtube' || sentAt.has(key)) continue
-      if (picked.some((item) => item.lookupKey === target.lookupKey)) continue
-      sentAt.set(key, at)
-      picked.push(target)
-      if (picked.length === AUTOFETCH_MAX_LINKS) break
-    }
-    return picked
+  type Skip = 'repeat' | 'platform_excluded'
+
+  function reserveRepeat(db: Db, chatId: string, lookupKey: string, at: Date): boolean {
+    const digest = createHmac('sha256', chatId).update(lookupKey).digest('hex')
+    const expiry = new Date(at.getTime() + AUTOFETCH_REPEAT_MS).toISOString()
+    return (
+      db
+        .prepare(
+          `INSERT INTO autofetch_repeat (digest, expires_at) VALUES (?, ?)
+      ON CONFLICT(digest) DO UPDATE SET expires_at = excluded.expires_at WHERE expires_at <= ?`
+        )
+        .run(digest, expiry, at.toISOString()).changes === 1
+    )
+  }
+
+  function freshTargets(chatId: string, text: string) {
+    const targets = findSocialPostTargets(text, (entry) => options.logger?.info('social.unknown_host', entry))
+    if (targets.length === 0) return { picked: [], selected: 0 }
+    return options.storage.tx((db) => {
+      const at = now()
+      db.prepare('DELETE FROM autofetch_repeat WHERE expires_at <= ?').run(at.toISOString())
+      const picked: { target: SocialPostTarget; skip?: Skip }[] = []
+      let selected = 0
+      let skips = 0
+      for (const target of targets) {
+        let skip: Skip | undefined
+        if (groupOperations(target.platform).length === 0) skip = 'platform_excluded'
+        else if (selected >= AUTOFETCH_MAX_LINKS) continue
+        else if (!reserveRepeat(db, chatId, target.lookupKey, at)) skip = 'repeat'
+        if (skip) {
+          if (skips++ < 8) picked.push({ target, skip })
+        } else {
+          picked.push({ target })
+          selected++
+        }
+      }
+      return { picked, selected }
+    })
   }
 
   async function save(
     item: { kind: AutofetchMedia['kind']; url: string; headers?: Record<string, string> | null },
     signal: AbortSignal
-  ): Promise<AutofetchMedia | undefined> {
+  ): Promise<{ downloaded: boolean; media?: AutofetchMedia }> {
+    let downloaded = false
     const maxBytes = item.kind === 'video' ? AUTOFETCH_MAX_VIDEO_BYTES : AUTOFETCH_MAX_IMAGE_BYTES
     try {
-      const file = await options.download(item.url, signal, maxBytes, item.headers)
+      const budget = AbortSignal.any([signal, AbortSignal.timeout(AUTOFETCH_ASSET_TIMEOUT_MS)])
+      const file = await options.download(item.url, budget, maxBytes, item.headers)
+      if (budget.aborted) return { downloaded }
       const mime = file.contentType.split(';')[0]?.trim().toLowerCase() ?? ''
       const ext = EXTENSIONS[mime]
       const kindMatches = item.kind === 'video' ? mime === 'video/mp4' : mime.startsWith('image/')
-      if (!ext || !kindMatches || file.data.length === 0 || file.data.length > maxBytes) return undefined
+      if (!ext || !kindMatches || file.data.length > maxBytes || !matchesSignature(mime, file.data))
+        return { downloaded }
+      downloaded = true
       const name = `${createHash('sha256').update(file.data).digest('hex')}${ext}`
       writeFileAtomic(join(options.cacheDir, name), file.data)
-      return { kind: item.kind, path: join(options.hostCacheDir, name) }
+      return { downloaded, media: { kind: item.kind, path: join(options.hostCacheDir, name) } }
     } catch {
-      return undefined
+      return { downloaded }
     }
   }
 
   return {
     async fetch(input) {
       const chatId = allowedChat(input.chat)
-      if (!chatId) return []
-      const targets = freshTargets(chatId, input.text)
-      if (targets.length === 0) return []
+      if (!chatId) return { media: [] }
+      const { picked, selected } = freshTargets(chatId, input.text)
+      if (picked.length === 0) return { media: [] }
 
       const runId = options.storage.tx((db) => startJobRun(db, { kind: 'autofetch', chatId }, now))
       const controller = new AbortController()
@@ -121,16 +211,65 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
       const media: AutofetchMedia[] = []
       let failed = 0
       let threw = false
+      let deliveryKey: string | undefined
       try {
-        for (const target of targets) {
-          const lookup = await options.viewer.lookup(target, controller.signal).catch(() => undefined)
-          if (lookup?.status !== 'found') continue
-          // One post's files download at once; their order is kept.
-          const saved = await Promise.all(postMedia(lookup.post).map((item) => save(item, controller.signal)))
-          for (const item of saved) {
-            if (item) media.push(item)
-            else failed++
+        for (const [ordinal, { target, skip: initialSkip }] of picked.entries()) {
+          let skip = initialSkip
+          const started = now()
+          let trace: SocialLookupTrace | undefined
+          const lookup =
+            skip || controller.signal.aborted
+              ? undefined
+              : await options.viewer
+                  .lookup(target, controller.signal, (value) => {
+                    trace = value
+                  })
+                  .catch(() => undefined)
+          const items = lookup?.status === 'found' && !controller.signal.aborted ? postMedia(lookup.post, target) : []
+          if (items.length && lookup?.status === 'found') {
+            const canonical = parseOfficialSocialPostUrl(lookup.post.canonicalUrl)
+            if (
+              canonical &&
+              canonical.lookupKey !== target.lookupKey &&
+              !options.storage.tx((db) => reserveRepeat(db, chatId, canonical.lookupKey, now()))
+            ) {
+              skip = 'repeat'
+              items.length = 0
+            }
           }
+          const downloads = await Promise.all(items.map((item) => save(item, controller.signal)))
+          const downloaded = downloads.filter((item) => item.downloaded).length
+          const saved = downloads.flatMap((item) => (item.media ? [item.media] : []))
+          failed += items.length - saved.length
+          media.push(...saved)
+          try {
+            options.storage.tx((db) =>
+              recordAutofetchLookup(db, {
+                runId,
+                ordinal,
+                target,
+                started,
+                ended: now(),
+                lookup,
+                trace,
+                skip,
+                eligible: items.length,
+                downloaded
+              })
+            )
+          } catch {
+            options.logger?.warn('autofetch.record_failed', { phase: 'lookup' })
+          }
+        }
+        if (media.length) {
+          deliveryKey = options.storage.tx((db) =>
+            recordAutofetchHandoff(
+              db,
+              runId,
+              media.map((item) => item.kind),
+              now()
+            )
+          )
         }
       } catch (error) {
         threw = true
@@ -138,17 +277,21 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
       } finally {
         clearTimeout(timer)
         const counts = {
-          links: targets.length,
+          links: selected,
           images: media.filter((item) => item.kind === 'image').length,
           videos: media.filter((item) => item.kind === 'video').length,
           failed
         }
-        options.storage.tx((db) =>
-          endJobRun(db, runId, { outcome: threw ? 'failed' : media.length > 0 ? 'sent' : 'nothing', counts }, now)
-        )
+        try {
+          options.storage.tx((db) =>
+            endJobRun(db, runId, { outcome: threw ? 'failed' : media.length > 0 ? 'ready' : 'nothing', counts }, now)
+          )
+        } catch {
+          options.logger?.warn('autofetch.record_failed', { phase: 'job' })
+        }
         options.logger?.info('autofetch.done', counts)
       }
-      return media
+      return deliveryKey ? { media, deliveryKey } : { media }
     }
   }
 }

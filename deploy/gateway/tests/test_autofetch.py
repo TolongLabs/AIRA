@@ -72,29 +72,29 @@ class AutofetchTest(unittest.TestCase):
         self.assertIsNone(autofetch.wanted(self.message(fromOwner="true")))
         self.assertIsNone(autofetch.wanted("not a dict"))
 
-    def test_asks_the_core_and_keeps_only_well_formed_files(self):
+    def test_asks_the_core_for_ordered_files_and_delivery_key(self):
         seen = {}
+        key = "00000000-0000-4000-8000-000000000001"
 
         def opener(request, timeout):
             seen["url"] = request.full_url
             seen["body"] = json.loads(request.data.decode("utf-8"))
             seen["timeout"] = timeout
             answer = {
+                "deliveryKey": key,
                 "media": [
                     {"kind": "image", "path": "/data/cache/autofetch/a.jpg"},
-                    {"kind": "audio", "path": "/data/x.mp3"},
-                    {"kind": "video", "path": ""},
-                    "junk",
                     {"kind": "video", "path": "/data/cache/autofetch/b.mp4"},
                 ]
             }
             return _Response(json.dumps(answer).encode("utf-8"))
 
-        media = autofetch.ask_core(GROUP, "look https://x.com/someone/status/1", opener=opener)
+        media, received_key = autofetch.ask_core(GROUP, "look https://x.com/someone/status/1", opener=opener)
 
         self.assertEqual(seen["url"], "http://127.0.0.1:9881/v1/aira/autofetch")
         self.assertEqual(seen["body"], {"chat": GROUP, "text": "look https://x.com/someone/status/1"})
         self.assertEqual(seen["timeout"], 90.0)
+        self.assertEqual(received_key, key)
         self.assertEqual(
             media,
             [
@@ -107,8 +107,8 @@ class AutofetchTest(unittest.TestCase):
         def broken(request, timeout):
             raise OSError("connection refused")
 
-        self.assertEqual(autofetch.ask_core(GROUP, "x", opener=broken), [])
-        self.assertEqual(autofetch.ask_core(GROUP, "x", opener=lambda r, timeout: _Response(b"not json")), [])
+        self.assertEqual(autofetch.ask_core(GROUP, "x", opener=broken), ([], None))
+        self.assertEqual(autofetch.ask_core(GROUP, "x", opener=lambda r, timeout: _Response(b"not json")), ([], None))
 
     def test_only_a_loopback_core_url_is_used(self):
         with mock.patch.dict(os.environ, {"AIRA_CORE_URL": "http://127.0.0.1:9999/"}):
@@ -124,7 +124,7 @@ class AutofetchTest(unittest.TestCase):
             {"kind": "image", "path": "/c/b.jpg"},
         ]
         sent = asyncio.run(autofetch.send_all(adapter, GROUP, media))
-        self.assertEqual(sent, 2)
+        self.assertEqual(sent, [False, True, True])
         self.assertEqual(
             adapter.sent,
             [("video", GROUP, "/c/v.mp4"), ("image", GROUP, "/c/a.jpg"), ("image", GROUP, "/c/b.jpg")],
@@ -132,13 +132,20 @@ class AutofetchTest(unittest.TestCase):
 
     def test_offer_runs_the_whole_job_in_the_background(self):
         adapter = _Adapter()
-        answer = [{"kind": "image", "path": "/c/a.jpg"}]
+        answer = ([{"kind": "image", "path": "/c/a.jpg"}], "key")
 
         async def scenario():
-            with mock.patch.object(autofetch, "ask_core", return_value=answer) as ask:
+            with (
+                mock.patch.object(autofetch, "ask_core", return_value=answer) as ask,
+                mock.patch.object(autofetch, "_delivery", return_value=True) as delivery,
+            ):
                 autofetch.offer(adapter, self.message())
                 autofetch.offer(adapter, self.message(chatId=OTHER))
                 await asyncio.gather(*list(autofetch._tasks))
+                self.assertEqual(delivery.call_args_list, [
+                    mock.call("claim", {"key": "key"}),
+                    mock.call("complete", {"key": "key", "outcomes": [True]}),
+                ])
                 return ask.call_args_list
 
         calls = asyncio.run(scenario())

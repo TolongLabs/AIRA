@@ -324,6 +324,7 @@ export function createFetchPagePort(
     lookup?: (host: string) => Promise<string[]>
     fetch?: typeof fetch
     preserveLines?: boolean
+    sameOriginCookieless?: boolean
   } = {}
 ): PagePort {
   const defaultMaxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES
@@ -339,28 +340,33 @@ export function createFetchPagePort(
     headers?: Record<string, string>
   ): Promise<{ res: Response; url: string }> => {
     let currentUrl = initialUrl
-    const jar: CookieJar = new Map()
+    const lockedOrigin = options.sameOriginCookieless ? new URL(initialUrl).origin : undefined
+    const jar: CookieJar | undefined = lockedOrigin ? undefined : new Map()
     for (let hops = 0; hops <= MAX_REDIRECTS; hops++) {
       if (isForbiddenUrl(currentUrl)) {
         throw new Error('forbidden url')
       }
       const parsed = new URL(currentUrl)
+      if (lockedOrigin && (parsed.protocol !== 'https:' || parsed.origin !== lockedOrigin)) {
+        throw new Error('media redirect left its origin')
+      }
       const host = stripHostBrackets(parsed.hostname)
       if (isIP(host) === 0) {
         const addresses = await lookup(host)
         if (addresses.length === 0) throw new Error('host resolution returned no addresses')
         if (addresses.some(isForbiddenIp)) throw new Error('host resolved to a forbidden address')
       }
-      const cookie = cookieHeader(jar, parsed.hostname)
+      const cookie = jar ? cookieHeader(jar, parsed.hostname) : undefined
       const res = await fetchFn(currentUrl, {
         redirect: 'manual',
         signal,
         headers: { ...headers, ...(cookie ? { cookie } : {}) }
       })
-      rememberCookies(jar, parsed.hostname, res.headers.getSetCookie())
+      if (jar) rememberCookies(jar, parsed.hostname, res.headers.getSetCookie())
       if (REDIRECT_STATUSES.has(res.status)) {
         if (hops === MAX_REDIRECTS) throw new Error('too many redirects')
         const location = res.headers.get('location')
+        await res.body?.cancel()
         if (!location) throw new Error('redirect missing location')
         currentUrl = new URL(location, currentUrl).toString()
         continue
