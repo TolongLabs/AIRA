@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { isBlockedPage } from '../../src/tools/blocked-page.js'
 import { createFetchPagePort } from '../../src/tools/ports.js'
 
@@ -67,6 +67,52 @@ describe('isBlockedPage', () => {
 })
 
 describe('createFetchPagePort redirects and cookies', () => {
+  it('never sends a cookie from an HTTPS response to the same host over HTTP', async () => {
+    const seen: (string | undefined)[] = []
+    const fetchFn = async (url: string, init: RequestInit) => {
+      seen.push(cookieSent(init))
+      if (url.startsWith('http://')) return page('Weekly notes', LONG_PAGE)
+      return redirect('http://example.com/notes/', 'tok=abc; Secure')
+    }
+    const port = createFetchPagePort({ fetch: fetchFn as typeof fetch, lookup: publicHost })
+    await port.read('https://example.com/notes/', signal)
+    expect(seen).toEqual([undefined, undefined])
+  })
+
+  it('drops a cookie the site deletes with Max-Age=0', async () => {
+    const seen: (string | undefined)[] = []
+    const fetchFn = async (url: string, init: RequestInit) => {
+      seen.push(cookieSent(init))
+      if (url.endsWith('/a')) return redirect('https://example.com/b', 'session=abc')
+      if (url.endsWith('/b')) return redirect('https://example.com/c', 'session=; Max-Age=0')
+      return page('Weekly notes', LONG_PAGE)
+    }
+    const port = createFetchPagePort({ fetch: fetchFn as typeof fetch, lookup: publicHost })
+    await port.read('https://example.com/a', signal)
+    expect(seen).toEqual([undefined, 'session=abc', undefined])
+  })
+
+  it('returns at most the configured number of characters', async () => {
+    const fetchFn = async () => page('Weekly notes', 'x'.repeat(20_000))
+    const short = createFetchPagePort({ fetch: fetchFn as typeof fetch, lookup: publicHost })
+    const long = createFetchPagePort({ fetch: fetchFn as typeof fetch, lookup: publicHost, maxChars: 12_000 })
+    expect((await short.read('https://example.com/', signal)).text).toHaveLength(8_000)
+    expect((await long.read('https://example.com/', signal)).text).toHaveLength(12_000)
+  })
+
+  it('cancels the body of a refused or unsupported response', async () => {
+    for (const response of [
+      () => new Response('denied', { status: 403 }),
+      () => new Response('%PDF', { headers: { 'content-type': 'application/pdf' } })
+    ]) {
+      const res = response()
+      const cancel = vi.spyOn(res.body!, 'cancel')
+      const port = createFetchPagePort({ fetch: (async () => res) as typeof fetch, lookup: publicHost })
+      await expect(port.read('https://example.com/', signal)).rejects.toThrow()
+      expect(cancel).toHaveBeenCalled()
+    }
+  })
+
   it('resolves a cookie loop: the site sets a cookie and redirects to itself, then serves the page', async () => {
     const seen: { url: string; cookie: string | undefined }[] = []
     const fetchFn = async (url: string, init: RequestInit) => {

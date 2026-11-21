@@ -219,7 +219,7 @@ function decodeEntities(text: string): string {
     .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
 }
 
-function htmlToTitleAndText(html: string, preserveLines: boolean): { title: string; text: string } {
+function htmlToTitleAndText(html: string, preserveLines: boolean, maxChars: number): { title: string; text: string } {
   const titleMatch = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)
   const title = titleMatch
     ? decodeEntities(titleMatch[1] ?? '')
@@ -234,18 +234,18 @@ function htmlToTitleAndText(html: string, preserveLines: boolean): { title: stri
     .replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, ' ')
   const layout = preserveLines ? stripped.replace(/<\/(?:li|tr|p|h[1-6])\s*>|<br\s*\/?>/gi, '\n') : stripped
   const readable = decodeEntities(layout.replace(/<[^>]+>/g, ' '))
-  const text = trimPageText(readable, preserveLines)
+  const text = trimPageText(readable, preserveLines, maxChars)
   return { title, text }
 }
 
-function trimPageText(text: string, preserveLines: boolean): string {
+function trimPageText(text: string, preserveLines: boolean, maxChars: number): string {
   const normalized = preserveLines
     ? text
         .replace(/[^\S\n]+/g, ' ')
         .replace(/ *\n */g, '\n')
         .replace(/\n{3,}/g, '\n\n')
     : text.replace(/\s+/g, ' ')
-  return normalized.trim().slice(0, MAX_READ_CHARS)
+  return normalized.trim().slice(0, maxChars)
 }
 
 async function readBodyLimited(res: Response, maxBytes: number): Promise<Buffer> {
@@ -253,6 +253,7 @@ async function readBodyLimited(res: Response, maxBytes: number): Promise<Buffer>
   if (lenHeader !== null) {
     const parsedLen = Number(lenHeader)
     if (Number.isFinite(parsedLen) && parsedLen > maxBytes) {
+      void res.body?.cancel().catch(() => undefined)
       throw new Error('response exceeds size limit')
     }
   }
@@ -301,29 +302,32 @@ function forwardedMediaHeaders(headers: Record<string, string> | null | undefine
   return kept.length > 0 ? Object.fromEntries(kept) : undefined
 }
 
-/** One name=value pair of a Set-Cookie header. Attributes such as Path or Max-Age are dropped. */
-function cookiePair(setCookie: string): [string, string] | undefined {
-  const pair = setCookie.split(';', 1)[0] ?? ''
+/** One name=value pair of a Set-Cookie header, and whether it deletes the cookie. Other attributes are dropped. */
+function cookiePair(setCookie: string): { name: string; value: string; expired: boolean } | undefined {
+  const [pair = '', ...attributes] = setCookie.split(';')
   const eq = pair.indexOf('=')
   const name = eq === -1 ? '' : pair.slice(0, eq).trim()
-  return name === '' ? undefined : [name, pair.slice(eq + 1).trim()]
+  if (name === '') return undefined
+  const expired = attributes.some((attribute) => /^\s*max-age\s*=\s*(?:0|-\d+)\s*$/i.test(attribute))
+  return { name, value: pair.slice(eq + 1).trim(), expired }
 }
 
-/** Cookies by host, for one lookup only. A host is sent back only the cookies it set. */
+/** Cookies by origin, for one lookup only. An origin is sent back only the cookies it set, so HTTPS cookies never go to HTTP. */
 type CookieJar = Map<string, Map<string, string>>
 
-function rememberCookies(jar: CookieJar, host: string, setCookies: string[]): void {
+function rememberCookies(jar: CookieJar, origin: string, setCookies: string[]): void {
   for (const setCookie of setCookies) {
     const pair = cookiePair(setCookie)
     if (!pair) continue
-    const cookies = jar.get(host) ?? new Map<string, string>()
-    cookies.set(pair[0], pair[1])
-    jar.set(host, cookies)
+    const cookies = jar.get(origin) ?? new Map<string, string>()
+    if (pair.expired) cookies.delete(pair.name)
+    else cookies.set(pair.name, pair.value)
+    jar.set(origin, cookies)
   }
 }
 
-function cookieHeader(jar: CookieJar, host: string): string | undefined {
-  const cookies = jar.get(host)
+function cookieHeader(jar: CookieJar, origin: string): string | undefined {
+  const cookies = jar.get(origin)
   if (!cookies || cookies.size === 0) return undefined
   return [...cookies].map(([name, value]) => `${name}=${value}`).join('; ')
 }
@@ -339,8 +343,11 @@ export function createFetchPagePort(
     fetch?: typeof fetch
     preserveLines?: boolean
     sameOriginCookieless?: boolean
+    /** Longest page text a read returns. */
+    maxChars?: number
   } = {}
 ): PagePort {
+  const maxChars = options.maxChars ?? MAX_READ_CHARS
   const defaultMaxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES
   const lookup =
     options.lookup ?? (async (host: string) => (await dnsLookup(host, { all: true })).map((entry) => entry.address))
@@ -370,13 +377,13 @@ export function createFetchPagePort(
         if (addresses.length === 0) throw new Error('host resolution returned no addresses')
         if (addresses.some(isForbiddenIp)) throw new Error('host resolved to a forbidden address')
       }
-      const cookie = jar ? cookieHeader(jar, parsed.hostname) : undefined
+      const cookie = jar ? cookieHeader(jar, parsed.origin) : undefined
       const res = await fetchFn(currentUrl, {
         redirect: 'manual',
         signal,
         headers: { ...headers, ...(cookie ? { cookie } : {}) }
       })
-      if (jar) rememberCookies(jar, parsed.hostname, res.headers.getSetCookie())
+      if (jar) rememberCookies(jar, parsed.origin, res.headers.getSetCookie())
       if (REDIRECT_STATUSES.has(res.status)) {
         if (hops === MAX_REDIRECTS) throw new Error('too many redirects')
         const location = res.headers.get('location')
@@ -386,6 +393,7 @@ export function createFetchPagePort(
         continue
       }
       if (!res.ok) {
+        void res.body?.cancel().catch(() => undefined)
         throw new Error(`http status ${res.status}`)
       }
       return { res, url: currentUrl }
@@ -517,14 +525,15 @@ export function createFetchPagePort(
       const { res, url: finalUrl } = await fetchChecked(url, signal)
       const contentType = (res.headers.get('content-type') ?? '').split(';')[0]?.trim().toLowerCase() ?? ''
       if (contentType !== 'text/html' && contentType !== 'text/plain') {
+        void res.body?.cancel().catch(() => undefined)
         throw new Error(`unsupported content type: ${contentType || 'unknown'}`)
       }
       const body = await readBodyLimited(res, defaultMaxBytes)
       const raw = body.toString('utf8')
       const page =
         contentType === 'text/plain'
-          ? { title: '', text: trimPageText(raw, preserveLines) }
-          : htmlToTitleAndText(raw, preserveLines)
+          ? { title: '', text: trimPageText(raw, preserveLines, maxChars) }
+          : htmlToTitleAndText(raw, preserveLines, maxChars)
       if (isBlockedPage(page.text, finalUrl, page.title)) throw new Error('blocked page')
       return page
     },
