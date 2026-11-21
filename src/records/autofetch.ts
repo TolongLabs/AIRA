@@ -10,6 +10,8 @@ const ATTEMPT_IDS = new Set([
   'instagram.page',
   'facebook.page',
   'reddit.feed',
+  'reddit.arctic_shift',
+  'tiktok.tikwm',
   'youtube.oembed',
   'yt_dlp'
 ])

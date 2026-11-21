@@ -23,7 +23,20 @@ function positive(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
 }
 
-const TIKTOK_VIDEO_HOSTS = new Set(['v16m.tiktokcdn-us.com', 'www.tikwm.com'])
+const TIKTOK_RANGE_HOST = 'v16m.tiktokcdn-us.com'
+const TIKTOK_VIDEO_HOSTS = new Set([TIKTOK_RANGE_HOST, 'www.tikwm.com'])
+
+export function mirrorVideoRangeBytes(video: PlayableVideo): number | undefined {
+  if (
+    video.mirror === 'tiktok' &&
+    video.bytes !== null &&
+    video.bytes >= 8_000_000 &&
+    Number.isSafeInteger(video.bytes) &&
+    httpsUrl(video.url)?.hostname === TIKTOK_RANGE_HOST
+  ) {
+    return video.bytes
+  }
+}
 const PREVIEW_HOSTS = new Set(['i.redd.it', 'preview.redd.it', 'external-preview.redd.it'])
 
 function allowedPreview(url: URL): boolean {
@@ -88,7 +101,11 @@ function tikTokPost(document: unknown, target: SocialPostTarget, maxChars: numbe
   const raw = string(postData.wmplay)
   const url = httpsUrl(raw.startsWith('//') ? `https:${raw}` : raw.startsWith('/') ? `${TIKWM}${raw}` : raw)
   if (url && TIKTOK_VIDEO_HOSTS.has(url.hostname)) {
-    setVideo(post, { url: url.href, bytes: positive(postData.wm_size), hasAudio: null, headers: null }, allowGroup)
+    setVideo(
+      post,
+      { url: url.href, mirror: 'tiktok', bytes: positive(postData.wm_size), hasAudio: null, headers: null },
+      allowGroup
+    )
   }
   return { ok: true, post }
 }
@@ -131,6 +148,7 @@ function redditPost(document: unknown, target: SocialPostTarget, maxChars: numbe
       post,
       {
         url: rendition.href,
+        mirror: 'reddit',
         bytes: null,
         hasAudio: typeof media.has_audio === 'boolean' ? media.has_audio : null,
         headers: null

@@ -36,12 +36,13 @@ export interface SearchPort {
 
 export interface PagePort {
   read(url: string, signal: AbortSignal): Promise<{ title: string; text: string }>
-  /** `headers` carries a media host's requirements; only the user agent and referrer are sent. */
+  /** Only the user agent and referrer are forwarded. A verified size permits a bounded MP4 range download. */
   download(
     url: string,
     signal: AbortSignal,
     maxBytes: number,
-    headers?: Record<string, string> | null
+    headers?: Record<string, string> | null,
+    rangeBytes?: number
   ): Promise<{ data: Buffer; contentType: string }>
 }
 
@@ -380,6 +381,49 @@ export function createFetchPagePort(
     throw new Error('too many redirects')
   }
 
+  async function downloadRanges(url: string, signal: AbortSignal, bytes: number, headers?: Record<string, string>) {
+    const cancel = new AbortController()
+    const batchSignal = AbortSignal.any([signal, cancel.signal])
+    const rangeCount = 4
+    const parts = await Promise.all(
+      Array.from({ length: rangeCount }, async (_, index) => {
+        const start = Math.floor((index * bytes) / rangeCount)
+        const end = Math.floor(((index + 1) * bytes) / rangeCount) - 1
+        try {
+          const { res, url: finalUrl } = await fetchChecked(url, batchSignal, {
+            ...headers,
+            Range: `bytes=${start}-${end}`,
+            'Accept-Encoding': 'identity'
+          })
+          const mime = res.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase()
+          if (
+            res.status !== 206 ||
+            mime !== 'video/mp4' ||
+            res.headers.get('content-range') !== `bytes ${start}-${end}/${bytes}`
+          ) {
+            void res.body?.cancel().catch(() => undefined)
+            throw new Error('invalid MP4 byte range')
+          }
+          const part = await readBodyLimited(res, end - start + 1)
+          if (part.length !== end - start + 1) throw new Error('incomplete MP4 byte range')
+          return { part, finalUrl, version: res.headers.get('etag') ?? res.headers.get('last-modified') }
+        } catch (error) {
+          cancel.abort()
+          throw error
+        }
+      })
+    )
+    if (parts.some((part) => part.finalUrl !== parts[0]?.finalUrl || part.version !== parts[0]?.version))
+      throw new Error('MP4 byte ranges came from different versions')
+    return {
+      data: Buffer.concat(
+        parts.map(({ part }) => part),
+        bytes
+      ),
+      contentType: 'video/mp4'
+    }
+  }
+
   return {
     async read(url: string, signal: AbortSignal): Promise<{ title: string; text: string }> {
       const preserveLines = options.preserveLines ?? false
@@ -402,9 +446,21 @@ export function createFetchPagePort(
       url: string,
       signal: AbortSignal,
       maxBytes: number,
-      headers?: Record<string, string> | null
+      headers?: Record<string, string> | null,
+      rangeBytes?: number
     ): Promise<{ data: Buffer; contentType: string }> {
-      const { res } = await fetchChecked(url, signal, forwardedMediaHeaders(headers))
+      const forwarded = forwardedMediaHeaders(headers)
+      if (rangeBytes !== undefined) {
+        if (
+          !options.sameOriginCookieless ||
+          !Number.isSafeInteger(rangeBytes) ||
+          rangeBytes < 8 ||
+          rangeBytes > maxBytes
+        )
+          throw new Error('invalid MP4 byte range limit')
+        return downloadRanges(url, signal, rangeBytes, forwarded)
+      }
+      const { res } = await fetchChecked(url, signal, forwarded)
       const contentType = res.headers.get('content-type') ?? 'application/octet-stream'
       const data = await readBodyLimited(res, maxBytes)
       return { data, contentType }
