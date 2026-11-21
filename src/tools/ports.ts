@@ -4,6 +4,7 @@ import type { NoteDocument, ReportFormat } from '../render/types.js'
 import type { ResearchOffers } from '../research/offer.js'
 import type { PostPortResult } from '../social/result.js'
 import type { Db } from '../storage/database.js'
+import { isBlockedPage } from './blocked-page.js'
 
 export interface MemoryPort {
   /** Facts and summaries of this chat. With an asker, a line says whether a fact is about them or another member. */
@@ -197,7 +198,7 @@ export function isForbiddenUrl(url: string): boolean {
 }
 
 const DEFAULT_MAX_BYTES = 2_000_000
-const MAX_REDIRECTS = 3
+const MAX_REDIRECTS = 5
 const MAX_READ_CHARS = 8_000
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
 
@@ -272,20 +273,54 @@ function forwardedMediaHeaders(headers: Record<string, string> | null | undefine
   return kept.length > 0 ? Object.fromEntries(kept) : undefined
 }
 
-/** A PagePort over fetch. It resolves the host first and refuses a forbidden address, also after each redirect. */
+/** One name=value pair of a Set-Cookie header. Attributes such as Path or Max-Age are dropped. */
+function cookiePair(setCookie: string): [string, string] | undefined {
+  const pair = setCookie.split(';', 1)[0] ?? ''
+  const eq = pair.indexOf('=')
+  const name = eq === -1 ? '' : pair.slice(0, eq).trim()
+  return name === '' ? undefined : [name, pair.slice(eq + 1).trim()]
+}
+
+/** Cookies by host, for one lookup only. A host is sent back only the cookies it set. */
+type CookieJar = Map<string, Map<string, string>>
+
+function rememberCookies(jar: CookieJar, host: string, setCookies: string[]): void {
+  for (const setCookie of setCookies) {
+    const pair = cookiePair(setCookie)
+    if (!pair) continue
+    const cookies = jar.get(host) ?? new Map<string, string>()
+    cookies.set(pair[0], pair[1])
+    jar.set(host, cookies)
+  }
+}
+
+function cookieHeader(jar: CookieJar, host: string): string | undefined {
+  const cookies = jar.get(host)
+  if (!cookies || cookies.size === 0) return undefined
+  return [...cookies].map(([name, value]) => `${name}=${value}`).join('; ')
+}
+
+/**
+ * A PagePort over fetch. It resolves the host first and refuses a forbidden address, also after each redirect. A page
+ * whose text is a block page is a failed read (docs/trd/tools.md#page-reads).
+ */
 export function createFetchPagePort(
-  options: { maxBytes?: number; lookup?: (host: string) => Promise<string[]> } = {}
+  options: { maxBytes?: number; lookup?: (host: string) => Promise<string[]>; fetch?: typeof fetch } = {}
 ): PagePort {
   const defaultMaxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES
   const lookup =
     options.lookup ?? (async (host: string) => (await dnsLookup(host, { all: true })).map((entry) => entry.address))
+  // The global is looked up per request, so a fetch stubbed after the port exists still applies.
+  const fetchFn: (url: string, init: RequestInit) => Promise<Response> =
+    options.fetch ?? ((url, init) => fetch(url, init))
 
   const fetchChecked = async (
     initialUrl: string,
     signal: AbortSignal,
     headers?: Record<string, string>
-  ): Promise<Response> => {
+  ): Promise<{ res: Response; url: string }> => {
     let currentUrl = initialUrl
+    const jar: CookieJar = new Map()
     for (let hops = 0; hops <= MAX_REDIRECTS; hops++) {
       if (isForbiddenUrl(currentUrl)) {
         throw new Error('forbidden url')
@@ -297,7 +332,13 @@ export function createFetchPagePort(
         if (addresses.length === 0) throw new Error('host resolution returned no addresses')
         if (addresses.some(isForbiddenIp)) throw new Error('host resolved to a forbidden address')
       }
-      const res = await fetch(currentUrl, { redirect: 'manual', signal, ...(headers ? { headers } : {}) })
+      const cookie = cookieHeader(jar, parsed.hostname)
+      const res = await fetchFn(currentUrl, {
+        redirect: 'manual',
+        signal,
+        headers: { ...headers, ...(cookie ? { cookie } : {}) }
+      })
+      rememberCookies(jar, parsed.hostname, res.headers.getSetCookie())
       if (REDIRECT_STATUSES.has(res.status)) {
         if (hops === MAX_REDIRECTS) throw new Error('too many redirects')
         const location = res.headers.get('location')
@@ -308,24 +349,26 @@ export function createFetchPagePort(
       if (!res.ok) {
         throw new Error(`http status ${res.status}`)
       }
-      return res
+      return { res, url: currentUrl }
     }
     throw new Error('too many redirects')
   }
 
   return {
     async read(url: string, signal: AbortSignal): Promise<{ title: string; text: string }> {
-      const res = await fetchChecked(url, signal)
+      const { res, url: finalUrl } = await fetchChecked(url, signal)
       const contentType = (res.headers.get('content-type') ?? '').split(';')[0]?.trim().toLowerCase() ?? ''
       if (contentType !== 'text/html' && contentType !== 'text/plain') {
         throw new Error(`unsupported content type: ${contentType || 'unknown'}`)
       }
       const body = await readBodyLimited(res, defaultMaxBytes)
       const raw = body.toString('utf8')
-      if (contentType === 'text/plain') {
-        return { title: '', text: raw.replace(/\s+/g, ' ').trim().slice(0, MAX_READ_CHARS) }
-      }
-      return htmlToTitleAndText(raw)
+      const page =
+        contentType === 'text/plain'
+          ? { title: '', text: raw.replace(/\s+/g, ' ').trim().slice(0, MAX_READ_CHARS) }
+          : htmlToTitleAndText(raw)
+      if (isBlockedPage(page.text, finalUrl, page.title)) throw new Error('blocked page')
+      return page
     },
 
     async download(
@@ -334,7 +377,7 @@ export function createFetchPagePort(
       maxBytes: number,
       headers?: Record<string, string> | null
     ): Promise<{ data: Buffer; contentType: string }> {
-      const res = await fetchChecked(url, signal, forwardedMediaHeaders(headers))
+      const { res } = await fetchChecked(url, signal, forwardedMediaHeaders(headers))
       const contentType = res.headers.get('content-type') ?? 'application/octet-stream'
       const data = await readBodyLimited(res, maxBytes)
       return { data, contentType }
