@@ -39,6 +39,9 @@ const PRICE =
   /(?:\p{Sc}|(?<![\p{L}\p{N}])(?:RM|USD|SGD|MYR|EUR|GBP|JPY|AUD|CAD|THB|IDR|Rp|TWD|HKD|VND))\s*\d[\d.,]*|\d[\d.,]*\s*(?:\p{Sc}|円|元|บาท|đ|\b(?:USD|SGD|MYR|EUR|GBP|JPY|AUD|CAD|THB|IDR|TWD|HKD|VND)\b)/giu
 const TIME =
   /(?:\b(?:[01]?\d|2[0-3]):[0-5]\d\b|\b(?:0?[1-9]|1[0-2])(?:[:.][0-5]\d)?\s*(?:[ap]\.?m\.?)(?![\p{L}\p{N}])|\d{1,2}\s*(?:時|点|點))/giu
+/** A size or portion label, such as `Small / Medium / Large`, which names no item of a list. */
+const SIZE_LABEL =
+  /^(?:(?:extra\s+)?(?:small|medium|large|regular|short|tall|grande|venti|mini|kids?|single|double|half|full)(?:®|サイズ|\s+size)?[\s/,|〜～-]*)+$/i
 const GENERIC_LIST_ENTRY =
   /^(?:menu|food|drinks?|beverages?|coffee|tea|snacks?|breakfast|lunch|dinner|desserts?|home|about|contact|sign in|search|shop|more|price|hours|overview|order now)$/i
 
@@ -83,10 +86,8 @@ function namedList(text: string): boolean {
     if (
       name.includes('#') ||
       GENERIC_LIST_ENTRY.test(name) ||
-      /\b(?:short|tall|grande|venti|calories|ounces?|website|hours|location|opens?|closes?|selection|welcome|click)\b/i.test(
-        name
-      ) ||
-      /^(?:short|tall|grande|venti)(?:®|サイズ)?(?:[〜～]|$)/i.test(name)
+      /\b(?:calories|ounces?|website|hours|location|opens?|closes?|selection|welcome|click)\b/i.test(name) ||
+      SIZE_LABEL.test(name)
     )
       continue
     names.add(tokens.join(' '))
@@ -147,12 +148,15 @@ function candidatePassages(text: string): string[] {
   })
 }
 
+/** Words that mark a page as a list of items, so a list field ranks it a little higher. */
+const LIST_WORDS = ['menu', 'list', 'items', 'lineup', 'catalog', 'range', 'options']
+
 function rankResult(result: SearchResult, fields: readonly SearchField[]): number {
   const text = new Set(words(`${result.title} ${result.snippet} ${result.url}`))
   return fields.reduce((score, field) => {
     const match = Math.max(0, ...namesOf(field).map((name) => name.split(' ').filter((word) => text.has(word)).length))
-    const label = field.kind === 'list' ? 'menu' : field.kind
-    return score + match * 3 + (text.has(label) ? 1 : 0)
+    const labels = field.kind === 'list' ? LIST_WORDS : [field.kind]
+    return score + match * 3 + (labels.some((label) => text.has(label)) ? 1 : 0)
   }, 0)
 }
 
