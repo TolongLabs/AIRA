@@ -110,6 +110,30 @@ function tikTokPost(document: unknown, target: SocialPostTarget, maxChars: numbe
   return { ok: true, post }
 }
 
+function originalRedditPhoto(row: Record<string, unknown>): string | undefined {
+  if (
+    row.post_hint !== 'image' ||
+    row.is_self === true ||
+    row.is_gallery === true ||
+    row.crosspost_parent ||
+    array(row.crosspost_parent_list).length > 0
+  ) {
+    return
+  }
+  const original = httpsUrl(row.url)
+  if (
+    original?.hostname !== 'i.redd.it' ||
+    original.search ||
+    original.hash ||
+    !/^\/[a-z0-9]+\.(?:jpe?g|png|webp|gif)$/i.test(original.pathname)
+  ) {
+    return
+  }
+  const override = row.url_overridden_by_dest
+  if (override !== undefined && override !== null && httpsUrl(override)?.href !== original.href) return
+  return original.href
+}
+
 function redditPost(document: unknown, target: SocialPostTarget, maxChars: number, allowGroup: boolean): ReaderResult {
   const entries = array(object(document).data)
   const row = entries.map(object).find((candidate) => candidate.id === target.id)
@@ -130,7 +154,15 @@ function redditPost(document: unknown, target: SocialPostTarget, maxChars: numbe
   const author = capped(row.author, 160)
   if (author !== '[deleted]') post.authorHandle = author
   post.imageUrl = preview(row.thumbnail)
-  if (row.is_video !== true) return { ok: true, post }
+  if (row.is_video !== true) {
+    const photo = originalRedditPhoto(row)
+    if (photo) {
+      post.photoUrls = [photo]
+      post.photoCount = 1
+      if (allowGroup) post.attachments = [{ kind: 'image', owner: target.lookupKey, url: photo }]
+    }
+    return { ok: true, post }
+  }
 
   post.videoCount = 1
   const media = object(object(row.secure_media).reddit_video ?? object(row.media).reddit_video)

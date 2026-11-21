@@ -390,12 +390,16 @@ no media capability.
 
 TikTok and Reddit can opt into a fixed mirror using `social.mirrors.tiktok` or `social.mirrors.reddit`.
 Each defaults to `off`. Use `read` after approving the mirror for post lookup and model processing.
-Use `read_and_group` after also approving group redistribution. The server publishes those same permissions
-in the site capability list. TikWM receives the resolved canonical video URL and Arctic Shift receives the native
+Use `read_and_group` after also approving group redistribution. Set `social.mirrors.redditGroupChatIds`
+to limit Reddit attachments to listed internal chat IDs in the deployment config. An omitted list keeps the
+instance-wide scope. An empty list admits no Reddit group fetches. The site capability list reports whether
+the server offers Reddit group media in any group. TikWM receives the resolved canonical video URL and Arctic Shift receives the native
 Reddit post ID. Neither receives the member’s original share token or chat data.
 
-The reader requires a matching post identity and a supported first-party or mirror media origin. Only native
-video with known duration and verified post ownership qualifies for group attachment. TikWM uses the
+The reader requires a matching post identity and a supported first-party or mirror media origin. For a group
+attachment, video needs known duration and verified post ownership. A single native Reddit photo must come
+from the image post's own original `i.redd.it` URL, with any destination override agreeing. A preview, a
+crosspost, a gallery and an external image link do not qualify under this rule. TikWM uses the
 watermarked rendition and can take up to 5,500 ms for lookup by default, within the shared lookup deadline.
 Arctic Shift is an archive. Its Reddit fallback MP4 may be video-only. The Reddit reader checks the first-party feed
 before the mirror and stops further attempts on an explicit refusal or rate limit. The normal watch and group byte,

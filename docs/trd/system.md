@@ -299,6 +299,9 @@ auto-fetch hook hands it to `brain.autofetch` first, which asks the core.
   A missing completion leaves delivery unknown. Core invalidates unclaimed batches on restart.
 - **Failure is silent.** Nobody asked the bot anything, so a post that cannot be read, a file over its limit or a
   refused download sends nothing to the chat.
+- **Reddit groups.** When configured, `social.mirrors.redditGroupChatIds` limits Reddit attachment lookup to listed
+  internal chat IDs that also pass the active-group and autofetch gates. An out-of-scope share is recorded as
+  `platform_excluded` without contacting Reddit, the mirror or the media host.
 - **Cache.** `cache/autofetch/` is trimmed by the disk guard with the rest of the cache and is not in the off-host
   copy. The gateway reads a file there only to send it.
 - **Request shape.** The body is JSON of at most 64 KiB. A bad body gets 400 and a core that is not ready 503. Every
