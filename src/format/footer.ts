@@ -32,6 +32,7 @@ export const DEFAULT_TOOL_LABELS: Readonly<Record<string, string>> = {
   read_page: 'read a page',
   read_post: 'read a post',
   send_photo: 'sent a photo',
+  identify_image: 'searched by image',
   reminder_set: 'set a reminder',
   reminder_list: 'checked reminders',
   reminder_cancel: 'cancelled a reminder',
