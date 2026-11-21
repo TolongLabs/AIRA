@@ -489,7 +489,7 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
             error !== undefined
               ? error
               : outcome.kind === 'refused'
-                ? new Error(`${name} refused`)
+                ? new Error(`${name} refused${outcome.code ? ` (${outcome.code})` : ''}`)
                 : outcome.kind === 'timeout'
                   ? new Error(`${name} timed out`)
                   : new Error(`${name} failed`)

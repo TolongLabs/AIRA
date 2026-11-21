@@ -721,6 +721,25 @@ describe('registry registration, filtering, records and offered tools', () => {
     expect(kinds).toEqual(['tool_timeout', 'tool_error', 'tool_refused'])
   })
 
+  it('registry records the refusal code in the failure message', async () => {
+    const storage = tmpStorage()
+    const registry = makeRegistry(storage)
+    const context = makeContext(storage)
+    registry.register({
+      name: 'coded_t',
+      description: 'coded',
+      schema: z.strictObject({}),
+      mode: 'implicit',
+      mutates: false,
+      handler: () => ({ ok: false, kind: 'refused', reason: 'address not seen in this turn', code: 'unseen_link' })
+    })
+    await registry.call('coded_t', {}, context, { callId: 'c-1', source: 'model' })
+    const messages = storage.read((db) =>
+      db.prepare('SELECT message FROM failure WHERE turn_id = ?').pluck().all(context.turnId)
+    )
+    expect(messages).toEqual(['coded_t refused (unseen_link)'])
+  })
+
   it('registry records the cause of a failed tool', async () => {
     const storage = tmpStorage()
     const registry = makeRegistry(storage)
