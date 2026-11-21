@@ -347,6 +347,26 @@ describe('reader chain', () => {
       status: 'partial',
       missing: ['video']
     })
+
+    const ytUrlOnlyNoDuration = reader('yt-url-only', 'yt_dlp', async () => ({
+      ok: true,
+      post: {
+        durationSec: null,
+        videoCount: 1,
+        video: { url: 'https://video.example/clip.mp4', bytes: null, headers: null, hasAudio: true }
+      }
+    }))
+    expect(await runChain([ytUrlOnlyNoDuration], ytTarget, chainRun())).toMatchObject({ status: 'failed' })
+
+    const ytDurationOnly = reader('yt-dur-only', 'yt_dlp', async () => ({
+      ok: true,
+      post: { durationSec: 45 }
+    }))
+    expect(await runChain([ytDurationOnly], ytTarget, chainRun())).toMatchObject({
+      status: 'partial',
+      missing: ['text', 'author'],
+      post: { durationSec: 45 }
+    })
   })
 })
 
@@ -479,6 +499,58 @@ describe('model post result', () => {
     expect(modelPostResult(toPostPortResult(videoNoPhotosNoDuration, { missing: ['text'] })).note).toBe(
       'Only the author and video were visible.'
     )
+
+    const ytUrlWithTextAuthor = postFixture({
+      platform: 'youtube',
+      canonicalUrl: 'https://www.youtube.com/watch?v=abc_123',
+      text: '',
+      externalTitle: 'Title Only',
+      authorHandle: '',
+      authorName: 'Channel',
+      durationSec: null,
+      video: { url: 'https://video.example/clip.mp4', bytes: null, headers: null, hasAudio: true }
+    })
+    const ytPartialModel = modelPostResult(toPostPortResult(ytUrlWithTextAuthor, { missing: ['video'] }))
+    expect(ytPartialModel).toMatchObject({
+      status: 'partial',
+      platform: 'YouTube',
+      missing: ['video'],
+      note: 'Only the text and author were visible.'
+    })
+    expect(JSON.stringify(ytPartialModel)).not.toMatch(
+      /http_|exit_|binary_missing|timeout|network_error|no_post_data|missing_post|You could not get|It took too long/
+    )
+
+    expect(
+      partialNote(
+        postFixture({
+          platform: 'youtube',
+          canonicalUrl: 'https://www.youtube.com/watch?v=abc_123',
+          text: '',
+          externalTitle: '',
+          authorHandle: '',
+          authorName: 'Channel',
+          durationSec: null,
+          video: { url: 'https://video.example/clip.mp4', bytes: null, headers: null, hasAudio: true }
+        }),
+        ['text', 'video']
+      )
+    ).toBe('Only the author was visible.')
+    expect(
+      partialNote(
+        postFixture({
+          platform: 'youtube',
+          canonicalUrl: 'https://www.youtube.com/watch?v=abc_123',
+          text: '',
+          externalTitle: '',
+          authorHandle: '',
+          authorName: '',
+          durationSec: 90,
+          video: null
+        }),
+        ['text', 'author']
+      )
+    ).toBe('Only the video was visible.')
   })
 
   it('keeps reader reasons out of a partial read from the reader port', async () => {

@@ -225,12 +225,12 @@ function instagramPageReader(env: ReaderEnv): SocialReader {
         const response = await ctx.fetcher(target.canonicalUrl, { headers: META_PAGE_HEADERS, signal: ctx.signal })
         if (!response.ok) {
           await response.body?.cancel()
-          return { ok: false }
+          return { ok: false, reason: `http_${response.status}` }
         }
         const post = parseInstagramPage(await response.text(), target, ctx.maxTextChars)
-        return post ? { ok: true, post } : { ok: false }
+        return post ? { ok: true, post } : { ok: false, reason: 'no_post_data' }
       } catch {
-        return { ok: false }
+        return { ok: false, reason: ctx.signal.aborted ? 'timeout' : 'network_error' }
       }
     }
   }
@@ -247,15 +247,15 @@ function facebookPageReader(env: ReaderEnv): SocialReader {
     async read(target, ctx): Promise<ReaderResult> {
       try {
         const fetched = await fetchPostPage(ctx.fetcher, target, ctx.signal, isResolvedFacebookPost)
-        if ('reason' in fetched) return { ok: false }
+        if ('reason' in fetched) return { ok: false, reason: fetched.reason }
         if (!fetched.response.ok) {
           await fetched.response.body?.cancel()
-          return { ok: false }
+          return { ok: false, reason: `http_${fetched.response.status}` }
         }
         const post = parseFacebookPage(await fetched.response.text(), fetched.page, ctx.maxTextChars)
-        return post ? { ok: true, post } : { ok: false }
+        return post ? { ok: true, post } : { ok: false, reason: 'no_post_data' }
       } catch {
-        return { ok: false }
+        return { ok: false, reason: ctx.signal.aborted ? 'timeout' : 'network_error' }
       }
     }
   }
@@ -281,11 +281,15 @@ function redditFeedReader(env: ReaderEnv, onRefused: () => void): SocialReader {
           onRefused()
           return { ok: false, reason: `http_${response.status}` }
         }
-        const post = response.ok ? parseRedditFeedPost(await response.text(), target, ctx.maxTextChars) : null
-        return post ? { ok: true, post } : { ok: false }
+        if (!response.ok) {
+          await response.body?.cancel()
+          return { ok: false, reason: `http_${response.status}` }
+        }
+        const post = parseRedditFeedPost(await response.text(), target, ctx.maxTextChars)
+        return post ? { ok: true, post } : { ok: false, reason: 'no_post_data' }
       } catch {
         // A failed feed still leaves yt-dlp to try.
-        return { ok: false }
+        return { ok: false, reason: ctx.signal.aborted ? 'timeout' : 'network_error' }
       }
     }
   }
@@ -321,8 +325,18 @@ function youtubeOEmbedReader(env: ReaderEnv): SocialReader {
       oembedUrl.searchParams.set('url', target.canonicalUrl)
       oembedUrl.searchParams.set('format', 'json')
       const response = await ctx.fetcher(oembedUrl, { signal: ctx.signal })
-      const post = response.ok ? parseYouTubeOEmbed(await response.json(), target, ctx.maxTextChars) : null
-      return post ? { ok: true, post } : { ok: false }
+      if (!response.ok) {
+        await response.body?.cancel()
+        return { ok: false, reason: `http_${response.status}` }
+      }
+      let payload: unknown
+      try {
+        payload = await response.json()
+      } catch {
+        return { ok: false, reason: ctx.signal.aborted ? 'timeout' : 'invalid_json' }
+      }
+      const post = parseYouTubeOEmbed(payload, target, ctx.maxTextChars)
+      return post ? { ok: true, post } : { ok: false, reason: 'no_post_data' }
     }
   }
 }

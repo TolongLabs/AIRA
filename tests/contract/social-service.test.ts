@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
+import { createLogger } from '../../src/records/logger.js'
+import { createRedactor } from '../../src/records/redact.js'
 import { parseSocialPostUrl } from '../../src/social/urls.js'
 import { createSocialPostViewer as buildViewer } from '../../src/social/viewer.js'
 
@@ -433,5 +435,170 @@ describe('SocialPostViewer', () => {
 
     expect(runExtractor).toHaveBeenCalledOnce()
     expect(second).toMatchObject({ status: 'found', post: { target: { startSec: 754 } } })
+  })
+
+  it('logs structured social.lookup attempts without URLs, ids, content, raw bodies or secrets while preserving aggregate reasons', async () => {
+    const captureLogger = (secrets: string[] = []) => {
+      const entries: Record<string, unknown>[] = []
+      const logger = createLogger({
+        level: 'info',
+        module: 'social',
+        redactor: createRedactor({ secrets }),
+        sink: (line) => entries.push(JSON.parse(line) as Record<string, unknown>)
+      })
+      return { entries, logger }
+    }
+
+    // 1. Readable X post
+    {
+      const { entries, logger } = captureLogger()
+      const viewer = createSocialPostViewer(settings, {
+        logger,
+        fetcher: vi.fn(async () =>
+          jsonResponse({ tweet: { text: 'Sensitive post text', author: { screen_name: 'u' } } })
+        )
+      })
+      await viewer.lookup(parseSocialPostUrl('https://x.com/example_user/status/987654321012345?s=20')!)
+      expect(entries).toEqual([
+        expect.objectContaining({
+          event: 'social.lookup',
+          platform: 'x',
+          status: 'readable',
+          attempts: [{ readerId: 'x.fxtwitter', ok: true, ms: expect.any(Number) }]
+        })
+      ])
+      expect(JSON.stringify(entries)).not.toMatch(/987654321012345|Sensitive post text|x\.com/)
+    }
+
+    // 2. Partial YouTube read: yt_dlp fails, oEmbed recovers
+    {
+      let clock = 100
+      const { entries, logger } = captureLogger()
+      const viewer = createSocialPostViewer(settings, {
+        logger,
+        now: () => {
+          clock += 7
+          return clock
+        },
+        runExtractor: vi.fn(async () => ({ reason: 'exit_1' })),
+        fetcher: vi.fn(async () =>
+          jsonResponse({
+            title: 'Secret video title',
+            author_name: 'Channel One',
+            author_url: 'https://www.youtube.com/@c'
+          })
+        )
+      })
+      const result = await viewer.lookup(parseSocialPostUrl('https://youtu.be/jNQXAC9IVRw')!)
+      expect(result).toMatchObject({ status: 'found', missing: ['video'] })
+      expect(entries).toEqual([
+        expect.objectContaining({
+          event: 'social.lookup',
+          platform: 'youtube',
+          status: 'partial',
+          attempts: [
+            { readerId: 'yt_dlp', ok: false, reason: 'exit_1', ms: expect.any(Number) },
+            { readerId: 'youtube.oembed', ok: true, ms: expect.any(Number) }
+          ]
+        })
+      ])
+      expect(JSON.stringify(entries)).not.toMatch(/jNQXAC9IVRw|Secret video title|youtu\.be|youtube\.com/)
+    }
+
+    // 3. Failed fallback chains populate internal reasons on silent readers while keeping aggregate reason and warning
+    for (const scenario of [
+      {
+        url: 'https://www.reddit.com/r/example_sub/comments/1x0b7lo/title/?secret=tok_12345',
+        platform: 'reddit',
+        fetchResp: async () => new Response('raw reddit error body sk-secret-value', { status: 500 }),
+        expectedFirst: { readerId: 'reddit.feed', ok: false, reason: 'http_500' }
+      },
+      {
+        url: 'https://www.reddit.com/comments/1x0b7lo/',
+        platform: 'reddit',
+        fetchResp: async () => new Response('<feed></feed>'),
+        expectedFirst: { readerId: 'reddit.feed', ok: false, reason: 'no_post_data' }
+      },
+      {
+        url: 'https://www.instagram.com/p/DPost00001/?igsh=secret',
+        platform: 'instagram',
+        fetchResp: async () => new Response('raw ig body', { status: 404 }),
+        expectedFirst: { readerId: 'instagram.page', ok: false, reason: 'http_404' }
+      },
+      {
+        url: 'https://www.facebook.com/groups/12345/permalink/2921750018/',
+        platform: 'facebook',
+        fetchResp: async () => new Response('<html>blocked</html>'),
+        expectedFirst: { readerId: 'facebook.page', ok: false, reason: 'no_post_data' }
+      }
+    ]) {
+      const { entries, logger } = captureLogger(['tok_12345', 'sk-secret-value'])
+      const viewer = createSocialPostViewer(settings, {
+        logger,
+        fetcher: vi.fn(scenario.fetchResp),
+        runExtractor: vi.fn(async () => ({ reason: 'exit_1' }))
+      })
+      const lookup = await viewer.lookup(parseSocialPostUrl(scenario.url)!)
+      expect(lookup).toEqual({ status: 'failed', platform: scenario.platform, reason: 'exit_1' })
+      expect(entries).toEqual([
+        expect.objectContaining({
+          event: 'social.lookup',
+          level: 'info',
+          platform: scenario.platform,
+          status: 'failed',
+          reason: 'exit_1',
+          attempts: [
+            { ...scenario.expectedFirst, ms: expect.any(Number) },
+            { readerId: 'yt_dlp', ok: false, reason: 'exit_1', ms: expect.any(Number) }
+          ]
+        }),
+        expect.objectContaining({
+          event: 'social.lookup_failed',
+          level: 'warn',
+          platform: scenario.platform,
+          reason: 'exit_1'
+        })
+      ])
+      const text = JSON.stringify(entries)
+      expect(text).not.toMatch(/1x0b7lo|DPost00001|2921750018|tok_12345|sk-secret-value|raw |https:\/\//)
+    }
+
+    // 4. Non-fixed extractor reason strings are replaced with a fixed code in social.lookup
+    {
+      const { entries, logger } = captureLogger(['supersecret'])
+      const viewer = createSocialPostViewer(settings, {
+        logger,
+        fetcher: vi.fn(async () => jsonResponse({}, 401)),
+        runExtractor: vi.fn(async () => ({ reason: 'https://leak.example/p?token=supersecret raw error body' }))
+      })
+      await viewer.lookup(parseSocialPostUrl('https://youtu.be/jNQXAC9IVRw')!)
+      const lookupEvent = entries.find((entry) => entry['event'] === 'social.lookup')
+      expect(lookupEvent).toMatchObject({
+        platform: 'youtube',
+        status: 'failed',
+        reason: 'unknown',
+        attempts: [
+          { readerId: 'yt_dlp', ok: false, reason: 'unknown', ms: expect.any(Number) },
+          { readerId: 'youtube.oembed', ok: false, reason: 'http_401', ms: expect.any(Number) }
+        ]
+      })
+      expect(JSON.stringify(lookupEvent)).not.toMatch(/leak\.example|supersecret|raw error|jNQXAC9IVRw/)
+    }
+  })
+
+  it('fails a YouTube lookup when yt-dlp returns only a URL without duration or other fields', async () => {
+    const runExtractor = vi.fn(async () => ({
+      metadata: {
+        formats: [{ url: 'https://video.example/stream.mp4', ext: 'mp4', protocol: 'https', vcodec: 'h264' }]
+      }
+    }))
+    const fetcher = vi.fn(async () => jsonResponse({}, 404))
+    const viewer = createSocialPostViewer(settings, { fetcher, runExtractor, warn: vi.fn() })
+
+    expect(await viewer.lookup(parseSocialPostUrl('https://youtu.be/jNQXAC9IVRw')!)).toEqual({
+      status: 'failed',
+      platform: 'youtube',
+      reason: 'no_post_data'
+    })
   })
 })

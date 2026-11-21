@@ -135,8 +135,8 @@ function missingFields(post: Partial<SocialPost>, shape: Shape): PostField[] {
   return missing
 }
 
-function hasAnyField(post: Partial<SocialPost>): boolean {
-  return hasText(post) || hasAuthor(post) || hasMedia(post) || (post.video ?? null) !== null
+function hasAnyField(post: Partial<SocialPost>, shape: Shape): boolean {
+  return hasText(post) || hasAuthor(post) || hasMedia(post) || hasVideo(post, shape)
 }
 
 function blankPost(target: SocialPostTarget): SocialPost {
@@ -270,7 +270,7 @@ export async function runChain(
     }
   }
 
-  if (terminal || !hasAnyField(acc)) return { status: 'failed', attempts }
+  if (terminal || !hasAnyField(acc, shape)) return { status: 'failed', attempts }
   const post = { ...acc, id: acc.id || target.id, canonicalUrl: acc.canonicalUrl || target.canonicalUrl, target }
   if (isComplete(acc, shape)) return { status: 'readable', post, missing: [], attempts }
   return { status: 'partial', post, missing: missingFields(acc, shape), attempts }

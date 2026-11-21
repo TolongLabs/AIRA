@@ -1,5 +1,5 @@
 import { createLogger, type Logger } from '../records/logger.js'
-import { type ChainOutcome, runChain } from './chain.js'
+import { type ChainAttempt, type ChainOutcome, runChain } from './chain.js'
 import { checkedFetcher, type Lookup } from './fetch.js'
 import { BlueskyPdsDirectory, DEFAULT_HTTP_READER_TIMEOUT_MS, DEFAULT_YTDLP_TIMEOUT_MS, readersFor } from './readers.js'
 import { resolveShareLink } from './share.js'
@@ -46,9 +46,48 @@ function found(post: SocialPost, missing: PostField[], target: SocialPostTarget)
   return { status: 'found', post: { ...post, target }, ...(missing.length > 0 ? { missing } : {}) }
 }
 
-/** The first reason an attempt gave. A reader that fails silently leaves the next reader's reason to report. */
+const SILENT_FALLBACK_READERS: ReadonlySet<string> = new Set([
+  'instagram.page',
+  'facebook.page',
+  'reddit.feed',
+  'youtube.oembed'
+])
+
+const FIXED_REASONS: ReadonlySet<string> = new Set([
+  'timeout',
+  'redirect',
+  'network_error',
+  'no_post_data',
+  'missing_post',
+  'binary_missing',
+  'invalid_did',
+  'invalid_json',
+  'empty_output',
+  'output_too_large',
+  'spawn_error',
+  'unsupported',
+  'unsupported_url'
+])
+
+function safeReason(reason: string | undefined): string | undefined {
+  if (reason === undefined) return undefined
+  if (FIXED_REASONS.has(reason) || /^http_\d{3}$/.test(reason) || /^exit_(?:\d+|unknown)$/.test(reason)) {
+    return reason
+  }
+  return 'unknown'
+}
+
+function isReportableFailure(attempt: ChainAttempt): boolean {
+  if (attempt.reason === undefined) return false
+  if (attempt.readerId === 'reddit.feed') {
+    return attempt.reason === 'http_403' || attempt.reason === 'http_429'
+  }
+  return !SILENT_FALLBACK_READERS.has(attempt.readerId)
+}
+
+/** The first reportable reason an attempt gave. Silent fallback readers stay internal so the next reader reports. */
 function reasonOf(outcome: Extract<ChainOutcome, { status: 'failed' }>): string {
-  return outcome.attempts.find((attempt) => attempt.reason !== undefined)?.reason ?? 'no_post_data'
+  return outcome.attempts.find(isReportableFailure)?.reason ?? 'no_post_data'
 }
 
 /** Resolves to `onAbort` as soon as the signal aborts, even when the work ignores it. */
@@ -78,6 +117,7 @@ export class SocialPostViewer {
   private readonly fetcher: typeof fetch
   private readonly runExtractor: typeof runYtDlp
   private readonly now: () => number
+  private readonly logger: Logger
   private readonly warn: (platform: SocialPlatform, reason: string) => void
 
   constructor(
@@ -88,10 +128,12 @@ export class SocialPostViewer {
     this.pds = new BlueskyPdsDirectory(dependencies.lookup)
     this.runExtractor = dependencies.runExtractor ?? runYtDlp
     this.now = dependencies.now ?? Date.now
+    const logger = dependencies.logger ?? createLogger({ level: 'warn', module: 'social' })
+    this.logger = logger
     this.warn =
       dependencies.warn ??
       ((platform, reason) =>
-        (dependencies.logger ?? createLogger({ level: 'warn', module: 'social' })).warn('social.lookup_failed', {
+        logger.warn('social.lookup_failed', {
           platform,
           reason
         }))
@@ -120,9 +162,35 @@ export class SocialPostViewer {
     return failure(platform, reason, canonicalUrl)
   }
 
+  private logLookup(
+    platform: SocialPlatform,
+    status: ChainOutcome['status'],
+    attempts: readonly ChainAttempt[],
+    reason?: string
+  ): void {
+    const safeAggregate = safeReason(reason)
+    this.logger.info('social.lookup', {
+      platform,
+      status,
+      ...(safeAggregate !== undefined ? { reason: safeAggregate } : {}),
+      attempts: attempts.map((attempt) => {
+        const reasonCode = safeReason(attempt.reason)
+        return {
+          readerId: attempt.readerId,
+          ok: attempt.ok,
+          ...(reasonCode !== undefined ? { reason: reasonCode } : {}),
+          ms: Math.max(0, attempt.ms)
+        }
+      })
+    })
+  }
+
   /** One lookup under the deadline: a share resolves first, then the platform's reader chain runs. */
   private async read(requested: SocialPostTarget, signal?: AbortSignal): Promise<ReadResult> {
-    if (this.settings.timeoutMs <= 0) return { status: 'failed', reason: 'timeout' }
+    if (this.settings.timeoutMs <= 0) {
+      this.logLookup(requested.platform, 'failed', [], 'timeout')
+      return { status: 'failed', reason: 'timeout' }
+    }
     const deadlineAt = this.now() + this.settings.timeoutMs
     const controller = new AbortController()
     const abort = () => controller.abort()
@@ -134,8 +202,14 @@ export class SocialPostViewer {
       const resolved = requested.needsRedirect
         ? await untilAborted(this.resolveShare(requested, controller.signal), controller.signal, null)
         : requested
-      if (controller.signal.aborted) return { status: 'failed', reason: 'timeout' }
-      if (!resolved) return { status: 'failed', reason: 'redirect' }
+      if (controller.signal.aborted) {
+        this.logLookup(requested.platform, 'failed', [], 'timeout')
+        return { status: 'failed', reason: 'timeout' }
+      }
+      if (!resolved) {
+        this.logLookup(requested.platform, 'failed', [], 'redirect')
+        return { status: 'failed', reason: 'redirect' }
+      }
       if (resolved.canonicalUrl !== requested.canonicalUrl) resolvedCanonical = resolved.canonicalUrl
 
       const outcome = await runChain(
@@ -158,17 +232,22 @@ export class SocialPostViewer {
         }
       )
       if (outcome.status === 'failed') {
+        const reason = controller.signal.aborted ? 'timeout' : reasonOf(outcome)
+        this.logLookup(requested.platform, 'failed', outcome.attempts, reason)
         return {
           status: 'failed',
-          reason: controller.signal.aborted ? 'timeout' : reasonOf(outcome),
+          reason,
           ...(resolvedCanonical ? { canonicalUrl: resolvedCanonical } : {})
         }
       }
+      this.logLookup(requested.platform, outcome.status, outcome.attempts)
       return { status: 'found', post: outcome.post, missing: outcome.missing }
     } catch {
+      const reason = controller.signal.aborted ? 'timeout' : 'network_error'
+      this.logLookup(requested.platform, 'failed', [], reason)
       return {
         status: 'failed',
-        reason: controller.signal.aborted ? 'timeout' : 'network_error',
+        reason,
         ...(resolvedCanonical ? { canonicalUrl: resolvedCanonical } : {})
       }
     } finally {

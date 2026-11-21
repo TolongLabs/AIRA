@@ -64,7 +64,7 @@ export function toPostPortResult(
   const thread = post.thread ?? []
   const result: PostPortResult = {
     untrusted: true,
-    author: post.authorName || post.authorHandle,
+    author: post.authorName.trim() !== '' ? post.authorName : post.authorHandle,
     text: post.text.trim() !== '' ? post.text : post.externalTitle,
     media: [...(photoUrls.length > 0 ? photoUrls : [post.imageUrl]), post.video?.url].filter((value): value is string =>
       Boolean(value)
