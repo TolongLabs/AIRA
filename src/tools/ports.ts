@@ -2,8 +2,7 @@ import { lookup as dnsLookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 import type { NoteDocument, ReportFormat } from '../render/types.js'
 import type { ResearchOffers } from '../research/offer.js'
-import type { SocialReply } from '../social/types.js'
-import type { SocialPlatform } from '../social/urls.js'
+import type { PostPortResult } from '../social/result.js'
 import type { Db } from '../storage/database.js'
 
 export interface MemoryPort {
@@ -34,29 +33,17 @@ export interface SearchPort {
 
 export interface PagePort {
   read(url: string, signal: AbortSignal): Promise<{ title: string; text: string }>
-  download(url: string, signal: AbortSignal, maxBytes: number): Promise<{ data: Buffer; contentType: string }>
+  /** `headers` carries a media host's requirements; only the user agent and referrer are sent. */
+  download(
+    url: string,
+    signal: AbortSignal,
+    maxBytes: number,
+    headers?: Record<string, string> | null
+  ): Promise<{ data: Buffer; contentType: string }>
 }
 
 export interface PostPort {
-  read(
-    url: string,
-    signal: AbortSignal
-  ): Promise<{
-    untrusted?: true
-    author: string
-    text: string
-    media: string[]
-    platform?: SocialPlatform
-    handle?: string
-    createdAt?: string | null
-    quotedText?: string
-    replyCount?: number | null
-    canonicalUrl?: string
-    /** The earlier posts of the thread the post continues, oldest first. */
-    thread?: { author: string; text: string; media: string[] }[]
-    replies?: SocialReply[]
-    durationSec?: number | null
-  }>
+  read(url: string, signal: AbortSignal): Promise<PostPortResult>
 }
 
 /** The gateway's schedule. The reminder tools are the only code that talks to it. */
@@ -279,6 +266,12 @@ async function readBodyLimited(res: Response, maxBytes: number): Promise<Buffer>
   return Buffer.concat(chunks, total)
 }
 
+/** The only request headers a media download may carry: a host's user agent and referrer, never cookies. */
+function forwardedMediaHeaders(headers: Record<string, string> | null | undefined): Record<string, string> | undefined {
+  const kept = Object.entries(headers ?? {}).filter(([name]) => ['user-agent', 'referer'].includes(name.toLowerCase()))
+  return kept.length > 0 ? Object.fromEntries(kept) : undefined
+}
+
 /** A PagePort over fetch. It resolves the host first and refuses a forbidden address, also after each redirect. */
 export function createFetchPagePort(
   options: { maxBytes?: number; lookup?: (host: string) => Promise<string[]> } = {}
@@ -287,7 +280,11 @@ export function createFetchPagePort(
   const lookup =
     options.lookup ?? (async (host: string) => (await dnsLookup(host, { all: true })).map((entry) => entry.address))
 
-  const fetchChecked = async (initialUrl: string, signal: AbortSignal): Promise<Response> => {
+  const fetchChecked = async (
+    initialUrl: string,
+    signal: AbortSignal,
+    headers?: Record<string, string>
+  ): Promise<Response> => {
     let currentUrl = initialUrl
     for (let hops = 0; hops <= MAX_REDIRECTS; hops++) {
       if (isForbiddenUrl(currentUrl)) {
@@ -300,7 +297,7 @@ export function createFetchPagePort(
         if (addresses.length === 0) throw new Error('host resolution returned no addresses')
         if (addresses.some(isForbiddenIp)) throw new Error('host resolved to a forbidden address')
       }
-      const res = await fetch(currentUrl, { redirect: 'manual', signal })
+      const res = await fetch(currentUrl, { redirect: 'manual', signal, ...(headers ? { headers } : {}) })
       if (REDIRECT_STATUSES.has(res.status)) {
         if (hops === MAX_REDIRECTS) throw new Error('too many redirects')
         const location = res.headers.get('location')
@@ -331,8 +328,13 @@ export function createFetchPagePort(
       return htmlToTitleAndText(raw)
     },
 
-    async download(url: string, signal: AbortSignal, maxBytes: number): Promise<{ data: Buffer; contentType: string }> {
-      const res = await fetchChecked(url, signal)
+    async download(
+      url: string,
+      signal: AbortSignal,
+      maxBytes: number,
+      headers?: Record<string, string> | null
+    ): Promise<{ data: Buffer; contentType: string }> {
+      const res = await fetchChecked(url, signal, forwardedMediaHeaders(headers))
       const contentType = res.headers.get('content-type') ?? 'application/octet-stream'
       const data = await readBodyLimited(res, maxBytes)
       return { data, contentType }

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { SocialPostError } from '../../social/port.js'
+import { modelPostResult } from '../../social/result.js'
 import { parseSocialPostUrl } from '../../social/urls.js'
 import type { Storage } from '../../storage/database.js'
 import { putFile } from '../../storage/files.js'
@@ -12,9 +13,34 @@ import type { ToolContext, ToolDefinition, ToolFailure } from '../types.js'
 export const INTAKE_REFUSAL =
   'This link was already opened and watched; its content is in your context. Answer from that.'
 
+/** Recorded reason for a social link intake could not open. The model reads its outcome sentence. */
+const INTAKE_FAILED_REASON = 'intake could not open this link'
+
 function alreadyReadAtIntake(url: string, context: Pick<TurnContext, 'intakeWatchedUrls'>): boolean {
-  const canonical = parseSocialPostUrl(url)?.canonicalUrl
-  return canonical !== undefined && (context.intakeWatchedUrls?.includes(canonical) ?? false)
+  const trimmed = url.trim()
+  const canonical = parseSocialPostUrl(trimmed)?.canonicalUrl
+  return (
+    context.intakeWatchedUrls?.some(
+      (watched) =>
+        watched === trimmed ||
+        (canonical !== undefined && (watched === canonical || parseSocialPostUrl(watched)?.canonicalUrl === canonical))
+    ) ?? false
+  )
+}
+
+/** A social address intake tried and could not open. read_post and read_page refuse it for the rest of the turn. */
+function failedAtIntake(url: string, context: Pick<TurnContext, 'intakeTriedSocialUrls'>): boolean {
+  const trimmed = url.trim()
+  const canonical = parseSocialPostUrl(trimmed)?.canonicalUrl
+  return (
+    context.intakeTriedSocialUrls?.some(
+      (entry) =>
+        entry.failed &&
+        (entry.url === trimmed ||
+          (canonical !== undefined &&
+            (entry.url === canonical || parseSocialPostUrl(entry.url)?.canonicalUrl === canonical)))
+    ) ?? false
+  )
 }
 
 const MAX_PHOTO_BYTES = 5_000_000
@@ -94,6 +120,9 @@ export function readPageTool(ports: ToolPorts): ToolDefinition<z.infer<typeof re
       if (alreadyReadAtIntake(target.url, context)) {
         return { ok: false, kind: 'refused', reason: INTAKE_REFUSAL, code: 'already_read' }
       }
+      if (failedAtIntake(target.url, context)) {
+        return { ok: false, kind: 'refused', reason: INTAKE_FAILED_REASON, code: 'already_tried' }
+      }
       if (!ports.page) {
         return { ok: false, kind: 'unavailable', reason: 'page reader is not set up' }
       }
@@ -124,13 +153,16 @@ export function readPostTool(ports: ToolPorts): ToolDefinition<z.infer<typeof re
       if (alreadyReadAtIntake(target.url, context)) {
         return { ok: false, kind: 'refused', reason: INTAKE_REFUSAL, code: 'already_read' }
       }
+      if (failedAtIntake(target.url, context)) {
+        return { ok: false, kind: 'refused', reason: INTAKE_FAILED_REASON, code: 'already_tried' }
+      }
       if (!ports.post) {
         return { ok: false, kind: 'unavailable', reason: 'post reader is not set up' }
       }
       try {
         const post = await ports.post.read(target.url, context.signal)
         if (post.canonicalUrl !== undefined) context.sources.add(post.canonicalUrl, 'canonical')
-        return { ok: true, data: { ...post } }
+        return { ok: true, data: modelPostResult(post) }
       } catch (error) {
         if (error instanceof SocialPostError) {
           // read_failed names an error only; timeout and unavailable keep their own kind sentence.

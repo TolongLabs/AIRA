@@ -196,8 +196,8 @@ export function createExaPagePort(options: {
     async read(url, signal) {
       return (await viaExa(url, signal)) ?? options.fallback.read(url, signal)
     },
-    download(url, signal, maxBytes) {
-      return options.fallback.download(url, signal, maxBytes)
+    download(url, signal, maxBytes, headers) {
+      return options.fallback.download(url, signal, maxBytes, headers)
     }
   }
 }

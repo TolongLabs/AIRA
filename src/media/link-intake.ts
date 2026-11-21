@@ -1,6 +1,8 @@
 import type { ModelFailureKind } from '../models/types.js'
 import type { Logger } from '../records/logger.js'
+import { type ModelPostResult, modelPostResult, toPostPortResult } from '../social/result.js'
 import type { SocialPost, SocialPostLookup } from '../social/types.js'
+import { PLATFORM_NAME } from '../social/urls.js'
 import type { PagePort } from '../tools/ports.js'
 import type { ModelCallRecord } from '../turn/types.js'
 import type { MediaUnreadable } from './files.js'
@@ -26,18 +28,6 @@ export const MAX_LINK_PHOTOS = 4
 export type LinkPlatform = SocialPost['platform']
 export type LinkTarget = SocialPost['target']
 
-export const PLATFORM_NAME: Record<LinkPlatform, string> = {
-  x: 'X',
-  bluesky: 'Bluesky',
-  threads: 'Threads',
-  youtube: 'YouTube',
-  tiktok: 'TikTok',
-  reddit: 'Reddit',
-  instagram: 'Instagram',
-  facebook: 'Facebook',
-  bilibili: 'Bilibili'
-}
-
 export interface LinkAllow {
   media: boolean
   social: boolean
@@ -49,8 +39,18 @@ export interface LinkPostViewer {
 
 export interface LinkReading {
   post: SocialPost
+  /** Same model payload as `read_post` for a successful or partial read. */
+  result?: ModelPostResult
   mediaKind?: Extract<MediaKind, 'image' | 'video'>
   reading?: MediaReading
+  /** Set when the post was only partly read: a fixed sentence saying what was visible. */
+  note?: string
+}
+
+/** A social address intake opened. `failed` closes it to read_post and read_page for the rest of the turn. */
+export interface LinkTried {
+  url: string
+  failed: boolean
 }
 
 export interface LinkReadResult {
@@ -58,6 +58,7 @@ export interface LinkReadResult {
   links?: LinkReading[]
   unreadable: { kind: string; reason: MediaUnreadable }[]
   partial?: { kind: string; reason: MediaUnreadable }[]
+  tried?: LinkTried[]
   calls: ModelCallRecord[]
 }
 
@@ -208,6 +209,21 @@ function hasPostMetadata(post: SocialPost): boolean {
   )
 }
 
+function triedUrls(urls: readonly (string | undefined)[], failed: boolean): LinkTried[] {
+  const unique = [...new Set(urls.filter((url): url is string => typeof url === 'string' && url.length > 0))]
+  return unique.map((url) => ({ url, failed }))
+}
+
+/** The addresses a read post answers to: the original, target canonical and post canonical, each once. */
+function triedOf(target: LinkTarget, post: SocialPost): LinkTried[] {
+  return triedUrls([target.originalUrl, target.canonicalUrl, post.canonicalUrl], false)
+}
+
+/** The addresses a failed read tried, including any original spelling and resolved share canonical URL. */
+function triedFailed(target: LinkTarget, resolvedCanonicalUrl?: string): LinkTried[] {
+  return triedUrls([target.originalUrl, target.canonicalUrl, resolvedCanonicalUrl], true)
+}
+
 /** Creates a LinkReader that opens at most one social post or YouTube link per turn. Never throws. */
 export function createLinkReader(options: LinkReaderOptions): LinkReader {
   const now = options.now ?? (() => new Date())
@@ -235,20 +251,27 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
         if (lookup.status === 'none') return { readings: [], unreadable: [], calls: [] }
         if (lookup.status === 'failed') {
           options.logger?.warn('media.link_failed', { platform: lookup.platform, reason: lookup.reason })
+          const tried = triedFailed(target, lookup.canonicalUrl)
           return {
             readings: [],
             unreadable: [{ kind: `${PLATFORM_NAME[lookup.platform]} link`, reason: 'link' }],
+            ...(tried.length > 0 ? { tried } : {}),
             calls: []
           }
         }
 
         const { post } = lookup
+        // Carry the same ModelPostResult on readable and partial reads, keeping the rich post for attachments.
+        const modelResult = modelPostResult(toPostPortResult(post, { missing: lookup.missing }))
+        const note = modelResult.note ? { note: modelResult.note } : {}
+        const tried = triedOf(target, post)
         if (post.platform === 'youtube') {
           if (!options.watcher?.watchUrl) {
             return {
               readings: [],
-              ...(hasPostMetadata(post) ? { links: [{ post }] } : {}),
+              ...(hasPostMetadata(post) ? { links: [{ post, result: modelResult, ...note }] } : {}),
               unreadable: [{ kind: 'YouTube video', reason: 'off' }],
+              tried,
               calls: []
             }
           }
@@ -348,9 +371,10 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
           if (merged) {
             return {
               readings: [],
-              links: [{ post, mediaKind: 'video', reading: merged }],
+              links: [{ post, result: modelResult, mediaKind: 'video', reading: merged, ...note }],
               unreadable: [],
               ...(partial.length > 0 ? { partial } : {}),
+              tried,
               calls
             }
           }
@@ -359,8 +383,9 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
           options.logger?.warn('media.link_watch_failed', { platform: post.platform, reason: wholeReason })
           return {
             readings: [],
-            ...(hasPostMetadata(post) ? { links: [{ post }] } : {}),
+            ...(hasPostMetadata(post) ? { links: [{ post, result: modelResult, ...note }] } : {}),
             unreadable: [{ kind: 'YouTube video', reason: wholeReason }],
+            tried,
             calls
           }
         }
@@ -371,12 +396,13 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
         async function watchRemoteMedia(
           url: string,
           expectedKind: 'video' | 'image',
-          durationSeconds?: number
+          durationSeconds?: number,
+          headers?: Record<string, string> | null
         ): Promise<{ kind: 'video' | 'image'; reading: MediaReading } | undefined> {
           if (!options.download || !options.watcher) return undefined
           let downloaded: { data: Buffer; contentType: string }
           try {
-            downloaded = await options.download(url, controller.signal, options.limits.maxBytes)
+            downloaded = await options.download(url, controller.signal, options.limits.maxBytes, headers)
           } catch {
             return undefined
           }
@@ -414,14 +440,14 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
             ? post.video
             : null
         const photos = canWatch ? linkPhotos(post) : []
-        const tried = photos.slice(0, MAX_LINK_PHOTOS)
+        const attempted = photos.slice(0, MAX_LINK_PHOTOS)
         const [videoWatch, ...photoWatches] = await Promise.all([
-          video ? watchRemoteMedia(video.url, 'video', post.durationSec ?? undefined) : undefined,
-          ...tried.map((photo) => watchRemoteMedia(photo.url, 'image'))
+          video ? watchRemoteMedia(video.url, 'video', post.durationSec ?? undefined, video.headers) : undefined,
+          ...attempted.map((photo) => watchRemoteMedia(photo.url, 'image'))
         ])
         const parts = [
           ...(videoWatch ? [{ label: 'video', reading: videoWatch.reading }] : []),
-          ...tried.flatMap((photo, index) => {
+          ...attempted.flatMap((photo, index) => {
             const result = photoWatches[index]
             return result ? [{ label: photo.label, reading: result.reading }] : []
           })
@@ -434,17 +460,25 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
             reading: mergePostReadings(
               parts,
               photoWatches.filter((result) => !result).length,
-              photos.length - tried.length
+              photos.length - attempted.length
             )
           }
-        } else if (canWatch && post.imageUrl && !tried.some((photo) => photo.url === post.imageUrl)) {
+        } else if (canWatch && post.imageUrl && !attempted.some((photo) => photo.url === post.imageUrl)) {
           watched = await watchRemoteMedia(post.imageUrl, 'image')
         }
 
         return {
           readings: [],
-          links: [{ post, ...(watched ? { mediaKind: watched.kind, reading: watched.reading } : {}) }],
+          links: [
+            {
+              post,
+              result: modelResult,
+              ...(watched ? { mediaKind: watched.kind, reading: watched.reading } : {}),
+              ...note
+            }
+          ],
           unreadable: [],
+          tried,
           calls
         }
       } finally {

@@ -42,9 +42,12 @@ export interface SocialPost {
   video: PlayableVideo | null
 }
 
+/** A field a post can lack. Its readers and the chain's completeness rules use the same names. */
+export type PostField = 'text' | 'author' | 'media' | 'video'
+
 export type SocialPostLookup =
-  | { status: 'found'; post: SocialPost }
-  | { status: 'failed'; platform: SocialPlatform; reason: string }
+  | { status: 'found'; post: SocialPost; missing?: PostField[] }
+  | { status: 'failed'; platform: SocialPlatform; reason: string; canonicalUrl?: string }
   | { status: 'none' }
 
 export interface SocialReply {

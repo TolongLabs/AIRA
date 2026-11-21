@@ -7,6 +7,7 @@ import type { FailureCode, ToolFailure, ToolFailureKind } from './types.js'
 export const TOOL_FAILURE_KINDS: readonly ToolFailureKind[] = ['timeout', 'refused', 'invalid', 'unavailable', 'error']
 export const FAILURE_CODES: readonly FailureCode[] = [
   'already_read',
+  'already_tried',
   'after_read',
   'read_failed',
   'schema',
@@ -25,6 +26,7 @@ const BY_KIND: Record<ToolFailureKind, string> = {
 
 const BY_CODE: Record<Exclude<FailureCode, 'schema'>, string> = {
   already_read: 'You have already looked at that link in this message.',
+  already_tried: 'You already tried that link and it would not open.',
   read_failed: 'You could not get that post or page to open. It may be private, removed or blocked.',
   tool_limit: 'You cannot do any more of that for this message.',
   not_now: 'You cannot do that right now.',

@@ -1,11 +1,12 @@
 import type { Attachment } from '../gateway/request.js'
 import type { SocialPost } from '../social/types.js'
+import { PLATFORM_NAME } from '../social/urls.js'
 import type { ModelCallRecord } from '../turn/types.js'
 import { type GatewayDir, type LoadedFile, loadGatewayFile, type MediaUnreadable } from './files.js'
 import type { MediaReading, MediaWatcher } from './gemini-watcher.js'
 import { mediaBlock, readMedia, sanitizeMediaText } from './intake.js'
 import type { MediaKind, MediaLimits } from './limits.js'
-import { type LinkAllow, type LinkReader, type LinkReading, PLATFORM_NAME } from './link-intake.js'
+import { type LinkAllow, type LinkReader, type LinkReading, type LinkTried } from './link-intake.js'
 
 // The media of one turn: which files are read, the reading of each, and the text for prompt block 4
 // (docs/trd/models.md#media-watching).
@@ -22,6 +23,8 @@ export interface TurnMediaResult {
   links?: LinkReading[]
   unreadable: { kind: string; reason: MediaUnreadable; error?: unknown }[]
   partial?: { kind: string; reason: MediaUnreadable }[]
+  /** Social addresses intake opened this turn, with whether reading them failed. */
+  tried?: LinkTried[]
   /** One row for each request to the media model, for the model_call table. */
   calls: ModelCallRecord[]
   /** The files that are valid pictures, in the order given. Set only when a picture was checked (identify_image). */
@@ -262,7 +265,9 @@ function formatLinkLines(link: LinkReading, share: number): string[] {
   const threadBudget = link.post.thread.length > 0 ? Math.floor(share * (link.reading ? 0.2 : 0.5)) : 0
   const threadLines = formatThreadLines(link.post, threadBudget)
   const rest = share - threadLines.join('\n').length
-  if (!link.reading) return [...threadLines, formatPostLine(link, rest)]
+  const noteText = link.note ?? link.result?.note
+  const note = noteText ? [`  (${noteText})`] : []
+  if (!link.reading) return [...threadLines, formatPostLine(link, rest), ...note]
   const postBudget = Math.max(120, Math.floor(rest * 0.4))
   const postLine = formatPostLine(link, postBudget)
   const readingBudget = Math.max(80, rest - postLine.length)
@@ -270,7 +275,7 @@ function formatLinkLines(link: LinkReading, share: number): string[] {
   const safeTranscript = link.reading.transcript ? sanitizeMediaText(link.reading.transcript) : undefined
   const description = clip(safeDesc, safeTranscript ? Math.floor(readingBudget * 0.4) : readingBudget)
   const transcript = safeTranscript ? clip(safeTranscript, Math.max(0, readingBudget - description.length)) : undefined
-  const lines = [...threadLines, postLine, `  ${link.mediaKind ?? 'video'}: ${description}`]
+  const lines = [...threadLines, postLine, ...note, `  ${link.mediaKind ?? 'video'}: ${description}`]
   if (transcript && transcript.length > 0) lines.push(`  transcript: ${transcript}`)
   return lines
 }

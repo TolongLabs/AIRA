@@ -52,8 +52,10 @@ export interface AutofetchOptions {
 }
 
 /** The post's own media, video first, at most AUTOFETCH_MAX_FILES. Never its one picture. */
-function postMedia(post: SocialPost): { kind: AutofetchMedia['kind']; url: string }[] {
-  const video = post.video ? [{ kind: 'video' as const, url: post.video.url }] : []
+function postMedia(
+  post: SocialPost
+): { kind: AutofetchMedia['kind']; url: string; headers?: Record<string, string> | null }[] {
+  const video = post.video ? [{ kind: 'video' as const, url: post.video.url, headers: post.video.headers }] : []
   const photos = post.photoUrls.map((url) => ({ kind: 'image' as const, url }))
   return [...video, ...photos].slice(0, AUTOFETCH_MAX_FILES)
 }
@@ -88,12 +90,12 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
   }
 
   async function save(
-    item: { kind: AutofetchMedia['kind']; url: string },
+    item: { kind: AutofetchMedia['kind']; url: string; headers?: Record<string, string> | null },
     signal: AbortSignal
   ): Promise<AutofetchMedia | undefined> {
     const maxBytes = item.kind === 'video' ? AUTOFETCH_MAX_VIDEO_BYTES : AUTOFETCH_MAX_IMAGE_BYTES
     try {
-      const file = await options.download(item.url, signal, maxBytes)
+      const file = await options.download(item.url, signal, maxBytes, item.headers)
       const mime = file.contentType.split(';')[0]?.trim().toLowerCase() ?? ''
       const ext = EXTENSIONS[mime]
       const kindMatches = item.kind === 'video' ? mime === 'video/mp4' : mime.startsWith('image/')
