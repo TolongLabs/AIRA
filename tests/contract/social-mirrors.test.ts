@@ -40,9 +40,12 @@ function stack(
     redditPhoto?: 'native' | 'preview' | 'crosspost'
     redditFeed?: 'photo' | 'video'
     archiveRefusal?: number
-    ranges?: 'valid' | 'invalid' | 'stall' | 'drop'
+    ranges?: 'valid' | 'invalid' | 'stall' | 'drop' | 'refused'
+    etag?: string | null
   } = {}
 ) {
+  const runExtractor = vi.fn(async () => ({ reason: 'fixture' }))
+  const interrupted = new Set<number>()
   const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(String(input))
     if (url.href === tikTokLink || url.href === redditLink) {
@@ -116,9 +119,16 @@ function stack(
       if (!range) return new Response(null, { status: 403 })
       const start = Number(range[1])
       const end = Number(range[2])
-      const headers = { 'content-type': 'video/mp4', 'content-range': `bytes ${start}-${end}/${largeMp4.length}` }
+      const etag = options.etag === undefined ? '"v1"' : options.etag
+      const headers: Record<string, string> = {
+        'content-type': 'video/mp4',
+        'content-range': `bytes ${start}-${end}/${largeMp4.length}`,
+        ...(etag ? { etag } : {})
+      }
       const second = Math.floor(largeMp4.length / 4)
-      if ((options.ranges === 'stall' || options.ranges === 'drop') && start === second) {
+      if (options.ranges === 'refused' && start === second) return new Response(null, { status: 403 })
+      if ((options.ranges === 'stall' || options.ranges === 'drop') && start === second && !interrupted.has(start)) {
+        interrupted.add(start)
         // The first request for the second part sends half of it, then stalls or drops.
         const half = largeMp4.subarray(start, start + Math.floor((end - start) / 2))
         const drop = options.ranges === 'drop'
@@ -132,15 +142,12 @@ function stack(
               return new Promise(() => {})
             }
           }),
-          { status: 206, headers: { ...headers, 'content-range': `bytes ${start}-${end}/${largeMp4.length}` } }
+          { status: 206, headers }
         )
       }
       return new Response(new Uint8Array(largeMp4.subarray(start, end + 1)), {
         status: 206,
-        headers: {
-          'content-type': 'video/mp4',
-          'content-range': options.ranges === 'invalid' ? 'bytes 0-1/2' : `bytes ${start}-${end}/${largeMp4.length}`
-        }
+        headers: { ...headers, ...(options.ranges === 'invalid' ? { 'content-range': 'bytes 0-1/2' } : {}) }
       })
     }
     if (url.href === tikTokAsset || url.href === redditAsset) {
@@ -150,12 +157,13 @@ function stack(
   })
   const viewer = new SocialPostViewer(
     { mirrors, timeoutMs: 6000, cacheTtlMs: 1000, maxCacheEntries: 4, maxTextChars: 1500, ytDlpPath: 'yt-dlp' },
-    { fetcher, lookup, logger }
+    { fetcher, lookup, logger, runExtractor }
   )
   viewer.setYtDlpAvailable(false)
   return {
     viewer,
     fetcher,
+    runExtractor,
     download: createFetchPagePort({ fetch: fetcher, lookup, sameOriginCookieless: true }).download
   }
 }
@@ -280,6 +288,53 @@ describe('approved mirror readers', () => {
     15_000
   )
 
+  async function watchTikTok(options: Parameters<typeof stack>[1]) {
+    const { viewer, download, fetcher } = stack({ tiktok: 'read' }, options)
+    const watch = vi.fn<MediaWatcher['watch']>(async (file) => {
+      expect(file.data.equals(largeMp4)).toBe(true)
+      return {
+        reading: { description: 'Watched complete clip' },
+        usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 },
+        costUsd: 0,
+        model: 'fixture'
+      }
+    })
+    const reader = createLinkReader({
+      viewer,
+      download,
+      findTarget: parseOfficialSocialPostUrl,
+      watcher: { watch },
+      model: 'fixture',
+      limits: { ...DEFAULT_MEDIA_LIMITS, maxVideoSeconds: 180 }
+    })
+    const result = await reader.read([tikTokLink], 12000, { media: true, social: true })
+    const requests = fetcher.mock.calls
+      .filter(([url]) => url === tikTokAsset)
+      .map(([, init]) => new Headers(init?.headers))
+    return { result, requests, watch }
+  }
+
+  it('stops the batch without a retry when a byte range is refused', async () => {
+    const { requests, watch } = await watchTikTok({ ranges: 'refused' })
+    expect(requests).toHaveLength(4)
+    expect(watch).not.toHaveBeenCalled()
+  })
+
+  it('resumes with If-Range under a strong validator', async () => {
+    const { result, requests } = await watchTikTok({ ranges: 'drop' })
+    expect(result.links?.[0]?.reading?.description).toBe('Watched complete clip')
+    expect(requests.filter((headers) => headers.get('if-range') === '"v1"')).toHaveLength(1)
+  })
+
+  it.each([null, 'W/"v1"'])('restarts a dropped part from its start without a strong validator (%s)', async (etag) => {
+    const { result, requests } = await watchTikTok({ ranges: 'drop', etag })
+    expect(result.links?.[0]?.reading?.description).toBe('Watched complete clip')
+    const second = Math.floor(largeMp4.length / 4)
+    const secondEnd = Math.floor(largeMp4.length / 2) - 1
+    expect(requests.filter((headers) => headers.get('range') === `bytes=${second}-${secondEnd}`)).toHaveLength(2)
+    expect(requests.some((headers) => headers.has('if-range'))).toBe(false)
+  })
+
   it.each([tikTokLink, redditLink])('discards mismatched IDs and non-native assets for %s', async (link) => {
     const target = parseOfficialSocialPostUrl(link)!
     const mode = { tiktok: 'read_and_group', reddit: 'read_and_group' } as const
@@ -333,15 +388,15 @@ describe('approved mirror readers', () => {
     ).toBe(false)
   })
 
-  it('does not treat an archive rate limit as a Reddit refusal', async () => {
-    const { viewer } = stack({ reddit: 'read_and_group' }, { redditFeed: 'video', archiveRefusal: 429 })
+  it.each([403, 429])('does not treat an archive HTTP %s as a Reddit refusal', async (archiveRefusal) => {
+    const { viewer, runExtractor } = stack({ reddit: 'read_and_group' }, { redditFeed: 'video', archiveRefusal })
     viewer.setYtDlpAvailable(true)
     const readers: string[] = []
-    const result = await viewer.lookup(parseOfficialSocialPostUrl(nativeReddit)!, undefined, (trace) => {
+    await viewer.lookup(parseOfficialSocialPostUrl(nativeReddit)!, undefined, (trace) => {
       readers.push(...trace.attempts.map((attempt) => attempt.readerId))
     })
-    expect(result.status).toBe('found')
     expect(readers).toEqual(['reddit.feed', 'reddit.arctic_shift', 'yt_dlp'])
+    expect(runExtractor).toHaveBeenCalledTimes(1)
   })
 
   it('hands verified clips to the gateway and records the gateway’s confirmation separately', async () => {
