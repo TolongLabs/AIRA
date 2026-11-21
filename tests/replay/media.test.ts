@@ -363,7 +363,9 @@ describe('reverse-image hints for a turn picture', () => {
       const photo = withMedia('m-1', 'what lamp is this?', [
         { kind: 'image', path: `${HOST_CACHE}/images/img_a1b2.jpg` }
       ])
-      await gateway.send(photo)
+      const reply = await gateway.send(photo)
+
+      expect(reply.content).toContain('_🛠️ looked at an image · searched by image_')
 
       expect(model.requests[0]?.tools.map((tool) => tool.name)).toContain('identify_image')
       expect(serpCalls).toEqual(['POST /image', 'GET /search'])
