@@ -499,6 +499,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         }),
         // The plain reader refuses private addresses, also after a redirect; the Exa reader falls back to it.
         page,
+        searchPage: options.ports?.page ?? createFetchPagePort({ preserveLines: true }),
         schedule,
         ...(search ? { search } : {}),
         ...options.ports,
@@ -506,6 +507,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       },
       {
         feedback: config.feedback,
+        searchDepth: config.search.depth,
         ...(serpKey
           ? {
               identify: {

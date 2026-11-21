@@ -1,0 +1,93 @@
+{
+  "id": "cloud-forest-hours",
+  "query": "site:gardensbythebay.com.sg Cloud Forest daily opening hours",
+  "localQuery": "site:gardensbythebay.com.sg Cloud Forest waktu buka setiap hari Singapore",
+  "fields": [
+    {
+      "kind": "hours",
+      "subject": "Cloud Forest"
+    }
+  ],
+  "host": "gardensbythebay.com.sg",
+  "recordedAt": "2026-11-21",
+  "payloads": {
+    "site:gardensbythebay.com.sg Cloud Forest daily opening hours": {
+      "results": [
+        {
+          "title": "Cloud Forest",
+          "url": "https://www.gardensbythebay.com.sg/en/things-to-do/attractions/cloud-forest.html",
+          "highlights": [
+            "# Cloud Forest\n\n...\n\n###### Important Notice\n\n1. Cloud Forest will be closed on maintenance days. The next closure will be on 19 Jan 2027.\n\n...\n\n###### Opening Hours\n\nDaily: 9.00am – 9.00pm\n\n(Last admission at 8.00pm)\n\nRecommended Visit Duration: 1 hour\n\n...\n\n###### Misting Hours\n\n10.00am, 12.00pm, 2.00pm, 4.00pm, 6.00pm, 8.00pm daily"
+          ]
+        },
+        {
+          "title": "Opening Hours & Closures",
+          "url": "https://www.gardensbythebay.com.sg/en/plan-your-visit/opening-hours.html",
+          "highlights": [
+            "# Opening Hours & Closures\n\n- ###### Opening Hours\n- ###### Closure Dates\n\n...\n\n### Attractions\n\n \n\n###### Cloud Forest\n\nOpening Hours Daily: 9.00am – 9.00pm (Last Admission: 8.00pm)\n\nClosed once a month for maintenance. Click here for closure dates.\n\n...\n\n## Cloud Forest \n\nPlease note that Cloud Forest will be closed for maintenance on the following dates.\n\nThe attraction will be closed for the whole day, unless otherwise indicated.\n\n2026\n\n- 26 Oct 2026\n- 17 Nov 2026\n\n- 24 Aug 2027\n- 28 Sep 2027\n- 26 Oct 2027\n- 16 Nov 2027"
+          ]
+        },
+        {
+          "title": "FAQ - Cloud Forest featuring Jurassic World: The Experience",
+          "url": "https://www.gardensbythebay.com.sg/en/frequently-asked-questions/faq-cloud-forest-featuring-jurassic-world-the-experience.html",
+          "highlights": [
+            "place? \n\nCloud Forest.\n\n## What are the opening hours? \n\n9.00am to 9.00pm daily. Last entry is at 8pm. Cloud Forest will be closed for maintenance once a month. Please view the closure dates on Gardens by the Bay’s website: www.gardensbythebay.com.sg."
+          ]
+        },
+        {
+          "title": "Cloud Forest featuring Jurassic World: The Experience",
+          "url": "https://www.gardensbythebay.com.sg/en/things-to-do/calendar-of-events/cloud-forest-featuring-jurassic-world-the-experience.html",
+          "highlights": [
+            "## Jurassic World: The Experience\n\nJurassic World: The Experience debuts within the\n...\n###### Date & Time\n\nOngoing\n\n9.00am - 9.00pm\n\n(Last admission at 8.00pm)\n\n###### Admission\n\nAdmission charge to Cloud Forest applies\n\n###### Location\n\nCloud Forest"
+          ]
+        },
+        {
+          "title": "Attractions",
+          "url": "https://www.gardensbythebay.com.sg/en/things-to-do/attractions.html",
+          "highlights": [
+            "### Cloud Forest\n\nGo on a fascinating journey of discovery. Cloud Forest is a cooled conservatory, featuring a lush mountain clad with the most exotic plant species from the world over.\n\nDaily: 9.00am - 9.00pm"
+          ]
+        }
+      ]
+    },
+    "site:gardensbythebay.com.sg Cloud Forest waktu buka setiap hari Singapore": {
+      "results": [
+        {
+          "title": "Cloud Forest",
+          "url": "https://www.gardensbythebay.com.sg/en/things-to-do/attractions/cloud-forest.html",
+          "highlights": [
+            "# Cloud Forest\n\n...\n\n###### Important Notice\n\n1. Cloud Forest will be closed on maintenance days. The next closure will be on 19 Jan 2027.\n\n...\n\n###### Opening Hours\n\nDaily: 9.00am – 9.00pm\n\n(Last admission at 8.00pm)\n\nRecommended Visit Duration: 1 hour\n\n...\n\n###### Misting Hours\n\n10.00am, 12.00pm, 2.00pm, 4.00pm, 6.00pm, 8.00pm daily"
+          ]
+        },
+        {
+          "title": "Opening Hours & Closures",
+          "url": "https://www.gardensbythebay.com.sg/en/plan-your-visit/opening-hours.html",
+          "highlights": [
+            "# Opening Hours & Closures\n\n- ###### Opening Hours\n- ###### Closure Dates\n\n...\n\n### Attractions\n\n \n\n###### Cloud Forest\n\nOpening Hours Daily: 9.00am – 9.00pm (Last Admission: 8.00pm)\n\nClosed once a month for maintenance. Click here for closure dates.\n\n...\n\n## Cloud Forest \n\nPlease note that Cloud Forest will be closed for maintenance on the following dates.\n\nThe attraction will be closed for the whole day, unless otherwise indicated.\n\n2026\n\n- 26 Oct 2026\n- 17 Nov 2026\n\n- 24 Aug 2027\n- 28 Sep 2027\n- 26 Oct 2027\n- 16 Nov 2027"
+          ]
+        },
+        {
+          "title": "FAQ - Cloud Forest featuring Jurassic World: The Experience",
+          "url": "https://www.gardensbythebay.com.sg/en/frequently-asked-questions/faq-cloud-forest-featuring-jurassic-world-the-experience.html",
+          "highlights": [
+            "place? \n\nCloud Forest.\n\n## What are the opening hours? \n\n9.00am to 9.00pm daily. Last entry is at 8pm. Cloud Forest will be closed for maintenance once a month. Please view the closure dates on Gardens by the Bay’s website: www.gardensbythebay.com.sg."
+          ]
+        },
+        {
+          "title": "Cloud Forest featuring Jurassic World: The Experience",
+          "url": "https://www.gardensbythebay.com.sg/en/things-to-do/calendar-of-events/cloud-forest-featuring-jurassic-world-the-experience.html",
+          "highlights": [
+            "## Jurassic World: The Experience\n\nJurassic World: The Experience debuts within the mist\n...\n###### Date & Time\n\nOngoing\n\n9.00am - 9.00pm\n\n(Last admission at 8.00pm)\n\n###### Admission\n\nAdmission charge to Cloud Forest applies\n\n###### Location\n\nCloud Forest"
+          ]
+        },
+        {
+          "title": "Attractions",
+          "url": "https://www.gardensbythebay.com.sg/en/things-to-do/attractions.html",
+          "highlights": [
+            "### Cloud Forest\n\nGo on a fascinating journey of discovery. Cloud Forest is a cooled conservatory, featuring a lush mountain clad with the most exotic plant species from the world over.\n\nDaily: 9.00am - 9.00pm"
+          ]
+        }
+      ]
+    }
+  }
+}

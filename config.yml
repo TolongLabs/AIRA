@@ -40,6 +40,10 @@ owner:
 search:
   provider: 'exa' # Web search backend: exa, or off
   pageMaxChars: 12000 # Longest page text read_page passes on
+  depth:
+    maxSearches: 2 # Includes the initial lookup
+    maxPages: 2
+    maxProviderCalls: 3 # Combined search and page read budget for the turn
 
 # Owned by docs/trd/system.md
 links:

@@ -1,0 +1,94 @@
+{
+  "id": "museum-price",
+  "query": "site:gardensbythebay.com.sg Cloud Forest adult admission price Singapore",
+  "localQuery": "site:gardensbythebay.com.sg Gardens by the Bay Cloud Forest adult admission SGD fare ticket",
+  "fields": [
+    {
+      "kind": "price",
+      "subject": "Cloud Forest",
+      "aliases": ["Cloud Forest admission"]
+    }
+  ],
+  "host": "gardensbythebay.com.sg",
+  "recordedAt": "2026-11-21",
+  "payloads": {
+    "site:gardensbythebay.com.sg Cloud Forest adult admission price Singapore": {
+      "results": [
+        {
+          "title": "Cloud Forest",
+          "url": "https://www.gardensbythebay.com.sg/en/things-to-do/attractions/cloud-forest.html",
+          "highlights": [
+            "# Cloud Forest\n\n...\n\n###### Opening Hours\n\nDaily: 9.00am – 9.00pm\n\n(Last admission at 8.00pm)\n\nRecommended Visit Duration: 1 hour\n\n###### Admission Rates\n\nAdmission charge to Cloud Forest applies\n\n...\n\n## Jurassic World: The Experience\n\n...\n\n## Admission Rates\n\n1. Non-Resident \n2. Singapore Resident \n\n###### FLOWER DOME + JURASSIC WORLD AT CLOUD FOREST + DISNEY GARDEN OF WONDER AT FLORAL FANTASY + SHUTTLE SERVICE\n\n \n\n \n\n- Singapore Resident rates apply to Singapore Citizens, Permanent Residents, as well as those living in Singapore, including Employment Pass, Work Permit and Dependent Pass holders.\n- Proof of residency may be required at the "
+          ]
+        },
+        {
+          "title": "FAQ - Cloud Forest featuring Jurassic World: The Experience",
+          "url": "https://www.gardensbythebay.com.sg/en/frequently-asked-questions/faq-cloud-forest-featuring-jurassic-world-the-experience.html",
+          "highlights": [
+            "## What is Jurassic World: The Experience? \n\nThis immersive event brings to life the cinematic wonder of the Jurassic World film franchise through life-sized animatronic dinosaurs nestled within Cloud Forest.\n\n...\n\n## How much is the ticket for Jurassic World: The Experience? \n\n| Tickets | Cloud Forest (featuring Jurassic World: The Experience) | Flower Dome and Cloud Forest (featuring Jurassic World: The Experience) |\n| --- | --- | --- |\n| Singapore Residents | | |\n| Adult (13 - 59 years old) | $26 | $34 |\n| Child (3 - 12 years old) | $22 | $26 |\n| Senior (60 and above) | $22 | $29 |\n| Non-Residents | | |\n| Adult | - | $46 |\n| Child | - | $3"
+          ]
+        },
+        {
+          "title": "FAQ - General",
+          "url": "https://www.gardensbythebay.com.sg/en/frequently-asked-questions/general.html",
+          "highlights": [
+            "## FAQ - General \n\n## How can we purchase tickets to the attractions? \n\nYou may purchase tickets to the attractions from the Gardens by the Bay website, Ticketing Counters at The Canopy or the Gardens by the Bay Mobile App (available in Google Play and App Store), which also includes a suite of features that will provide you with a more seamless experience at the Gardens.\n\n###### Admission Prices\n\n| Attractions | Non-Resident | | Singapore Resident | | |\n| --- | --- | --- | --- | --- | --- |\n| | Adult | Child (3 - 12 yrs old) | Adult | Senior (60 yrs old and above) | Child (3 - 12 yrs old) |\n| Flower Dome & Cloud Forest (featuring Jurassic Wo"
+          ]
+        },
+        {
+          "title": "Cloud Forest featuring Jurassic World: The Experience",
+          "url": "https://www.gardensbythebay.com.sg/en/things-to-do/calendar-of-events/cloud-forest-featuring-jurassic-world-the-experience.html",
+          "highlights": [
+            "## Jurassic World: The Experience\n\n...\n\n###### Date & Time\n\nOngoing\n\n9.00am - 9.00pm\n\n(Last admission at 8.00pm)\n\n###### Admission\n\nAdmission charge to Cloud Forest applies\n\n###### Location\n\nCloud Forest\n\n## Admission Rates\n\n1. Non-Resident \n2. Singapore Resident \n\n###### FLOWER DOME + JURASSIC WORLD AT CLOUD FOREST + DISNEY GARDEN OF WONDER AT FLORAL FANTASY + SHUTTLE SERVICE\n\n \n\n- Adult \n\n### $73 \n\n### $58\n- Child (3-12 yrs old) \n\n### $51 \n\n### $41\n\n \n\n- Singapore Resident rates apply to Singapore Citizens, Permanent Residents, as well as those living in Singapore, including Employment Pass, Work Permit and Dependent Pass holders.\n- Proof o"
+          ]
+        },
+        {
+          "title": "Bundle up for more savings and fun!",
+          "url": "https://www.gardensbythebay.com.sg/en/promotions/bundle-up-for-more-savings-and-fun.html",
+          "highlights": [
+            "## Bundle up for more savings and fun!\n\nExperience it all with this incredible bundle and create endless memories for the whole family!\n\nPromotion Period\n\nTill 14 Mar 2027 \n\nLocation\n\nFlower Dome, Cloud Forest, Floral Fantasy & Shuttle Service\n\n1. Non-Resident \n2. Singapore Resident \n\n###### FLOWER DOME + JURASSIC WORLD AT CLOUD FOREST + DISNEY GARDEN OF WONDER AT FLORAL FANTASY + SHUTTLE SERVICE\n\n \n\n- Adult \n\n### $73 \n\n### $58\n- Child (3-12 yrs old) \n\n### $51 \n\n### $41\n\n- Singapore Resident rates apply to Singapore Citizens, Permanent Residents, as well as those living in Singapore, including Employment Pass, Work Permit and Dependent Pass h"
+          ]
+        }
+      ]
+    },
+    "site:gardensbythebay.com.sg Gardens by the Bay Cloud Forest adult admission SGD fare ticket": {
+      "results": [
+        {
+          "title": "Cloud Forest",
+          "url": "https://www.gardensbythebay.com.sg/en/things-to-do/attractions/cloud-forest.html",
+          "highlights": [
+            "# Cloud Forest\n\n...\n\n###### Important Notice\n\n1. Cloud Forest will be closed on maintenance days. The next closure will be on 19 Jan 2027.\n\n...\n\n###### Opening Hours\n\nDaily: 9.00am – 9.00pm\n\n(Last admission at 8.00pm)\n\nRecommended Visit Duration: 1 hour\n\n###### Admission Rates\n\nAdmission charge to Cloud Forest applies\n\n...\n\n## Jurassic World: The Experience\n\n...\n\n## Admission Rates\n\n1. Non-Resident \n2. Singapore Resident \n\n###### FLOWER DOME + JURASSIC WORLD AT CLOUD FOREST + DISNEY GARDEN OF WONDER AT FLORAL FANTASY + SHUTTLE SERVICE\n\n \n\n \n\n- Singapore Resident rates apply to Singapore Citizens, Permanent Residents, as well as those living i"
+          ]
+        },
+        {
+          "title": "FAQ - General",
+          "url": "https://www.gardensbythebay.com.sg/en/frequently-asked-questions/general.html",
+          "highlights": [
+            "## FAQ - General \n\n## How can we purchase tickets to the attractions? \n\nYou may purchase tickets to the attractions from the Gardens by the Bay website, Ticketing Counters at The Canopy or the Gardens by the Bay Mobile App (available in Google Play and App Store), which also includes a suite of features that will provide you with a more seamless experience at the Gardens.\n\n###### Admission Prices\n\n| Attractions | Non-Resident | | Singapore Resident | | |\n| --- | --- | --- | --- | --- | --- |\n| | Adult | Child (3 - 12 yrs old) | Adult | Senior (60 yrs old and above) | Child (3 - 12 yrs old) |\n| Flower Dome & Cloud Forest (featuring Jurassic Wo"
+          ]
+        },
+        {
+          "title": "FAQ - Cloud Forest featuring Jurassic World: The Experience",
+          "url": "https://www.gardensbythebay.com.sg/en/frequently-asked-questions/faq-cloud-forest-featuring-jurassic-world-the-experience.html",
+          "highlights": [
+            "## What is Jurassic World: The Experience? \n\nThis immersive event brings to life the cinematic wonder of the Jurassic World film franchise through life-sized animatronic dinosaurs nestled within Cloud Forest.\n\n...\n\n## How much is the ticket for Jurassic World: The Experience? \n\n| Tickets | Cloud Forest (featuring Jurassic World: The Experience) | Flower Dome and Cloud Forest (featuring Jurassic World: The Experience) |\n| --- | --- | --- |\n| Singapore Residents | | |\n| Adult (13 - 59 years old) | $26 | $34 |\n| Child (3 - 12 years old) | $22 | $26 |\n| Senior (60 and above) | $22 | $29 |\n| Non-Residents | | |\n| Adult | - | $46 |\n| Child | - | $3"
+          ]
+        },
+        {
+          "title": "Cloud Forest featuring Jurassic World: The Experience",
+          "url": "https://www.gardensbythebay.com.sg/en/things-to-do/calendar-of-events/cloud-forest-featuring-jurassic-world-the-experience.html",
+          "highlights": [
+            "## Jurassic World: The Experience\n\n...\n\n###### Date & Time\n\nOngoing\n\n9.00am - 9.00pm\n\n(Last admission at 8.00pm)\n\n###### Admission\n\nAdmission charge to Cloud Forest applies\n\n###### Location\n\nCloud Forest\n\n## Admission Rates\n\n1. Non-Resident \n2. Singapore Resident \n\n###### FLOWER DOME + JURASSIC WORLD AT CLOUD FOREST + DISNEY GARDEN OF WONDER AT FLORAL FANTASY + SHUTTLE SERVICE\n\n \n\n- Adult \n\n### $73 \n\n### $58\n- Child (3-12 yrs old) \n\n### $51 \n\n### $41\n\n \n\n- Singapore Resident rates apply to Singapore Citizens, Permanent Residents, as well as those living in Singapore, including Employment Pass, Work Permit and Dependent Pass holders.\n- Proof o"
+          ]
+        },
+        {
+          "title": "Bring a friend Promotion",
+          "url": "https://www.gardensbythebay.com.sg/en/promotions/bring-a-friend-promotion.html",
+          "highlights": [
+            "Promotion Period\n\nFrom 13 Jul 2026 \n\nLocation\n\nGardens by the Bay\n\n## Promotional Rates for Singapore Resident\n\n| Attractions | Adult | Senior (60 yrs old and above) | Child (3 - 12 yrs old) |\n| --- | --- | --- | --- |\n| Flower Dome | $6 $12 | $4 $8 | $4 $8 |\n| Cloud Forest (featuring Jurassic World: The Experience) | $20 $26 | $18 $22 | $18 $22 |\n| Flower Dome & Cloud Forest (featuring Jurassic World: The Experience) | $24 $34 | $21.50 $29 | $20 $26 |\n| Disney Garden of Wonder at Floral Fantasy | $6 $12 | $4 $8 | $4 $8 |\n| OCBC Skyway | $5 $10 | $3.50 $7 | $3.50 $7 |\n| Supertree Observatory | $5 $10 | $3 $6 | $3 $6 |\n| Audio Tour | $5 $10 | "
+          ]
+        }
+      ]
+    }
+  }
+}

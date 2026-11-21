@@ -701,6 +701,56 @@ describe('the whole service', () => {
     )
   })
 
+  it('delivers a depth citation and blocks a concurrent state change after an internal page read', async () => {
+    const searchCalls: string[] = []
+    const model = queueModel([
+      {
+        toolCalls: [
+          {
+            id: 'c1',
+            name: 'web_search',
+            args: {
+              query: 'oat latte price',
+              localQuery: 'harga oat latte',
+              fields: [{ kind: 'price', subject: 'oat latte' }]
+            }
+          },
+          { id: 'c2', name: 'note', args: { text: 'should be blocked' } }
+        ]
+      },
+      { text: 'The oat latte is RM 14. [s1]' }
+    ])
+    const { app, gateway, chatId } = await startApp(model, {
+      ports: {
+        search: {
+          async search(query) {
+            searchCalls.push(query)
+            return [{ url: 'https://cafe.example/menu', title: 'Oat latte menu', snippet: 'See our drinks.' }]
+          }
+        },
+        page: {
+          async read() {
+            return { title: 'Menu', text: 'Oat latte RM 14.' }
+          },
+          async download() {
+            return { data: Buffer.alloc(0), contentType: 'text/plain' }
+          }
+        }
+      }
+    })
+    setSetting(app.storage, { level: 'chat', scope: chatId, key: 'tools.maxPerMessage', value: 4, actor: 'test' })
+
+    const response = await gateway.send(msg('m-1', 'How much is the oat latte?'))
+    expect(response.content).toBe('The oat latte is RM 14.\n\n_🛠️ searched the web_\n_🔗 cafe.example_')
+    expect(searchCalls).toEqual(['oat latte price', 'harga oat latte'])
+    expect(
+      model.requests[1]?.messages.find((message) => message.role === 'tool' && message.name === 'web_search')?.content
+    ).toContain('Still missing: none.')
+    expect(
+      model.requests[1]?.messages.find((message) => message.role === 'tool' && message.name === 'note')?.content
+    ).toContain('You will not change anything based on that page.')
+  })
+
   it('alerts the operator when a write fails with an I/O error, and keeps running', async () => {
     const { app, gateway, logs, baseUrl } = await startApp(queueModel([{ text: 'hello' }]))
     await gateway.send(msg('m-1', 'first'))

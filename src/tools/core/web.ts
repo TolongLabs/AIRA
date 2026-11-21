@@ -1,12 +1,14 @@
 import { z } from 'zod'
+import type { Config } from '../../config/schema.js'
 import { SocialPostError } from '../../social/port.js'
 import { modelPostResult } from '../../social/result.js'
 import { parseSocialPostUrl } from '../../social/urls.js'
 import type { Storage } from '../../storage/database.js'
 import { putFile } from '../../storage/files.js'
-import { SOURCE_ID, type SourceEntry, searchLookup } from '../../turn/sources.js'
+import { SOURCE_ID, type SourceEntry } from '../../turn/sources.js'
 import type { TurnContext } from '../../turn/types.js'
 import { isForbiddenUrl, type ToolPorts } from '../ports.js'
+import { createSearchDepth, webSearchSchema } from '../search-depth.js'
 import type { ToolContext, ToolDefinition, ToolFailure } from '../types.js'
 
 /** Recorded reason for a refused link already watched at intake. The model reads its outcome sentence. */
@@ -79,11 +81,15 @@ function resolveRead(
   return { ok: true, ...seen }
 }
 
-export function webSearchTool(ports: ToolPorts): ToolDefinition<z.infer<typeof querySchema>> {
+export function webSearchTool(
+  ports: ToolPorts,
+  config?: Config['search']['depth']
+): ToolDefinition<z.infer<typeof webSearchSchema>> {
+  const search = createSearchDepth(ports, config)
   return {
     name: 'web_search',
-    description: 'Searches the web.',
-    schema: querySchema,
+    description: 'Searches the web. Provide fields for lists, prices, hours and specific facts needing evidence.',
+    schema: webSearchSchema,
     mode: 'both',
     mutates: false,
     feature: 'features.search',
@@ -97,16 +103,10 @@ export function webSearchTool(ports: ToolPorts): ToolDefinition<z.infer<typeof q
         return { ok: false, kind: 'unavailable', reason: 'search is not set up' }
       }
       try {
-        const results = await ports.search.search(args.query, context.signal)
-        return {
-          ok: true,
-          data: {
-            results: results.slice(0, 8).map((result) => ({
-              ...result,
-              source: context.sources.add(result.url, searchLookup(context.callId))?.id
-            }))
-          }
-        }
+        const data = args.fields
+          ? await search.deep(args, context)
+          : { results: await search.plain(args.query, context) }
+        return { ok: true, data }
       } catch (error) {
         return { ok: false, kind: 'error', reason: 'search failed', cause: error }
       }

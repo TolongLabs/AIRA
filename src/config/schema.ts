@@ -127,7 +127,14 @@ export const configSchema = z.strictObject({
     .default({ marketsConfig: '', claudeProjectsDir: '', noticeRoutesFile: '', timeoutMs: 15000 }),
   search: z.strictObject({
     provider: z.string().min(1),
-    pageMaxChars: count.default(12_000)
+    pageMaxChars: count.default(12_000),
+    depth: z
+      .strictObject({
+        maxSearches: count.max(2).default(2),
+        maxPages: z.number().int().min(0).max(2).default(2),
+        maxProviderCalls: count.max(3).default(3)
+      })
+      .prefault({})
   }),
   links: z
     .strictObject({

@@ -1,0 +1,94 @@
+{
+  "id": "rail-price",
+  "query": "site:tokyometro.jp Tokyo Subway Ticket 24-hour adult price",
+  "localQuery": "site:tokyometro.jp 東京 東京メトロ 24時間券 大人 料金 円",
+  "fields": [
+    {
+      "kind": "price",
+      "subject": "24-hour ticket",
+      "aliases": ["24時間券", "24-hour"]
+    }
+  ],
+  "host": "tokyometro.jp",
+  "recordedAt": "2026-11-21",
+  "payloads": {
+    "site:tokyometro.jp Tokyo Subway Ticket 24-hour adult price": {
+      "results": [
+        {
+          "title": "Tokyo Metro | Tokyo Subway Ticket",
+          "url": "https://www.tokyometro.jp/en/ticket/travel/index.html",
+          "highlights": [
+            "# Tokyo Subway Ticket\n\nInformation regarding tickets for domestic visitors residing outside of Tokyo, Kanagawa, Saitama, Chiba, Ibaraki, Tochigi, Gunma and Yamanashi as well as overseas visitors.\n\n## Tokyo Subway Ticket\n\n \n\nInformation on the ticket that is valid for all lines of Tokyo Metro and Toei Subway for 24 hours, 48 hours or 72 hours from the travel starting time during the valid period\n\n| Price | Tokyo Subway 24-hour Ticket – Adult: 1,000 yen, Child: 500 yen Tokyo Subway 48-hour Ticket – Adult: 1,500 yen, Child: 750 yen Tokyo Subway 72-hour Ticket – Adult: 2,000 yen, Child: 1,000 yen |\n| --- | --- |\n| Details | Purchase now (online) "
+          ]
+        },
+        {
+          "title": "便利な企画乗車券「東京メトロ・都営地下鉄共通１日乗車券」 「Tokyo Subway Ticket」が QR コードで利用可能になります",
+          "url": "https://www.tokyometro.jp/news/images_h/metroNews260130_g04_6.pdf",
+          "highlights": [
+            "２０２６年１月３０日 東京地下鉄株式会 社 東 京 都 交 通 局\n\n東京地下鉄株式会社（本社：東京都台東区、代表取締役社長：小坂 彰洋、以下「東京メトロ」）と東京都交 通局（東京都新宿区、交通局長：堀越 弥栄子）は、QR コードを活用した乗車サービスを拡大し、2026 年 3 月 25 日（水）10 時より、企画乗車券「東京メトロ・都営地下鉄共通１日乗車券」及び「Tokyo Subway Ticket （24/48/72-hour）」が新たに QR コードで利用可能になります。\n\n...\n\n２．提供する乗車サービス\n\n...\n\n| （２） Tokyo Subway Ticket（QR） | | | | | | |\n| | Tokyo Subway 24-hour Ticket （QR） | | 24 時間 大人 | 1,000 | 円 小児 | 500 円 |\n| 発売金額 | Tokyo Subway 48-hour Ticket （QR） | | 48 時間 大人 | 1,500 | 円 小児 | 750 円 |\n| | Tokyo Subway 72-hour Ticket （QR） | | 72 時間 大人 | 2,000 | 円 小児 | 1,000 円 |\n| 発売箇所 | 等 前売り券 | 販売サイト | ※準備ができ次第、東京メトロ・都営地下鉄の | | | HP でご案内いたします。 |\n| 有効区間 | 東京メトロ線全線、都営地下鉄線全線 | | | | |"
+          ]
+        },
+        {
+          "title": "企画乗車券「東京メトロ・都営地下鉄共通１日乗車券」「Tokyo Subway Ticket」 「東京フリーきっぷ」及び他事業者との共通企画乗車券の発売額変更について",
+          "url": "https://www.tokyometro.jp/news/images_h/metroNews260130_g05.pdf",
+          "highlights": [
+            "２０２６年１月３０日 東京地下鉄株式会 社 東 京 都 交 通 局\n\n企画乗車券「東京メトロ・都営地下鉄共通１日乗車券」「Tokyo Subway Ticket」 「東京フリーきっぷ」及び他事業者との共通企画乗車券の発売額変更について\n\n東京地下鉄株式会社（本社：東京都台東区、代表取締役社長：小坂 彰洋、以下「東京メトロ」）と東京都交 通局（東京都新宿区、交通局長：堀越 弥栄子）は、多様化するお客さまニーズへの対応や、東京の地下鉄利 用における利便性や乗車サービスの向上を目的として、2026 年 3 月 14 日（土）より、「東京メトロ・都営地下 鉄共通１日乗車券」、「Tokyo Subway Ticket（24/48/72-hour）」及び「東京フリーきっぷ」の発売額を変更い たします。 これに伴い、他事業者において当該券種とセットで発売している共通企画乗車券についても、発売額を変更 いたします。\n\n１．実施日 2026 年 3 月 14 日（土）\n\n２．発売額変更の対象となる企画乗車券\n\n| | 企画乗車券名 | | 変更前の発売額 大人 | | 小児 | | | 変更後の発売額 大人 | | 小児 |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| 東京メトロ・都営地下鉄共通１日乗車券 | | | 900 | 円 | 450 | 円 | 1,100 | 円 | | 550 円 |\n|"
+          ]
+        },
+        {
+          "title": "For Customers Visiting Tokyo | PASMO/Tickets | Tokyo Metro Line",
+          "url": "https://www.tokyometro.jp/lang%5Fen/ticket/value/travel/index.html",
+          "highlights": [
+            "# For Customers Visiting Tokyo\n\nInformation regarding tickets for domestic visitors residing outside of Tokyo, Kanagawa, Saitama, Chiba, Ibaraki, Tochigi, Gunma and Yamanashi as well as overseas visitors.\n\n- Tokyo Subway (24-hour , 48-hour , 72-hour) Ticket\n- Tokyo Subway (24-hour , 48-hour , 72-hour) Ticket (QR)\n\n## Tokyo Subway (24-hour , 48-hour , 72-hour) Ticket\n\nInformation on the ticket that is valid for all lines of Tokyo Metro and Toei Subway for 24 hours, 48 hours or 72 hours from the travel starting time during the valid period\n\n| Price | Tokyo Subway 24-hour Ticket – Adult: 1,000 yen, Child: 500 yen Tokyo Subway 48-hour Ticket – Ad"
+          ]
+        },
+        {
+          "title": "Tokyo Metro | 1-Day Open Tickets",
+          "url": "https://www.tokyometro.jp/en/ticket/1day/index.html",
+          "highlights": [
+            "## Tokyo Metro 24-hour Ticket\n\nA ticket allows unlimited rides on Tokyo Metro for 24 hours from first use. Tickets can be bought in advance or on the day.\n\n| Price | Adult: 700 yen, Child: 350 yen |\n| --- | --- |"
+          ]
+        }
+      ]
+    },
+    "site:tokyometro.jp 東京 東京メトロ 24時間券 大人 料金 円": {
+      "results": [
+        {
+          "title": "各種一日乗車券 | PASMO・定期・乗車券 | 東京メトロ",
+          "url": "https://www.tokyometro.jp/ticket/value/1day/index.html",
+          "highlights": [
+            "## 東京メトロ線が乗り降り自由な各種乗車券\n\n東京メトロ24時間券 \n\n初回改札通過時刻から24時間、東京メトロ線全線が乗り降り自由な乗車券です。\n\n| 発売金額 | 大人700円、小児350円 |\n| --- | --- |\n| 発売箇所 | 【前売り券】 オンラインサイト ※前売り券は、オンラインサイトでの販売のみです。 【当日券】 東京メトロ線各駅の券売機 |\n| 有効期間および有効期限 | 【前売り券】 購入日から6か月以内の1日において、初回改札通過時刻から24時間 【当日券】 購入日において、初回改札通過時刻から24時間 ※購入当日の終電までにご利用のない場合は無効となります。 |\n| 使用可能区間 | 東京メトロ線全線 |\n| 払戻し | 有効期間内かつ未使用の場合に限り、発売箇所にて払戻しが可能です。 ※払戻手数料220円が発生します。 ※東京メトロ各駅の券売機でクレジットカード購入した券は、東京メトロ定期券うりばでのみ払戻しをいたします。 |\n\n東京メトロ24時間券 (IC)\n\n購入時刻から24時間、東京メトロ線全線が乗り降り自由なICカード乗車券です。\n\n| 発売金額 | 大人700円、小児350円 |\n| --- | --- |\n| 発売箇所 | 東京メトロ各駅の券売機（北千住駅＜日比谷線＞・中目黒駅・中野駅・西船橋駅・代々木上原駅・和光市駅・渋谷駅＜半蔵門線、副都心線＞・目黒駅を除く） 東京メトロ定期券うりば 定期券うりば |\n| 有効期間および有効期限"
+          ]
+        },
+        {
+          "title": "CONTENTS",
+          "url": "https://www.tokyometro.jp/support/guide/operation/pdf/information_20260314.pdf",
+          "highlights": [
+            "2026年3月14日 現在\n\n...\n\n5 乗車券の発売\n\n...\n\n● 東京メトロ24時間券 購入後、最初に自動改札機等で入場した時刻から 24時間に限り東京メトロ線の全区間を何度でもご 利用いただけます。 \n\n当 日 券 種 別 前売り券\n\n...\n\n| | 発売箇所 | オンラインで発売。 | | 各駅の券売機で発売。 |\n| --- | --- | --- | --- | --- |\n| | 有効期限 | 発売日から6か月以内 にご使用ください。 | | 発売日当日に使用開始 してください。 |\n| ●東京メトロ24時間券（IC） | 発 売 額 ※ 当日券は購入した日の終電までに使用を開始しないと無効となり ますのでご注意ください。（あらかじめ購入しておき、翌日以降に 使用を開始することはできません。） ※ 東京メトロ24時間券には鉄道駅バリアフリー料金を加算いたしません。 購入した時刻から24時間に限り東京メトロ線の 全区間を何度でもご利用いただけます。 種 | 大人 700円　小児 350円 当 別 | 日 券 | |\n| | 発売箇所 有効時間 | 各駅の券売機（※1）及び定期券うりばで発売 しています。 購入した時刻から24時間に限り有効です。 | | |\n| ●東京メトロ24時間券（QR） | 発 売 額 ※1 日比谷線北千住、中目黒、中野、西船橋、代々木上原、和光市、 半蔵門線・副都心線渋谷、目黒は除きます。 ● 購入した時刻から24時間に限り有効ですのでご"
+          ]
+        },
+        {
+          "title": "「２０２６和柄～花札～」 東京メトロオリジナル２４時間券を発売します！",
+          "url": "https://www.tokyometro.jp/news/images_h/metroNews261105_86.pdf",
+          "highlights": [
+            "２６-８６ ２０２６年１１月５日\n\n東京地下鉄株式会社（本社：東京都中央区、代表取締役社長：小坂 彰洋、以下「東京メトロ」）は、 日本の伝統美を感じられる「２０２６和柄～花札～」東京メトロオリジナル２４時間券（以下「オリジ ナル２４時間券」）を、２０２６年１１月１６日（月）から発売いたします。\n\n...\n\n## 「２０２６和柄～花札～」 東京メトロオリジナル２４時間券を発売します！\n\n～ ２０２６年１１月１６日（月）から発売開始！～ 東京メトロオリジナル２４時間券イメージ\n\n別 紙\n\n「２０２６和柄～花札～」 東京メトロオリジナル２４時間券 詳細\n\n１ 発売内容 \nオリジナル２４時間券大人用１種類 \n（１）発売金額 \n７００円 \n（２）発売数量 \n１４,０００枚 \n※なくなり次第終了とさせていただきます。 \n※小児用の発売はありません。 \n\n２ 発売期間 ２０２６年１１月１６日（月）～２０２７年３月１４日（日）"
+          ]
+        },
+        {
+          "title": "営業のご案内",
+          "url": "https://www.tokyometro.jp/support/guide/operation/pdf/information_20250315.pdf",
+          "highlights": [
+            "●東京メトロ24時間券（IC） | 発 売 額 ※ 当日券は購入した日の終電までに使用を開始しないと無効となり ますのでご注意ください。（あらかじめ購入しておき、翌日以降に 使用を開始することはできません。） ※ 東京メトロ24時間券には鉄道駅バリアフリー料金を加算いたし ません。 購入した時刻から24時間に限り東京メトロ線の 全区間を何度でもご利用いただけます。 種 別 | 大人 700円　小児 350円 当 日 券 |\n| | 発売箇所 | 各駅の券売機（※1）"
+          ]
+        },
+        {
+          "title": "「東京メトロ 24 時間券」及び他事業者との共通企画乗車券 （各種メトロパス及び共通１日乗車券）の発売額改定について",
+          "url": "https://www.tokyometro.jp/news/images_h/metroNews241220_87.pdf",
+          "highlights": [
+            "24-87 2024 年 12 月 20 日 「東京メトロ 24 時間券」及び他事業者との共通企画乗車券 （各種メトロパス及び共通１日乗車券）の発売額改定について 東京地下鉄株式会社（本社：東京都台東区、代表取締役社長：山村 明義、以下「東京メトロ」）は、近年に おける物価高騰や人材確保の難化といった経営環境下においても多様化した外出需要に対応し、安全で安心な 輸送サービスを維持向上していくため、2025 年 3 月 15 日（土）から、東京メトロ 24 時間券及び東京メトロ学 生用 24 時間券 ※の発売額の改定等を実施いたします。\n\n...\n\n### １．発売額改定の対象となる当社企画乗車券\n\n| 企画乗車券名 | 改定前の発売額 | | 改定後の発売額 | |\n| --- | --- | --- | --- | --- |\n| | 大人 | 小児 | 大人 | 小児 |\n| 東京メトロ24時間券 | | | | |\n| | 600円 | 300円 | 700円 | 350円 |\n| 中学校・高等学校・専門学校の生徒等 | | 中学校・高等学校・専門学校の生徒等 | | |\n\n東京メトロ学生用24時間券\n\n350円 300円"
+          ]
+        }
+      ]
+    }
+  }
+}

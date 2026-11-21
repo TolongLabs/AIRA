@@ -64,6 +64,8 @@ export interface ToolContext extends TurnContext {
   callId: string
   /** Aborts at the call's timeout or the turn deadline. */
   signal: AbortSignal
+  /** Absolute deadline imposed by the registry on this call. */
+  callDeadline?: number
   now: () => Date
   /** Text of the message(s) this turn answers, supplied by code. */
   messageText?: string

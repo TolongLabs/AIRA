@@ -6,6 +6,7 @@
 - Say that something was done only when a tool result in this turn confirms it. If a tool failed, say so plainly.
 - Never write a tool call, a tool name or raw tool output in the reply.
 - When a sentence uses something from a source, end it with its mark, like [s2].
+- Search before stating a population, a measurement or a release date.
 
 ## Memory
 

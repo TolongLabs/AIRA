@@ -1,0 +1,94 @@
+{
+  "id": "park-price",
+  "query": "site:nps.gov Yellowstone private vehicle entrance pass price",
+  "localQuery": "site:nps.gov Yellowstone National Park standard entrance pass private vehicle $35",
+  "fields": [
+    {
+      "kind": "price",
+      "subject": "private vehicle",
+      "aliases": ["vehicle pass"]
+    }
+  ],
+  "host": "nps.gov",
+  "recordedAt": "2026-11-21",
+  "payloads": {
+    "site:nps.gov Yellowstone private vehicle entrance pass price": {
+      "results": [
+        {
+          "title": "Video (U.S. National Park Service)",
+          "url": "https://www.nps.gov/media/video/view.htm",
+          "highlights": [
+            "# 1610 AM Broadcast - Summer 2023\n\n Yellowstone National Park\n...\nJake: The entrance fee is $35, payable by credit card, which admits you to Yellowstone for 7 days. If you’re ... , you can buy your pass at go dot N P S dot gov forward slash Yell fees."
+          ]
+        },
+        {
+          "title": "Fees & Passes - Yellowstone National Park (U.S. National Park Service)",
+          "url": "https://www.nps.gov/yell/planyourvisit/fees.htm",
+          "highlights": [
+            "#### Vehicle Reservations Not Required to Enter Yellowstone\n\nAlthough an entrance pass is required to enter Yellowstone National Park, vehicle reservations are not needed. You are encouraged to purchase an entrance pass before arriving to save time, but you may also purchase passes at any entrance station upon arrival. Find out more about entrance passes below.\n\n#### Heads Up: Two Parks, Two Fees\n\nTraveling through Yellowstone's South Entrance—including trips to Jackson, WY—takes you through Grand Teton National Park. Each park charges its own entrance fee!\n\n## Key Information \n\n1. ### Get an entrance pass\n\n- You may enter the park with a Sta"
+          ]
+        },
+        {
+          "title": "Plan Your Visit - Yellowstone National Park (U.S. National Park Service)",
+          "url": "https://www.nps.gov/yell/planyourvisit./index.htm",
+          "highlights": [
+            "#### Plan Ahead!\n\nNo vehicle reservations are required to enter the park—just a park entrance pass. Purchase your pass online to save time. Use the resources below to plan ahead for a safe, memorable Yellowstone trip!"
+          ]
+        },
+        {
+          "title": "Entrance Fees by Park (U.S. National Park Service)",
+          "url": "https://www.nps.gov/aboutus/entrance-fee-prices.htm",
+          "highlights": [
+            "## What \"Private Vehicle\" means\n\nAt some parks, the price of a standard entrance pass (the entrance fee) depends on whether you enter in a vehicle. The \"Private Vehicle\" price is the entrance fee for one vehicle and its passengers. At these parks, the \" Per Person\" price is the entrance fee if you instead enter on a bicycle or on foot. Vehicle and motorcycle passengers don't need a separate pass."
+          ]
+        },
+        {
+          "title": "Video (U.S. National Park Service)",
+          "url": "https://www.nps.gov/media/video/view.htm",
+          "highlights": [
+            "Erik Oberg: But first, let’s take care of business. The entrance fee is $30, and that admits to you YNP for 7 days. Jennifer Jerrett: If you’ve already paid the entrance fee, have your ... -paid receipt, you can re-enter the park without being charged"
+          ]
+        }
+      ]
+    },
+    "site:nps.gov Yellowstone National Park standard entrance pass private vehicle $35": {
+      "results": [
+        {
+          "title": "Fees & Passes - Yellowstone National Park (U.S. National Park Service)",
+          "url": "https://www.nps.gov/yell/planyourvisit/fees.htm",
+          "highlights": [
+            "#### Vehicle Reservations Not Required to Enter Yellowstone\n\nAlthough an entrance pass is required to enter Yellowstone National Park, vehicle reservations are not needed. You are encouraged to purchase an entrance pass before arriving to save time, but you may also purchase passes at any entrance station upon arrival. Find out more about entrance passes below.\n\n#### Heads Up: Two Parks, Two Fees\n\nTraveling through Yellowstone's South Entrance—including trips to Jackson, WY—takes you through Grand Teton National Park. Each park charges its own entrance fee!\n\n## Key Information \n\n1. ### Get an entrance pass\n\n- You may enter the park with a Sta"
+          ]
+        },
+        {
+          "title": "Video (U.S. National Park Service)",
+          "url": "https://www.nps.gov/media/video/view.htm",
+          "highlights": [
+            "# 1610 AM Broadcast - Summer 2023\n\n Yellowstone National Park\n\n...\n\nJake: The entrance fee is $35, payable by credit card, which admits you to Yellowstone for 7 days. If you’re sitting in line and have cell coverage, you can buy your pass at go dot N P S dot gov forward slash Yell fees. If you’ve already paid the entrance fee, have your receipt ready. With that pre-paid receipt, you can re-enter the park without being charged again."
+          ]
+        },
+        {
+          "title": "Plan Your Visit - Yellowstone National Park (U.S. National Park Service)",
+          "url": "https://www.nps.gov/yell/planyourvisit/index.htm",
+          "highlights": [
+            "#### Plan Ahead!\n\nNo vehicle reservations are required to enter the park—just a park entrance pass. Purchase your pass online to save time. Use the resources below to plan ahead for a safe, memorable Yellowstone trip!"
+          ]
+        },
+        {
+          "title": "Entrance Fees by Park (U.S. National Park Service)",
+          "url": "https://www.nps.gov/aboutus/entrance-fee-prices.htm",
+          "highlights": [
+            "## What \"Private Vehicle\" means\n\nAt some parks, the price of a standard entrance pass (the entrance fee) depends on whether you enter in a vehicle. The \"Private Vehicle\" price is the entrance fee for one vehicle and its passengers. At these parks, the \" Per Person\" price is the entrance fee if you instead enter on a bicycle or on foot. Vehicle and motorcycle passengers don't need a separate pass."
+          ]
+        },
+        {
+          "title": "Entrance Passes (U.S. National Park Service)",
+          "url": "https://www.nps.gov/planyourvisit/passes.htm",
+          "highlights": [
+            "- At the following national parks, nonresidents age 16 and older must pay a $100 nonresident fee (in addition to the regular entrance fee), unless admitted with an ... & Kings Canyon National Parks, Yellowstone National Park, Yosemite National Park, and"
+          ]
+        }
+      ]
+    }
+  }
+}
