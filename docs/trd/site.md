@@ -74,6 +74,13 @@ the footer route. No sticker, preview or memory forget route exists.
 
 ### Read Routes
 
+The owner `GET /api/tools` response retains `features` and adds `socialCapabilities`, keyed by
+`features.social` and `features.autofetch`. Each list contains enabled platform IDs, display names and
+their operation labels, derived from server dispatch and attachment eligibility. Chat settings show both
+lists beside their separate toggles. Show the YouTube group exclusion, group-only eligibility, loading,
+empty and unavailable states. The catalog describes installation-wide support. Effective values and
+inheritance still come from `GET /api/chats` and writes use the existing settings endpoint.
+
 | Route                   | Answer                                                                                                                                                                                                                                                    |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /api/health`       | `status` (`ready` or `starting`), `version`, `activeTurns`, and per model role whether it is configured and whether its breaker is open                                                                                                                   |

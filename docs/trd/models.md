@@ -432,6 +432,10 @@ Every media failure is contained. The turn continues and answers in character.
 
 ## Social Post And Reply Readers
 
+Reader output can carry group attachment evidence from the source that proved the post identity and media
+type. Bind evidence to the resolved native post and rendition before fallback. Keep duration with its video
+rendition. An extractor thumbnail, feed image, link card or cover cannot establish a native photo.
+
 Link intake and the social tools read public posts and their replies through one subsystem in `src/social`. It
 covers nine platforms: X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram, Bilibili and Facebook.
 

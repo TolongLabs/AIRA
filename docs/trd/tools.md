@@ -358,6 +358,12 @@ has up to five matches with title, domain, link and price when present. It carri
 
 ### Social Post Reader
 
+Intake, `read_post` and group autofetch use the same post resolver and reader dispatch. A reader may return
+partial data. Previews, cards and quoted or earlier-thread media can describe a post to the reader. Group
+delivery requires separate native attachment evidence. Enable a new operation only after verifying the
+specific post identity, fields, retrieval permission and intended use. Xiaohongshu/rednote, Douyin and
+LinkedIn start with all operations disabled. Evaluate reading, intake and redistribution independently.
+
 `read_post` takes one seen `url` or `source` id from [Turn Sources](#turn-sources). Only the
 model calls it; no command names it. A post link in a member's message is read
 at intake instead, with its media watched ([Models](models.md#post-links)).

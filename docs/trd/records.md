@@ -40,6 +40,13 @@ The writers live in `src/records/turn-record.ts`: `markStage`, `updateTurnRecord
 
 ## Child Records
 
+Group social lookup evidence is stored in `social_lookup` under the job ID and target ordinal, with
+only bounded enum values, durations and counts. Resolve, read and select outcomes are distinct from download and gateway delivery. In group
+autofetch, core counts validated downloads and returned files separately. A file counts as delivered only
+after the gateway reports adapter success for its returned slot. Missing reports and legacy `sent` outcomes
+leave delivery unknown. Core stores the ordered slot kinds and acknowledgements in `autofetch_delivery`. It ignores duplicate
+reports and is the sole writer.
+
 | Table            | One Row Per                   | Key Fields                                                                  |
 | ---------------- | ----------------------------- | --------------------------------------------------------------------------- |
 | `model_call`     | Request to any model role     | `turn_id`, role, model, attempt, duration, tokens, cost, failure kind       |
