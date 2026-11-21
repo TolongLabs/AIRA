@@ -5,6 +5,7 @@ import type { Logger } from '../records/logger.js'
 import { endJobRun, startJobRun } from '../records/turn-record.js'
 import { getChatByWaId } from '../settings/chats.js'
 import { resolveSettings } from '../settings/settings.js'
+import { mirrorVideoRangeBytes } from '../social/mirror-readers.js'
 import { groupOperations, type SocialMirrorSettings } from '../social/readers.js'
 import type { SocialLookupTrace, SocialPost, SocialPostLookup } from '../social/types.js'
 import { findSocialPostTargets, parseOfficialSocialPostUrl, type SocialPostTarget } from '../social/urls.js'
@@ -22,7 +23,8 @@ export const AUTOFETCH_MAX_VIDEO_BYTES = 16_000_000
 export const AUTOFETCH_REPEAT_MS = 10 * 60_000
 const AUTOFETCH_TIMEOUT_MS = 60_000
 const AUTOFETCH_ASSET_TIMEOUT_MS = 10_000
-const REDDIT_ARCHIVE_VIDEO_TIMEOUT_MS = 25_000
+/** A verified mirror video gets this long to download, as its CDN can be slow. */
+const MIRROR_VIDEO_TIMEOUT_MS = 25_000
 
 const EXTENSIONS: Record<string, string> = {
   'image/jpeg': '.jpg',
@@ -98,6 +100,7 @@ function postMedia(
   headers?: Record<string, string> | null
   durationSec?: number
   downloadTimeoutMs?: number
+  rangeBytes?: number
 }[] {
   const resolved = parseOfficialSocialPostUrl(post.canonicalUrl)
   if (
@@ -126,7 +129,10 @@ function postMedia(
             url: video.video.url,
             headers: video.video.headers,
             durationSec: video.durationSec,
-            ...(video.video.mirror === 'reddit' ? { downloadTimeoutMs: REDDIT_ARCHIVE_VIDEO_TIMEOUT_MS } : {})
+            ...(video.video.mirror ? { downloadTimeoutMs: MIRROR_VIDEO_TIMEOUT_MS } : {}),
+            ...(mirrorVideoRangeBytes(video.video) !== undefined
+              ? { rangeBytes: mirrorVideoRangeBytes(video.video) }
+              : {})
           }
         ]
       : []),
@@ -136,7 +142,10 @@ function postMedia(
 
 function videoDurationBand(post: SocialPost, items: ReturnType<typeof postMedia>) {
   if (post.videoCount === 0 && !post.video) return undefined
-  const durationSec = items.find((asset) => asset.kind === 'video')?.durationSec
+  // A group mode without video still measures the post's own known duration.
+  const known = post.durationSec !== null && Number.isFinite(post.durationSec) && post.durationSec > 0
+  const durationSec =
+    items.find((asset) => asset.kind === 'video')?.durationSec ?? (known ? post.durationSec! : undefined)
   if (durationSec === undefined) return 'unknown'
   if (durationSec <= 60) return 'le_60'
   if (durationSec <= 120) return 'le_120'
@@ -221,12 +230,11 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
         item.kind === 'video' && (item.durationSec ?? Infinity) <= COMPRESSION_MAX_SECONDS
           ? options.compressVideo
           : undefined
-      const file = await options.download(
-        item.url,
-        budget,
-        compressor ? COMPRESSION_MAX_INPUT_BYTES : maxBytes,
-        item.headers
-      )
+      const cap = compressor ? COMPRESSION_MAX_INPUT_BYTES : maxBytes
+      const file =
+        item.rangeBytes !== undefined && item.rangeBytes <= cap
+          ? await options.download(item.url, budget, cap, item.headers, item.rangeBytes)
+          : await options.download(item.url, budget, cap, item.headers)
       if (budget.aborted) return { downloaded }
       const mime = file.contentType.split(';')[0]?.trim().toLowerCase() ?? ''
       const ext = EXTENSIONS[mime]
@@ -283,12 +291,14 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
             lookup?.status === 'found' && !controller.signal.aborted
               ? postMedia(lookup.post, target, chatId, options.mirrors)
               : []
-          if (items.length && lookup?.status === 'found') {
+          if (lookup?.status === 'found') {
+            // Reserve the canonical post too, so another share link to it is not looked up again, media or not.
             const canonical = parseOfficialSocialPostUrl(lookup.post.canonicalUrl)
             if (
               canonical &&
               canonical.lookupKey !== target.lookupKey &&
-              !options.storage.tx((db) => reserveRepeat(db, chatId, canonical.lookupKey, now()))
+              !options.storage.tx((db) => reserveRepeat(db, chatId, canonical.lookupKey, now())) &&
+              items.length
             ) {
               skip = 'repeat'
               items.length = 0

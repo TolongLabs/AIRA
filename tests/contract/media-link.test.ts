@@ -1439,3 +1439,40 @@ it('watches a compressed linked MP4 that exceeds the watcher budget', async () =
   const result = await reader.read(['https://x.com/testuser/status/99'], 5000, { media: true, social: true })
   expect(result.links?.[0]?.reading?.description).toBe('Compressed video')
 })
+
+it('does not download a compression-sized file for a video of unknown length, and logs a failed compression', async () => {
+  const caps: number[] = []
+  const logs: Record<string, unknown>[] = []
+  const input = Buffer.concat([Buffer.from('00000010667479706d70343200000000', 'hex'), Buffer.alloc(100)])
+  const reader = (durationSec: number | null) =>
+    createLinkReader({
+      viewer: {
+        lookup: async () => ({
+          status: 'found',
+          post: makePost({
+            durationSec,
+            video: { url: 'https://video.example/large.mp4', bytes: null, headers: null, hasAudio: true }
+          })
+        })
+      },
+      findTarget: fakeFindTarget,
+      watcher: {
+        async watch() {
+          throw new Error('not watched')
+        }
+      },
+      download: async (_url, _signal, maxBytes) => {
+        caps.push(maxBytes)
+        return { data: input, contentType: 'video/mp4' }
+      },
+      compressVideo: async () => undefined,
+      logger: createLogger({ level: 'warn', module: 'test', sink: (line) => logs.push(JSON.parse(line)) }),
+      model: 'test',
+      limits: { ...DEFAULT_MEDIA_LIMITS, maxVideoSeconds: 180, maxBytes: 64 }
+    })
+  await reader(null).read(['https://x.com/testuser/status/99'], 5000, { media: true, social: true })
+  await reader(20).read(['https://x.com/testuser/status/99'], 5000, { media: true, social: true })
+  expect(caps[0]).toBe(64)
+  expect(caps.at(-1)).toBeGreaterThan(64)
+  expect(logs).toContainEqual(expect.objectContaining({ event: 'media.link_compress_failed', reason: 'no_output' }))
+})

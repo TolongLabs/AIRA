@@ -19,7 +19,7 @@ import { ensureChat, setChatStatus } from '../../src/settings/chats.js'
 import { setSetting } from '../../src/settings/settings.js'
 import { parseFxTwitterResponse } from '../../src/social/parsers.js'
 import type { SocialPost, SocialPostLookup } from '../../src/social/types.js'
-import type { SocialPostTarget } from '../../src/social/urls.js'
+import { parseOfficialSocialPostUrl, type SocialPostTarget } from '../../src/social/urls.js'
 import type { Storage } from '../../src/storage/database.js'
 import type { TurnService } from '../../src/turn/pipeline.js'
 import { tmpDir, tmpStorage } from '../support/tmp.js'
@@ -64,6 +64,7 @@ function setup(
     on?: boolean
     type?: 'group' | 'dm'
     compressVideo?: AutofetchOptions['compressVideo']
+    mirrors?: AutofetchOptions['mirrors']
   } = {}
 ) {
   const storage = tmpStorage()
@@ -100,6 +101,7 @@ function setup(
     viewer,
     download,
     ...(options.compressVideo ? { compressVideo: options.compressVideo } : {}),
+    ...(options.mirrors ? { mirrors: options.mirrors } : {}),
     cacheDir: join(dataDir, 'cache', 'autofetch'),
     hostCacheDir: '/host/aira/data/cache/autofetch',
     logger: createLogger({ level: 'info', module: 'autofetch', sink: (line) => logged.push(line) }),
@@ -112,6 +114,7 @@ function setup(
     waId,
     now: () => clock,
     restart: () => createAutofetch(optionsForAutofetch),
+    options: optionsForAutofetch,
     autofetch: {
       ...autofetch,
       fetch: async (input: { chat: string; text: string }) => (await autofetch.fetch(input)).media,
@@ -418,6 +421,59 @@ describe('autofetch', () => {
       }
     ])
     expect(existsSync(join(env.dataDir, 'cache', 'autofetch'))).toBe(false)
+  })
+
+  it('records the known duration band of a video its group mode does not send', async () => {
+    const env = setup({
+      posts: {
+        'facebook:12345678901234567': {
+          durationSec: 45,
+          videoCount: 1,
+          video: { url: 'https://video.example/clip.mp4', bytes: null, headers: null, hasAudio: null }
+        }
+      }
+    })
+    await env.autofetch.fetch({
+      chat: env.waId,
+      text: 'https://www.facebook.com/example_page/videos/12345678901234567/'
+    })
+    expect(env.storage.read((db) => db.prepare('SELECT video_duration_band FROM social_lookup').pluck().all())).toEqual(
+      ['le_60']
+    )
+    expect(env.downloads).toEqual([])
+  })
+
+  it('downloads a large verified TikTok mirror video in byte ranges with the mirror time limit', async () => {
+    const tiktok = 'https://www.tiktok.com/@example/video/1234567890'
+    const video = {
+      url: 'https://v16m.tiktokcdn-us.com/clip.mp4',
+      bytes: 9_000_000,
+      headers: null,
+      hasAudio: true,
+      mirror: 'tiktok' as const
+    }
+    const env = setup({
+      mirrors: { tiktok: 'read_and_group' },
+      posts: { 'tiktok:1234567890': { video, durationSec: 42 } }
+    })
+    await env.autofetch.fetch({ chat: env.waId, text: tiktok })
+    expect(env.download).toHaveBeenCalledWith(video.url, expect.any(AbortSignal), expect.any(Number), null, 9_000_000)
+  })
+
+  it('reserves the canonical post of a share link even when it has no media to send', async () => {
+    const env = setup()
+    env.viewer.lookup.mockImplementation(async (target: SocialPostTarget) => {
+      env.lookups.push(target.lookupKey)
+      const canonical = parseOfficialSocialPostUrl('https://www.reddit.com/r/example/comments/abc123/sample/')!
+      return { status: 'found', post: post(canonical, { attachments: [] }) }
+    })
+    const scoped = createAutofetch({
+      ...env.options,
+      mirrors: { reddit: 'read_and_group', redditGroupChatIds: [env.chat.chatId] }
+    })
+    await scoped.fetch({ chat: env.waId, text: 'https://www.reddit.com/r/example/s/Fixture2/' })
+    await scoped.fetch({ chat: env.waId, text: 'https://www.reddit.com/r/example/comments/abc123/sample/' })
+    expect(env.lookups).toHaveLength(1)
   })
 
   it('does not send a Facebook video while its group capability is disabled', async () => {

@@ -409,9 +409,11 @@ Arctic Shift is an archive. Its Reddit fallback MP4 may be video-only. The Reddi
 before the mirror and stops further attempts on Reddit's own refusal or rate limit; the archive's 403 or 429
 does not. A feed that gives only an image post's thumbnail still lets the mirror supply the original photo. The normal watch and group byte,
 duration and timeout limits apply, including linked MP4 compression. Mirror lookup endpoints disallow redirects,
-and asset downloads keep redirects on the original origin. The watch path downloads a verified TikWM watermarked
+and asset downloads keep redirects on the original origin. Other social media downloads may redirect to a
+CDN on another origin, carry no cookies, and send forwarded headers only to the first origin. The watch path downloads a verified TikWM watermarked
 MP4 from `v16m.tiktokcdn-us.com` in four parallel byte ranges when its declared size is at least 8 MB and within
-the intake download cap. Each response must be a matching MP4 range of the declared total. Reassembly must
+the intake download cap; group autofetch uses the same ranges for a verified TikWM video, and every verified
+mirror video gets 25 s to download. Each response must be a matching MP4 range of the declared total. Reassembly must
 produce the complete file before watch or compression. A part that sends nothing for 4 s, drops or ends early
 resumes from its last byte, up to twice. A resume sends the part's strong ETag or Last-Modified as `If-Range`;
 without one, the part starts over. An invalid, refused or redirected part stops the batch at once. The watch

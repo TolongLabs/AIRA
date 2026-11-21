@@ -436,8 +436,8 @@ describe('approved mirror readers', () => {
       expect(fetcher).not.toHaveBeenCalled()
       const result = (await post('', { chat: chat.waId, text: `${tikTokLink} ${redditLink}` })) as AutofetchBatch
       expect(result.media).toHaveLength(2)
-      expect(downloadTimeout).toHaveBeenCalledWith(10000)
-      expect(downloadTimeout).toHaveBeenCalledWith(25000)
+      // Both verified mirror videos, TikTok and Reddit, get the mirror time limit.
+      expect(downloadTimeout.mock.calls.map(([ms]) => ms)).toEqual([25000, 25000])
       for (const item of result.media) {
         expect(item.kind).toBe('video')
         expect(readFileSync(join(cache, item.path.split('/').at(-1)!))).toEqual(mp4)
