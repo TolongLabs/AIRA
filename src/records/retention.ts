@@ -85,6 +85,15 @@ export function pruneRecords(
       .run(retentionCutoff).changes
     counts.inbound_message += deleteRows(db, 'inbound_message', oldTurnSubquery, [retentionCutoff], beforeDelete)
     counts.model_call += deleteRows(db, 'model_call', oldTurnSubquery, [retentionCutoff], beforeDelete)
+    deleteRows(
+      db,
+      'social_turn_lookup',
+      `${oldTurnSubquery} OR tool_call_id IN (
+      SELECT id FROM tool_call WHERE ${oldTurnSubquery}
+    )`,
+      [retentionCutoff, retentionCutoff],
+      beforeDelete
+    )
     counts.tool_call += deleteRows(db, 'tool_call', oldTurnSubquery, [retentionCutoff], beforeDelete)
     counts.failure += deleteRows(db, 'failure', oldTurnSubquery, [retentionCutoff], beforeDelete)
     // Preserve tool idempotency and the window high-water row after their old turns are gone.

@@ -4,10 +4,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { loadPack } from '../../src/character/loader.js'
 import { createLogger } from '../../src/records/logger.js'
 import { createRedactor } from '../../src/records/redact.js'
+import { pruneRecords } from '../../src/records/retention.js'
 import { RenderError } from '../../src/render/render.js'
 import { type NoteDocument, noteDocumentSchema } from '../../src/render/types.js'
 import { ensureChat, setChatStatus } from '../../src/settings/chats.js'
 import { resolveSettings, setSetting } from '../../src/settings/settings.js'
+import { createSocialPostPort } from '../../src/social/port.js'
+import { ReplyReader } from '../../src/social/replies/service.js'
+import { SocialPostViewer } from '../../src/social/viewer.js'
 import { closeTurn, openTurn, receiveInbound } from '../../src/storage/turns.js'
 import { createCommandRouter } from '../../src/tools/commands.js'
 import { CORE_TOOL_NAMES, type CoreToolOptions, registerCoreTools } from '../../src/tools/core/index.js'
@@ -273,6 +277,72 @@ describe('core tools', () => {
       await registry.call('forget', { itemId: 'kept' }, ctx, { callId: 'off-forget', source: 'command' })
     ).toMatchObject({ ok: true, data: { forgotten: true } })
     expect(fakes.facts.size).toBe(0)
+  })
+
+  it('persists a redacted social lookup against the exact read_post call and prunes it with its turn', async () => {
+    const settings = { timeoutMs: 250, cacheTtlMs: 0, maxCacheEntries: 1, ytDlpPath: 'unused', maxTextChars: 1000 }
+    const viewer = new SocialPostViewer(settings, {
+      lookup: async () => ['8.8.8.8'],
+      fetcher: async () => Response.json({ tweet: { id: '777', text: 'synthetic-caption-marker' } })
+    })
+    const replies = new ReplyReader(
+      { ...settings, maxReplies: 1, maxReplyChars: 100 },
+      {
+        fetcher: async () => new Response('', { status: 404 }),
+        lookup: async () => ['8.8.8.8']
+      }
+    )
+    const { makeCtx, registry, storage } = setup({ post: createSocialPostPort(viewer, replies) })
+    const ctx = makeCtx()
+    const url = 'https://x.com/demo/status/777?token=synthetic-token-marker'
+    ctx.sources.add(url, 'message')
+    expect(await registry.call('read_post', { url }, ctx, { callId: 'read-synthetic', source: 'model' })).toMatchObject(
+      { ok: true, data: { status: 'partial' } }
+    )
+    const row = storage.read((db) =>
+      db
+        .prepare(
+          `
+      SELECT lookup.*, call.turn_id AS parent_turn, call.tool FROM social_turn_lookup AS lookup
+      JOIN tool_call AS call ON call.id = lookup.tool_call_id
+    `
+        )
+        .get()
+    )
+    expect(row).toMatchObject({
+      turn_id: null,
+      parent_turn: ctx.turnId,
+      tool: 'read_post',
+      platform: 'x',
+      input_form: 'direct',
+      outcome: 'partial',
+      missing_fields: 6
+    })
+    expect(JSON.stringify(row)).not.toMatch(/https:|synthetic-caption-marker|synthetic-token-marker|"777"/)
+    storage.tx((db) =>
+      db.exec(`
+      CREATE TRIGGER refuse_social_metrics BEFORE INSERT ON social_turn_lookup
+      BEGIN SELECT RAISE(ABORT, 'synthetic metrics failure'); END
+    `)
+    )
+    expect(
+      await registry.call('read_post', { url }, ctx, { callId: 'read-with-failed-metrics', source: 'model' })
+    ).toMatchObject({ ok: true })
+    expect(storage.read((db) => db.prepare("SELECT id FROM tool_call WHERE tool = 'read_post'").all())).toHaveLength(2)
+    expect(closeTurn(storage, { turnId: ctx.turnId, state: 'delivered', reply: 'fixture reply' })).toBe(true)
+    const archived: string[] = []
+    pruneRecords(
+      storage,
+      { retentionDays: 1, diagnosticsHours: 24, windowDays: 1 },
+      {
+        now: () => new Date('2099-01-01T00:00:00Z'),
+        beforeDelete: (table) => {
+          archived.push(table)
+        }
+      }
+    )
+    expect(archived.indexOf('social_turn_lookup')).toBeLessThan(archived.indexOf('tool_call'))
+    expect(storage.read((db) => db.prepare('SELECT 1 FROM social_turn_lookup').get())).toBeUndefined()
   })
 
   it('web tools: web_search, read_page, read_post, send_photo, routing and failures', async () => {

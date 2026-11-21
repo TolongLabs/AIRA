@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { SocialLookupTrace, SocialPostLookup } from '../social/types.js'
-import type { SocialPostTarget } from '../social/urls.js'
+import { platformOwnsHost, type SocialPostTarget } from '../social/urls.js'
 import type { Db, Storage } from '../storage/database.js'
 
 const ATTEMPT_IDS = new Set([
@@ -19,6 +19,7 @@ const REASONS = new Set([
   'binary_missing',
   'network_error',
   'missing_post',
+  'identity_mismatch',
   'no_post_data',
   'cache_hit',
   'repeat',
@@ -39,22 +40,39 @@ function elapsed(started: number, ended: number, limit: number): number {
   return Math.min(limit, Math.max(0, Math.round(ended - started) || 0))
 }
 
-export function recordAutofetchLookup(
+type SocialLookupParent = { runId: number } | { turnId: string } | { toolCallId: number }
+
+export function recordSocialLookup(
   db: Db,
+  parent: SocialLookupParent,
   data: {
-    runId: number
-    ordinal: number
+    ordinal?: number
     target: SocialPostTarget
     started: Date
     ended: Date
     lookup?: SocialPostLookup
     trace?: SocialLookupTrace
     skip?: 'repeat' | 'platform_excluded'
-    eligible: number
-    downloaded: number
+    eligible?: number
+    downloaded?: number
+    videoDurationBand?: 'le_60' | 'le_120' | 'le_180' | 'gt_180' | 'unknown'
   }
 ): void {
-  const { runId, ordinal, target, started, ended, lookup, trace, skip, eligible, downloaded } = data
+  const {
+    ordinal = 0,
+    target,
+    started,
+    ended,
+    lookup,
+    trace,
+    skip,
+    eligible = 0,
+    downloaded = 0,
+    videoDurationBand
+  } = data
+  const runId = 'runId' in parent ? parent.runId : null
+  const turnId = 'turnId' in parent ? parent.turnId : null
+  const toolCallId = 'toolCallId' in parent ? parent.toolCallId : null
   const outcome = skip
     ? 'skipped'
     : lookup?.status === 'found'
@@ -65,23 +83,29 @@ export function recordAutofetchLookup(
   const reason =
     skip ??
     (lookup?.status === 'failed' ? lookup.reason : trace?.reason) ??
-    (lookup?.status === 'found' && eligible === 0 ? 'no_verified_attachment' : undefined)
+    (runId !== null && lookup?.status === 'found' && eligible === 0 ? 'no_verified_attachment' : undefined)
   const attempts = (trace?.attempts ?? []).slice(0, 4).map((attempt) => ({
     reader: ATTEMPT_IDS.has(attempt.readerId) ? attempt.readerId : 'unknown',
     ok: attempt.ok,
     reason: safeReason(attempt.reason),
     ms: elapsed(0, attempt.ms, 6_000)
   }))
+  const input = new URL(target.originalUrl ?? target.canonicalUrl)
   const inputForm =
-    target.needsRedirect || target.lookupKey.includes(':share:') || target.lookupKey.includes('-share:')
+    target.needsRedirect ||
+    /(?:^|[-:])share:/.test(target.lookupKey) ||
+    (target.platform === 'threads' && input.pathname.startsWith('/t/'))
       ? 'share'
-      : 'direct'
-  db.prepare(
-    `INSERT INTO social_lookup
-      (job_run_id, ordinal, started_at, elapsed_ms, platform, input_form, outcome, reason, attempts, eligible_files, downloaded_files)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    runId,
+      : !platformOwnsHost(input.hostname, target.platform)
+        ? 'mirror'
+        : /^(?:m|mobile|vm|vt)\./.test(input.hostname)
+          ? 'mobile'
+          : 'direct'
+  const missingFields =
+    lookup?.status === 'found'
+      ? (lookup.missing ?? []).reduce((bits, field) => bits | { text: 1, author: 2, media: 4, video: 8 }[field], 0)
+      : 0
+  const fields = [
     ordinal,
     started.toISOString(),
     elapsed(started.getTime(), ended.getTime(), 60_000),
@@ -90,9 +114,25 @@ export function recordAutofetchLookup(
     outcome,
     safeReason(reason),
     JSON.stringify(attempts),
-    eligible,
-    downloaded
-  )
+    missingFields,
+    trace?.redirectHops === undefined ? null : elapsed(0, trace.redirectHops, 2),
+    trace?.resolveMs === undefined ? null : elapsed(0, trace.resolveMs, 6_000)
+  ]
+  if (runId === null) {
+    db.prepare(
+      `INSERT INTO social_turn_lookup
+      (turn_id, tool_call_id, ordinal, started_at, elapsed_ms, platform, input_form, outcome,
+       reason, attempts, missing_fields, redirect_hops, resolve_ms)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(turnId, toolCallId, ...fields)
+  } else {
+    db.prepare(
+      `INSERT INTO social_lookup
+      (job_run_id, ordinal, started_at, elapsed_ms, platform, input_form, outcome, reason,
+       attempts, missing_fields, redirect_hops, resolve_ms, video_duration_band, eligible_files, downloaded_files)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(runId, ...fields, videoDurationBand ?? null, eligible, downloaded)
+  }
 }
 
 function digest(key: string): string {

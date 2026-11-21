@@ -171,7 +171,7 @@ export function readPostTool(ports: ToolPorts): ToolDefinition<z.infer<typeof re
         return { ok: false, kind: 'unavailable', reason: 'post reader is not set up' }
       }
       try {
-        const post = await ports.post.read(target.url, context.signal)
+        const post = await ports.post.read(target.url, context.signal, context.observeSocialLookup)
         const seen = context.sources.add(post.canonicalUrl ?? target.url, 'canonical') ?? target
         return { ok: true, data: { ...modelPostResult(post), url: seen.url, source: seen.id } }
       } catch (error) {

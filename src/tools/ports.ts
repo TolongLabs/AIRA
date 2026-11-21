@@ -3,6 +3,7 @@ import { isIP } from 'node:net'
 import type { NoteDocument, ReportFormat } from '../render/types.js'
 import type { ResearchOffers } from '../research/offer.js'
 import type { PostPortResult } from '../social/result.js'
+import type { SocialLookupObserver } from '../social/types.js'
 import type { Db } from '../storage/database.js'
 import { isBlockedPage } from './blocked-page.js'
 
@@ -45,7 +46,7 @@ export interface PagePort {
 }
 
 export interface PostPort {
-  read(url: string, signal: AbortSignal): Promise<PostPortResult>
+  read(url: string, signal: AbortSignal, observe?: SocialLookupObserver): Promise<PostPortResult>
 }
 
 /** The gateway's schedule. The reminder tools are the only code that talks to it. */

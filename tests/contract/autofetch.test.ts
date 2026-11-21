@@ -259,6 +259,40 @@ describe('autofetch', () => {
     expect(env.lookups).toEqual(['x:1'])
   })
 
+  it('records duration bands on both sides of the proposed cutoff without rounding', async () => {
+    const env = setup()
+    env.viewer.lookup.mockImplementation(async (target) => {
+      const seconds = target.id === '1' ? 180 : target.id === '2' ? 180.1 : undefined
+      return {
+        status: 'found',
+        post: parseFxTwitterResponse(
+          {
+            tweet: {
+              id: target.id,
+              media: {
+                videos: [
+                  { type: 'video', format: 'video/mp4', url: 'https://video.example/clip.mp4', duration: seconds }
+                ]
+              }
+            }
+          },
+          target,
+          1000
+        )
+      }
+    })
+    await env.autofetch.fetch({
+      chat: env.waId,
+      text: ['1', '2', '3'].map((id) => `https://x.com/demo/status/${id}`).join(' ')
+    })
+    expect(
+      env.storage.read((db) =>
+        db.prepare('SELECT video_duration_band FROM social_lookup ORDER BY ordinal').pluck().all()
+      )
+    ).toEqual(['le_180', 'gt_180', 'unknown'])
+    expect(env.downloads).toHaveLength(2)
+  })
+
   it('rejects an image MIME header without an image signature', async () => {
     const env = setup({ posts: { 'x:555': { photoUrls: ['https://img.example/wrong.jpg'] } } })
     env.download.mockResolvedValueOnce({ data: Buffer.from('<html>'), contentType: 'image/jpeg' })

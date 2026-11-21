@@ -1,8 +1,10 @@
 import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
+import { recordSocialLookup } from '../records/autofetch.js'
 import type { Logger } from '../records/logger.js'
 import type { Redactor } from '../records/redact.js'
 import { recordFailure, recordToolCall } from '../records/turn-record.js'
+import type { SocialLookupObservation, SocialLookupObserver } from '../social/types.js'
 import { type Db, isoNow, type Storage } from '../storage/database.js'
 import { type SourceLookup, searchLookup } from '../turn/sources.js'
 import type { OfferedTool, TurnContext } from '../turn/types.js'
@@ -256,7 +258,8 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
     def: ToolDefinition,
     parsedArgs: unknown,
     context: TurnContext,
-    call: { callId: string; signal?: AbortSignal }
+    call: { callId: string; signal?: AbortSignal },
+    observeSocialLookup?: SocialLookupObserver
   ): Promise<{ result: ToolResult; error?: unknown }> => {
     const timeoutMs = def.timeoutMs ?? deps.config.tools.defaultTimeoutMs
     const controller = new AbortController()
@@ -360,6 +363,11 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
       callId: call.callId,
       signal: controller.signal,
       callDeadline: now().getTime() + timeoutMs,
+      observeSocialLookup:
+        observeSocialLookup &&
+        ((observation) => {
+          if (!ended) observeSocialLookup(observation)
+        }),
       now,
       commit
     }
@@ -455,15 +463,16 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
     call: { callId: string; source: 'model' | 'command' },
     startedAt: Date,
     outcome: ToolResult,
-    error: unknown
+    error: unknown,
+    socialLookup?: SocialLookupObservation
   ): void => {
     if (outcome.ok) noteSources(name, args, outcome.data, context, call.callId)
     const durationMs = Math.max(0, now().getTime() - startedAt.getTime())
     const outcomeLabel = outcome.ok ? 'ok' : outcome.kind
     const receiptId = outcome.ok ? outcome.receipt?.receiptId : undefined
     try {
-      deps.storage.tx((db) => {
-        recordToolCall(db, {
+      const toolCallId = deps.storage.tx((db) => {
+        const id = recordToolCall(db, {
           turnId: context.turnId,
           tool: name,
           source: call.source,
@@ -497,7 +506,15 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
             now
           )
         }
+        return id
       })
+      if (socialLookup) {
+        try {
+          deps.storage.tx((db) => recordSocialLookup(db, { toolCallId }, socialLookup))
+        } catch {
+          deps.logger.warn('social.lookup_record_failed', { consumer: 'tool' })
+        }
+      }
     } catch (err) {
       deps.logger.warn('tool_record_failed', { turnId: context.turnId, tool: name, error: err })
     }
@@ -606,6 +623,7 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
     let result: ToolResult
     let error: unknown
 
+    let socialLookup: SocialLookupObservation | undefined
     const def = tools.get(name)
     const ext = def ? undefined : externalTools.get(name)
     if (def) {
@@ -621,7 +639,17 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
           if (!parsed.success) {
             result = { ok: false, kind: 'invalid', reason: formatZodIssues(parsed.error), code: 'schema' }
           } else {
-            const ran = await runHandler(def, parsed.data, context, call)
+            const ran = await runHandler(
+              def,
+              parsed.data,
+              context,
+              call,
+              name === 'read_post'
+                ? (value) => {
+                    socialLookup = value
+                  }
+                : undefined
+            )
             result = ran.result
             error = ran.error
           }
@@ -642,7 +670,7 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
       result = { ok: false, kind: 'unavailable', reason: 'no such tool' }
     }
 
-    recordOutcome(name, args, context, call, startedAt, result, error)
+    recordOutcome(name, args, context, call, startedAt, result, error, socialLookup)
     return result
   }
 

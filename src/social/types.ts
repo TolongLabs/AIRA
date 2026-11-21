@@ -56,8 +56,20 @@ export type SocialPostLookup =
   | { status: 'failed'; platform: SocialPlatform; reason: string; canonicalUrl?: string }
   | { status: 'none' }
 
+export interface SocialLookupObservation {
+  target: SocialPostTarget
+  started: Date
+  ended: Date
+  lookup: SocialPostLookup
+  trace?: SocialLookupTrace
+}
+
+export type SocialLookupObserver = (observation: SocialLookupObservation) => void
+
 export interface SocialLookupTrace {
   reason?: string
+  redirectHops?: number
+  resolveMs?: number
   attempts: readonly { readerId: string; ok: boolean; reason?: string; ms: number }[]
 }
 

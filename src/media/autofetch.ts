@@ -1,6 +1,6 @@
 import { createHash, createHmac } from 'node:crypto'
 import { join } from 'node:path'
-import { recordAutofetchHandoff, recordAutofetchLookup } from '../records/autofetch.js'
+import { recordAutofetchHandoff, recordSocialLookup } from '../records/autofetch.js'
 import type { Logger } from '../records/logger.js'
 import { endJobRun, startJobRun } from '../records/turn-record.js'
 import { getChatByWaId } from '../settings/chats.js'
@@ -86,7 +86,7 @@ export interface AutofetchOptions {
 function postMedia(
   post: SocialPost,
   target: SocialPostTarget
-): { kind: AutofetchMedia['kind']; url: string; headers?: Record<string, string> | null }[] {
+): { kind: AutofetchMedia['kind']; url: string; headers?: Record<string, string> | null; durationSec?: number }[] {
   const resolved = parseOfficialSocialPostUrl(post.canonicalUrl)
   if (
     !resolved ||
@@ -107,9 +107,21 @@ function postMedia(
   )
   const photos = attachments.flatMap((item) => (item.kind === 'image' ? [{ kind: item.kind, url: item.url }] : []))
   return [
-    ...(video?.kind === 'video' ? [{ kind: video.kind, url: video.video.url, headers: video.video.headers }] : []),
+    ...(video?.kind === 'video'
+      ? [{ kind: video.kind, url: video.video.url, headers: video.video.headers, durationSec: video.durationSec }]
+      : []),
     ...photos
   ].slice(0, AUTOFETCH_MAX_FILES)
+}
+
+function videoDurationBand(post: SocialPost, items: ReturnType<typeof postMedia>) {
+  if (post.videoCount === 0 && !post.video) return undefined
+  const durationSec = items.find((asset) => asset.kind === 'video')?.durationSec
+  if (durationSec === undefined) return 'unknown'
+  if (durationSec <= 60) return 'le_60'
+  if (durationSec <= 120) return 'le_120'
+  if (durationSec <= 180) return 'le_180'
+  return 'gt_180'
 }
 
 export function createAutofetch(options: AutofetchOptions): Autofetch {
@@ -244,18 +256,23 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
           media.push(...saved)
           try {
             options.storage.tx((db) =>
-              recordAutofetchLookup(db, {
-                runId,
-                ordinal,
-                target,
-                started,
-                ended: now(),
-                lookup,
-                trace,
-                skip,
-                eligible: items.length,
-                downloaded
-              })
+              recordSocialLookup(
+                db,
+                { runId },
+                {
+                  ordinal,
+                  target,
+                  started,
+                  ended: now(),
+                  lookup,
+                  trace,
+                  skip,
+                  eligible: items.length,
+                  downloaded,
+                  videoDurationBand:
+                    !skip && lookup?.status === 'found' ? videoDurationBand(lookup.post, items) : undefined
+                }
+              )
             )
           } catch {
             options.logger?.warn('autofetch.record_failed', { phase: 'lookup' })

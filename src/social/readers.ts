@@ -4,7 +4,13 @@ import { parseFacebookPage } from './facebook.js'
 import { type Lookup, publicAddress } from './fetch.js'
 import { parseInstagramPage } from './instagram.js'
 import { fetchPostPage, META_PAGE_HEADERS } from './meta.js'
-import { parseBlueskyThread, parseFxTwitterResponse, parseYouTubeOEmbed, parseYtDlpMetadata } from './parsers.js'
+import {
+  object,
+  parseBlueskyThread,
+  parseFxTwitterResponse,
+  parseYouTubeOEmbed,
+  parseYtDlpMetadata
+} from './parsers.js'
 import { parseRedditFeedPost } from './redditFeed.js'
 import { BROWSER_USER_AGENT } from './replies/common.js'
 import { fetchThreadsPage, parseThreadsPage } from './threads.js'
@@ -13,6 +19,7 @@ import {
   isFacebookPost,
   isResolvedFacebookPost,
   PLATFORM_NAME,
+  parseOfficialSocialPostUrl,
   type SocialPlatform,
   type SocialPostTarget
 } from './urls.js'
@@ -242,6 +249,8 @@ function fxTwitterReader(env: ReaderEnv): SocialReader {
       const response = await ctx.fetcher(`https://api.fxtwitter.com/status/${target.id}`, { signal: ctx.signal })
       if (!response.ok) return { ok: false, reason: `http_${response.status}` }
       const payload = await response.json()
+      const nativeId = object(object(payload).tweet).id
+      if (typeof nativeId === 'string' && nativeId !== target.id) return { ok: false, reason: 'identity_mismatch' }
       return { ok: true, post: parseFxTwitterResponse(payload, target, ctx.maxTextChars) }
     }
   }
@@ -399,6 +408,11 @@ function ytDlpReader(env: ReaderEnv, isConfigured: () => boolean = () => true): 
       if (!env.ytDlpAvailable()) return { ok: false, reason: 'binary_missing' }
       const result = await ctx.runExtractor(env.ytDlpPath, target.extractorUrl, ctx.timeoutMs)
       if ('reason' in result) return { ok: false, reason: result.reason }
+      const page = object(result.metadata).webpage_url
+      const declared = typeof page === 'string' ? parseOfficialSocialPostUrl(page) : null
+      if (declared && !declared.needsRedirect && declared.lookupKey !== target.lookupKey) {
+        return { ok: false, reason: 'identity_mismatch' }
+      }
       return { ok: true, post: parseYtDlpMetadata(result.metadata, target, ctx.maxTextChars) }
     }
   }
