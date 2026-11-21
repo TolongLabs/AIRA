@@ -514,13 +514,11 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         const readLinks = (combined.links ?? []).filter((link) => link.post.platform !== 'youtube' || link.reading)
         context.intakeKinds = [
           ...combined.readings.map((entry) => `media_${entry.kind}`),
-          ...readLinks.map((link) =>
-            link.post.platform === 'youtube'
-              ? 'media_youtube'
-              : link.mediaKind
-                ? `media_${link.mediaKind}`
-                : 'media_post'
-          )
+          ...readLinks.flatMap((link) => {
+            if (link.post.platform === 'youtube') return ['media_youtube']
+            if (link.mediaKind === 'video' && link.reading && link.result) return ['media_post', 'media_video']
+            return [link.mediaKind ? `media_${link.mediaKind}` : 'media_post']
+          })
         ]
         // A link is closed to read_post and read_page only when intake watched its video or image (owner, 17 Nov).
         // Text alone, or a failed watch, leaves the tools open: they also return the replies and the media.
