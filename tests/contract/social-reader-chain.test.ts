@@ -112,6 +112,47 @@ describe('reader chain', () => {
     })
   })
 
+  it('treats whitespace as missing, keeps a known zero replyCount, and still fills zero count placeholders', async () => {
+    const first = reader('first', 'page_meta', async () => ({
+      ok: true,
+      post: { authorHandle: '   ', text: 'first caption', replyCount: 0 }
+    }))
+    const second = reader('second', 'mirror_api', async () => ({
+      ok: true,
+      post: { authorHandle: 'real_author', text: 'second caption', replyCount: 5 }
+    }))
+
+    const outcome = await runChain([first, second], xTarget, chainRun())
+
+    expect(outcome).toMatchObject({
+      status: 'readable',
+      missing: [],
+      post: { authorHandle: 'real_author', text: 'first caption', replyCount: 0 }
+    })
+
+    const countPlaceholder = reader('placeholder', 'page_meta', async () => ({
+      ok: true,
+      post: { authorHandle: 'poster', photoCount: 0, videoCount: 0 }
+    }))
+    const countFiller = reader('filler', 'yt_dlp', async () => ({
+      ok: true,
+      post: {
+        text: 'caption',
+        photoCount: 2,
+        videoCount: 1,
+        video: { url: 'https://video.example/clip.mp4', bytes: null, headers: null, hasAudio: true }
+      }
+    }))
+
+    const countOutcome = await runChain([countPlaceholder, countFiller], xTarget, chainRun())
+
+    expect(countOutcome).toMatchObject({
+      status: 'readable',
+      missing: [],
+      post: { authorHandle: 'poster', text: 'caption', photoCount: 2, videoCount: 1 }
+    })
+  })
+
   it('does not run a later reader that cannot supply a missing field', async () => {
     const first = reader('first', 'page_meta', async () => ({ ok: true, post: { authorHandle: 'poster' } }), 1000, [
       'author'
