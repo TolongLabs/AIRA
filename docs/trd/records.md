@@ -75,6 +75,9 @@ The pipeline receives each attempt even when the runner throws. Each failed atte
 `failure` row, handled by `retry`, `fallback`, or the final pack line. Failed turns keep model routing and attempt
 counts too. A spend write failure keeps the reply, emits a warning and records a `storage_error` failure.
 
+Link media download failures log the platform, expected media type and a reason code. For a download
+refusal, the code carries the HTTP status. The URL, headers and response body stay out of the log.
+
 ## Failure Kinds
 
 One list, used by records, alerts and tests: the model kinds in [Models](models.md#failure-kinds), plus

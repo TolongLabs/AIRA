@@ -46,6 +46,7 @@ export interface LinkReading {
   /** Same model payload as `read_post` for a successful or partial read. */
   result?: ModelPostResult
   mediaKind?: Extract<MediaKind, 'image' | 'video'>
+  preview?: true
   reading?: MediaReading
   /** Set when the post was only partly read: a fixed sentence saying what was visible. */
   note?: string
@@ -419,7 +420,13 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
           let downloaded: { data: Buffer; contentType: string }
           try {
             downloaded = await options.download(url, controller.signal, options.limits.maxBytes, headers)
-          } catch {
+          } catch (error) {
+            const status = error instanceof Error ? /^http status (\d{3})$/.exec(error.message)?.[1] : undefined
+            options.logger?.warn('media.link_download_failed', {
+              platform: post.platform,
+              mediaKind: expectedKind,
+              reason: status ? `http_${status}` : controller.signal.aborted ? 'timeout' : 'download_failed'
+            })
             return undefined
           }
           const contentType =
@@ -470,6 +477,7 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
         ]
 
         let watched: { kind: 'video' | 'image'; reading: MediaReading } | undefined
+        let preview = false
         if (parts.length > 0) {
           watched = {
             kind: videoWatch ? 'video' : 'image',
@@ -481,6 +489,7 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
           }
         } else if (canWatch && post.imageUrl && !attempted.some((photo) => photo.url === post.imageUrl)) {
           watched = await watchRemoteMedia(post.imageUrl, 'image')
+          preview = watched !== undefined
         }
 
         return {
@@ -490,6 +499,7 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
               post,
               result: modelResult,
               ...(watched ? { mediaKind: watched.kind, reading: watched.reading } : {}),
+              ...(preview ? { preview: true as const } : {}),
               ...note
             }
           ],

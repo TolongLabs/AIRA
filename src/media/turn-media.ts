@@ -273,15 +273,21 @@ function formatLinkLines(link: LinkReading, share: number): string[] {
   const rest = share - threadLines.join('\n').length
   const noteText = link.note ?? link.result?.note
   const note = noteText ? [`  (${noteText})`] : []
+  const readKind = link.reading ? (link.mediaKind ?? 'video') : undefined
+  if (readKind !== 'video' && (link.post.videoCount > 0 || link.post.video)) {
+    note.push('  Video playback and audio were unavailable.')
+  }
   if (!link.reading) return [...threadLines, formatPostLine(link, rest), ...note]
   const postBudget = Math.max(120, Math.floor(rest * 0.4))
   const postLine = formatPostLine(link, postBudget)
   const readingBudget = Math.max(80, rest - postLine.length)
   const safeDesc = sanitizeMediaText(link.reading.description)
-  const safeTranscript = link.reading.transcript ? sanitizeMediaText(link.reading.transcript) : undefined
+  const safeTranscript =
+    readKind === 'video' && link.reading.transcript ? sanitizeMediaText(link.reading.transcript) : undefined
   const description = clip(safeDesc, safeTranscript ? Math.floor(readingBudget * 0.4) : readingBudget)
   const transcript = safeTranscript ? clip(safeTranscript, Math.max(0, readingBudget - description.length)) : undefined
-  const lines = [...threadLines, postLine, ...note, `  ${link.mediaKind ?? 'video'}: ${description}`]
+  const label = link.preview ? 'preview image' : readKind
+  const lines = [...threadLines, postLine, ...note, `  ${label}: ${description}`]
   if (transcript && transcript.length > 0) lines.push(`  transcript: ${transcript}`)
   return lines
 }

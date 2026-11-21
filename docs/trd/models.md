@@ -368,7 +368,9 @@ then those of the earlier posts in its thread, oldest first. The video and the p
 own call under the link's time limit. One answer enters block 4 as it is; several are merged in order, each labelled
 (`video`, `photo 2`, `earlier post, photo 1`), and the merged text names how many photos were not watched or could
 not be read. When nothing was read, the reader falls back to the post's one picture (a video's thumbnail or the link
-card's image), and then to its text only (`src/media/link-intake.ts`).
+card's image), and then to its text only (`src/media/link-intake.ts`). The prompt labels a fallback
+picture as a preview. For a video post without a successful watch, the prompt states that video and audio
+were unavailable. Only successful video watches can supply a transcript for a linked post.
 
 The post's text, author, most-liked replies and media enter block 4 as lines with its platform, author, date, reply
 count and canonical URL. The earlier posts of its thread come first, each with its author and text

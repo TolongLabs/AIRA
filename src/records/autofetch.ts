@@ -31,6 +31,8 @@ const receiptLifetimeMs = 10 * 60_000
 function safeReason(reason?: string): string | null {
   if (!reason) return null
   if (REASONS.has(reason)) return reason
+  if (reason === 'http_404') return 'not_found'
+  if (/^exit_(?:\d+|unknown)$/.test(reason)) return 'extractor_error'
   if (reason === 'http_429') return 'rate_limited'
   if (reason === 'http_401' || reason === 'http_403') return 'access_refused'
   return 'unknown'
