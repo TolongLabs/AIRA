@@ -16,12 +16,12 @@ function cutSnippet(text: string): string {
   return text.length > MAX_SNIPPET_CHARS ? `${text.slice(0, MAX_SNIPPET_CHARS - 1)}…` : text
 }
 
-function firstSnippet(highlights: unknown): string {
+function firstSnippet(highlights: unknown, preserveLayout: boolean): string {
   if (!Array.isArray(highlights)) return ''
   for (const item of highlights) {
     if (typeof item !== 'string') continue
     const collapsed = collapseWhitespace(item)
-    if (collapsed.length > 0) return cutSnippet(collapsed)
+    if (collapsed.length > 0) return preserveLayout ? item.trim().slice(0, 1200) : cutSnippet(collapsed)
   }
   return ''
 }
@@ -37,7 +37,7 @@ function readResults(raw: unknown): unknown[] {
   return results
 }
 
-function mapResults(raw: unknown): { title: string; url: string; snippet: string }[] {
+function mapResults(raw: unknown, preserveLayout = false): { title: string; url: string; snippet: string }[] {
   const results = readResults(raw)
   const mapped: { title: string; url: string; snippet: string }[] = []
   for (const entry of results) {
@@ -45,7 +45,7 @@ function mapResults(raw: unknown): { title: string; url: string; snippet: string
     const record = entry as { title?: unknown; url?: unknown; highlights?: unknown }
     if (typeof record.url !== 'string') continue
     const title = typeof record.title === 'string' ? record.title : ''
-    mapped.push({ title, url: record.url, snippet: firstSnippet(record.highlights) })
+    mapped.push({ title, url: record.url, snippet: firstSnippet(record.highlights, preserveLayout) })
   }
   return mapped
 }
@@ -125,19 +125,22 @@ export function createExaSearchPort(options: { apiKey: string; fetch?: typeof fe
     }
   }
 
+  const search = async (query: string, signal: AbortSignal, preserveLayout: boolean) => {
+    const data = await postSearch(
+      {
+        query,
+        type: 'auto',
+        numResults: NUM_RESULTS,
+        contents: { highlights: true }
+      },
+      signal
+    )
+    return mapResults(data, preserveLayout)
+  }
+
   return {
-    async search(query, signal) {
-      const data = await postSearch(
-        {
-          query,
-          type: 'auto',
-          numResults: NUM_RESULTS,
-          contents: { highlights: true }
-        },
-        signal
-      )
-      return mapResults(data)
-    },
+    search: (query, signal) => search(query, signal, false),
+    depthSearch: (query, signal) => search(query, signal, true),
 
     async images(query, signal) {
       const data = await postSearch(

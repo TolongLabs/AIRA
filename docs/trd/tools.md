@@ -313,6 +313,25 @@ character.
   at 2 MB and text at 8,000 characters. `read_page` accepts one seen `url` or `source` id from
   [Turn Sources](#turn-sources).
 
+### Search Depth
+
+A `web_search` call can include `fields`, with a kind (`list`, `price`, `hours` or `other`), a subject,
+and optional aliases for each field. An optional `localQuery` provides the same search in the place's
+language. A call containing only `query` keeps the regular search result format.
+
+Check each field in one passage. A list requires at least three named entries, a price requires an amount
+with a currency near the item name, hours need a time next to the subject, and other facts need all the
+subject's words. When evidence is missing, search again once using the local wording, then read up to two
+candidate pages. Use the same public-address guard and turn source ledger as `read_page`. A successful deeper
+read taints the turn before a concurrent state change can run.
+
+With fields, return a brief of matching passages and source ids plus a `stillMissing` line. The shared
+depth limits are 2 searches, 2 page reads and 3 provider calls by default. They count the initial search.
+A plain search still does one provider call and contributes to the usage tracked for deeper lookups.
+A depth call stops with a partial brief by the earlier of four seconds before the turn deadline and
+1.5 seconds before the tool timeout. The fixed prompt asks the model to search before stating a population,
+measurement or release date.
+
 ### Page Reads
 
 A plain page fetch follows up to five manual redirects. Every hop goes through the public-address guard.

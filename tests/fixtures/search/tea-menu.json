@@ -1,0 +1,93 @@
+{
+  "id": "tea-menu",
+  "query": "site:gong-cha.com Gong Cha milk tea menu drinks",
+  "localQuery": "site:gong-cha.com Gong Cha menu pearl milk tea taro matcha",
+  "fields": [
+    {
+      "kind": "list",
+      "subject": "Gong Cha menu"
+    }
+  ],
+  "host": "gong-cha.com",
+  "recordedAt": "2026-11-21",
+  "payloads": {
+    "site:gong-cha.com Gong Cha milk tea menu drinks": {
+      "results": [
+        {
+          "title": "Gong cha Product Menu | Discover Our Bubble Tea Drinks and Toppings",
+          "url": "https://www.gong-cha.com/usa/us-en/our-products",
+          "highlights": [
+            "## Our Products\n\nMILK TEAS\n\nMILK TEAS\n\nFRESHLY BREWED\n\nFRUIT DRINKS\n\nMILK FOAMS\n\nSMOOTHIES\n\nTOPPINGS\n\nDouble Chewy Delight\n\nClassic black milk tea layered with pearls and white pearls for a rich, creamy, and chewy sip.\n\nDouble Chewy Delight\n\nClassic black milk tea layered with pearls and white pearls for a rich, creamy, and chewy sip.\n\nPanda Black Milk Tea\n\nLight & Fruity Indulgence\n\nBlend of fresh strawberry flavor with smooth green milk tea for a perfectly sweet sip.\n\nLight & Fruity Indulgence\n\nBlend of fresh strawberry flavor with smooth green milk tea for a perfectly sweet sip.\n\nStrawberry Green Milk Tea\n\nSweet Meets Floral\n\nClassic winte"
+          ]
+        },
+        {
+          "title": "Bubble Tea Menu | Explore Drinks and Toppings | Gong cha",
+          "url": "https://www.gong-cha.com/our-products",
+          "highlights": [
+            "## Our Products\n\nALL DAY TEA\n\nALL DAY TEA\n\nMILK TEA\n\nFRUIT TEA\n\nCREATIONS\n\nSMOOTHIES\n\nTOPPINGS\n\nBold Black Tea, Smooth Foam \n\nFull-bodied black tea with robust flavours, balanced by the smoothness of our signature milk foam for a rich and creamy treat.\n\n...\n\nBlack Tea with Milk Foam\n\n...\n\nBlack Tea (Ceylon)\n\nFresh and Balanced\n\nLight and refreshing, this green tea offers a clean taste.\n\n...\n\nGreen Tea (Jasmine) \n\nSmooth and Fragrant\n\nA roasted balance of floral aroma.\n\n...\n\nOolong Tea \n\nFresh Green Tea, Creamy Finish\n\nA refreshing twist on jasmine green tea, topped with rich milk foam for an indulgent balance of freshness and creaminess.\n\n..."
+          ]
+        },
+        {
+          "title": "The Ultimate Guide to Bubble Tea Flavors | Gong cha",
+          "url": "https://www.gong-cha.com/usa/us-en/blog/ultimate-guide-bubble-tea-flavors",
+          "highlights": [
+            "## The Classics: Traditional Boba Tea Flavors\n\nIf you want to experience the true essence of bubble tea, starting with the classics is always a great choice. These flavors highlight the rich, complex notes of our premium whole-leaf teas, which are sourced from high-altitude gardens and freshly brewed in-store. You can learn more about our sourcing process on our premium tea page.\n\n### Black Milk Tea (The Original)\n\nOften referred to as the benchmark of any boba shop, our classic Black Milk Tea is a bold blend of Assamica and Ceylon Orange Pekoe. It is fermented to perfection, offering rich notes of dried fig and honey with a smooth, woody fin"
+          ]
+        },
+        {
+          "title": "Original bubble tea from Taiwan to your cupboard | Gong Cha",
+          "url": "https://www.gong-cha.com/uae/en",
+          "highlights": [
+            "### Famous Five\n\nDiscover our top five favourites worldwide, crafted with premium tea leaves, fruity flavours, creamy textures, and exciting toppings in every sip.\n\nBold & Sweet Indulgence\n\nBold black milk tea swirled with brown sugar and topped with a rich crème brûlée finish\n\nBold & Sweet Indulgence\n\nBold black milk tea swirled with brown sugar and topped with a rich crème brûlée finish\n\nCrème Brulee Brown Sugar Black Milk Tea\n\nTaro Milk Tea with Pearls\n\nCreamy and smooth taro plant milk tea with tapioca pearls.\n\nTaro Milk Tea with Pearls\n\n...\n\nTaro Milk Tea with Pearls\n\n Floral & Fruity\n\nDelicate oolong tea paired with sweet lychee for a l"
+          ]
+        },
+        {
+          "title": "Horchata | Gong cha",
+          "url": "https://horchata.gong-cha.com/",
+          "highlights": [
+            "Limited time · Available now\n\nLove Horchata? Meet your new favorites.\n\n# Horchata has entered the cha-t.\n\n Try new creamy, cinnamon-forward Horchata Milk Tea and blended Horchata Tea Bobaccino, and indulgent new Horchata Coffee Bobaccino, all with our signature pearls. \n\nAvailable at participating locations.\n\n \n\n## 3 new drinks.\n\nAll with our signature pearls.\n\n New \n\n### Horchata Coffee Bobaccino\n\nIndulgent and blended, with signature pearls\n\n New \n\n### Horchata Milk Tea with Pearls\n\nCreamy and cinnamon-forward, with signature pearls\n\n New \n\n### Horchata Tea Bobaccino\n\nBlended, with signature pearls"
+          ]
+        }
+      ]
+    },
+    "site:gong-cha.com Gong Cha menu pearl milk tea taro matcha": {
+      "results": [
+        {
+          "title": "Gong cha Product Menu | Discover Our Bubble Tea Drinks and Toppings",
+          "url": "https://www.gong-cha.com/usa/us-en/our-products",
+          "highlights": [
+            "## Our Products\n\nMILK TEAS\n\nMILK TEAS\n\nFRESHLY BREWED\n\nFRUIT DRINKS\n\nMILK FOAMS\n\nSMOOTHIES\n\nTOPPINGS\n\nDouble Chewy Delight\n\nClassic black milk tea layered with pearls and white pearls for a rich, creamy, and chewy sip.\n\nDouble Chewy Delight\n\nClassic black milk tea layered with pearls and white pearls for a rich, creamy, and chewy sip.\n\nPanda Black Milk Tea\n\nLight & Fruity Indulgence\n\nBlend of fresh strawberry flavor with smooth green milk tea for a perfectly sweet sip.\n\nLight & Fruity Indulgence\n\nBlend of fresh strawberry flavor with smooth green milk tea for a perfectly sweet sip.\n\nStrawberry Green Milk Tea\n\nSweet Meets Floral\n\nClassic winte"
+          ]
+        },
+        {
+          "title": "Holiday Drinks & Gifts from Gong cha | Gong cha",
+          "url": "https://www.gong-cha.com/usa/us-en/blog/celebrate-the-holidays-with-gong-cha-bottles-bags-and-seasonal-sips",
+          "highlights": [
+            "# Celebrate the Holidays with Gong cha\n\n...\n\n### Pearl Milk Tea with Milk Foam\n\nA classic gets a holiday glow-up! The smooth, rich flavor of Pearl Milk Tea is topped with our signature milk foam for a creamy finish that feels as luxurious as the season deserves.\n\n### Taro Milk Tea with Pearls & Milk Foam\n\nSweet, nutty, and oh-so-smooth, Taro Milk Tea with pearls and milk foam is the ultimate comfort drink for the holidays. Each sip is indulgent, satisfying, and packed with seasonal joy.\n\n### Strawberry Milk Tea with Pearls & Milk Foam\n\nBright, fruity, and bursting with flavor, Strawberry Milk Tea is the perfect way to add a pop of festive fun"
+          ]
+        },
+        {
+          "title": "How to Customize Your Gong cha Order Like a Pro",
+          "url": "https://www.gong-cha.com/usa/us-en/blog/the-secret-to-customizing-your-gong-cha-order-like-a-pro",
+          "highlights": [
+            "## Choosing Your Tea Base: The Foundation of Your Perfect Gong cha Drink\n\nYour tea base sets the tone for your drink, and Gong cha offers something for every taste. Whether you prefer creamy, refreshing, fruity, or ice-blended, there’s a tea base for crafting your perfect drink.\n\n### Milk Tea: Rich, Smooth, and Classic\n\nMilk tea balances the robustness of brewed tea with the richness of milk, creating a smooth, comforting sip. Classic options like Black Milk Tea or Oolong Milk Tea deliver traditional flavors, while Taro Milk Tea or Matcha Latte add a unique twist.\n\nBest for: Creamy drink lovers who enjoy a balanced sweetness. Pro Tip: Pair wi"
+          ]
+        },
+        {
+          "title": "The Ultimate Guide to Bubble Tea Flavors | Gong cha",
+          "url": "https://www.gong-cha.com/usa/us-en/blog/ultimate-guide-bubble-tea-flavors",
+          "highlights": [
+            "## The Classics: Traditional Boba Tea Flavors\n\n...\n\n### Black Milk Tea (The Original)\n\nOften referred to as the benchmark of any boba shop, our classic Black Milk Tea is a bold blend of Assamica and Ceylon Orange Pekoe. It is fermented to perfection, offering rich notes of dried fig and honey with a smooth, woody finish. When balanced with creamy milk, it creates a sweet and comforting classic. For the ultimate experience, try our Panda Black Milk Tea, which layers this classic base with both black and white pearls for a rich, chewy sip.\n\n...\n\n## The Creamy & Indulgent Boba Flavors\n\nSometimes you want a drink that feels like a dessert. These "
+          ]
+        },
+        {
+          "title": "Bubble Tea Menu | Explore Drinks and Toppings | Gong cha",
+          "url": "https://www.gong-cha.com/our-products",
+          "highlights": [
+            "## Our Products\n\n...\n\nMILK TEA\n\n...\n\nTOPPINGS\n\n...\n\n## How to order\n\nMake it yours with Gong cha! Start by choosing your tea base, customise the sweetness, and add your favourite toppings. Step by step, we’ll help you create your perfect blend.\n\n- 01 Choose Your Category\n\nStart with the type of drink you’re craving—refreshing, indulgent, or adventurous. Explore popular categories like All-Day Tea, Milk Tea, Fruit Tea, or Smoothies to match your mood.\n\nAll Day Tea\n\nMilk Tea\n\nFruit Tea\n\nSmoothie\n\nCreations\n- 02 Choose Your Tea Base\n\nSelect your tea base: Black, Oolong, Green, or Earl Grey. Each brings its own distinct flavour profile, creating "
+          ]
+        }
+      ]
+    }
+  }
+}

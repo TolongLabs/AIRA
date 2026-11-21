@@ -1,0 +1,38 @@
+{
+  "id": "measurement",
+  "query": "site:stb.gov.sg Merlion height in metres",
+  "localQuery": "site:stb.gov.sg Merlion 8.6 metres tall Merlion Park Singapore",
+  "fields": [
+    {
+      "kind": "other",
+      "subject": "Merlion height",
+      "aliases": ["Merlion metres tall", "Merlion meters tall"]
+    }
+  ],
+  "host": "stb.gov.sg",
+  "recordedAt": "2026-11-21",
+  "payloads": {
+    "site:stb.gov.sg Merlion height in metres": {
+      "results": [
+        {
+          "title": "Cleaning and Repair works scheduled for main Merlion statue at Merlion Park | Singapore Tourism Board",
+          "url": "https://www.stb.gov.sg/about-stb/media-publications/media-centre/cleaning-and-repair-works-scheduled-for-main-merlion-statue-at-merlion-park/",
+          "highlights": [
+            "# Cleaning and Repair works scheduled for main Merlion statue at Merlion Park\n\n27 October 2026\n\nThe Singapore Tourism Board would like to inform the public that the main Merlion statue at Merlion Park will be undergoing cleaning and repair works from 24 November to 26 November.\n\nSingapore, 27 October 2026 – The Singapore Tourism Board would like to inform the public that the main Merlion statue at the Merlion Park will be undergoing cleaning and repair works from 24 to 26 November 2026.\n\nWhile these works are in progress, the main Merlion statue will be covered in scaffolding and will not be available for photo-taking. Meanwhile, the public i"
+          ]
+        }
+      ]
+    },
+    "site:stb.gov.sg Merlion 8.6 metres tall Merlion Park Singapore": {
+      "results": [
+        {
+          "title": "Cleaning and Repair works scheduled for main Merlion statue at Merlion Park | Singapore Tourism Board",
+          "url": "https://www.stb.gov.sg/about-stb/media-publications/media-centre/cleaning-and-repair-works-scheduled-for-main-merlion-statue-at-merlion-park/",
+          "highlights": [
+            "# Cleaning and Repair works scheduled for main Merlion statue at Merlion Park\n\n27 October 2026\n\nThe Singapore Tourism Board would like to inform the public that the main Merlion statue at Merlion Park will be undergoing cleaning and repair works from 24 November to 26 November.\n\nSingapore, 27 October 2026 – The Singapore Tourism Board would like to inform the public that the main Merlion statue at the Merlion Park will be undergoing cleaning and repair works from 24 to 26 November 2026.\n\nWhile these works are in progress, the main Merlion statue will be covered in scaffolding and will not be available for photo-taking. Meanwhile, the public i"
+          ]
+        }
+      ]
+    }
+  }
+}

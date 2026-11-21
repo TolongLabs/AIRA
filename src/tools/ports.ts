@@ -29,6 +29,7 @@ export interface MemoryPort {
 
 export interface SearchPort {
   search(query: string, signal: AbortSignal): Promise<{ title: string; url: string; snippet: string }[]>
+  depthSearch?(query: string, signal: AbortSignal): ReturnType<SearchPort['search']>
   images?(query: string, signal: AbortSignal): Promise<{ url: string }[]>
 }
 
@@ -72,6 +73,8 @@ export interface ToolPorts {
   search?: SearchPort
   lyrics?: LyricsPort
   page?: PagePort
+  /** One guarded page operation for search depth, without switching to another provider. */
+  searchPage?: Pick<PagePort, 'read'>
   post?: PostPort
   schedule?: SchedulePort
   /** The files folder of the data volume, for putFile. */
@@ -214,7 +217,7 @@ function decodeEntities(text: string): string {
     .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
 }
 
-function htmlToTitleAndText(html: string): { title: string; text: string } {
+function htmlToTitleAndText(html: string, preserveLines: boolean): { title: string; text: string } {
   const titleMatch = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)
   const title = titleMatch
     ? decodeEntities(titleMatch[1] ?? '')
@@ -227,9 +230,20 @@ function htmlToTitleAndText(html: string): { title: string; text: string } {
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
     .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, ' ')
     .replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-  const text = decodeEntities(stripped).replace(/\s+/g, ' ').trim().slice(0, MAX_READ_CHARS)
+  const layout = preserveLines ? stripped.replace(/<\/(?:li|tr|p|h[1-6])\s*>|<br\s*\/?>/gi, '\n') : stripped
+  const readable = decodeEntities(layout.replace(/<[^>]+>/g, ' '))
+  const text = trimPageText(readable, preserveLines)
   return { title, text }
+}
+
+function trimPageText(text: string, preserveLines: boolean): string {
+  const normalized = preserveLines
+    ? text
+        .replace(/[^\S\n]+/g, ' ')
+        .replace(/ *\n */g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+    : text.replace(/\s+/g, ' ')
+  return normalized.trim().slice(0, MAX_READ_CHARS)
 }
 
 async function readBodyLimited(res: Response, maxBytes: number): Promise<Buffer> {
@@ -305,7 +319,12 @@ function cookieHeader(jar: CookieJar, host: string): string | undefined {
  * whose text is a block page is a failed read (docs/trd/tools.md#page-reads).
  */
 export function createFetchPagePort(
-  options: { maxBytes?: number; lookup?: (host: string) => Promise<string[]>; fetch?: typeof fetch } = {}
+  options: {
+    maxBytes?: number
+    lookup?: (host: string) => Promise<string[]>
+    fetch?: typeof fetch
+    preserveLines?: boolean
+  } = {}
 ): PagePort {
   const defaultMaxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES
   const lookup =
@@ -356,6 +375,7 @@ export function createFetchPagePort(
 
   return {
     async read(url: string, signal: AbortSignal): Promise<{ title: string; text: string }> {
+      const preserveLines = options.preserveLines ?? false
       const { res, url: finalUrl } = await fetchChecked(url, signal)
       const contentType = (res.headers.get('content-type') ?? '').split(';')[0]?.trim().toLowerCase() ?? ''
       if (contentType !== 'text/html' && contentType !== 'text/plain') {
@@ -365,8 +385,8 @@ export function createFetchPagePort(
       const raw = body.toString('utf8')
       const page =
         contentType === 'text/plain'
-          ? { title: '', text: raw.replace(/\s+/g, ' ').trim().slice(0, MAX_READ_CHARS) }
-          : htmlToTitleAndText(raw)
+          ? { title: '', text: trimPageText(raw, preserveLines) }
+          : htmlToTitleAndText(raw, preserveLines)
       if (isBlockedPage(page.text, finalUrl, page.title)) throw new Error('blocked page')
       return page
     },

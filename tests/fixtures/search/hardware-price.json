@@ -1,0 +1,72 @@
+{
+  "id": "hardware-price",
+  "query": "site:raspberrypi.com Raspberry Pi Zero 2 W price USD",
+  "localQuery": "site:raspberrypi.com Raspberry Pi Zero 2 W $15 price board official",
+  "fields": [
+    {
+      "kind": "price",
+      "subject": "Raspberry Pi Zero 2 W"
+    }
+  ],
+  "host": "raspberrypi.com",
+  "recordedAt": "2026-11-21",
+  "payloads": {
+    "site:raspberrypi.com Raspberry Pi Zero 2 W price USD": {
+      "results": [
+        {
+          "title": "News",
+          "url": "https://www.raspberrypi.com/news/new-raspberry-pi-zero-2-w-2/",
+          "highlights": [
+            "## Raspberry Pi Zero 2 W\n\nPriced at $15, Raspberry Pi Zero 2 W uses the same Broadcom BCM2710A1 SoC die as the launch version of Raspberry Pi 3, with Arm cores slightly down-clocked to 1GHz, bundled into a single space-saving package alongside 512MB of LPDDR2 SDRAM. The exact performance uplift over Zero varies across workloads, but for multi-threaded sysbench it is almost exactly five times faster.\n\nRaspberry Pi Zero 2 W\n\nRaspberry Pi Zero 2 W is available to buy today from our network of Approved Resellers. If you are a subscriber to The MagPi, you’ll be receiving a free Zero 2 W in the next few days; all new subscribers will receive a unit"
+          ]
+        },
+        {
+          "title": "Meet Raspberry Pi Zero 2 W - Raspberry Pi",
+          "url": "https://www.raspberrypi.com/weekly/meet-raspberry-pi-zero-2-w/",
+          "highlights": [
+            "days to go until Christmas, but we thought we would give you an early surprise.\n\nPriced at $15,  Raspberry Pi Zero 2 W is about five times faster than the OG Raspberry Pi Zero, with the same tiny form factor. We"
+          ]
+        },
+        {
+          "title": "Buy a Raspberry Pi Zero 2 W – Raspberry Pi",
+          "url": "https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/",
+          "highlights": [
+            "## Obsolescence\n\nRaspberry Pi Zero 2 W will remain in production until at least January 2030\n\n## Buy Raspberry Pi Zero 2 W\n\nSelect a model: Raspberry Pi Zero 2 W Raspberry Pi Zero 2 W with headers\n\nRegion: Rest of the world"
+          ]
+        },
+        {
+          "title": "Buy a Raspberry Pi – Raspberry Pi",
+          "url": "https://www.raspberrypi.com/products/",
+          "highlights": [
+            "RP2350 Our new high-performance, secure microcontrollerMore info\n\nRaspberry Pi Zero 2 W Your tiny, tiny $15 computerMore info\n...\nRaspberry Pi Zero W Single-board computer with wireless and Bluetooth connectivityMore info"
+          ]
+        }
+      ]
+    },
+    "site:raspberrypi.com Raspberry Pi Zero 2 W $15 price board official": {
+      "results": [
+        {
+          "title": "Buy a Raspberry Pi Zero 2 W – Raspberry Pi",
+          "url": "https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/",
+          "highlights": [
+            "## Just as small. Five times as fast.\n\nAt the heart of Raspberry Pi Zero 2 W is RP3A0, a custom-built system-in-package designed by Raspberry Pi in the UK. With a quad-core 64-bit ARM Cortex-A53 processor clocked at 1GHz and 512MB of SDRAM, Zero 2 is up to five times as fast as the original Raspberry Pi Zero.\n\nWireless LAN is built into a shielded enclosure with improved RF compliance, giving you more flexibility when designing with Raspberry Pi Zero 2 W.\n\nAll in the same tiny 65mm × 30mm form factor.\n\n...\n\n## Making connections\n\nLike the original Raspberry Pi Zero, Raspberry Pi Zero 2 W features a mini HDMI port, a micro USB port, and a micr"
+          ]
+        },
+        {
+          "title": "News",
+          "url": "https://www.raspberrypi.com/news/new-raspberry-pi-zero-2-w-2/",
+          "highlights": [
+            "It’s been nearly six years since we unleashed the $5 Raspberry Pi Zero on an unsuspecting world. Of all the products we’ve launched, Zero is still the one I’m proudest of: it most perfectly embodies our mission to give people access to tools, and to eliminate cost as a barrier. We’ve sold nearly four million units of Zero, and its $10 wireless-enabled big brother Zero W, and they’ve made their way into everything from smart speakers to hospital ventilators. But where our larger products have grown steadily more powerful over the years, we’ve never found a way to pack more performance into the Zero form factor.\n\nUntil today.\n\n## Raspberry Pi Z"
+          ]
+        },
+        {
+          "title": "Meet Raspberry Pi Zero 2 W - Raspberry Pi",
+          "url": "https://www.raspberrypi.com/weekly/meet-raspberry-pi-zero-2-w/",
+          "highlights": [
+            "Priced at $15,  Raspberry Pi Zero 2 W is about five times faster than the OG Raspberry Pi Zero, with the same tiny form factor. We’ve loved seeing how many of you have already upgraded your projects with our newest board."
+          ]
+        }
+      ]
+    }
+  }
+}

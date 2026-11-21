@@ -1,0 +1,93 @@
+{
+  "id": "fast-food-menu",
+  "query": "site:mcdonalds.com US McDonald’s menu McCafé burger fries menu items",
+  "localQuery": "site:mcdonalds.com McDonald’s full menu Big Mac fries iced coffee USA",
+  "fields": [
+    {
+      "kind": "list",
+      "subject": "McDonald’s menu"
+    }
+  ],
+  "host": "mcdonalds.com",
+  "recordedAt": "2026-11-21",
+  "payloads": {
+    "site:mcdonalds.com US McDonald’s menu McCafé burger fries menu items": {
+      "results": [
+        {
+          "title": "McDonald’s Menu: Our Full McDonald’s Food Menu | McDonald’s",
+          "url": "https://www.mcdonalds.com/us/en-us/full-menu.html",
+          "highlights": [
+            "# McDonald's Menu\n\n- Egg McMuffin®\n- Sausage Burrito\n- McCafé® Iced Coffee\n- Big Mac®\n- 4 Piece Chicken McNuggets®\n- Now Crispier McCrispy® Strip Ranch Snack Wrap®\n- Quarter Pounder®^ with Cheese\n- McCrispy® \n\n## Extra Value Meals\n\n- Big Mac® Meal\n- Quarter Pounder®* with Cheese Meal\n- Bacon Quarter Pounder®* with Cheese Meal\n- Quarter Pounder®* with Cheese Deluxe Meal\n- Double Quarter Pounder®* with Cheese Meal\n- Cheeseburger Meal\n- 10 piece Chicken McNuggets® Meal\n- McCrispy® Meal\n- Spicy McCrispy® Meal\n- Deluxe McCrispy® Meal\n- Spicy Deluxe McCrispy® Meal\n- Now Crispier McCrispy® Strips Meal\n- Now Crispier McCrispy® Strips Ranch Snack Wrap"
+          ]
+        },
+        {
+          "title": "McDonald's Burger Menu: Hamburgers & Cheeseburgers ...",
+          "url": "https://www.mcdonalds.com/us/en-us/full-menu/burgers.html",
+          "highlights": [
+            "McDonald’s Burger Menu: Hamburgers & Cheeseburgers Near Me\n\n# Burgers\n\n- Big Mac®\n- Quarter Pounder®^ with Cheese\n- Double Quarter Pounder®* with Cheese\n- Quarter Pounder®* with Cheese Deluxe\n- McDouble®\n- Daily Double\n- Bacon Quarter Pounder®* with Cheese\n- Cheeseburger\n- Double Cheeseburger\n- Hamburger: The Classic McDonald's Burger\n\nLooking for a McDonald’s burger near you? Choose from a large selection of hot and juicy types of burgers, like the classic Hamburger, Quarter Pounder* with Cheese or the Big Mac. Order your favorite burger today from the full menu in the app using contactless Mobile Order & Pay for pickup or McDelivery ®.^\n\n*W"
+          ]
+        },
+        {
+          "title": "McCafe® Coffee Menu: Hot Coffees, Iced Lattes & Espresso Drinks | McDonald’s",
+          "url": "https://www.mcdonalds.com/us/en-us/full-menu/mccafe-coffees.html",
+          "highlights": [
+            "McCafé® Menu: Coffee, Espresso, and Specialty Drinks | McDonald's\n\n# McCafé®\n\n## Coffee & Classics\n\n- Limited Time Cookie Butter Iced Coffee\n- McCafé® Iced Coffee\n- McCafé® Iced Black Coffee\n- McCafé® Iced Caramel Coffee\n- McCafé® Iced French Vanilla Coffee\n- McCafé® Premium Roast Coffee\n- McCafé® Premium Roast Decaf Coffee\n- Hot Tea\n- McCafé® Hot Chocolate\n\n## Specialty Drinks*\n\n- Limited Time Red Bull® Frosted Cranberry Energizer\n- Limited Time Reduced Sugar Red Bull® Frosted Cranberry Energizer\n- Limited Time Frosted Cranberry Splash with Sprite®\n- New Red Bull® Dragonberry Energizer* \n- New Reduced Sugar Red Bull® Dragonberry Energizer*\n-"
+          ]
+        },
+        {
+          "title": "Fries & Sides: Sides for Burgers, Sandwiches & Meals | McDonald's",
+          "url": "https://www.mcdonalds.com/us/en-us/full-menu/fries-sides.html",
+          "highlights": [
+            "# Fries & Sides\n\n- Small World Famous Fries®\n- Apple Slices\n\nLooking for the perfect McDonald's sides for your meal? McDonald's offers fries & sides for meals. Order a sandwich or burger with McDonald's Fries, and don’t forget your favorite McDonald’s dipping sauces! Get it from our full menu in the app using contactless Mobile Order & Pay* for pickup or McDelivery®.\n\n*At participating McDonald’s. Delivery prices may be higher than at restaurants. Delivery/other fees may apply."
+          ]
+        },
+        {
+          "title": "McCafé® Menu: Coffee & Espresso Drinks Near Me | McDonald's",
+          "url": "https://www.mcdonalds.com/us/en-us/mccafe.html",
+          "highlights": [
+            "# McCafé® Coffee, Espresso Drinks & Specialty Beverages\n\n## All-new holiday drinks are here\n\nEmbrace the season with the Cookie Butter Latte, Cookie Butter Frappé and Cookie Butter Iced Coffee, all mixed with delicious cookie butter syrup while topped with sweet vanilla whipped topping and Speculoos cookie crumbs. Or pick the Red Bull® Frosted Cranberry Energizer (also available with Red Bull® Zero) for a bold boost, or the Frosted Cranberry Splash with Sprite® for a crisp sip—both made with cranberry orange syrup, festive cold foam & cranberry sprinkles.\n\nMake your season sparkle and bring home these holiday sips by ordering now in the app.*"
+          ]
+        }
+      ]
+    },
+    "site:mcdonalds.com McDonald’s full menu Big Mac fries iced coffee USA": {
+      "results": [
+        {
+          "title": "McDonald’s Menu: Our Full McDonald’s Food Menu | McDonald’s",
+          "url": "https://www.mcdonalds.com/us/en-us/full-menu.html",
+          "highlights": [
+            "# McDonald's Menu\n\n- Egg McMuffin®\n- Sausage Burrito\n- McCafé® Iced Coffee\n- Big Mac®\n- 4 Piece Chicken McNuggets®\n- Now Crispier McCrispy® Strip Ranch Snack Wrap®\n- Quarter Pounder®^ with Cheese\n- McCrispy® \n\n## Extra Value Meals\n\n- Big Mac® Meal\n- Quarter Pounder®* with Cheese Meal\n- Bacon Quarter Pounder®* with Cheese Meal\n- Quarter Pounder®* with Cheese Deluxe Meal\n- Double Quarter Pounder®* with Cheese Meal\n- Cheeseburger Meal\n- 10 piece Chicken McNuggets® Meal\n- McCrispy® Meal\n- Spicy McCrispy® Meal\n- Deluxe McCrispy® Meal\n- Spicy Deluxe McCrispy® Meal\n- Now Crispier McCrispy® Strips Meal\n- Now Crispier McCrispy® Strips Ranch Snack Wrap"
+          ]
+        },
+        {
+          "title": "McCafe® Coffee Menu: Hot Coffees, Iced Lattes & Espresso Drinks | McDonald’s",
+          "url": "https://www.mcdonalds.com/us/en-us/full-menu/mccafe-coffees.html",
+          "highlights": [
+            "# McCafé®\n\n## Coffee & Classics\n\n- Limited Time Cookie Butter Iced Coffee\n- McCafé® Iced Coffee\n- McCafé® Iced Black Coffee\n- McCafé® Iced Caramel Coffee\n- McCafé® Iced French Vanilla Coffee\n- McCafé® Premium Roast Coffee\n- McCafé® Premium Roast Decaf Coffee\n- Hot Tea\n- McCafé® Hot Chocolate\n\n## Specialty Drinks*\n\n- Limited Time Red Bull® Frosted Cranberry Energizer\n- Limited Time Reduced Sugar Red Bull® Frosted Cranberry Energizer\n- Limited Time Frosted Cranberry Splash with Sprite®\n- New Red Bull® Dragonberry Energizer* \n- New Reduced Sugar Red Bull® Dragonberry Energizer*\n- New Sprite® Berry Blast\n- New Strawberry Watermelon Refresher\n- Ne"
+          ]
+        },
+        {
+          "title": "Fries & Sides: Sides for Burgers, Sandwiches & Meals | McDonald's",
+          "url": "https://www.mcdonalds.com/us/en-us/full-menu/fries-sides.html",
+          "highlights": [
+            "# Fries & Sides\n\n- Small World Famous Fries®\n- Apple Slices\n\nLooking for the perfect McDonald's sides for your meal? McDonald's offers fries & sides for meals. Order a sandwich or burger with McDonald's Fries, and don’t forget your favorite McDonald’s dipping sauces! Get it from our full menu in the app using contactless Mobile Order & Pay* for pickup or McDelivery®.\n\n*At participating McDonald’s. Delivery prices may be higher than at restaurants. Delivery/other fees may apply."
+          ]
+        },
+        {
+          "title": "Big Mac®: McDonald's Special Beef Burger",
+          "url": "https://www.mcdonalds.com/us/en-us/product/big-mac.html",
+          "highlights": [
+            "# Big Mac® \n\nWhen a craving hits for those two all-beef patties it’s time to stop thinking about what’s on a Big Mac® and take a bite. The McDonald's Big Mac is a 100% beef burger with a taste like no other. The mouthwatering perfection starts with two 100% pure all beef patties and Big Mac Sauce sandwiched between a sesame seed bun. It’s topped off with pickles, crisp shredded lettuce, finely chopped onion and a slice of American cheese. It contains no artificial flavors, preservatives or added colors from artificial sources. McDonald’s pickles contain an artificial preservative, so skip it if you like. \n\nThere are 580 calories in a Big Mac "
+          ]
+        },
+        {
+          "title": "McCafé® Menu: Coffee & Espresso Drinks Near Me | McDonald's",
+          "url": "https://www.mcdonalds.com/us/en-us/mccafe.html",
+          "highlights": [
+            "## Hot Coffees\n\nCozy up to the warm comfort of hot coffees freshly brewed every 30 minutes like a Premium Roast Coffee or try other espresso beverages like a Caramel Latte or French Vanilla Cappuccino.\n\n## Iced Coffees\n\nNeed a chill boost of caffeine? Sip on iced coffees with your choice of flavor like an Iced Mocha or Iced Caramel Macchiato or try rich, smooth Caramel or Mocha Frappés."
+          ]
+        }
+      ]
+    }
+  }
+}

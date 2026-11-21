@@ -1,0 +1,99 @@
+{
+  "id": "cafe-menu",
+  "query": "site:starbucks.com Singapore Starbucks menu coffee latte cappuccino croissant food menu",
+  "localQuery": "site:starbucks.com Starbucks menu cappuccino flat white croissant sandwich cold brew",
+  "fields": [
+    {
+      "kind": "list",
+      "subject": "Starbucks breakfast food",
+      "aliases": ["breakfast", "bakery", "croissants"]
+    },
+    {
+      "kind": "list",
+      "subject": "Starbucks cold drinks",
+      "aliases": ["cold brew", "iced espresso"]
+    }
+  ],
+  "host": "starbucks.com",
+  "recordedAt": "2026-11-21",
+  "payloads": {
+    "site:starbucks.com Singapore Starbucks menu coffee latte cappuccino croissant food menu": {
+      "results": [
+        {
+          "title": "Cappuccino: Starbucks Coffee Company",
+          "url": "https://www.starbucks.com/menu/product/409/hot",
+          "highlights": [
+            "Cappuccino: Starbucks Coffee Company\n\n# Cappuccino\n\n140 calories\n\n## Size Options\n\nShort\n\n 8 fl oz\n\nTall\n\n 12 fl oz\n\nGrande\n\n 16 fl oz\n\nVenti\n\n 20 fl oz\n\n## What's Included\n\n200★ Stars item\n\nDark, rich espresso lies in wait under a smoothed and stretched layer of thick milk foam. An alchemy of barista artistry and craft.\n\nCalories 140 Sugar 12g"
+          ]
+        },
+        {
+          "title": "Menu - Starbucks Coffee Company",
+          "url": "https://www.starbucks.com/menu",
+          "highlights": [
+            "Menu: Starbucks Coffee Company\n\n# Menu\n\n- ### Hot Coffee & Espresso\n\nHot Coffee & Espresso\n- ### Cold Coffee & Espresso\n\nCold Coffee & Espresso\n\n- ### Protein Beverages\n\nProtein Beverages\n\n- ### Chai\n\nChai\n- ### Matcha\n\nMatcha\n- ### Hot Tea\n\nHot Tea\n- ### Iced Tea\n\nIced Tea\n\n- ### Refreshers\n\nRefreshers\n- ### Energy Refreshers\n\nEnergy Refreshers\n\n- ### Coffee Frappuccino®\n\nCoffee Frappuccino®\n- ### Crème Frappuccino®\n\nCrème Frappuccino®\n\n- ### Breakfast\n\nBreakfast\n- ### Bakery\n\nBakery\n- ### Treats\n\nTreats\n- ### Lunch\n\nLunch\n- ### Snacks\n\nSnacks"
+          ]
+        },
+        {
+          "title": "Butter Croissant - Starbucks Coffee Company",
+          "url": "https://www.starbucks.com/menu/product/1033/single",
+          "highlights": [
+            "Butter Croissant: Starbucks Coffee Company\n\n# Butter Croissant\n\n250 calories\n\n## What's Included\n\nWarming\n\n100★ Stars item\n\nClassic butter croissant with soft, flaky layers and a golden-brown crust. –VEGETARIAN\n\nCalories 250 Sugar 4g\n\nFat\n\nSee calories disclaimer\n\n14g"
+          ]
+        },
+        {
+          "title": "Caffè Latte: Starbucks Coffee Company",
+          "url": "https://www.starbucks.com/menu/product/407/hot",
+          "highlights": [
+            "Caffè Latte: Starbucks Coffee Company\n\n# Caffè Latte\n\n190 calories\n\n## Size Options\n\nShort\n\n 8 fl oz\n\nTall\n\n 12 fl oz\n\nGrande\n\n 16 fl oz\n\nVenti\n\n 20 fl oz\n\n## What's Included\n\n200★ Stars item\n\nOur dark, rich espresso balanced with steamed milk and a light layer of foam. A perfect milk-forward warm-up.\n\nCalories 190 Sugar 18g Fat 7g"
+          ]
+        },
+        {
+          "title": "Bakery: Starbucks Coffee Company",
+          "url": "https://www.starbucks.com/menu/food/bakery/croissants-danishes",
+          "highlights": [
+            "Bakery: Starbucks Coffee Company\n\n# Bakery\n\n## Croissants & Danishes\n\n- Sugar Plum Cheese Danish\n\nSugar Plum Cheese Danish\n- Ham & Swiss Croissant\n\nHam & Swiss Croissant\n- Chocolate Croissant\n\nChocolate Croissant\n- Butter Croissant\n\nButter Croissant\n- Cheese Danish\n\nCheese Danish\n- Cookie Croissant Swirl\n\nCookie Croissant Swirl\n- Cinnamon Pull-Apart\n\nCinnamon Pull-Apart\n- Sweet Cream Cheese Icing\n\nSweet Cream Cheese Icing"
+          ]
+        }
+      ]
+    },
+    "site:starbucks.com Starbucks menu cappuccino flat white croissant sandwich cold brew": {
+      "results": [
+        {
+          "title": "Cold Coffee & Espresso: Starbucks Coffee Company",
+          "url": "https://www.starbucks.com/menu/coffee-espresso/cold-coffee-espresso",
+          "highlights": [
+            "Cold Coffee & Espresso: Starbucks Coffee Company\n\n# Cold Coffee & Espresso\n\n## Cold Brew\n\n- Cold Brew\n\nCold Brew\n- Tiramisu Velvet Cold Brew\n\nTiramisu Velvet Cold Brew\n- Pumpkin Cream Cold Brew\n\nPumpkin Cream Cold Brew\n- Vanilla Protein Cream Cold Brew\n\nVanilla Protein Cream Cold Brew\n- Toasted Coconut Cream Cold Brew\n\nToasted Coconut Cream Cold Brew\n- Pistachio Cream Cold Brew\n\nPistachio Cream Cold Brew\n- Vanilla Sweet Cream Cold Brew\n\nVanilla Sweet Cream Cold Brew\n- Salted Caramel Cream Cold Brew\n\nSalted Caramel Cream Cold Brew\n- Chocolate Cream Cold Brew\n\nChocolate Cream Cold Brew\n- Nondairy Vanilla Sweet Cream Cold Brew\n\nNondairy Vanilla "
+          ]
+        },
+        {
+          "title": "Breakfast: Starbucks Coffee Company",
+          "url": "https://www.starbucks.com/menu/food/breakfast",
+          "highlights": [
+            "Breakfast: Starbucks Coffee Company\n\n# Breakfast\n\n## Breakfast Sandwiches\n\n- Double-Smoked Bacon, Cheddar & Egg Sandwich\n\nDouble-Smoked Bacon, Cheddar & Egg Sandwich\n- Bacon, Gouda & Egg Sandwich\n\nBacon, Gouda & Egg Sandwich\n- Sausage, Cheddar & Egg Sandwich\n\nSausage, Cheddar & Egg Sandwich\n- Turkey Bacon, Cheddar & Egg White Sandwich\n\nTurkey Bacon, Cheddar & Egg White Sandwich\n- Egg, Pesto & Mozzarella Sandwich\n\nEgg, Pesto & Mozzarella Sandwich\n- Ham & Swiss Croissant\n\nHam & Swiss Croissant\n- Impossible™ Breakfast Sandwich\n\nImpossible™ Breakfast Sandwich\n- Avocado Spread\n\nAvocado Spread\n\n## Breakfast Wraps\n\n- Bacon, Sausage & Egg Wrap\n\nBacon"
+          ]
+        },
+        {
+          "title": "Starbucks®",
+          "url": "https://www.starbucks.com/menu",
+          "highlights": [
+            "# Menu\n\n- ### Hot Coffee & Espresso\n\nHot Coffee & Espresso\n- ### Cold Coffee & Espresso\n\nCold Coffee & Espresso\n\n- ### Protein Beverages\n\nProtein Beverages\n\n- ### Chai\n\nChai\n- ### Matcha\n\nMatcha\n- ### Hot Tea\n\nHot Tea\n- ### Iced Tea\n\nIced Tea\n\n- ### Refreshers\n\nRefreshers\n- ### Energy Refreshers\n\nEnergy Refreshers\n\n- ### Coffee Frappuccino®\n\nCoffee Frappuccino®\n- ### Crème Frappuccino®\n\nCrème Frappuccino®\n\n- ### Breakfast\n\nBreakfast\n- ### Bakery\n\nBakery\n- ### Treats\n\nTreats\n- ### Lunch\n\nLunch\n- ### Snacks\n\nSnacks"
+          ]
+        },
+        {
+          "title": "Flat White: Starbucks Coffee Company",
+          "url": "https://www.starbucks.com/menu/product/565/hot",
+          "highlights": [
+            "Flat White: Starbucks Coffee Company\n\n# Flat White\n\n170 calories\n\n## Size Options\n\nShort\n\n 8 fl oz\n\nTall\n\n 12 fl oz\n\nGrande\n\n 16 fl oz\n\nVenti\n\n 20 fl oz\n\n## What's Included\n\nSmooth ristretto shots of espresso get the perfect amount of steamed whole milk to create a not-too-strong, not-too-creamy, just-right flavor.\n\nCalories 170 Sugar 13g\n\nFat"
+          ]
+        },
+        {
+          "title": "Bakery: Starbucks Coffee Company",
+          "url": "https://www.starbucks.com/menu/food/bakery",
+          "highlights": [
+            "Bakery: Starbucks Coffee Company\n\n# Bakery\n\n## Croissants & Danishes\n\n- Sugar Plum Cheese Danish\n\nSugar Plum Cheese Danish\n- Ham & Swiss Croissant\n\nHam & Swiss Croissant\n- Chocolate Croissant\n\nChocolate Croissant\n- Butter Croissant\n\nButter Croissant\n- Cheese Danish\n\nCheese Danish\n- Cookie Croissant Swirl\n\nCookie Croissant Swirl\n- Cinnamon Pull-Apart\n\nCinnamon Pull-Apart\n- Sweet Cream Cheese Icing\n\nSweet Cream Cheese Icing\n\n...\n\n## Bagels\n\n- Plain Bagel\n\nPlain Bagel\n- Everything Bagel\n\nEverything Bagel"
+          ]
+        }
+      ]
+    }
+  }
+}

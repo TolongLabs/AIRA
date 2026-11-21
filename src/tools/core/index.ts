@@ -1,3 +1,4 @@
+import type { Config } from '../../config/schema.js'
 import type { ToolPorts } from '../ports.js'
 import { registryDepsOf, type ToolRegistry } from '../registry.js'
 import { helpTool, listTool } from './describe.js'
@@ -34,6 +35,7 @@ export const CORE_TOOL_NAMES = [
 
 export interface CoreToolOptions {
   feedback: FeedbackToolOptions
+  searchDepth?: Config['search']['depth']
   identify?: IdentifyToolOptions
 }
 
@@ -53,7 +55,7 @@ export function registerCoreTools(
   registry.register(forgetTool(ports))
   registry.register(historySearchTool(ports))
   registry.register(lingoNoteTool(ports))
-  registry.register(webSearchTool(ports))
+  registry.register(webSearchTool(ports, options.searchDepth))
   registry.register(readPageTool(ports))
   registry.register(readPostTool(ports))
   registry.register(sendPhotoTool(storage, ports))

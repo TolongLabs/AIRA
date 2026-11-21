@@ -1,0 +1,93 @@
+{
+  "id": "garden-hours",
+  "query": "site:gardensbythebay.com.sg Flower Dome opening hours",
+  "localQuery": "site:gardensbythebay.com.sg Flower Dome opening hours daily Singapore",
+  "fields": [
+    {
+      "kind": "hours",
+      "subject": "Flower Dome"
+    }
+  ],
+  "host": "gardensbythebay.com.sg",
+  "recordedAt": "2026-11-21",
+  "payloads": {
+    "site:gardensbythebay.com.sg Flower Dome opening hours": {
+      "results": [
+        {
+          "title": "Flower Dome",
+          "url": "https://www.gardensbythebay.com.sg/en/things-to-do/attractions/flower-dome.html",
+          "highlights": [
+            "# Flower Dome\n\n...\n\n###### Important Notice \n\n1. Flower Dome will be closed on maintenance days. The next closure will be on 12 Jan 2027.\n\n###### Opening Hours\n\nDaily: 9.00am – 9.00pm\n\n(Last admission at 8.30pm)\n\nRecommended Visit Duration: 1 hour"
+          ]
+        },
+        {
+          "title": "Opening Hours & Closures",
+          "url": "https://www.gardensbythebay.com.sg/en/plan-your-visit/opening-hours.html",
+          "highlights": [
+            "# Opening Hours & Closures\n\n- ###### Opening Hours\n- ###### Closure Dates\n\n...\n\n### Attractions\n\n...\n\n###### Flower Dome\n\nOpening Hours Daily: 9.00am – 9.00pm (Last Admission: 8.30pm)\n\nClosed once a month for maintenance. Click here for closure dates.\n\n...\n\n## Flower Dome \n\nPlease note that Flower Dome will be closed for maintenance on the following dates.\n\nThe attraction will be closed for the whole day, unless otherwise indicated."
+          ]
+        },
+        {
+          "title": "Attractions",
+          "url": "https://www.gardensbythebay.com.sg/en/things-to-do/attractions.html",
+          "highlights": [
+            "### Flower Dome\n\nEnter a world of perpetual spring. Catch our changing floral displays and explore nine invigorating gardens featuring flora from the world’s cool-dry regions in the Flower Dome. \n\nDaily: 9.00am - 9.00pm"
+          ]
+        },
+        {
+          "title": "Bundle up for more savings and fun!",
+          "url": "https://www.gardensbythebay.com.sg/en/promotions/bundle-up-for-more-savings-and-fun.html",
+          "highlights": [
+            "Promotion Period\n\nTill 14 Mar 2027 \n\nLocation\n\nFlower Dome, Cloud Forest, Floral Fantasy & Shuttle\n...\n- Please note that the opening hours of our respective attractions:\n\n- Flower Dome (operating hours: 9.00am to 9.00pm (last admission at 8.30pm))"
+          ]
+        },
+        {
+          "title": "Top photo spots at the Gardens",
+          "url": "https://www.gardensbythebay.com.sg/en/plan-your-visit/itinerary-planner/top-photo-spots.html",
+          "highlights": [
+            "2\n\n \n\n###### Flower Dome\n\nCatch our changing floral displays and explore nine invigorating gardens featuring flora from the world’s cool-dry regions in the Flower Dome. \n\n9.00am - 9.00pm\n\nAdmission ticket to Flower Dome apply\n\n## Discover the highlights in"
+          ]
+        }
+      ]
+    },
+    "site:gardensbythebay.com.sg Flower Dome opening hours daily Singapore": {
+      "results": [
+        {
+          "title": "Flower Dome",
+          "url": "https://www.gardensbythebay.com.sg/en/things-to-do/attractions/flower-dome.html",
+          "highlights": [
+            "# Flower Dome\n\n...\n\n###### Important Notice \n\n1. Flower Dome will be closed on maintenance days. The next closure will be on 12 Jan 2027.\n\n###### Opening Hours\n\nDaily: 9.00am – 9.00pm\n\n(Last admission at 8.30pm)\n\nRecommended Visit Duration: 1 hour"
+          ]
+        },
+        {
+          "title": "Opening Hours & Closures",
+          "url": "https://www.gardensbythebay.com.sg/en/plan-your-visit/opening-hours.html",
+          "highlights": [
+            "# Opening Hours & Closures\n\n- ###### Opening Hours\n- ###### Closure Dates\n\n...\n\n### Attractions\n\n...\n\n###### Flower Dome\n\nOpening Hours Daily: 9.00am – 9.00pm (Last Admission: 8.30pm)\n\nClosed once a month for maintenance. Click here for closure dates.\n\n...\n\n## Flower Dome \n\nPlease note that Flower Dome will be closed for maintenance on the following dates.\n\nThe attraction will be closed for the whole day, unless otherwise indicated."
+          ]
+        },
+        {
+          "title": "Attractions",
+          "url": "https://www.gardensbythebay.com.sg/en/things-to-do/attractions.html",
+          "highlights": [
+            "### Flower Dome\n\nEnter a world of perpetual spring. Catch our changing floral displays and explore nine invigorating gardens featuring flora from the world’s cool-dry regions in the Flower Dome. \n\nDaily: 9.00am - 9.00pm"
+          ]
+        },
+        {
+          "title": "Gardens by the Bay",
+          "url": "https://www.gardensbythebay.com.sg/",
+          "highlights": [
+            "#### See you at the Gardens!\n\n 18 Marina Gardens Drive Singapore 018953 Directions & Parking\n\nFlower Dome: 9.00am - 9.00pm daily Cloud Forest: 9.00am - 9.00pm daily See all opening times\n\n18 Marina Gardens Drive, Singapore 018953"
+          ]
+        },
+        {
+          "title": "Bundle up for more savings and fun!",
+          "url": "https://www.gardensbythebay.com.sg/en/promotions/bundle-up-for-more-savings-and-fun.html",
+          "highlights": [
+            "Promotion Period\n\nTill 14 Mar 2027 \n\nLocation\n\nFlower Dome, Cloud Forest, Floral Fantasy & Shuttle\n...\n- Please note that the opening hours of our respective attractions:\n\n- Flower Dome (operating hours: 9.00am to 9.00pm (last admission at 8.30pm))"
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -359,6 +359,7 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
       ...context,
       callId: call.callId,
       signal: controller.signal,
+      callDeadline: now().getTime() + timeoutMs,
       now,
       commit
     }
@@ -435,7 +436,8 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
       uses.push({ url, lookup: seen.lookup, kind: 'read' })
     } else if (name === 'web_search') {
       const lookup = searchLookup(callId)
-      const results = (data as { results?: { url?: unknown }[] })?.results ?? []
+      const search = data as { results?: { url?: unknown }[]; brief?: { passages: { url: string }[] } }
+      const results = search?.results ?? search?.brief?.passages ?? []
       for (const result of results) {
         if (typeof result.url !== 'string') continue
         context.sources.add(result.url, lookup)
@@ -731,7 +733,8 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
       // A core state change waits for the page reads still running in this turn, so its check sees their outcome.
       if (def?.mutates) await context.sources.settled()
       const run = dispatch(name, args, context, call)
-      if (READ_TOOLS.has(name)) context.sources.track(run)
+      const depthSearch = name === 'web_search' && typeof args === 'object' && args !== null && 'fields' in args
+      if (READ_TOOLS.has(name) || depthSearch) context.sources.track(run)
       return run
     },
 
