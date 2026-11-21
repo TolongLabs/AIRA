@@ -363,6 +363,15 @@ must fit the same size limit and `media.maxVideoSeconds`. The downloader uses a 
 and referrer for that video when present. A remote audio download over 600 seconds is refused
 (`src/media/link-intake.ts`).
 
+An otherwise eligible linked MP4 may be downloaded up to 48 MB and compressed locally if it exceeds the
+consumer’s byte limit. Intake still requires at most 20 MB and group autofetch at most 16 MB after compression.
+Only an MP4 of up to 180 seconds can use compression. That bound limits transcoding work. Group eligibility
+continues to use the platform and native attachment rules in [Autofetch](system.md#autofetch).
+The core runs at most one transcode at a time. The attempt takes at most 12 seconds within the caller’s remaining
+budget. It fits the video within 960×540 at 24 frames per second without cropping, and keeps the full duration
+and an audio track when one is present. If the source or output fails validation,
+intake can still use its preview and group autofetch omits the failed attachment.
+
 A post's photos are watched as images, at most `MAX_LINK_PHOTOS` (4) per link: the linked post's photos in order,
 then those of the earlier posts in its thread, oldest first. The video and the photos are watched at once, each its
 own call under the link's time limit. One answer enters block 4 as it is; several are merged in order, each labelled

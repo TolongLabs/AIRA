@@ -94,7 +94,7 @@ RUN set -eu; \
     rm -f /tmp/restic
 
 FROM node:24-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates fonts-noto-core fonts-noto-cjk \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg fonts-noto-core fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=ytdlp /opt/yt-dlp /opt/yt-dlp
 RUN ln -s /opt/yt-dlp/yt-dlp /usr/local/bin/yt-dlp
