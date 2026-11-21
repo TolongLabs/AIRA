@@ -331,7 +331,7 @@ describe('core tools', () => {
     expect(storage.read((db) => db.prepare("SELECT id FROM tool_call WHERE tool = 'read_post'").all())).toHaveLength(2)
     expect(closeTurn(storage, { turnId: ctx.turnId, state: 'delivered', reply: 'fixture reply' })).toBe(true)
     const archived: string[] = []
-    pruneRecords(
+    const pruned = pruneRecords(
       storage,
       { retentionDays: 1, diagnosticsHours: 24, windowDays: 1 },
       {
@@ -342,6 +342,7 @@ describe('core tools', () => {
       }
     )
     expect(archived.indexOf('social_turn_lookup')).toBeLessThan(archived.indexOf('tool_call'))
+    expect(pruned.counts.social_turn_lookup).toBeGreaterThan(0)
     expect(storage.read((db) => db.prepare('SELECT 1 FROM social_turn_lookup').get())).toBeUndefined()
   })
 
@@ -650,6 +651,33 @@ describe('core tools', () => {
     })
     expect(seenPages).toEqual(['https://example.com/article'])
     expect(registry.takeSources(ctx.turnId)).toEqual([
+      { url: 'https://example.com/article', lookup: 'message', kind: 'read' }
+    ])
+  })
+
+  it('keeps footer sources for at most 64 turns that never cleaned', async () => {
+    const { registry, makeCtx } = setup({
+      page: {
+        async read(url) {
+          return { title: `Title of ${url}`, text: 'Body' }
+        },
+        async download() {
+          return { data: Buffer.from(''), contentType: 'text/plain' }
+        }
+      }
+    })
+    const turns: TurnContext[] = []
+    for (let i = 0; i < 70; i++) {
+      const ctx = makeCtx()
+      ctx.sources.addText('https://example.com/article', 'message')
+      // Half refused (an unseen link), half read, and none cleaned.
+      const url = i % 2 === 0 ? 'https://unseen.example/' : 'https://example.com/article'
+      await registry.call('read_page', { url }, ctx, { callId: `c-${i}`, source: 'model' })
+      turns.push(ctx)
+    }
+    expect(registry.takeSources(turns[0]!.turnId)).toEqual([])
+    expect(registry.takeSources(turns[5]!.turnId)).toEqual([])
+    expect(registry.takeSources(turns[69]!.turnId)).toEqual([
       { url: 'https://example.com/article', lookup: 'message', kind: 'read' }
     ])
   })

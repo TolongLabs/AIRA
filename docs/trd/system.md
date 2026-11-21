@@ -55,7 +55,8 @@ Each request is one of four kinds, decided in this order (measured on the stagin
 
 - **Code lives in `src/gateway/`.** `server.ts` serves the endpoint, `request.ts` parses the request, and
   `response.ts` writes the reply.
-- **Body limit.** The core reads at most 20 MiB per request and destroys the connection past that limit. The limit
+- **Body limit.** The core reads at most 20 MiB per request, 1 MiB for autofetch, and destroys the connection past
+  that limit. An autofetch body over 64 KiB within that limit gets a 400. The limit
   is an injectable server option.
 - **Health.** `GET /health` reports readiness and the active turn count. It returns 503 while the core is not ready.
   `POST /v1/aira/autofetch` serves [Autofetch](#autofetch). Any other route returns 404.
@@ -288,8 +289,8 @@ auto-fetch hook hands it to `brain.autofetch` first, which asks the core.
 
 - **Limits.** Three links per message and ten files per post. Images up to 8 MB and MP4 up to 16 MB
   require matching media signatures. Downloads keep HTTPS redirects on the asset origin and send no cookies.
-  Each file has up to 10 s to download within the 60 s core job deadline. A verified Reddit archive MP4 has up to
-  25 s to download before compression. The gateway waits up to 90 s for the core.
+  Each file has up to 10 s to download within the 60 s core job deadline. A verified mirror MP4, Reddit archive or TikWM, has up to
+  25 s to download before compression, and a large TikWM MP4 comes in byte ranges. The gateway waits up to 90 s for the core.
 - **Repeats.** Core reserves a keyed digest of the chat and target for ten minutes, including failed reads.
   Resolved aliases must also win the canonical target reservation. Reservations survive restart.
 - **Records.** A recognized target can create a `job_run` even when selection skips it. Outcomes include

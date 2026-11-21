@@ -474,6 +474,14 @@ describe('autofetch', () => {
     await scoped.fetch({ chat: env.waId, text: 'https://www.reddit.com/r/example/s/Fixture2/' })
     await scoped.fetch({ chat: env.waId, text: 'https://www.reddit.com/r/example/comments/abc123/sample/' })
     expect(env.lookups).toHaveLength(1)
+    await scoped.fetch({ chat: env.waId, text: 'https://www.reddit.com/r/example/s/Fixture3/' })
+    expect(
+      env.storage.read((db) => db.prepare('SELECT outcome, reason FROM social_lookup ORDER BY rowid').all())
+    ).toEqual([
+      { outcome: 'readable', reason: 'no_verified_attachment' },
+      { outcome: 'skipped', reason: 'repeat' },
+      { outcome: 'skipped', reason: 'repeat' }
+    ])
   })
 
   it('does not send a Facebook video while its group capability is disabled', async () => {
@@ -628,6 +636,11 @@ describe('POST /v1/aira/autofetch', () => {
   ])('refuses %s with 400', async (_name, body) => {
     const post = await serve({})
     expect((await post(body)).status).toBe(400)
+  })
+
+  it('closes the connection on a body over 1 MiB without reading it all', async () => {
+    const post = await serve({})
+    await expect(post({ chat: GROUP, text: 'a'.repeat(1_100_000) })).rejects.toThrow()
   })
 
   it('answers 503 while the core is not ready', async () => {

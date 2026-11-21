@@ -434,6 +434,13 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
   // a seen address marks the turn read, which withdraws state changes (see readTainted).
   const footer = new Map<string, Map<string, SourceUse[]>>()
   const MAX_FOOTER_TURNS = 64
+  // A turn that ends before cleaning never takes its sources; the oldest such entries fall away.
+  const trimFooter = (): void => {
+    for (const turnId of footer.keys()) {
+      if (footer.size <= MAX_FOOTER_TURNS) break
+      footer.delete(turnId)
+    }
+  }
   const noteSources = (name: string, args: unknown, data: unknown, context: TurnContext, callId: string): void => {
     const byCall = footer.get(context.turnId) ?? new Map<string, SourceUse[]>()
     const uses: SourceUse[] = []
@@ -455,11 +462,7 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
     } else return
     byCall.set(callId, uses)
     footer.set(context.turnId, byCall)
-    // A turn that ends before cleaning never takes its sources; the oldest such entries fall away.
-    for (const turnId of footer.keys()) {
-      if (footer.size <= MAX_FOOTER_TURNS) break
-      footer.delete(turnId)
-    }
+    trimFooter()
   }
 
   const recordOutcome = (
@@ -625,6 +628,7 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
       const byCall = footer.get(context.turnId) ?? new Map<string, SourceUse[]>()
       if (!byCall.has(call.callId)) byCall.set(call.callId, [])
       footer.set(context.turnId, byCall)
+      trimFooter()
     }
     let result: ToolResult
     let error: unknown
