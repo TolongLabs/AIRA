@@ -6,7 +6,7 @@ import { createGeminiWatcher, type MediaWatcher, toGenerateContentUrlBody } from
 import { readMediaUrl } from '../../src/media/intake.js'
 import { DEFAULT_MEDIA_LIMITS } from '../../src/media/limits.js'
 import { createLinkReader, type LinkPostViewer, type LinkTarget } from '../../src/media/link-intake.js'
-import { createTurnMedia } from '../../src/media/turn-media.js'
+import { createTurnMedia, mediaPromptText } from '../../src/media/turn-media.js'
 import { ModelError } from '../../src/models/types.js'
 import { createLogger } from '../../src/records/logger.js'
 import { createRedactor } from '../../src/records/redact.js'
@@ -919,6 +919,61 @@ describe('createLinkReader', () => {
     const result = await reader.read(['https://x.com/testuser/status/9'], 5000, { media: true, social: true })
 
     expect(result.links?.[0]?.reading?.description).toBe('Shows card')
+  })
+
+  it('labels a video thumbnail and suppresses any transcript after a media download refusal', async () => {
+    const logLines: Record<string, unknown>[] = []
+    const reader = createLinkReader({
+      viewer: {
+        lookup: async () => ({
+          status: 'found',
+          post: makePost({
+            videoCount: 1,
+            imageUrl: 'https://img.example/cover.jpg',
+            video: {
+              url: 'https://video.example/clip.mp4?signature=fixture',
+              bytes: 100,
+              headers: null,
+              hasAudio: true
+            }
+          })
+        })
+      },
+      findTarget: fakeFindTarget,
+      watcher: {
+        async watch() {
+          return {
+            reading: { description: 'A still frame', transcript: 'Imagined audio' },
+            usage: { inputTokens: 10, outputTokens: 5, cachedTokens: 0 },
+            costUsd: 0,
+            model: 'fake-media-model'
+          }
+        }
+      },
+      async download(url) {
+        if (url.includes('video.example')) throw new Error('http status 403')
+        return { data: Buffer.from('image'), contentType: 'image/jpeg' }
+      },
+      model: 'fake-media-model',
+      limits: baseLimits,
+      logger: createLogger({ level: 'warn', module: 'link-test', sink: (line) => logLines.push(JSON.parse(line)) })
+    })
+    const result = await reader.read(['https://x.com/testuser/status/9'], 5000, { media: true, social: true })
+    const prompt = mediaPromptText(result, 'Could not read the media.')
+    expect(result.links?.[0]?.mediaKind).toBe('image')
+    expect(result.calls).toHaveLength(1)
+    expect(prompt).toContain('preview image: A still frame')
+    expect(prompt).toContain('Video playback and audio were unavailable.')
+    expect(prompt).not.toContain('Imagined audio')
+    expect(logLines).toContainEqual(
+      expect.objectContaining({
+        event: 'media.link_download_failed',
+        platform: 'x',
+        mediaKind: 'video',
+        reason: 'http_403'
+      })
+    )
+    expect(JSON.stringify(logLines)).not.toContain('signature=fixture')
   })
 
   it('logs platform and reason without URL when a link lookup fails', async () => {
