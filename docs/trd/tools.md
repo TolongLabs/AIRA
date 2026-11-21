@@ -411,7 +411,8 @@ and asset downloads keep redirects on the original origin. The watch path downlo
 MP4 from `v16m.tiktokcdn-us.com` in four parallel byte ranges when its declared size is at least 8 MB and within
 the intake download cap. Each response must be a matching MP4 range of the declared total. Reassembly must
 produce the complete file before watch or compression. A part that sends nothing for 4 s, drops or ends early
-resumes from its last byte, up to twice. An invalid or refused part stops the batch. The watch
+resumes from its last byte, up to twice. A resume sends the part's strong ETag or Last-Modified as `If-Range`;
+without one, the part starts over. An invalid, refused or redirected part stops the batch at once. The watch
 deadline includes the lookup, downloads, compression, and model call. A failed mirror lookup grants no group attachment.
 Facebook photo paths use the HTML post reader before falling back to the extractor. Supported platforms
 are X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram, Bilibili and

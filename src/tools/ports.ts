@@ -290,6 +290,11 @@ const RANGE_RESUMES = 2
 /** A response that is not the requested range of the same file. It ends the batch without a resume. */
 class InvalidRange extends Error {}
 
+/** An ETag or Last-Modified value that names one exact version of a file. A weak ETag does not. */
+function strongValidator(version: string | null | undefined): version is string {
+  return typeof version === 'string' && version.length > 0 && !/^W\//i.test(version)
+}
+
 /** The only request headers a media download may carry: a host's user agent and referrer, never cookies. */
 function forwardedMediaHeaders(headers: Record<string, string> | null | undefined): Record<string, string> | undefined {
   const kept = Object.entries(headers ?? {}).filter(([name]) => ['user-agent', 'referer'].includes(name.toLowerCase()))
@@ -405,6 +410,12 @@ export function createFetchPagePort(
     let received = 0
     let first: { finalUrl: string; version: string | null } | undefined
     for (let attempt = 0; ; attempt++) {
+      // Only a strong validator proves resumed bytes belong to the same file; without one the part starts over.
+      if (received > 0 && !strongValidator(first?.version)) {
+        chunks.length = 0
+        received = 0
+        first = undefined
+      }
       const idle = new AbortController()
       const attemptSignal = AbortSignal.any([batchSignal, idle.signal])
       let timer = setTimeout(() => idle.abort(), RANGE_IDLE_MS)
@@ -412,12 +423,15 @@ export function createFetchPagePort(
         clearTimeout(timer)
         timer = setTimeout(() => idle.abort(), RANGE_IDLE_MS)
       }
+      let streaming = false
+      let fail = () => {}
       try {
         const from = start + received
         const { res, url: finalUrl } = await fetchChecked(url, attemptSignal, {
           ...headers,
           Range: `bytes=${from}-${end}`,
-          'Accept-Encoding': 'identity'
+          'Accept-Encoding': 'identity',
+          ...(received > 0 && first?.version ? { 'If-Range': first.version } : {})
         })
         const mime = res.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase()
         const version = res.headers.get('etag') ?? res.headers.get('last-modified')
@@ -432,18 +446,21 @@ export function createFetchPagePort(
           throw new InvalidRange('invalid MP4 byte range')
         }
         first ??= { finalUrl, version }
+        streaming = true
         touch()
         const reader = res.body.getReader()
         const aborted = new Promise<never>((_, reject) => {
-          const fail = () => reject(new Error('MP4 byte range stalled'))
+          fail = () => reject(new Error('MP4 byte range stalled'))
           if (attemptSignal.aborted) fail()
           else attemptSignal.addEventListener('abort', fail, { once: true })
         })
         aborted.catch(() => undefined)
         try {
-          while (received < size) {
+          // Read to the end, so bytes beyond the declared range fail the part instead of being cut off.
+          while (true) {
             const { done, value } = await Promise.race([reader.read(), aborted])
             if (done) break
+            if (value.byteLength === 0) continue
             touch()
             received += value.byteLength
             if (received > size) throw new InvalidRange('invalid MP4 byte range')
@@ -455,11 +472,14 @@ export function createFetchPagePort(
         if (received !== size) throw new Error('incomplete MP4 byte range')
         return { part: Buffer.concat(chunks, size), ...first }
       } catch (error) {
-        // A stall, a dropped connection or an early end resumes; a wrong response or the caller's deadline does not.
-        if (!(error instanceof InvalidRange) && !batchSignal.aborted && attempt < RANGE_RESUMES) continue
+        // A stall, or a drop or early end after a valid range began, resumes. A refusal, a policy error, a wrong
+        // response or the caller's deadline does not.
+        const resumable = idle.signal.aborted || (streaming && !(error instanceof InvalidRange))
+        if (resumable && !batchSignal.aborted && attempt < RANGE_RESUMES) continue
         throw error
       } finally {
         clearTimeout(timer)
+        attemptSignal.removeEventListener('abort', fail)
       }
     }
   }
