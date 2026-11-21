@@ -64,6 +64,7 @@ describe('createTurnSources', () => {
     sources.add('https://example.com/a?utm_source=feed', 'intake')
     expect(sources.find({ url: 'https://example.com/a' })).toMatchObject({ id: 's1', lookup: 'intake' })
     expect(sources.find({ source: 's1' })).toMatchObject({ url: 'https://example.com/a?utm_source=feed' })
+    expect(sources.find({ source: ' s1 ' })).toMatchObject({ url: 'https://example.com/a?utm_source=feed' })
     expect(sources.find({ url: 'https://example.com/other' })).toBeUndefined()
     expect(sources.find({ url: 'file:///etc/passwd' })).toBeUndefined()
     expect(sources.find({ source: 's9' })).toBeUndefined()
