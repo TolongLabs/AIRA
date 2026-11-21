@@ -14278,7 +14278,7 @@
       "file_type": "code",
       "norm_label": "charcount()",
       "source_file": "src/tools/blocked-page.ts",
-      "source_location": "L6"
+      "source_location": "L15"
     },
     {
       "id": "src_tools_blocked_page_comparable",
@@ -14290,7 +14290,7 @@
       "file_type": "code",
       "norm_label": "comparable()",
       "source_file": "src/tools/blocked-page.ts",
-      "source_location": "L11"
+      "source_location": "L20"
     },
     {
       "id": "src_tools_blocked_page_hasblockmarker",
@@ -14302,7 +14302,7 @@
       "file_type": "code",
       "norm_label": "hasblockmarker()",
       "source_file": "src/tools/blocked-page.ts",
-      "source_location": "L19"
+      "source_location": "L28"
     },
     {
       "id": "src_tools_blocked_page_isblockedpage",
@@ -14314,7 +14314,7 @@
       "file_type": "code",
       "norm_label": "isblockedpage()",
       "source_file": "src/tools/blocked-page.ts",
-      "source_location": "L56"
+      "source_location": "L64"
     },
     {
       "id": "src_tools_blocked_page_sitenames",
@@ -14326,7 +14326,7 @@
       "file_type": "code",
       "norm_label": "sitenames()",
       "source_file": "src/tools/blocked-page.ts",
-      "source_location": "L31"
+      "source_location": "L40"
     },
     {
       "id": "src_tools_exa_createexapageport",
@@ -38164,7 +38164,7 @@
       "file_type": "code",
       "norm_label": "generic_second_level",
       "source_file": "src/tools/blocked-page.ts",
-      "source_location": "L25"
+      "source_location": "L34"
     },
     {
       "id": "tests_unit_page_fetch_test",
@@ -77575,7 +77575,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/tools/blocked-page.ts",
-      "source_location": "L58",
+      "source_location": "L66",
       "weight": 1.0
     },
     {
@@ -77587,7 +77587,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/tools/blocked-page.ts",
-      "source_location": "L58",
+      "source_location": "L66",
       "weight": 1.0
     },
     {
@@ -77599,7 +77599,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/tools/blocked-page.ts",
-      "source_location": "L58",
+      "source_location": "L66",
       "weight": 1.0
     },
     {
@@ -77611,7 +77611,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/tools/blocked-page.ts",
-      "source_location": "L59",
+      "source_location": "L70",
       "weight": 1.0
     },
     {
@@ -187100,24 +187100,13 @@
     },
     {
       "source": "src_tools_blocked_page",
-      "target": "src_tools_blocked_page_comparable",
+      "target": "src_tools_blocked_page_charcount",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src/tools/blocked-page.ts",
-      "source_location": "L11",
-      "weight": 1.0
-    },
-    {
-      "source": "src_tools_blocked_page",
-      "target": "src_tools_blocked_page_hasblockmarker",
-      "relation": "contains",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src/tools/blocked-page.ts",
-      "source_location": "L19",
+      "source_location": "L15",
       "weight": 1.0
     },
     {
@@ -187133,13 +187122,35 @@
     },
     {
       "source": "src_tools_blocked_page",
+      "target": "src_tools_blocked_page_comparable",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/tools/blocked-page.ts",
+      "source_location": "L20",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tools_blocked_page",
+      "target": "src_tools_blocked_page_hasblockmarker",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/tools/blocked-page.ts",
+      "source_location": "L28",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tools_blocked_page",
       "target": "src_tools_blocked_page_generic_second_level",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src/tools/blocked-page.ts",
-      "source_location": "L25",
+      "source_location": "L34",
       "weight": 1.0
     },
     {
@@ -187150,7 +187161,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src/tools/blocked-page.ts",
-      "source_location": "L31",
+      "source_location": "L40",
       "weight": 1.0
     },
     {
@@ -187161,18 +187172,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src/tools/blocked-page.ts",
-      "source_location": "L56",
-      "weight": 1.0
-    },
-    {
-      "source": "src_tools_blocked_page",
-      "target": "src_tools_blocked_page_charcount",
-      "relation": "contains",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src/tools/blocked-page.ts",
-      "source_location": "L6",
+      "source_location": "L64",
       "weight": 1.0
     },
     {
@@ -203058,7 +203058,7 @@
       "confidence_score": 0.85,
       "context": "argument",
       "source_file": "src/tools/blocked-page.ts",
-      "source_location": "L46",
+      "source_location": "L55",
       "weight": 1.0
     },
     {
@@ -203670,7 +203670,7 @@
       "confidence_score": 0.85,
       "context": "collection",
       "source_file": "tests/unit/exa-page.test.ts",
-      "source_location": "L76",
+      "source_location": "L99",
       "weight": 1.0
     },
     {
@@ -203694,7 +203694,7 @@
       "confidence_score": 0.85,
       "context": "collection",
       "source_file": "tests/unit/page-fetch.test.ts",
-      "source_location": "L66",
+      "source_location": "L76",
       "weight": 1.0
     },
     {
@@ -205960,5 +205960,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "49f8d7a6b2d17f8a80027540165183aa522a2a0b"
+  "built_at_commit": "18e4382b5d0bfe301d3f5b5d5cd4d55ce6241824"
 }
