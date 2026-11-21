@@ -38,6 +38,8 @@ function stack(
     foreignAsset?: boolean
     redditRefusal?: number
     redditPhoto?: 'native' | 'preview' | 'crosspost'
+    redditFeed?: 'photo' | 'video'
+    archiveRefusal?: number
     ranges?: 'valid' | 'invalid'
   } = {}
 ) {
@@ -65,6 +67,16 @@ function stack(
     }
     if (options.redditRefusal && url.pathname.endsWith('/.rss')) {
       return new Response(null, { status: options.redditRefusal })
+    }
+    if (options.redditFeed && url.pathname.endsWith('/.rss')) {
+      return new Response(
+        `<feed><entry><author><name>/u/example</name></author><category term="example"/>` +
+          `<content type="html">&lt;span&gt;&lt;a href=&quot;${options.redditFeed === 'video' ? 'https://v.redd.it/fixture' : redditPhoto}&quot;&gt;[link]&lt;/a&gt;&lt;/span&gt;</content>` +
+          `<id>t3_abc123</id><media:thumbnail url="${redditPreview}" /><title>A photo</title></entry></feed>`
+      )
+    }
+    if (url.hostname === 'arctic-shift.photon-reddit.com' && options.archiveRefusal) {
+      return new Response(null, { status: options.archiveRefusal })
     }
     if (url.hostname === 'arctic-shift.photon-reddit.com') {
       expect(url.searchParams.get('ids')).toBe('abc123')
@@ -238,6 +250,42 @@ describe('approved mirror readers', () => {
       )
     }
   )
+
+  it('asks the mirror for the original when the Reddit feed has only a thumbnail', async () => {
+    const { viewer, fetcher } = stack({ reddit: 'read_and_group' }, { redditPhoto: 'native', redditFeed: 'photo' })
+    const result = await viewer.lookup(parseOfficialSocialPostUrl(nativeReddit)!)
+    expect(result.status).toBe('found')
+    if (result.status !== 'found') return
+    expect(result.post.text).toContain('A photo')
+    expect(result.post.photoUrls).toEqual([redditPhoto])
+    expect(result.post.attachments).toEqual([{ kind: 'image', url: redditPhoto, owner: 'reddit:abc123' }])
+    expect(
+      fetcher.mock.calls.some(([input]) => new URL(String(input)).hostname === 'arctic-shift.photon-reddit.com')
+    ).toBe(true)
+  })
+
+  it('keeps the Reddit feed thumbnail when the mirror is off', async () => {
+    const { viewer, fetcher } = stack({}, { redditFeed: 'photo' })
+    const result = await viewer.lookup(parseOfficialSocialPostUrl(nativeReddit)!)
+    expect(result.status).toBe('found')
+    if (result.status !== 'found') return
+    expect(result.post.imageUrl).toBe(redditPreview)
+    expect(result.post.attachments ?? []).toEqual([])
+    expect(
+      fetcher.mock.calls.some(([input]) => new URL(String(input)).hostname === 'arctic-shift.photon-reddit.com')
+    ).toBe(false)
+  })
+
+  it('does not treat an archive rate limit as a Reddit refusal', async () => {
+    const { viewer } = stack({ reddit: 'read_and_group' }, { redditFeed: 'video', archiveRefusal: 429 })
+    viewer.setYtDlpAvailable(true)
+    const readers: string[] = []
+    const result = await viewer.lookup(parseOfficialSocialPostUrl(nativeReddit)!, undefined, (trace) => {
+      readers.push(...trace.attempts.map((attempt) => attempt.readerId))
+    })
+    expect(result.status).toBe('found')
+    expect(readers).toEqual(['reddit.feed', 'reddit.arctic_shift', 'yt_dlp'])
+  })
 
   it('hands verified clips to the gateway and records the gateway’s confirmation separately', async () => {
     const storage = tmpStorage()

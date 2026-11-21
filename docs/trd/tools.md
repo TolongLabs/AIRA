@@ -402,7 +402,8 @@ from the image post's own original `i.redd.it` URL, with any destination overrid
 crosspost, a gallery and an external image link do not qualify under this rule. TikWM uses the
 watermarked rendition and can take up to 5,500 ms for lookup by default, within the shared lookup deadline.
 Arctic Shift is an archive. Its Reddit fallback MP4 may be video-only. The Reddit reader checks the first-party feed
-before the mirror and stops further attempts on an explicit refusal or rate limit. The normal watch and group byte,
+before the mirror and stops further attempts on Reddit's own refusal or rate limit; the archive's 403 or 429
+does not. A feed that gives only an image post's thumbnail still lets the mirror supply the original photo. The normal watch and group byte,
 duration and timeout limits apply, including linked MP4 compression. Mirror lookup endpoints disallow redirects,
 and asset downloads keep redirects on the original origin. The watch path downloads a verified TikWM watermarked
 MP4 from `v16m.tiktokcdn-us.com` in four parallel byte ranges when its declared size is at least 8 MB and within

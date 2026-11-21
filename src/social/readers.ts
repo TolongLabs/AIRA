@@ -274,7 +274,8 @@ function redditReaders(env: ReaderEnv): SocialReader[] {
   const readers = [redditFeedReader(env, onRefused)]
   const mode = mirrorMode('reddit', env.mirrors)
   if (mode !== 'off') {
-    const mirror = createMirrorReader('reddit', env.httpTimeoutMs, mode === 'read_and_group', onRefused)
+    // The archive's own 403 or 429 is not Reddit refusing, so it does not stop yt-dlp.
+    const mirror = createMirrorReader('reddit', env.httpTimeoutMs, mode === 'read_and_group')
     readers.push({ ...mirror, isConfigured: canContinue })
   }
   readers.push(ytDlpReader(env, canContinue))
@@ -430,7 +431,9 @@ function redditFeedReader(env: ReaderEnv, onRefused: () => void): SocialReader {
           return { ok: false, reason: `http_${response.status}` }
         }
         const post = parseRedditFeedPost(await response.text(), target, ctx.maxTextChars)
-        return post ? { ok: true, post } : { ok: false, reason: 'no_post_data' }
+        if (!post) return { ok: false, reason: 'no_post_data' }
+        // The feed carries only a thumbnail of an image post, so a configured mirror may still find the original.
+        return { ok: true, post, ...(post.imageUrl && post.videoCount === 0 ? { previewMedia: true } : {}) }
       } catch {
         // A failed feed still leaves yt-dlp to try.
         return { ok: false, reason: ctx.signal.aborted ? 'timeout' : 'network_error' }
