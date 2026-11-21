@@ -35268,6 +35268,30 @@
       "source_location": "L1"
     },
     {
+      "id": "docs_agents_graphify",
+      "label": "graphify.md",
+      "_origin": "ast",
+      "community": 124,
+      "community_name": "Git Workflow",
+      "file_type": "document",
+      "node_kind": "page",
+      "norm_label": "graphify.md",
+      "source_file": "docs/agents/graphify.md",
+      "source_location": "L1"
+    },
+    {
+      "id": "docs_agents_graphify_graphify",
+      "label": "Graphify",
+      "_origin": "ast",
+      "community": 124,
+      "community_name": "Git Workflow",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "graphify",
+      "source_file": "docs/agents/graphify.md",
+      "source_location": "L1"
+    },
+    {
       "id": "docs_references_git_workflow",
       "label": "git-workflow.md",
       "_origin": "ast",
@@ -39608,7 +39632,7 @@
       "source_location": "L1"
     },
     {
-      "id": "home_adam_cs_tolonglabs_aira_wt_feat_graphify_main_claude_agent_instructions",
+      "id": "home_runner_work_aira_aira_claude_agent_instructions",
       "label": "Agent Instructions",
       "_origin": "ast",
       "community": 174,
@@ -39620,7 +39644,7 @@
       "source_location": "L1"
     },
     {
-      "id": "home_adam_cs_tolonglabs_aira_wt_feat_graphify_main_claude_hard_rules",
+      "id": "home_runner_work_aira_aira_claude_hard_rules",
       "label": "Hard Rules",
       "_origin": "ast",
       "community": 174,
@@ -39632,7 +39656,7 @@
       "source_location": "L7"
     },
     {
-      "id": "home_adam_cs_tolonglabs_aira_wt_feat_graphify_main_claude_instructions",
+      "id": "home_runner_work_aira_aira_claude_instructions",
       "label": "Instructions",
       "_origin": "ast",
       "community": 174,
@@ -39644,7 +39668,7 @@
       "source_location": "L14"
     },
     {
-      "id": "home_adam_cs_tolonglabs_aira_wt_feat_graphify_main_claude_project_documents",
+      "id": "home_runner_work_aira_aira_claude_project_documents",
       "label": "Project Documents",
       "_origin": "ast",
       "community": 174,
@@ -39656,7 +39680,7 @@
       "source_location": "L30"
     },
     {
-      "id": "home_adam_cs_tolonglabs_aira_wt_feat_graphify_main_claude_references",
+      "id": "home_runner_work_aira_aira_claude_references",
       "label": "References",
       "_origin": "ast",
       "community": 174,
@@ -41541,30 +41565,6 @@
       "norm_label": "emptyschema",
       "source_file": "src/tools/core/feedback.ts",
       "source_location": "L6"
-    },
-    {
-      "id": "docs_agents_graphify",
-      "label": "graphify.md",
-      "_origin": "ast",
-      "community": 210,
-      "community_name": "graphify.md",
-      "file_type": "document",
-      "node_kind": "page",
-      "norm_label": "graphify.md",
-      "source_file": "docs/agents/graphify.md",
-      "source_location": "L1"
-    },
-    {
-      "id": "docs_agents_graphify_graphify",
-      "label": "Graphify",
-      "_origin": "ast",
-      "community": 210,
-      "community_name": "graphify.md",
-      "file_type": "document",
-      "node_kind": "heading",
-      "norm_label": "graphify",
-      "source_file": "docs/agents/graphify.md",
-      "source_location": "L1"
     },
     {
       "id": "docs_agents_rtk",
@@ -159229,7 +159229,7 @@
     },
     {
       "source": "claude",
-      "target": "home_adam_cs_tolonglabs_aira_wt_feat_graphify_main_claude_agent_instructions",
+      "target": "home_runner_work_aira_aira_claude_agent_instructions",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -164805,8 +164805,8 @@
       "weight": 1.0
     },
     {
-      "source": "home_adam_cs_tolonglabs_aira_wt_feat_graphify_main_claude_agent_instructions",
-      "target": "home_adam_cs_tolonglabs_aira_wt_feat_graphify_main_claude_instructions",
+      "source": "home_runner_work_aira_aira_claude_agent_instructions",
+      "target": "home_runner_work_aira_aira_claude_instructions",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -164816,8 +164816,8 @@
       "weight": 1.0
     },
     {
-      "source": "home_adam_cs_tolonglabs_aira_wt_feat_graphify_main_claude_agent_instructions",
-      "target": "home_adam_cs_tolonglabs_aira_wt_feat_graphify_main_claude_references",
+      "source": "home_runner_work_aira_aira_claude_agent_instructions",
+      "target": "home_runner_work_aira_aira_claude_references",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -164827,8 +164827,8 @@
       "weight": 1.0
     },
     {
-      "source": "home_adam_cs_tolonglabs_aira_wt_feat_graphify_main_claude_agent_instructions",
-      "target": "home_adam_cs_tolonglabs_aira_wt_feat_graphify_main_claude_project_documents",
+      "source": "home_runner_work_aira_aira_claude_agent_instructions",
+      "target": "home_runner_work_aira_aira_claude_project_documents",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -164838,8 +164838,8 @@
       "weight": 1.0
     },
     {
-      "source": "home_adam_cs_tolonglabs_aira_wt_feat_graphify_main_claude_agent_instructions",
-      "target": "home_adam_cs_tolonglabs_aira_wt_feat_graphify_main_claude_hard_rules",
+      "source": "home_runner_work_aira_aira_claude_agent_instructions",
+      "target": "home_runner_work_aira_aira_claude_hard_rules",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -198820,6 +198820,17 @@
       "weight": 1.0
     },
     {
+      "source": "docs_references_git_workflow",
+      "target": "docs_agents_graphify",
+      "relation": "references",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/references/git-workflow.md",
+      "source_location": "L141",
+      "weight": 1.0
+    },
+    {
       "source": "docs_runbook",
       "target": "docs_trd_records",
       "relation": "references",
@@ -203461,5 +203472,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "d9b7d00b3dc73abeb4d152897512ac39a3ee5829"
+  "built_at_commit": "4ab7c6114b2ce84f35f3bbce326ab55b1af38194"
 }
