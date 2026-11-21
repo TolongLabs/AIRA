@@ -329,7 +329,8 @@ With fields, return a brief of matching passages and source ids plus a `stillMis
 depth limits are 2 searches, 2 page reads and 3 provider calls by default. They count the initial search.
 A plain search still does one provider call and contributes to the usage tracked for deeper lookups.
 A depth call stops with a partial brief by the earlier of four seconds before the turn deadline and
-1.5 seconds before the tool timeout. The fixed prompt asks the model to search before stating a population,
+1.5 seconds before the tool timeout. A provider failure on the first search fails the call, as it does for a plain search.
+A failure on the retry search keeps the partial brief. The fixed prompt asks the model to search before stating a population,
 measurement or release date.
 
 ### Page Reads

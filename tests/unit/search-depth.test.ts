@@ -47,6 +47,23 @@ describe('search field evidence', () => {
 })
 
 describe('search depth', () => {
+  it('fails the call when the provider fails the first search, without a retry', async () => {
+    const search = vi.fn(async () => {
+      throw new Error('http status 401')
+    })
+    await expect(
+      createSearchDepth({ search: { search } }).deep({ query, localQuery, fields }, context())
+    ).rejects.toThrow('http status 401')
+    expect(search).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the first results when only the retry search fails', async () => {
+    const search = vi.fn().mockResolvedValueOnce([menu]).mockRejectedValueOnce(new Error('http status 429'))
+    const { brief } = await createSearchDepth({ search: { search } }).deep({ query, localQuery, fields }, context())
+    expect(search).toHaveBeenCalledTimes(2)
+    expect(brief.stillMissing).toBe('Still missing: Oat latte (price).')
+  })
+
   it('makes only the first search when its snippet covers every field', async () => {
     const search = vi.fn(async () => [{ ...menu, snippet: 'Oat latte RM 14.' }])
     const read = vi.fn(async () => ({ title: '', text: '' }))
