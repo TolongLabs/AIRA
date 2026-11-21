@@ -23,6 +23,13 @@ const REASONS = new Set([
   'missing_post',
   'identity_mismatch',
   'no_post_data',
+  'invalid_json',
+  'invalid_did',
+  'empty_output',
+  'output_too_large',
+  'spawn_error',
+  'unsupported',
+  'unsupported_url',
   'cache_hit',
   'repeat',
   'platform_excluded',
@@ -37,6 +44,8 @@ function safeReason(reason?: string): string | null {
   if (/^exit_(?:\d+|unknown)$/.test(reason)) return 'extractor_error'
   if (reason === 'http_429') return 'rate_limited'
   if (reason === 'http_401' || reason === 'http_403') return 'access_refused'
+  if (/^http_5\d\d$/.test(reason)) return 'server_error'
+  if (/^http_\d{3}$/.test(reason)) return 'http_error'
   return 'unknown'
 }
 
@@ -92,7 +101,7 @@ export function recordSocialLookup(
     reader: ATTEMPT_IDS.has(attempt.readerId) ? attempt.readerId : 'unknown',
     ok: attempt.ok,
     reason: safeReason(attempt.reason),
-    ms: elapsed(0, attempt.ms, 6_000)
+    ms: elapsed(0, attempt.ms, 60_000)
   }))
   const input = new URL(target.originalUrl ?? target.canonicalUrl)
   const inputForm =
@@ -120,7 +129,7 @@ export function recordSocialLookup(
     JSON.stringify(attempts),
     missingFields,
     trace?.redirectHops === undefined ? null : elapsed(0, trace.redirectHops, 2),
-    trace?.resolveMs === undefined ? null : elapsed(0, trace.resolveMs, 6_000)
+    trace?.resolveMs === undefined ? null : elapsed(0, trace.resolveMs, 60_000)
   ]
   if (runId === null) {
     db.prepare(
