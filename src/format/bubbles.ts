@@ -230,12 +230,12 @@ function packUnits(units: Unit[], limit: number): string[] {
 
 export function splitBubbles(
   text: string,
-  limits: { maxChars: number; maxBubbles: number }
+  limits: { maxChars: number; maxBubbles: number; reserveChars?: number }
 ): { bubbles: string[]; trimmed: boolean } {
   const trimmedText = text.trim()
   if (trimmedText.length === 0) return { bubbles: [], trimmed: false }
 
-  const maxLimit = GATEWAY_CHUNK_LIMIT - 1
+  const maxLimit = Math.max(1, GATEWAY_CHUNK_LIMIT - 1 - (limits.reserveChars ?? 0))
   const initialLimit = Math.max(1, Math.min(limits.maxChars, maxLimit))
   const maxBubbles = Math.max(1, limits.maxBubbles)
 

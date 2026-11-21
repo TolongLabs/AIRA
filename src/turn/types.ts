@@ -172,6 +172,8 @@ export interface CleanedReply {
   fourthWall?: string
   stickerId?: string
   attachments?: string[]
+  /** The chosen source URLs and their original footer line, for optional short links. */
+  footerSources?: { urls: string[]; line: string }
 }
 export interface ReplyCleaner {
   clean(input: { text: string; context: TurnContext; built: BuiltPrompt; run: RunResult }): CleanedReply

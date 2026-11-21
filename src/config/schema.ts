@@ -129,6 +129,27 @@ export const configSchema = z.strictObject({
     provider: z.string().min(1),
     pageMaxChars: count.default(12_000)
   }),
+  links: z
+    .strictObject({
+      baseUrl: z
+        .union([
+          z.literal(''),
+          z.url().refine((value) => {
+            const url = new URL(value)
+            return (
+              (url.protocol === 'https:' || url.protocol === 'http:') &&
+              !url.username &&
+              !url.password &&
+              url.pathname === '/' &&
+              !url.search &&
+              !url.hash
+            )
+          }, 'Expected an HTTP or HTTPS origin')
+        ])
+        .default(''),
+      timeoutMs: ms.default(800)
+    })
+    .prefault({}),
   // Reverse-image hints (docs/trd/tools.md#reverse-image-hints). A value above a hard maximum stops start-up.
   identify: z
     .strictObject({

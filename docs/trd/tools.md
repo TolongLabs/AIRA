@@ -67,7 +67,8 @@ call id (`search:<callId>`), keeping the first producer on a deduplicated entry 
 each per-search footer use, even for a URL seen earlier.
 
 `read_page` and `read_post` take exactly one URL or source id. Refuse a URL the turn has never seen
-before any network call. The guarded fetcher still checks each network address.
+before any network call. Search results, page and post reads, and intake readings expose their URL and source id.
+The guarded fetcher still checks each network address.
 
 After a successful page or post read, the registry refuses every core tool with `mutates: true` for the
 rest of the turn, except the turn's `commandTool` when `kind` is `command`. The registry enforces this

@@ -439,3 +439,11 @@ spike runs, 16 Nov 2026.
 | A-9  | Assumption | The old fact files keep a group member as `about_id` in bare digits, which are a LID: the memory reader writes `<digits>@lid`. To check in the real dry run against the senders the new database knows.             | Memory migration      |
 | A-10 | Assumption | An old binding written as a phone number names the DM `<digits>@s.whatsapp.net`. The live gateway names most DMs by their LID, so such a binding may not match: the settings migration reports each one for review. | Settings migration    |
 | S-5  | Spike      | Build the shadow tap: copy real requests to the new core without sending its replies. Tracked in [#29](https://github.com/TolongLabs/AIRA/issues/29).                                                               | Cutover               |
+
+## Short Links
+
+When `links.baseUrl` and `LINKS_SECRET` are set, AIRA creates footer links by sending the selected public
+URLs to `POST /api/links` on a Cloudflare Worker. Calls run in parallel and share the `links.timeoutMs` budget
+(default 800 ms), bounded by the remaining turn time. AIRA builds each displayed link from the configured
+base and the returned code. The Worker redirects each code to its URL and retains it for 365 days. With either
+setting empty, the footer displays domains alone.

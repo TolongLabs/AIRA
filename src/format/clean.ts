@@ -1,4 +1,6 @@
 import type { LineKind } from '../character/schema.js'
+import type { SourceUse } from '../tools/registry.js'
+import { sourceKey, type TurnSources } from '../turn/sources.js'
 import type { CleanedReply, ReplyCleaner } from '../turn/types.js'
 import { parseBlocks } from './blocks.js'
 import { joinContent, splitBubbles } from './bubbles.js'
@@ -7,6 +9,7 @@ import {
   CODE_REPLY_NOTE_LINE,
   capitaliseParagraphs,
   LIST_COMMAND_TOOLS,
+  MAX_SOURCES,
   RESEARCH_MAX_CHARS,
   RESEARCH_TOOLS
 } from './footer.js'
@@ -44,7 +47,8 @@ export interface CleanOptions {
   /** The chat's footer switch and emoji, and the URLs the turn read or found. */
   footerOff?: boolean
   footerEmoji?: string
-  sources?: string[]
+  sources?: (string | SourceUse)[]
+  turnSources?: TurnSources
   /** False for text code wrote (a direct command's answer), which never steps out of role. */
   fourthWall?: boolean
 }
@@ -427,6 +431,38 @@ export interface CleanReplyResult extends CleanedReply {
   warnings?: CleanerWarning[]
 }
 
+function footerUrls(uses: readonly (string | SourceUse)[], marked: readonly string[]): string[] {
+  const distinct = new Map<string, string>()
+  const pick = (url: string): boolean => {
+    const key = sourceKey(url)
+    if (distinct.size === MAX_SOURCES || key === undefined || distinct.has(key)) return false
+    distinct.set(key, url)
+    return true
+  }
+  if (marked.length > 0) {
+    marked.forEach(pick)
+  } else {
+    const lookups: string[][] = []
+    const searches = new Map<string, string[]>()
+    for (const use of uses) {
+      if (typeof use === 'string' || use.kind === 'read') {
+        lookups.push([typeof use === 'string' ? use : use.url])
+      } else {
+        const results = searches.get(use.lookup)
+        if (results) results.push(use.url)
+        else {
+          const group = [use.url]
+          searches.set(use.lookup, group)
+          lookups.push(group)
+        }
+      }
+    }
+    for (const group of lookups) group.some(pick)
+    for (const group of lookups) group.forEach(pick)
+  }
+  return [...distinct.values()]
+}
+
 /** Runs all seven steps of the cleaning chain, then splits into bubbles. */
 export function cleanReply(text: string, options: CleanOptions): CleanReplyResult {
   const steps: string[] = []
@@ -443,6 +479,17 @@ export function cleanReply(text: string, options: CleanOptions): CleanReplyResul
     if (afterSpeaker !== current) {
       steps.push('speaker_tags')
       current = afterSpeaker
+    }
+
+    const marked: string[] = []
+    const withoutMarks = current.replace(/[ \t]*\[(s[0-9]+)\]/g, (_, source: string) => {
+      const entry = options.turnSources?.find({ source })
+      if (entry) marked.push(entry.url)
+      return ''
+    })
+    if (withoutMarks !== current) {
+      steps.push('source_marks')
+      current = withoutMarks
     }
 
     const toolsOk = options.toolsOk ?? []
@@ -507,21 +554,23 @@ export function cleanReply(text: string, options: CleanOptions): CleanReplyResul
       }
     }
 
-    const { bubbles, trimmed } = splitBubbles(current, {
-      maxChars: options.bubbleMaxChars,
-      maxBubbles: options.maxBubbles
-    })
-    if (trimmed) steps.push('bubbles_trimmed')
-
-    const capitalised = bubbles.map(capitaliseParagraphs)
-    if (capitalised.some((bubble, i) => bubble !== bubbles[i])) steps.push('capitals')
+    const selectedUrls = footerUrls(options.sources ?? [], marked)
     const footer =
       replacedBy || options.footerOff
         ? undefined
         : buildFooter(toolsOk, options.footer, {
             ...(options.footerEmoji ? { emoji: options.footerEmoji } : {}),
-            ...(options.sources ? { sources: options.sources } : {})
+            sources: selectedUrls
           })
+    const { bubbles, trimmed } = splitBubbles(current, {
+      maxChars: options.bubbleMaxChars,
+      maxBubbles: options.maxBubbles,
+      reserveChars: footer === undefined ? 0 : footer.length + 2
+    })
+    if (trimmed) steps.push('bubbles_trimmed')
+
+    const capitalised = bubbles.map(capitaliseParagraphs)
+    if (capitalised.some((bubble, i) => bubble !== bubbles[i])) steps.push('capitals')
     if (footer !== undefined && capitalised.length > 0) {
       capitalised[capitalised.length - 1] = `${capitalised[capitalised.length - 1]}\n\n${footer}`
       steps.push('footer')
@@ -530,6 +579,9 @@ export function cleanReply(text: string, options: CleanOptions): CleanReplyResul
     return {
       content: joinContent(capitalised, options.media),
       bubbleCount: capitalised.length,
+      ...(footer !== undefined && selectedUrls.length > 0
+        ? { footerSources: { urls: selectedUrls, line: footer.split('\n').at(-1)! } }
+        : {}),
       steps,
       ...(replacedBy ? { replacedBy } : {}),
       ...(options.media ? { attachments: options.media } : {})
@@ -546,8 +598,10 @@ export function createReplyCleaner(
   /** The tools that ran with outcome `ok` in a turn, in call order. */
   toolsOk?: (turnId: string) => string[],
   /** The URLs a turn read or found, for the sources line. */
-  sources?: (turnId: string) => string[]
+  sources?: (turnId: string) => (string | SourceUse)[]
 ): ReplyCleaner {
+  const usesByTurn = new WeakMap<object, (string | SourceUse)[]>()
+
   return {
     clean({ text, context, built, run }) {
       try {
@@ -565,6 +619,11 @@ export function createReplyCleaner(
         const intakeKinds = context.intakeKinds ?? []
         const intakeUrls = context.intakeUrls ?? []
 
+        let uses = usesByTurn.get(context)
+        if (uses === undefined) {
+          uses = sources?.(context.turnId) ?? []
+          usesByTurn.set(context, uses)
+        }
         return cleanReply(text, {
           toolNames: toolNames ? toolNames() : [],
           speakerNames: [context.character.card.displayName, context.character.card.id],
@@ -588,9 +647,8 @@ export function createReplyCleaner(
           ...(typeof context.settings?.['footerEmoji']?.value === 'string'
             ? { footerEmoji: context.settings['footerEmoji'].value }
             : {}),
-          sources: directCommand
-            ? []
-            : (context.researchSources ?? [...intakeUrls, ...(sources ? sources(context.turnId) : [])])
+          sources: directCommand ? [] : (context.researchSources ?? [...intakeUrls, ...uses]),
+          turnSources: context.sources
         })
       } catch (error) {
         const failed: CleanReplyResult = { content: '', bubbleCount: 0, steps: [], error }

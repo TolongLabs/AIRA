@@ -177,7 +177,10 @@ describe('reads open only what the turn has seen', () => {
     const ctx = makeCtx()
     ctx.sources.addText('look at https://example.com/article', 'message')
     const result = await call(registry, 'read_page', { url: 'https://example.com/article' }, ctx, 'c1')
-    expect(result).toEqual({ ok: true, data: { title: 'Title', text: 'Body' } })
+    expect(result).toEqual({
+      ok: true,
+      data: { title: 'Title', text: 'Body', source: 's1', url: 'https://example.com/article' }
+    })
     expect(fakes.pages).toEqual(['https://example.com/article'])
   })
 
@@ -240,14 +243,17 @@ describe('reads open only what the turn has seen', () => {
       ok: false,
       code: 'unseen_link'
     })
-    await call(registry, 'web_search', { query: 'something' }, ctx, 'c6')
+    expect(await call(registry, 'web_search', { query: 'something' }, ctx, 'c6')).toEqual({
+      ok: true,
+      data: { results: [{ title: 'Found', url: 'https://example.com/found', snippet: 'snippet', source: 's1' }] }
+    })
     expect(await call(registry, 'read_page', { url: 'https://example.com/found' }, ctx, 'c7')).toMatchObject({
       ok: true
     })
     expect(fakes.pages).toEqual(['https://example.com/found'])
     expect(registry.takeSources(ctx.turnId)).toEqual([
-      { url: 'https://example.com/found', lookup: 'search:c6', kind: 'read' },
-      { url: 'https://example.com/found', lookup: 'search:c6', kind: 'found' }
+      { url: 'https://example.com/found', lookup: 'search:c6', kind: 'found' },
+      { url: 'https://example.com/found', lookup: 'search:c6', kind: 'read' }
     ])
   })
 
@@ -291,12 +297,12 @@ describe('reads open only what the turn has seen', () => {
 
     expect(await call(registry, 'read_page', { source: fromSecond?.id }, ctx, 'c-read')).toMatchObject({ ok: true })
     expect(registry.takeSources(ctx.turnId)).toEqual([
-      { url: 'https://three.example/c', lookup: 'search:c-s2', kind: 'read' },
       { url: 'https://one.example/a', lookup: 'search:c-s1', kind: 'found' },
       { url: 'https://two.example/b', lookup: 'search:c-s1', kind: 'found' },
       { url: 'https://ONE.example/a?utm_source=dup', lookup: 'search:c-s2', kind: 'found' },
       { url: 'https://msg.example/seen', lookup: 'search:c-s2', kind: 'found' },
-      { url: 'https://three.example/c', lookup: 'search:c-s2', kind: 'found' }
+      { url: 'https://three.example/c', lookup: 'search:c-s2', kind: 'found' },
+      { url: 'https://three.example/c', lookup: 'search:c-s2', kind: 'read' }
     ])
   })
 

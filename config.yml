@@ -41,6 +41,11 @@ search:
   provider: 'exa' # Web search backend: exa, or off
   pageMaxChars: 12000 # Longest page text read_page passes on
 
+# Owned by docs/trd/system.md
+links:
+  baseUrl: '' # HTTPS origin of the short-link Worker. Empty leaves domain-only footers
+  timeoutMs: 800 # Shared time limit for shortening all sources in the reply
+
 # Owned by docs/trd/tools.md
 identify:
   timeoutMs: 6000 # Total time for upload and reverse-image search

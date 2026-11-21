@@ -39,6 +39,7 @@ import { type DeliveryKind, type DeliverySettings, mayDeliver } from './deliver.
 import { createTurnSources } from './sources.js'
 import type {
   BuiltPrompt,
+  CleanedReply,
   CommandRouter,
   ModelCallRecord,
   PromptBuilder,
@@ -99,6 +100,7 @@ export interface TurnServiceDeps {
   runner: TurnRunner
   prompt: PromptBuilder
   cleaner: ReplyCleaner
+  footerLinks?: (reply: CleanedReply, timeLeftMs: number) => Promise<string>
   alerter: Alerter
   tools?: ToolOffer
   commands?: CommandRouter
@@ -540,7 +542,11 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
           )
         ]
         outcome.fields.mediaMs = Math.max(0, now().getTime() - mediaStartedAt)
-        const promptText = mediaPromptText(combined, pack.lines.unreadableMedia)
+        const promptText = mediaPromptText(
+          combined,
+          pack.lines.unreadableMedia,
+          (url) => context.sources.find({ url })?.id
+        )
         if (promptText.length > 0) input.media = promptText
         outcome.calls.push(...combined.calls)
         for (const item of combined.unreadable) {
@@ -786,6 +792,10 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     if (cleaned.replacedBy)
       fail('clean', 'malformed', new Error(`the reply was replaced by the ${cleaned.replacedBy} line`), 'clean')
 
+    const content = deps.footerLinks
+      ? await deps.footerLinks(cleaned, context.deadline - now().getTime())
+      : cleaned.content
+
     // A mute can arrive while a scheduled turn runs, so the rule is asked again just before the return.
     if (
       context.kind === 'scheduled' &&
@@ -795,7 +805,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     }
 
     log.debug('turn.cleaned', { bubbles: cleaned.bubbleCount, steps: cleaned.steps })
-    outcome.content = cleaned.content
+    outcome.content = content
     if (researchRow && !cleaned.replacedBy) {
       if (!researchRow.wants_pdf) {
         const mediaAt = outcome.content.indexOf('\nMEDIA:')

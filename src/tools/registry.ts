@@ -423,24 +423,27 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
 
   // Sources for the reply footer (docs/trd/prompt-engine.md#tool-footer), kept in memory for the turn only. A read of
   // a seen address marks the turn read, which withdraws state changes (see readTainted).
-  const footer = new Map<string, { read: SourceUse[]; found: SourceUse[] }>()
+  const footer = new Map<string, Map<string, SourceUse[]>>()
   const noteSources = (name: string, args: unknown, data: unknown, context: TurnContext, callId: string): void => {
-    const uses = footer.get(context.turnId) ?? { read: [], found: [] }
+    const byCall = footer.get(context.turnId) ?? new Map<string, SourceUse[]>()
+    const uses: SourceUse[] = []
     if (name === 'read_page' || name === 'read_post') {
       context.sources.markRead()
       const seen = context.sources.find(args as { url?: string; source?: string })
       if (seen === undefined) return
-      uses.read.push({ url: seen.url, lookup: seen.lookup, kind: 'read' })
+      const url = (data as { url?: string })?.url ?? seen.url
+      uses.push({ url, lookup: seen.lookup, kind: 'read' })
     } else if (name === 'web_search') {
       const lookup = searchLookup(callId)
       const results = (data as { results?: { url?: unknown }[] })?.results ?? []
       for (const result of results) {
         if (typeof result.url !== 'string') continue
         context.sources.add(result.url, lookup)
-        uses.found.push({ url: result.url, lookup, kind: 'found' })
+        uses.push({ url: result.url, lookup, kind: 'found' })
       }
     } else return
-    footer.set(context.turnId, uses)
+    byCall.set(callId, uses)
+    footer.set(context.turnId, byCall)
   }
 
   const recordOutcome = (
@@ -593,6 +596,11 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
     call: { callId: string; source: 'model' | 'command'; signal?: AbortSignal }
   ): Promise<ToolResult> => {
     const startedAt = now()
+    if (name === 'web_search' || name === 'read_page' || name === 'read_post') {
+      const byCall = footer.get(context.turnId) ?? new Map<string, SourceUse[]>()
+      if (!byCall.has(call.callId)) byCall.set(call.callId, [])
+      footer.set(context.turnId, byCall)
+    }
     let result: ToolResult
     let error: unknown
 
@@ -671,7 +679,7 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
     takeSources(turnId: string): SourceUse[] {
       const entry = footer.get(turnId)
       footer.delete(turnId)
-      return entry ? [...entry.read, ...entry.found] : []
+      return entry ? [...entry.values()].flat() : []
     },
 
     toolNames(): string[] {

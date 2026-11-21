@@ -161,7 +161,7 @@ describe('createExaSearchPort', () => {
     const toolMessage = model.requests[1]?.messages.at(-1)
     expect(toolMessage).toMatchObject({ role: 'tool', name: 'web_search' })
     expect(JSON.parse(String(toolMessage?.content))).toEqual({
-      results: [{ title: 'Exa Result', url: 'https://example.test/exa', snippet: 'Found via Exa.' }]
+      results: [{ title: 'Exa Result', url: 'https://example.test/exa', snippet: 'Found via Exa.', source: 's1' }]
     })
   })
 
