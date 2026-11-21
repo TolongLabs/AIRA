@@ -196,22 +196,22 @@ The cleaner records `fourth_wall`. The failure stores only the matched pattern n
 ## Tool Footer
 
 A reply from a turn that ran a tool ends with a footer, in the way rokabot does on Discord: one line saying what was
-done and, for research, one line naming the sources. WhatsApp has no small text, so both lines are italic, which keeps
-them alike and leaves the domains tappable.
+done and, for research, the sources used in the reply. Tool labels use italics.
 
 - The first line lists each footer kind, once, in order: first what intake read (`media_video`, `media_youtube`,
   `media_image`, `media_audio`, `media_document`, `media_post`), then each tool that ran with outcome `ok`, in call
   order: `_<emoji> <label> · <label> +N_`. At most 2 labels show; `+N` counts the rest. Labels are lower case. A
   label text shows once, so a video file and a YouTube link both read `watched a video` once. An item intake could
   not read adds nothing.
-- The second line, `_🔗 <domain> · <domain>_`, names up to 3 sites the turn read or found: a link read at intake
-  first, then pages read, then
-  search results in rank order, one per site, `www.` removed. WhatsApp makes a domain tappable inside italics, but it
-  has no link text, so a tap opens the site, not the page. Superscript was tried and dropped: WhatsApp does not link
-  a domain written in superscript letters.
-- The footer sits after a blank line at the end of the reply and counts toward neither the length limit nor the
-  bubble cap. A turn with neither an intake read nor an `ok` tool call has no footer. A direct command answer, which
-  runs no model, has none.
+- The fixed prompt asks the model to mark sourced sentences with their `[sN]` ids. Cleaning removes every
+  such mark before applying the reply length limit. The footer takes up to three distinct URLs in first-mark
+  order. Without known marks, it takes the first URL from each lookup in call order, then the remaining URLs.
+- With short links disabled, the source line is `_🔗 <domain> · <domain>_`. With short links enabled, one plain
+  line per source reads `🔗 <domain> <configured base>/<code>`. Failed or late requests leave the domain alone.
+  Omit `www.` from the display domains.
+- The footer sits after a blank line. It uses its own reply length allowance and fits within the platform bubble
+  limit as part of the last bubble. Turns without an intake read or successful tool call, and direct command
+  answers that run no model, have no footer.
 - Labels come from the card's `toolFooter.labels`, keyed by footer kind (a tool name or an intake kind), else a
   plain default from code. A successful `identify_image` call defaults to `searched by image`.
   Plain labels hold no persona text. The intake defaults are `watched a video`

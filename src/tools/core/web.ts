@@ -4,7 +4,7 @@ import { modelPostResult } from '../../social/result.js'
 import { parseSocialPostUrl } from '../../social/urls.js'
 import type { Storage } from '../../storage/database.js'
 import { putFile } from '../../storage/files.js'
-import { SOURCE_ID } from '../../turn/sources.js'
+import { SOURCE_ID, type SourceEntry, searchLookup } from '../../turn/sources.js'
 import type { TurnContext } from '../../turn/types.js'
 import { isForbiddenUrl, type ToolPorts } from '../ports.js'
 import type { ToolContext, ToolDefinition, ToolFailure } from '../types.js'
@@ -65,7 +65,10 @@ const readSchema = z.strictObject({
 })
 
 /** The address a read opens, or the refusal when the turn never saw it. Runs before any network call. */
-function resolveRead(args: z.infer<typeof readSchema>, context: ToolContext): { ok: true; url: string } | ToolFailure {
+function resolveRead(
+  args: z.infer<typeof readSchema>,
+  context: ToolContext
+): ({ ok: true } & SourceEntry) | ToolFailure {
   if ((args.url === undefined) === (args.source === undefined)) {
     return { ok: false, kind: 'invalid', reason: 'give exactly one of url or source', code: 'schema' }
   }
@@ -73,7 +76,7 @@ function resolveRead(args: z.infer<typeof readSchema>, context: ToolContext): { 
   if (seen === undefined) {
     return { ok: false, kind: 'refused', reason: 'address not seen in this turn', code: 'unseen_link' }
   }
-  return { ok: true, url: seen.url }
+  return { ok: true, ...seen }
 }
 
 export function webSearchTool(ports: ToolPorts): ToolDefinition<z.infer<typeof querySchema>> {
@@ -95,7 +98,15 @@ export function webSearchTool(ports: ToolPorts): ToolDefinition<z.infer<typeof q
       }
       try {
         const results = await ports.search.search(args.query, context.signal)
-        return { ok: true, data: { results: results.slice(0, 8) } }
+        return {
+          ok: true,
+          data: {
+            results: results.slice(0, 8).map((result) => ({
+              ...result,
+              source: context.sources.add(result.url, searchLookup(context.callId))?.id
+            }))
+          }
+        }
       } catch (error) {
         return { ok: false, kind: 'error', reason: 'search failed', cause: error }
       }
@@ -128,7 +139,7 @@ export function readPageTool(ports: ToolPorts): ToolDefinition<z.infer<typeof re
       }
       try {
         const page = await ports.page.read(target.url, context.signal)
-        return { ok: true, data: { title: page.title, text: page.text } }
+        return { ok: true, data: { title: page.title, text: page.text, url: target.url, source: target.id } }
       } catch (error) {
         return { ok: false, kind: 'error', reason: 'page read failed', code: 'read_failed', cause: error }
       }
@@ -161,8 +172,8 @@ export function readPostTool(ports: ToolPorts): ToolDefinition<z.infer<typeof re
       }
       try {
         const post = await ports.post.read(target.url, context.signal)
-        if (post.canonicalUrl !== undefined) context.sources.add(post.canonicalUrl, 'canonical')
-        return { ok: true, data: modelPostResult(post) }
+        const seen = context.sources.add(post.canonicalUrl ?? target.url, 'canonical') ?? target
+        return { ok: true, data: { ...modelPostResult(post), url: seen.url, source: seen.id } }
       } catch (error) {
         if (error instanceof SocialPostError) {
           // read_failed names an error only; timeout and unavailable keep their own kind sentence.

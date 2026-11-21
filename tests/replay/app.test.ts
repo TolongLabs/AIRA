@@ -662,7 +662,7 @@ describe('the whole service', () => {
 
     const delivery = await gateway.send(msg('m-1', 'search and check'))
     expect(delivery.content).toBe(
-      'Here is what I found.\n\n_🛠️ searched the web · read a page_\n_🔗 alpha.example · beta.example · gamma.example_'
+      'Here is what I found.\n\n_🛠️ searched the web · read a page_\n_🔗 alpha.example · gamma.example · beta.example_'
     )
     expect(model.requests[1]?.tools.map((tool) => tool.name)).toContain('note')
     expect(model.requests[2]?.tools.map((tool) => tool.name)).not.toContain('note')
@@ -674,6 +674,31 @@ describe('the whole service', () => {
       { tool: 'read_page', outcome: 'ok' },
       { tool: 'note', outcome: 'refused' }
     ])
+  })
+
+  it('delivers only the URLs cited by the model, in first-citation order', async () => {
+    const model = queueModel([
+      { toolCalls: [{ id: 'c1', name: 'web_search', args: { query: 'examples' } }] },
+      { text: 'Gamma is third. [s3] Alpha is first. [s1][s3] This mark has no source. [s999]' }
+    ])
+    const { gateway } = await startApp(model, {
+      ports: {
+        search: {
+          async search() {
+            return ['alpha', 'beta', 'gamma'].map((name) => ({
+              title: name,
+              url: `https://${name}.example/page`,
+              snippet: name
+            }))
+          }
+        }
+      }
+    })
+
+    const delivery = await gateway.send(msg('m-1', 'search for examples'))
+    expect(delivery.content).toBe(
+      'Gamma is third. Alpha is first. This mark has no source.\n\n_🛠️ searched the web_\n_🔗 gamma.example · alpha.example_'
+    )
   })
 
   it('alerts the operator when a write fails with an I/O error, and keeps running', async () => {

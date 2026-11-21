@@ -300,7 +300,8 @@ function mediaIntro(hasFiles: boolean, hasLinks: boolean): string {
  */
 export function mediaPromptText(
   result: Pick<TurnMediaResult, 'readings' | 'links' | 'unreadable'>,
-  unreadableLine: string
+  unreadableLine: string,
+  sourceForUrl?: (url: string) => string | undefined
 ): string {
   const parts: string[] = []
   const links = result.links ?? []
@@ -312,7 +313,12 @@ export function mediaPromptText(
       const transcript = reading.transcript ? clip(reading.transcript, share - description.length) : undefined
       return { kind, reading: { description, ...(transcript ? { transcript } : {}) } }
     })
-    const linkLines = links.flatMap((link) => formatLinkLines(link, share))
+    const linkLines = links.flatMap((link) => {
+      const url = link.post.canonicalUrl
+      const source = sourceForUrl?.(url)
+      const header = source === undefined ? [] : [`- [${source}] ${url}`]
+      return [...header, ...formatLinkLines(link, share - (header[0]?.length ?? 0))]
+    })
     parts.push(mediaIntro(result.readings.length > 0, links.length > 0), mediaBlock(clipped, linkLines))
   }
   if (result.unreadable.length > 0) {

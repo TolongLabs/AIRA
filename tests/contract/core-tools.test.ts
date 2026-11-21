@@ -287,12 +287,22 @@ describe('core tools', () => {
 
     expect(await registry.call('web_search', { query: 'vitest' }, ctx, { callId: 'c-ws', source: 'model' })).toEqual({
       ok: true,
-      data: { results: [{ title: 'Result for vitest', url: 'https://example.com/1', snippet: 'snippet' }] }
+      data: {
+        results: [{ title: 'Result for vitest', url: 'https://example.com/1', snippet: 'snippet', source: 's3' }]
+      }
     })
 
     expect(
       await registry.call('read_page', { url: 'https://example.com/page' }, ctx, { callId: 'c-rp', source: 'model' })
-    ).toEqual({ ok: true, data: { title: 'Title of https://example.com/page', text: 'Body text' } })
+    ).toEqual({
+      ok: true,
+      data: {
+        title: 'Title of https://example.com/page',
+        text: 'Body text',
+        url: 'https://example.com/page',
+        source: 's1'
+      }
+    })
 
     expect(
       await registry.call('read_post', { url: 'https://x.com/user/status/1' }, ctx, {
@@ -305,6 +315,8 @@ describe('core tools', () => {
         status: 'readable',
         untrusted: true,
         platform: 'X',
+        url: 'https://x.com/user/status/1',
+        source: 's2',
         post: expect.objectContaining({
           author: 'author1',
           text: 'Post from https://x.com/user/status/1',
@@ -557,7 +569,15 @@ describe('core tools', () => {
       callId: 'c-rp-ok',
       source: 'model'
     })
-    expect(allowed).toEqual({ ok: true, data: { title: 'Title of https://example.com/article', text: 'Body' } })
+    expect(allowed).toEqual({
+      ok: true,
+      data: {
+        title: 'Title of https://example.com/article',
+        text: 'Body',
+        url: 'https://example.com/article',
+        source: 's2'
+      }
+    })
     expect(seenPages).toEqual(['https://example.com/article'])
     expect(registry.takeSources(ctx.turnId)).toEqual([
       { url: 'https://example.com/article', lookup: 'message', kind: 'read' }

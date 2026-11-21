@@ -69,7 +69,7 @@ export function domainOf(url: string): string | undefined {
   }
 }
 
-const MAX_SOURCES = 3
+export const MAX_SOURCES = 3
 export const SOURCES_MARK = '🔗'
 
 /**
@@ -141,6 +141,9 @@ export function forReplay(content: string): string {
     while (lines.length > 0 && lines[lines.length - 1]!.trim() === '') lines.pop()
   }
   trimEnd()
+  let footerAt = lines.length - 1
+  while (lines[footerAt]?.startsWith(`${SOURCES_MARK} `)) footerAt--
+  if (footerAt < lines.length - 1 && footerAt > 0 && isFooterLine(lines[footerAt]!)) lines.length = footerAt
   if (lines[lines.length - 1]?.startsWith(`_${SOURCES_MARK} `)) lines.pop()
   trimEnd()
   if (lines.length > 1 && isFooterLine(lines[lines.length - 1]!)) lines.pop()

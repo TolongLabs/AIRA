@@ -12,6 +12,7 @@ import { expireFeedback, pruneFeedbackAnswers } from './feedback/store.js'
 import { createFeedbackSync, type FeedbackSync } from './feedback/sync.js'
 import { withAttachments } from './format/attachments.js'
 import { createReplyCleaner } from './format/clean.js'
+import { createFooterLinks } from './format/short-links.js'
 import { writeChatFlags } from './gateway/chat-flags.js'
 import { writeScheduleFile } from './gateway/schedule.js'
 import { createGatewayServer } from './gateway/server.js'
@@ -87,6 +88,7 @@ export const SECRET_NAMES = [
   'YOUTUBE_API_KEY',
   'TYPESAFE_API_KEY',
   'EXA_API_KEY',
+  'LINKS_SECRET',
   'SERPAPI_API_KEY',
   'RUNNER_TOKEN',
   'OPENAI_API_KEY',
@@ -563,7 +565,7 @@ export async function createApp(options: AppOptions): Promise<App> {
           config,
           () => registry.toolNames(),
           (turnId) => okToolsOfTurn(storage, turnId),
-          (turnId) => registry.takeSources(turnId).map((use) => use.url)
+          (turnId) => registry.takeSources(turnId)
         ),
         { storage, hostDataDir }
       ),
@@ -582,6 +584,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       if (!existsSync(dir.container)) logger.warn('media.dir_missing', { container: dir.container })
     }
 
+    const footerLinks = createFooterLinks(config.links, env['LINKS_SECRET'])
     const turns = createTurnService({
       storage,
       research,
@@ -592,6 +595,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       runner,
       prompt,
       cleaner,
+      ...(footerLinks ? { footerLinks } : {}),
       alerter,
       tools: registry,
       commands: createCommandRouter(registry, { timeZone: config.format.timeZone }),
