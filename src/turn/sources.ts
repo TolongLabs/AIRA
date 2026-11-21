@@ -88,9 +88,9 @@ export function createTurnSources(): TurnSources {
     },
 
     find(ref) {
-      if (ref.source !== undefined) return byId.get(ref.source)
+      if (ref.source !== undefined) return byId.get(ref.source.trim())
       if (ref.url === undefined) return undefined
-      const key = sourceKey(ref.url)
+      const key = sourceKey(ref.url.trim())
       return key === undefined ? undefined : byKey.get(key)
     },
 

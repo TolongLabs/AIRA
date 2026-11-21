@@ -930,9 +930,61 @@ describe('intake footer kinds and URLs in pipeline', () => {
     const config = testConfig()
     const core = await startTestCore({ runner, config, deps: { media, cleaner: createReplyCleaner(config) } })
     core.activate(CHAT)
-    await core.gateway.send(msg('m-1', 'explain https://youtu.be/yt404'))
+    const delivery = await core.gateway.send(msg('m-1', 'explain https://youtu.be/yt404'))
+    expect(delivery.content).toBe('Here is the page')
     expect(runner.inputs[0]?.context.intakeKinds).toEqual([])
     expect(runner.inputs[0]?.context.intakeUrls).toEqual([])
+    expect(runner.inputs[0]?.context.intakeWatchedUrls).toEqual([])
+    expect(runner.inputs[0]?.context.sources.find({ url: 'https://www.youtube.com/watch?v=yt404' })).toMatchObject({
+      url: 'https://www.youtube.com/watch?v=yt404',
+      lookup: 'intake'
+    })
+  })
+
+  it('an unwatched YouTube link is seen by canonical URL without entering a successful footer, and ignores transcribed prose URLs', async () => {
+    const runner = scriptedRunner(() => 'here is what i saw')
+    const media: TurnMedia = {
+      async read() {
+        return {
+          readings: [
+            {
+              kind: 'image',
+              reading: {
+                description: 'A flyer pointing to https://untrusted.example/in-description',
+                transcript: 'Visit https://untrusted.example/in-transcript'
+              }
+            }
+          ],
+          unreadable: [],
+          calls: []
+        }
+      },
+      async readLink() {
+        return {
+          readings: [],
+          links: [{ post: makePost('youtube', 'https://www.youtube.com/watch?v=ytOff') }],
+          unreadable: [{ kind: 'YouTube video', reason: 'off' }],
+          calls: []
+        }
+      }
+    }
+    const config = testConfig()
+    const core = await startTestCore({ runner, config, deps: { media, cleaner: createReplyCleaner(config) } })
+    core.activate(CHAT)
+    const delivery = await core.gateway.send({
+      ...msg('m-1', 'check https://youtu.be/ytOff'),
+      media: [{ kind: 'image', path: '/host/a.jpg' }]
+    })
+    expect(delivery.content).toBe('Here is what i saw\n\n_🛠️ looked at an image_')
+    expect(runner.inputs[0]?.context.intakeKinds).toEqual(['media_image'])
+    expect(runner.inputs[0]?.context.intakeUrls).toEqual([])
+    expect(runner.inputs[0]?.context.intakeWatchedUrls).toEqual([])
+    expect(runner.inputs[0]?.context.sources.find({ url: 'https://www.youtube.com/watch?v=ytOff' })).toMatchObject({
+      url: 'https://www.youtube.com/watch?v=ytOff',
+      lookup: 'intake'
+    })
+    expect(runner.inputs[0]?.context.sources.find({ url: 'https://untrusted.example/in-description' })).toBeUndefined()
+    expect(runner.inputs[0]?.context.sources.find({ url: 'https://untrusted.example/in-transcript' })).toBeUndefined()
   })
 
   it('pipeline: intakeKinds and intakeUrls follow combined readings and links', async () => {

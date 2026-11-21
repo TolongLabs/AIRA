@@ -522,7 +522,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
               .filter((url): url is string => typeof url === 'string' && url.length > 0)
           )
         ]
-        for (const link of readLinks) {
+        for (const link of combined.links ?? []) {
           for (const url of [link.post.canonicalUrl, link.post.target.canonicalUrl]) {
             if (typeof url === 'string') context.sources.add(url, 'intake')
           }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { loadPack } from '../../src/character/loader.js'
+import { fourthWallBreak } from '../../src/format/fourth-wall.js'
 import { createLogger } from '../../src/records/logger.js'
 import { createRedactor } from '../../src/records/redact.js'
 import { ensureChat, setChatStatus } from '../../src/settings/chats.js'
@@ -7,7 +8,9 @@ import { resolveSettings, setSetting } from '../../src/settings/settings.js'
 import type { Storage } from '../../src/storage/database.js'
 import { openTurn, receiveInbound } from '../../src/storage/turns.js'
 import { registerCoreTools } from '../../src/tools/core/index.js'
+import { registerLessonTools } from '../../src/tools/lessons/index.js'
 import { outcomeOf } from '../../src/tools/outcomes.js'
+import { registerOwnerTools } from '../../src/tools/owner/index.js'
 import type { MemoryPort, PagePort, PostPort, SearchPort, ToolPorts } from '../../src/tools/ports.js'
 import { createToolRegistry, type ToolRegistry } from '../../src/tools/registry.js'
 import { createTurnSources } from '../../src/turn/sources.js'
@@ -28,7 +31,7 @@ interface Fakes {
   reminders: number
 }
 
-function setup(overrides: Partial<ToolPorts> = {}) {
+function setup(overrides: Partial<ToolPorts> = {}, allTools = false) {
   const storage = tmpStorage()
   const fakes: Fakes = { pages: [], posts: [], notes: [], reminders: 0 }
   const memory: MemoryPort = {
@@ -74,7 +77,7 @@ function setup(overrides: Partial<ToolPorts> = {}) {
     logger: createLogger({ level: 'error', module: 'turn-sources-test', sink: () => {} }),
     redactor: createRedactor()
   })
-  registerCoreTools(registry, {
+  const ports: ToolPorts = {
     memory,
     search,
     page,
@@ -86,7 +89,38 @@ function setup(overrides: Partial<ToolPorts> = {}) {
     },
     filesDir: tmpDir('aira-files-'),
     ...overrides
-  })
+  }
+  registerCoreTools(
+    registry,
+    ports,
+    allTools
+      ? {
+          feedback: { formUrl: '', referenceEntryId: '', refTtlHours: 168 },
+          identify: {
+            port: {
+              async byFile() {
+                return []
+              },
+              async byUrl() {
+                return []
+              }
+            },
+            gatewayDirs: [],
+            maxUploadBytes: 500_000,
+            timeoutMs: 500
+          }
+        }
+      : undefined
+  )
+  if (allTools) {
+    registerLessonTools(registry, ports)
+    registerOwnerTools(registry, {
+      marketsConfig: 'markets.yml',
+      claudeProjectsDir: 'projects',
+      noticeRoutesFile: 'routes.json',
+      timeoutMs: 500
+    })
+  }
   return { storage, registry, fakes, makeCtx: () => makeContext(storage) }
 }
 
@@ -161,6 +195,17 @@ describe('reads open only what the turn has seen', () => {
       code: 'unseen_link'
     })
     expect(fakes.pages).toEqual(['https://example.com/b'])
+  })
+
+  it('keeps a trimmed source id read in takeSources when the raw argument has surrounding spaces', async () => {
+    const { registry, fakes, makeCtx } = setup()
+    const ctx = makeCtx()
+    ctx.sources.addText('https://example.com/a', 'message')
+    expect(await call(registry, 'read_page', { source: ' s1 ' }, ctx, 'c-trim')).toMatchObject({ ok: true })
+    expect(fakes.pages).toEqual(['https://example.com/a'])
+    expect(registry.takeSources(ctx.turnId)).toEqual([
+      { url: 'https://example.com/a', lookup: 'message', kind: 'read' }
+    ])
   })
 
   it('needs exactly one of url or source', async () => {
@@ -397,5 +442,46 @@ describe('a page or post read withdraws state changes for the rest of the turn',
     await call(registry, 'web_search', { query: 'tea' }, ctx, 's1')
     expect(await call(registry, 'note', { text: 'after a search' }, ctx, 'n4')).toMatchObject({ ok: true })
     expect(fakes.notes).toEqual(['after a search'])
+  })
+
+  it('keeps both F1 refusal payloads (unseen read and state change after read) clear of fourthWallBreak across current tool names', async () => {
+    const { registry, makeCtx } = setup({}, true)
+    const ctx = makeCtx()
+    ctx.sources.addText('https://example.com/article', 'message')
+    const offered = registry.offered(ctx)
+    const readPage = offered.find((tool) => tool.schema.name === 'read_page')
+    const note = offered.find((tool) => tool.schema.name === 'note')
+    const signal = new AbortController().signal
+
+    const unseen = await readPage?.call({ url: 'https://example.com/never-shown' }, 'c-fw-unseen', signal)
+    expect(unseen).toEqual({
+      ok: false,
+      content: JSON.stringify({ ok: false, outcome: NOT_SEEN })
+    })
+
+    await readPage?.call({ url: 'https://example.com/article' }, 'c-fw-read', signal)
+    const afterRead = await note?.call({ text: 'after read' }, 'c-fw-note', signal)
+    expect(afterRead).toEqual({
+      ok: false,
+      content: JSON.stringify({ ok: false, outcome: CANNOT_CHANGE })
+    })
+
+    const toolNames = registry.toolNames()
+    expect(toolNames).toEqual(
+      expect.arrayContaining([
+        'read_page',
+        'read_post',
+        'note',
+        'identify_image',
+        'lyrics_search',
+        'market_quote',
+        'claude_sessions'
+      ])
+    )
+    for (const payload of [unseen!.content, afterRead!.content]) {
+      const { outcome } = JSON.parse(payload) as { ok: false; outcome: string }
+      expect(fourthWallBreak(payload, toolNames), payload).toBeUndefined()
+      expect(fourthWallBreak(outcome, toolNames), outcome).toBeUndefined()
+    }
   })
 })
