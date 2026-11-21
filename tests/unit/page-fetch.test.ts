@@ -56,6 +56,7 @@ describe('isBlockedPage', () => {
     expect(isBlockedPage('Ray ID: 1234', 'https://example.com/', 'Just a moment...')).toBe(true)
     expect(isBlockedPage(`Opening hours. ${'x'.repeat(1000)}`, 'https://example.com/', 'Just a moment')).toBe(false)
     expect(isBlockedPage('The road was blocked by snow overnight.', 'https://example.com/', 'Snow day')).toBe(false)
+    expect(isBlockedPage('Fixed reCAPTCHA v3 on the signup form.', 'https://example.com/', 'Changelog')).toBe(false)
   })
 
   it('reads a long page with a marker word, and a short real page', () => {
