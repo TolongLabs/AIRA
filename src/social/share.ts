@@ -57,7 +57,8 @@ function release(response: Response): void {
 export async function resolveShareLink(
   share: SocialPostTarget,
   fetcher: typeof fetch,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onRedirect?: (count: number) => void
 ): Promise<SocialPostTarget | null> {
   if (signal?.aborted) return null
   // One wall-time budget for the whole resolution, ended by its timer or the caller's abort. Each fetch races the
@@ -77,6 +78,7 @@ export async function resolveShareLink(
       if (!response || budget.signal.aborted) return null
       release(response)
       if (!REDIRECTS.has(response.status)) return null
+      onRedirect?.(hop + 1)
       const location = response.headers.get('location')
       if (!location) return null
       const href = new URL(location, url).href

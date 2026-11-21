@@ -113,6 +113,33 @@ describe('reader chain', () => {
     })
   })
 
+  it('keeps a verified partial when fallback declares a different post', async () => {
+    const first = reader('first', 'page_meta', async () => ({
+      ok: true,
+      post: { id: xTarget.id, authorHandle: 'fixture', text: 'original', videoCount: 1 }
+    }))
+    const fallback = reader('fallback', 'yt_dlp', async () => ({
+      ok: true,
+      post: {
+        id: 'other-post',
+        video: {
+          url: 'https://img.example/other.mp4',
+          bytes: null,
+          headers: null,
+          hasAudio: null
+        }
+      }
+    }))
+    expect(await runChain([first, fallback], xTarget, chainRun())).toMatchObject({
+      status: 'partial',
+      post: { text: 'original', video: null },
+      attempts: [
+        expect.objectContaining({ ok: true }),
+        expect.objectContaining({ ok: false, reason: 'identity_mismatch' })
+      ]
+    })
+  })
+
   it('treats whitespace as missing, keeps a known zero replyCount, and still fills zero count placeholders', async () => {
     const first = reader('first', 'page_meta', async () => ({
       ok: true,

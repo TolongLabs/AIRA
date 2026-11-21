@@ -197,10 +197,18 @@ describe('SocialPostViewer on share links', () => {
       warn: vi.fn()
     })
 
-    expect(await viewer.lookup(TIKTOK_SHORT)).toMatchObject({
+    const observe = vi.fn()
+    expect(await viewer.lookup(TIKTOK_SHORT, undefined, observe)).toMatchObject({
       status: 'found',
       post: { target: { lookupKey: 'tiktok:share:ZMexample' } }
     })
+    expect(observe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        redirectHops: 1,
+        resolveMs: expect.any(Number),
+        attempts: [expect.objectContaining({ readerId: 'yt_dlp', ok: true })]
+      })
+    )
     expect(runExtractor).toHaveBeenCalledOnce()
     expect(runExtractor).toHaveBeenCalledWith(
       'yt-dlp',

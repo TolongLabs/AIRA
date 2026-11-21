@@ -1,5 +1,5 @@
 import type { Attachment } from '../gateway/request.js'
-import type { SocialPost } from '../social/types.js'
+import type { SocialLookupObserver, SocialPost } from '../social/types.js'
 import { PLATFORM_NAME } from '../social/urls.js'
 import type { ModelCallRecord } from '../turn/types.js'
 import { type GatewayDir, type LoadedFile, loadGatewayFile, type MediaUnreadable } from './files.js'
@@ -42,7 +42,13 @@ export interface TurnMedia {
     options?: { enabled?: boolean; pictures?: boolean }
   ): Promise<TurnMediaResult>
   /** Finds and reads at most one social or YouTube link from candidate texts, inside the turn deadline. Never throws. */
-  readLink(texts: readonly string[], deadline: number, allow: LinkAllow, onMatch?: () => void): Promise<TurnMediaResult>
+  readLink(
+    texts: readonly string[],
+    deadline: number,
+    allow: LinkAllow,
+    onMatch?: () => void,
+    observe?: SocialLookupObserver
+  ): Promise<TurnMediaResult>
 }
 
 export interface TurnMediaOptions {
@@ -171,10 +177,10 @@ export function createTurnMedia(options: TurnMediaOptions): TurnMedia {
       return result
     },
 
-    async readLink(texts, deadline, allow, onMatch) {
+    async readLink(texts, deadline, allow, onMatch, observe) {
       if (!options.links) return { readings: [], unreadable: [], calls: [] }
       const timeoutMs = effectiveTimeout(deadline)
-      return options.links.read(texts, timeoutMs, allow, onMatch)
+      return options.links.read(texts, timeoutMs, allow, onMatch, observe)
     }
   }
 }

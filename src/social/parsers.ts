@@ -222,6 +222,12 @@ export function parseBlueskyThread(
   if (!Object.keys(postView).length || !Object.keys(record).length) return null
 
   const author = object(postView.author)
+  if (
+    resolvedDid &&
+    ((typeof author.did === 'string' && author.did !== resolvedDid) ||
+      (typeof postView.uri === 'string' && postView.uri !== `at://${resolvedDid}/app.bsky.feed.post/${target.id}`))
+  )
+    return null
   const embed = object(postView.embed)
   const media = embed.$type === 'app.bsky.embed.recordWithMedia#view' ? object(embed.media) : embed
   const images = array(media.images)

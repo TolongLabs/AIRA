@@ -4,12 +4,13 @@ import { describe, expect, it, vi } from 'vitest'
 import type { App } from '../../src/app.js'
 import type { MediaWatcher } from '../../src/media/gemini-watcher.js'
 import { DEFAULT_MEDIA_LIMITS } from '../../src/media/limits.js'
-import type { LinkReader } from '../../src/media/link-intake.js'
+import { createLinkReader, type LinkReader } from '../../src/media/link-intake.js'
 import { createTurnMedia } from '../../src/media/turn-media.js'
 import { ModelError, type ModelRequest } from '../../src/models/types.js'
 import { MEDIA_NOTE } from '../../src/prompt/builder.js'
 import { setSetting } from '../../src/settings/settings.js'
 import type { SocialPost } from '../../src/social/types.js'
+import { findSocialPostTarget } from '../../src/social/urls.js'
 import type { GatewayMessage } from '../harness/gateway.js'
 import { CHAT, lastTurn, msg, queueModel, startApp } from '../support/app.js'
 import { scriptedRunner, startTestCore } from '../support/core.js'
@@ -553,6 +554,48 @@ describe('pictures and post photos in one turn', () => {
     })
     return runner.inputs[0]?.context.images
   }
+
+  it('records a failed intake lookup and its attempts on the turn that tried it', async () => {
+    const links = createLinkReader({
+      viewer: {
+        async lookup(_target, _signal, trace) {
+          trace?.({ attempts: [{ readerId: 'threads.page', ok: false, reason: 'http_429', ms: 4 }] })
+          return { status: 'failed', platform: 'threads', reason: 'http_429' }
+        }
+      },
+      limits: { ...DEFAULT_MEDIA_LIMITS, maxVideoSeconds: 180 },
+      model: 'fake-media-model',
+      findTarget: findSocialPostTarget
+    })
+    const media = createTurnMedia({
+      model: 'fake-media-model',
+      limits: { ...DEFAULT_MEDIA_LIMITS, maxVideoSeconds: 180 },
+      gatewayDirs: [],
+      timeoutMs: 1000,
+      links
+    })
+    const core = await startTestCore({ runner: scriptedRunner(() => 'Example: I could not open it.'), deps: { media } })
+    core.activate(CHAT)
+    await core.gateway.send(msg('m-lookup', `${POST}?token=synthetic-intake-marker`))
+    const row = core.storage.read((db) =>
+      db
+        .prepare(
+          `
+      SELECT lookup.*, turn.state FROM social_turn_lookup AS lookup JOIN turn USING (turn_id)
+    `
+        )
+        .get()
+    )
+    expect(row).toMatchObject({
+      tool_call_id: null,
+      platform: 'threads',
+      outcome: 'failed',
+      reason: 'rate_limited',
+      state: 'delivered',
+      attempts: JSON.stringify([{ reader: 'threads.page', ok: false, reason: 'rate_limited', ms: 4 }])
+    })
+    expect(JSON.stringify(row)).not.toMatch(/https:|synthetic-intake-marker/)
+  })
 
   it('lists the valid local pictures in order, then the photos of the post named in the quoted text', async () => {
     expect(await imagesOfQuotingReply(true)).toEqual([

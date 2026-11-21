@@ -8,6 +8,7 @@ import { modelRecordContext } from '../judge/systemone.js'
 import { linkPhotos } from '../media/link-intake.js'
 import { mediaPromptText, mediaToRead, type TurnMedia, type TurnMediaResult } from '../media/turn-media.js'
 import { ModelError } from '../models/types.js'
+import { recordSocialLookup } from '../records/autofetch.js'
 import type { FailureKind } from '../records/kinds.js'
 import type { Logger } from '../records/logger.js'
 import type { Redactor } from '../records/redact.js'
@@ -489,7 +490,14 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
             linkTexts,
             context.deadline,
             { media: mediaOn, social: socialOn },
-            enterMediaStage
+            enterMediaStage,
+            (observation) => {
+              try {
+                deps.storage.tx((db) => recordSocialLookup(db, { turnId: context.turnId }, observation))
+              } catch {
+                deps.logger.warn('social.lookup_record_failed', { consumer: 'intake' })
+              }
+            }
           )
           combined.readings.push(...linkRead.readings)
           if (linkRead.links && linkRead.links.length > 0) {

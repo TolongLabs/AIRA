@@ -1,7 +1,7 @@
 import type { ModelFailureKind } from '../models/types.js'
 import type { Logger } from '../records/logger.js'
 import { type ModelPostResult, modelPostResult, toPostPortResult } from '../social/result.js'
-import type { SocialPost, SocialPostLookup } from '../social/types.js'
+import type { SocialLookupObserver, SocialLookupTrace, SocialPost, SocialPostLookup } from '../social/types.js'
 import { PLATFORM_NAME } from '../social/urls.js'
 import type { PagePort } from '../tools/ports.js'
 import type { ModelCallRecord } from '../turn/types.js'
@@ -34,7 +34,11 @@ export interface LinkAllow {
 }
 
 export interface LinkPostViewer {
-  lookup(target: LinkTarget, signal?: AbortSignal): Promise<SocialPostLookup>
+  lookup(
+    target: LinkTarget,
+    signal?: AbortSignal,
+    trace?: (value: SocialLookupTrace) => void
+  ): Promise<SocialPostLookup>
 }
 
 export interface LinkReading {
@@ -64,7 +68,13 @@ export interface LinkReadResult {
 
 export interface LinkReader {
   /** Finds and reads at most one allowed link from candidate texts within `timeoutMs`. Never throws. */
-  read(texts: readonly string[], timeoutMs: number, allow: LinkAllow, onMatch?: () => void): Promise<LinkReadResult>
+  read(
+    texts: readonly string[],
+    timeoutMs: number,
+    allow: LinkAllow,
+    onMatch?: () => void,
+    observe?: SocialLookupObserver
+  ): Promise<LinkReadResult>
 }
 
 export interface LinkReaderOptions {
@@ -146,12 +156,13 @@ function failCall(model: string, failureKind: ModelFailureKind, durationMs: numb
 async function lookupWithTimeout(
   viewer: LinkPostViewer,
   target: LinkTarget,
-  signal: AbortSignal
+  signal: AbortSignal,
+  onTrace?: (trace: SocialLookupTrace) => void
 ): Promise<SocialPostLookup> {
   if (signal.aborted) return { status: 'failed', platform: target.platform, reason: 'timeout' }
   try {
     return await Promise.race([
-      viewer.lookup(target, signal),
+      viewer.lookup(target, signal, onTrace),
       new Promise<SocialPostLookup>((resolve) => {
         signal.addEventListener(
           'abort',
@@ -235,7 +246,7 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
   const linkFps = options.limits.linkFps ?? DEFAULT_LINK_FPS
 
   return {
-    async read(texts, timeoutMs, allow, onMatch) {
+    async read(texts, timeoutMs, allow, onMatch, observe) {
       const target = pickTarget(texts, options.findTarget, allow)
       if (!target) return { readings: [], unreadable: [], calls: [] }
 
@@ -247,7 +258,12 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
       const remainingMs = () => Math.max(1, endAt - now().getTime())
 
       try {
-        const lookup = await lookupWithTimeout(options.viewer, target, controller.signal)
+        const started = now()
+        let trace: SocialLookupTrace | undefined
+        const lookup = await lookupWithTimeout(options.viewer, target, controller.signal, (value) => {
+          trace = value
+        })
+        observe?.({ target, started, ended: now(), lookup, trace })
         if (lookup.status === 'none') return { readings: [], unreadable: [], calls: [] }
         if (lookup.status === 'failed') {
           options.logger?.warn('media.link_failed', { platform: lookup.platform, reason: lookup.reason })

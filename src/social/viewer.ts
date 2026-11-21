@@ -58,6 +58,7 @@ const FIXED_REASONS: ReadonlySet<string> = new Set([
   'network_error',
   'no_post_data',
   'missing_post',
+  'identity_mismatch',
   'binary_missing',
   'invalid_did',
   'invalid_json',
@@ -208,16 +209,29 @@ export class SocialPostViewer {
     if (signal?.aborted) controller.abort()
     const timer = setTimeout(() => controller.abort(), this.settings.timeoutMs)
     let resolvedCanonical: string | undefined
+    let resolution: Pick<SocialLookupTrace, 'redirectHops' | 'resolveMs'> = {}
     try {
-      const resolved = requested.needsRedirect
-        ? await untilAborted(this.resolveShare(requested, controller.signal), controller.signal, null)
-        : requested
+      let resolved: SocialPostTarget | null = requested
+      if (requested.needsRedirect) {
+        const started = this.now()
+        let redirectHops = 0
+        resolved = await untilAborted(
+          this.resolveShare(requested, controller.signal, (count) => {
+            redirectHops = count
+          }),
+          controller.signal,
+          null
+        )
+        resolution = { redirectHops, resolveMs: this.now() - started }
+      }
       if (controller.signal.aborted) {
         this.logLookup(requested.platform, 'failed', [], 'timeout')
+        observe?.({ ...resolution, attempts: [], reason: 'timeout' })
         return { status: 'failed', reason: 'timeout' }
       }
       if (!resolved) {
         this.logLookup(requested.platform, 'failed', [], 'redirect')
+        observe?.({ ...resolution, attempts: [], reason: 'redirect' })
         return { status: 'failed', reason: 'redirect' }
       }
       if (resolved.canonicalUrl !== requested.canonicalUrl) resolvedCanonical = resolved.canonicalUrl
@@ -241,7 +255,7 @@ export class SocialPostViewer {
           budgetMs: this.settings.timeoutMs
         }
       )
-      observe?.({ attempts: outcome.attempts })
+      observe?.({ ...resolution, attempts: outcome.attempts })
       if (outcome.status === 'failed') {
         const reason = controller.signal.aborted ? 'timeout' : reasonOf(outcome)
         this.logLookup(requested.platform, 'failed', outcome.attempts, reason)
@@ -291,10 +305,14 @@ export class SocialPostViewer {
   }
 
   /** A share or short link resolves first; the post keeps the link it was asked for, so both addresses close. */
-  private async resolveShare(share: SocialPostTarget, signal: AbortSignal): Promise<SocialPostTarget | null> {
+  private async resolveShare(
+    share: SocialPostTarget,
+    signal: AbortSignal,
+    onRedirect?: (count: number) => void
+  ): Promise<SocialPostTarget | null> {
     const cached = this.getCachedShare(share.lookupKey)
     if (cached) return cached
-    const resolved = await resolveShareLink(share, this.fetcher, signal)
+    const resolved = await resolveShareLink(share, this.fetcher, signal, onRedirect)
     if (resolved) this.setCachedShare(share.lookupKey, resolved)
     return resolved
   }

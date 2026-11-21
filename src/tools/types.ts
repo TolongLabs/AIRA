@@ -1,4 +1,5 @@
 import type { z } from 'zod'
+import type { SocialLookupObserver } from '../social/types.js'
 import type { Db } from '../storage/database.js'
 import type { TurnContext } from '../turn/types.js'
 
@@ -66,6 +67,7 @@ export interface ToolContext extends TurnContext {
   signal: AbortSignal
   /** Absolute deadline imposed by the registry on this call. */
   callDeadline?: number
+  observeSocialLookup?: SocialLookupObserver
   now: () => Date
   /** Text of the message(s) this turn answers, supplied by code. */
   messageText?: string

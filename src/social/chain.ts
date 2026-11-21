@@ -261,7 +261,17 @@ export async function runChain(
       break
     }
     const startedAt = run.now()
-    const result = await runReader(reader, target, run, leftMs)
+    let result = await runReader(reader, target, run, leftMs)
+    const identity = result.post
+    const threadsAlias = target.platform === 'threads' && !target.profile
+    if (
+      result.ok &&
+      identity &&
+      ((identity.platform && identity.platform !== target.platform) ||
+        (identity.id && identity.id !== (acc.id || target.id) && (acc.id || !threadsAlias)))
+    ) {
+      result = { ok: false, reason: 'identity_mismatch' }
+    }
     attempts.push({
       readerId: reader.id,
       ok: result.ok,
