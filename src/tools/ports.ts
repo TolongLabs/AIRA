@@ -283,6 +283,13 @@ async function readBodyLimited(res: Response, maxBytes: number): Promise<Buffer>
   return Buffer.concat(chunks, total)
 }
 
+/** A byte range that sends nothing for this long resumes from its last byte. */
+const RANGE_IDLE_MS = 4_000
+const RANGE_RESUMES = 2
+
+/** A response that is not the requested range of the same file. It ends the batch without a resume. */
+class InvalidRange extends Error {}
+
 /** The only request headers a media download may carry: a host's user agent and referrer, never cookies. */
 function forwardedMediaHeaders(headers: Record<string, string> | null | undefined): Record<string, string> | undefined {
   const kept = Object.entries(headers ?? {}).filter(([name]) => ['user-agent', 'referer'].includes(name.toLowerCase()))
@@ -381,6 +388,82 @@ export function createFetchPagePort(
     throw new Error('too many redirects')
   }
 
+  /**
+   * Reads one MP4 byte range. A part that sends nothing for RANGE_IDLE_MS resumes from its last byte, up to
+   * RANGE_RESUMES times; every response must be the exact next range of the same file.
+   */
+  async function downloadRange(
+    url: string,
+    batchSignal: AbortSignal,
+    start: number,
+    end: number,
+    bytes: number,
+    headers?: Record<string, string>
+  ): Promise<{ part: Buffer; finalUrl: string; version: string | null }> {
+    const size = end - start + 1
+    const chunks: Uint8Array[] = []
+    let received = 0
+    let first: { finalUrl: string; version: string | null } | undefined
+    for (let attempt = 0; ; attempt++) {
+      const idle = new AbortController()
+      const attemptSignal = AbortSignal.any([batchSignal, idle.signal])
+      let timer = setTimeout(() => idle.abort(), RANGE_IDLE_MS)
+      const touch = () => {
+        clearTimeout(timer)
+        timer = setTimeout(() => idle.abort(), RANGE_IDLE_MS)
+      }
+      try {
+        const from = start + received
+        const { res, url: finalUrl } = await fetchChecked(url, attemptSignal, {
+          ...headers,
+          Range: `bytes=${from}-${end}`,
+          'Accept-Encoding': 'identity'
+        })
+        const mime = res.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase()
+        const version = res.headers.get('etag') ?? res.headers.get('last-modified')
+        if (
+          res.status !== 206 ||
+          mime !== 'video/mp4' ||
+          res.headers.get('content-range') !== `bytes ${from}-${end}/${bytes}` ||
+          (first && (first.finalUrl !== finalUrl || first.version !== version)) ||
+          !res.body
+        ) {
+          void res.body?.cancel().catch(() => undefined)
+          throw new InvalidRange('invalid MP4 byte range')
+        }
+        first ??= { finalUrl, version }
+        touch()
+        const reader = res.body.getReader()
+        const aborted = new Promise<never>((_, reject) => {
+          const fail = () => reject(new Error('MP4 byte range stalled'))
+          if (attemptSignal.aborted) fail()
+          else attemptSignal.addEventListener('abort', fail, { once: true })
+        })
+        aborted.catch(() => undefined)
+        try {
+          while (received < size) {
+            const { done, value } = await Promise.race([reader.read(), aborted])
+            if (done) break
+            touch()
+            received += value.byteLength
+            if (received > size) throw new InvalidRange('invalid MP4 byte range')
+            chunks.push(value)
+          }
+        } finally {
+          void reader.cancel().catch(() => undefined)
+        }
+        if (received !== size) throw new Error('incomplete MP4 byte range')
+        return { part: Buffer.concat(chunks, size), ...first }
+      } catch (error) {
+        // A stall, a dropped connection or an early end resumes; a wrong response or the caller's deadline does not.
+        if (!(error instanceof InvalidRange) && !batchSignal.aborted && attempt < RANGE_RESUMES) continue
+        throw error
+      } finally {
+        clearTimeout(timer)
+      }
+    }
+  }
+
   async function downloadRanges(url: string, signal: AbortSignal, bytes: number, headers?: Record<string, string>) {
     const cancel = new AbortController()
     const batchSignal = AbortSignal.any([signal, cancel.signal])
@@ -390,23 +473,7 @@ export function createFetchPagePort(
         const start = Math.floor((index * bytes) / rangeCount)
         const end = Math.floor(((index + 1) * bytes) / rangeCount) - 1
         try {
-          const { res, url: finalUrl } = await fetchChecked(url, batchSignal, {
-            ...headers,
-            Range: `bytes=${start}-${end}`,
-            'Accept-Encoding': 'identity'
-          })
-          const mime = res.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase()
-          if (
-            res.status !== 206 ||
-            mime !== 'video/mp4' ||
-            res.headers.get('content-range') !== `bytes ${start}-${end}/${bytes}`
-          ) {
-            void res.body?.cancel().catch(() => undefined)
-            throw new Error('invalid MP4 byte range')
-          }
-          const part = await readBodyLimited(res, end - start + 1)
-          if (part.length !== end - start + 1) throw new Error('incomplete MP4 byte range')
-          return { part, finalUrl, version: res.headers.get('etag') ?? res.headers.get('last-modified') }
+          return await downloadRange(url, batchSignal, start, end, bytes, headers)
         } catch (error) {
           cancel.abort()
           throw error

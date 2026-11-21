@@ -40,7 +40,7 @@ function stack(
     redditPhoto?: 'native' | 'preview' | 'crosspost'
     redditFeed?: 'photo' | 'video'
     archiveRefusal?: number
-    ranges?: 'valid' | 'invalid'
+    ranges?: 'valid' | 'invalid' | 'stall' | 'drop'
   } = {}
 ) {
   const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
@@ -116,6 +116,25 @@ function stack(
       if (!range) return new Response(null, { status: 403 })
       const start = Number(range[1])
       const end = Number(range[2])
+      const headers = { 'content-type': 'video/mp4', 'content-range': `bytes ${start}-${end}/${largeMp4.length}` }
+      const second = Math.floor(largeMp4.length / 4)
+      if ((options.ranges === 'stall' || options.ranges === 'drop') && start === second) {
+        // The first request for the second part sends half of it, then stalls or drops.
+        const half = largeMp4.subarray(start, start + Math.floor((end - start) / 2))
+        const drop = options.ranges === 'drop'
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new Uint8Array(half))
+            },
+            pull(controller) {
+              if (drop) controller.error(new TypeError('terminated'))
+              return new Promise(() => {})
+            }
+          }),
+          { status: 206, headers: { ...headers, 'content-range': `bytes ${start}-${end}/${largeMp4.length}` } }
+        )
+      }
       return new Response(new Uint8Array(largeMp4.subarray(start, end + 1)), {
         status: 206,
         headers: {
@@ -222,6 +241,44 @@ describe('approved mirror readers', () => {
     expect(fetcher.mock.calls.filter(([url]) => url === tikTokAsset)).toHaveLength(4)
     expect(watch).toHaveBeenCalledTimes(ranges === 'valid' ? 1 : 0)
   })
+
+  it.each([
+    ['drop', 0],
+    ['stall', 4_100]
+  ] as const)(
+    'resumes a TikTok byte range after a %s from its last byte',
+    async (ranges, waitMs) => {
+      const { viewer, download, fetcher } = stack({ tiktok: 'read' }, { ranges })
+      const watch = vi.fn<MediaWatcher['watch']>(async (file) => {
+        expect(file.data.equals(largeMp4)).toBe(true)
+        return {
+          reading: { description: 'Watched complete clip' },
+          usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 },
+          costUsd: 0,
+          model: 'fixture'
+        }
+      })
+      const reader = createLinkReader({
+        viewer,
+        download,
+        findTarget: parseOfficialSocialPostUrl,
+        watcher: { watch },
+        model: 'fixture',
+        limits: { ...DEFAULT_MEDIA_LIMITS, maxVideoSeconds: 180 }
+      })
+      const result = await reader.read([tikTokLink], 12000 + waitMs, { media: true, social: true })
+      expect(result.links?.[0]?.reading?.description).toBe('Watched complete clip')
+      const ranges_ = fetcher.mock.calls
+        .filter(([url]) => url === tikTokAsset)
+        .map(([, init]) => new Headers(init?.headers).get('range'))
+      expect(ranges_).toHaveLength(5)
+      const second = Math.floor(largeMp4.length / 4)
+      const secondEnd = Math.floor(largeMp4.length / 2) - 1
+      const resumedAt = second + Math.floor((secondEnd - second) / 2)
+      expect(ranges_).toContain(`bytes=${resumedAt}-${secondEnd}`)
+    },
+    15_000
+  )
 
   it.each([tikTokLink, redditLink])('discards mismatched IDs and non-native assets for %s', async (link) => {
     const target = parseOfficialSocialPostUrl(link)!
