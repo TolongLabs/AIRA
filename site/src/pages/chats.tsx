@@ -6,9 +6,11 @@ import { Badge, Button, Card, Empty, Field, Input, Picker, Section, Segmented, S
 import {
   type CoreCharacter,
   type CoreChat,
+  type CoreToolCatalog,
   type CoreToolFeature,
   type FooterKindInfo,
   type Resolved,
+  type SocialCapabilityKey,
   type SourceLevel,
   core,
   reasonText
@@ -78,6 +80,32 @@ const FEATURES: { key: string; label: string; hint: string }[] = [
     hint: "Markets and Claude Code sessions. For the owner's own chats."
   }
 ]
+
+function SocialPlatforms({ catalog, feature }: { catalog: Load<CoreToolCatalog>; feature: SocialCapabilityKey }) {
+  const platforms = catalog.data?.socialCapabilities?.[feature]
+  return (
+    <div className="mt-2 text-[0.8rem] text-faint">
+      {catalog.loading ? (
+        <p className="m-0" role="status">
+          Loading platforms…
+        </p>
+      ) : !platforms ? (
+        <div className="flex items-center gap-2">
+          <span>Platforms unavailable.</span>
+          <Button size="sm" variant="ghost" onClick={catalog.reload}>
+            Retry
+          </Button>
+        </div>
+      ) : platforms.length ? (
+        <p className="m-0">
+          {platforms.map(({ name, operations }) => `${name} (${operations.join(', ')})`).join(' · ')}
+        </p>
+      ) : (
+        <p className="m-0">No enabled platforms.</p>
+      )}
+    </div>
+  )
+}
 
 function FeatureTools({ tools }: { tools: CoreToolFeature['tools'] }) {
   const implicit = tools.some((tool) => tool.mode !== 'explicit')
@@ -586,14 +614,14 @@ function FooterEmojiField({ chat, onSave }: { chat: CoreChat; onSave: (value: un
 function ChatRow({
   chat,
   characters,
-  toolFeatures,
+  toolCatalog,
   onChanged,
   open,
   onToggle,
   focusRequest
 }: {
   chat: CoreChat
-  toolFeatures: CoreToolFeature[]
+  toolCatalog: Load<CoreToolCatalog>
   characters: CoreCharacter[]
   onChanged: () => void
   /** Kept by the page, so a chat that moves between On and Off stays open. */
@@ -601,6 +629,7 @@ function ChatRow({
   onToggle: () => void
   focusRequest?: { chatId: string; tab: SectionKey; seq: number } | null
 }) {
+  const toolFeatures = toolCatalog.data?.features ?? []
   const [tab, setTab] = useState<SectionKey>('character')
   const [busy, setBusy] = useState(false)
   const name = chat.label || midTrunc(chat.waId, 28)
@@ -942,43 +971,61 @@ function ChatRow({
                 </>
               )}
               {tab === 'features' &&
-                FEATURES.map((f) => (
-                  <Fragment key={f.key}>
-                    <SettingRow chat={chat} name={f.key} label={f.label} onClear={clear}>
-                      <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1">
-                        <div className="min-w-0 flex-1 basis-48">
-                          <Toggle
-                            checked={valueOf(chat, f.key, false)}
-                            disabled={busy}
-                            onChange={(v) => save(f.key, v)}
-                            label={f.label}
-                            hint={f.hint}
-                          />
+                FEATURES.map((f) => {
+                  const groupMedia = f.key === 'features.autofetch'
+                  const socialKey = groupMedia || f.key === 'features.social' ? (f.key as SocialCapabilityKey) : null
+                  const inapplicable = groupMedia && chat.type === 'dm'
+                  return (
+                    <Fragment key={f.key}>
+                      <SettingRow chat={chat} name={f.key} label={f.label} onClear={clear}>
+                        <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1">
+                          <div className="min-w-0 flex-1 basis-48">
+                            <Toggle
+                              checked={valueOf(chat, f.key, false)}
+                              disabled={busy || inapplicable}
+                              onChange={(v) => save(f.key, v)}
+                              label={f.label}
+                              hint={inapplicable ? 'Available in groups only.' : f.hint}
+                            />
+                            {groupMedia && !inapplicable && (
+                              <p className="mt-2 mb-0 text-[0.8rem] text-faint">
+                                YouTube, including Shorts, is excluded.
+                                {chat.status !== 'active'
+                                  ? ' This group is off.'
+                                  : valueOf(chat, 'muted', false)
+                                    ? ' This group is muted.'
+                                    : ''}
+                              </p>
+                            )}
+                            {socialKey && !inapplicable && (
+                              <SocialPlatforms catalog={toolCatalog} feature={socialKey} />
+                            )}
+                          </div>
+                          <FeatureTools tools={toolFeatures.find((feature) => feature.key === f.key)?.tools ?? []} />
                         </div>
-                        <FeatureTools tools={toolFeatures.find((feature) => feature.key === f.key)?.tools ?? []} />
-                      </div>
-                    </SettingRow>
-                    {f.key === 'features.reports' && (
-                      <SettingRow
-                        chat={chat}
-                        name="report.defaultFormat"
-                        label="Default document format"
-                        hint="Format for /doc when a message names none."
-                        onClear={clear}
-                      >
-                        <Segmented
-                          options={['pdf', 'markdown'] as const}
-                          labels={{ pdf: 'PDF', markdown: 'Markdown' }}
-                          value={valueOf<'pdf' | 'markdown'>(chat, 'report.defaultFormat', 'pdf')}
-                          onChange={(v) => {
-                            if (!busy) void save('report.defaultFormat', v)
-                          }}
-                          className={cn(busy && 'pointer-events-none opacity-55')}
-                        />
                       </SettingRow>
-                    )}
-                  </Fragment>
-                ))}
+                      {f.key === 'features.reports' && (
+                        <SettingRow
+                          chat={chat}
+                          name="report.defaultFormat"
+                          label="Default document format"
+                          hint="Format for /doc when a message names none."
+                          onClear={clear}
+                        >
+                          <Segmented
+                            options={['pdf', 'markdown'] as const}
+                            labels={{ pdf: 'PDF', markdown: 'Markdown' }}
+                            value={valueOf<'pdf' | 'markdown'>(chat, 'report.defaultFormat', 'pdf')}
+                            onChange={(v) => {
+                              if (!busy) void save('report.defaultFormat', v)
+                            }}
+                            className={cn(busy && 'pointer-events-none opacity-55')}
+                          />
+                        </SettingRow>
+                      )}
+                    </Fragment>
+                  )
+                })}
               {tab === 'quiet' && (
                 <SettingRow
                   chat={chat}
@@ -1039,7 +1086,7 @@ function Group({
   title: string
   note: string
   chats: CoreChat[]
-  toolFeatures: CoreToolFeature[]
+  toolCatalog: Load<CoreToolCatalog>
   characters: CoreCharacter[]
   onChanged: () => void
   openId: string | null
@@ -1414,7 +1461,7 @@ export default function ChatsPage() {
     setFocusRequest((prev) => ({ chatId, tab: 'reply', seq: (prev?.seq ?? 0) + 1 }))
   }, [])
   const shared = {
-    toolFeatures: tools.data?.features ?? [],
+    toolCatalog: tools,
     characters,
     onChanged: chats.reload,
     openId,
