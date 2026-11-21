@@ -25,6 +25,8 @@ export interface ReaderResult {
   terminal?: boolean
   /** Internal log code, such as `http_429`. Never shown to the model. */
   reason?: string
+  /** The post's one picture is a preview. A later mirror reader may still supply the original. */
+  previewMedia?: boolean
 }
 
 export interface SocialReader {
@@ -249,9 +251,13 @@ export async function runChain(
   const attempts: ChainAttempt[] = []
   let terminal = false
 
+  let previewMedia = false
+
   for (const reader of readers) {
-    if (isComplete(acc, shape)) break
-    const missing = missingFields(acc, shape)
+    // A preview picture keeps the chain open for a mirror that can name the original photo.
+    const wantsOriginal = previewMedia && reader.kind === 'mirror_api' && (acc.photoUrls?.length ?? 0) === 0
+    if (isComplete(acc, shape) && !wantsOriginal) break
+    const missing: PostField[] = wantsOriginal ? [...missingFields(acc, shape), 'media'] : missingFields(acc, shape)
     if (!reader.provides.some((field) => missing.includes(field))) continue
     if (!reader.isConfigured()) continue
 
@@ -278,7 +284,10 @@ export async function runChain(
       ...(result.reason !== undefined ? { reason: result.reason } : {}),
       ms: Math.max(0, run.now() - startedAt)
     })
-    if (result.ok && result.post) acc = mergeFillGaps(acc, clean(result.post, target.platform))
+    if (result.ok && result.post) {
+      acc = mergeFillGaps(acc, clean(result.post, target.platform))
+      if (result.previewMedia) previewMedia = true
+    }
     // Only a first-party API failure may end the chain: a mirror or scraper reporting a removed post is not proof.
     if (!result.ok && result.terminal && (reader.kind === 'api_public' || reader.kind === 'api_keyed')) {
       terminal = true
