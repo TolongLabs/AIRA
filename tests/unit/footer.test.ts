@@ -20,11 +20,11 @@ const base: CleanOptions = {
 }
 
 describe('buildFooter', () => {
-  it('lists tools once, in call order, in italics, with at most two labels and a count', () => {
+  it('lists tools once, in call order, in italics, with at most three labels and a count', () => {
     expect(buildFooter([])).toBeUndefined()
     expect(buildFooter(['web_search'])).toBe('_🛠️ searched the web_')
     expect(buildFooter(['web_search', 'web_search', 'read_page', 'note', 'recall'])).toBe(
-      '_🛠️ searched the web · read a page +2_'
+      '_🛠️ searched the web · read a page · saved a note +1_'
     )
   })
 
