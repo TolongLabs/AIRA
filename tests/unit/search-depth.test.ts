@@ -28,6 +28,14 @@ describe('search field evidence', () => {
     expect(passageMatches(field, 'Menu; Food; Drinks')).toBe(false)
   })
 
+  it('ignores size labels of any brand and accepts named lists outside food', () => {
+    const field = { kind: 'list', subject: 'Drink sizes' } as const
+    expect(passageMatches(field, '- Small\n- Medium\n- Large')).toBe(false)
+    expect(passageMatches(field, '- Short\n- Tall\n- Grande')).toBe(false)
+    const phones = { kind: 'list', subject: 'Phone models' } as const
+    expect(passageMatches(phones, '- Example One\n- Example One Pro\n- Example Air')).toBe(true)
+  })
+
   it('requires a currency and amount close to the named item', () => {
     expect(passageMatches(fields[0]!, 'An oat latte costs RM12.50.')).toBe(true)
     expect(passageMatches(fields[0]!, 'An oat latte costs 12.50.')).toBe(false)
