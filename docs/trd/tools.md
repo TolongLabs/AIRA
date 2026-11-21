@@ -339,8 +339,9 @@ Keep a request-local jar of cookie names and values per host. Send those cookies
 during the same lookup, then discard them.
 
 Exa and the plain fetch share a block-page check. A short page holding only the site name, or a page under
-1,000 characters with an access-block marker, is a failed read. A blocked Exa result tries the plain fetch.
-An empty page with an access-block marker in its title also counts as a failed read. A normal short page remains readable.
+1,000 characters with an access-block marker in its text or its title, is a failed read. Markers cover access
+denial, browser checks, captchas and login walls. A blocked Exa result tries the plain fetch, unless the caller
+has already given up. A normal short page remains readable.
 
 ### Reverse-Image Hints
 

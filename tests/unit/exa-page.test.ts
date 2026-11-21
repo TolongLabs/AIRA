@@ -43,6 +43,8 @@ describe('Exa page reader', () => {
       exaReturns(200, { results: [{ title: 'x', text: '   ' }] }),
       exaReturns(200, { results: [{ title: 'Just a moment...', text: 'Just a moment... Checking your browser' }] }),
       exaReturns(200, { results: [{ title: 'Example', text: 'Access denied. Reference 1234.' }] }),
+      exaReturns(200, { results: [{ title: 'Attention Required!', text: 'Please complete the captcha.' }] }),
+      exaReturns(200, { results: [{ title: 'Access Denied', text: 'Reference #18.abc' }] }),
       exaReturns(200, { results: [] }),
       (async () => {
         throw new Error('down')
@@ -51,6 +53,27 @@ describe('Exa page reader', () => {
       const port = createExaPagePort({ apiKey: 'k', fallback, fetch: fetchFn })
       expect(await port.read('https://example.com/a', signal)).toEqual({ title: 'plain', text: 'plain text' })
     }
+  })
+
+  it('does not start the plain reader after the caller gave up', async () => {
+    const abort = new AbortController()
+    let plainCalls = 0
+    const port = createExaPagePort({
+      apiKey: 'k',
+      fallback: {
+        ...fallback,
+        read: async () => {
+          plainCalls++
+          return { title: 'plain', text: 'plain text' }
+        }
+      },
+      fetch: (async () => {
+        abort.abort()
+        throw new DOMException('aborted', 'AbortError')
+      }) as unknown as typeof fetch
+    })
+    await expect(port.read('https://example.com/a', abort.signal)).rejects.toThrow()
+    expect(plainCalls).toBe(0)
   })
 
   it('falls back to the plain reader when the text only names the site, whatever the title', async () => {

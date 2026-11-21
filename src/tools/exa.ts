@@ -190,7 +190,7 @@ export function createExaPagePort(options: {
       const first = Array.isArray(data.results) ? data.results[0] : undefined
       const title = typeof first?.title === 'string' ? first.title : ''
       const text = typeof first?.text === 'string' ? first.text.trim() : ''
-      if (text.length === 0 || isBlockedPage(text, url)) return undefined
+      if (text.length === 0 || isBlockedPage(text, url, title)) return undefined
       return { title, text: text.slice(0, maxChars) }
     } catch {
       return undefined
@@ -199,7 +199,10 @@ export function createExaPagePort(options: {
 
   return {
     async read(url, signal) {
-      return (await viaExa(url, signal)) ?? options.fallback.read(url, signal)
+      const page = await viaExa(url, signal)
+      if (page) return page
+      signal.throwIfAborted()
+      return options.fallback.read(url, signal)
     },
     download(url, signal, maxBytes, headers) {
       return options.fallback.download(url, signal, maxBytes, headers)
