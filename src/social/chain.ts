@@ -177,17 +177,20 @@ function clean(post: Partial<SocialPost>, platform: SocialPlatform): Partial<Soc
   return out
 }
 
-function isEmpty(value: unknown): boolean {
-  return (
-    value === undefined || value === null || value === '' || value === 0 || (Array.isArray(value) && value.length === 0)
-  )
+const ZERO_PLACEHOLDERS: ReadonlySet<string> = new Set(['photoCount', 'videoCount'])
+
+function isEmpty(key: string, value: unknown): boolean {
+  if (value === undefined || value === null) return true
+  if (typeof value === 'string') return value.trim() === ''
+  if (Array.isArray(value)) return value.length === 0
+  return ZERO_PLACEHOLDERS.has(key) && value === 0
 }
 
 /** Copies only the fields the accumulator lacks. A photo list also fills an image-only entry, and a video fills a null. */
 function mergeFillGaps(acc: SocialPost, incoming: Partial<SocialPost>): SocialPost {
   const merged: Record<string, unknown> = { ...acc }
   for (const [key, value] of Object.entries(incoming)) {
-    if (isEmpty(merged[key]) && !isEmpty(value)) merged[key] = value
+    if (isEmpty(key, merged[key]) && !isEmpty(key, value)) merged[key] = value
   }
   return merged as unknown as SocialPost
 }
