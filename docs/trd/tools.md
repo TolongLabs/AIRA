@@ -383,6 +383,10 @@ Facebook stories and photos, Instagram TV, YouTube live and embeds, and X web-st
 links from Reddit, TikTok, Bilibili, Facebook and Instagram use a shared guarded resolver. It allows up to two
 manual redirects within the platform and 1,500 ms total. Successful resolutions use a bounded TTL cache.
 Threads keeps its existing one-hop guarded page lookup. The final address must parse as a post on the same platform.
+TikTok and Reddit desktop, mobile and app share links for the same post converge on its canonical lookup key.
+A share token remains provisional until the guarded resolver verifies a direct post URL. The resolved identity
+is used for viewer lookup and for deduplication of eligible group fetches. URL recognition and resolution grant
+no media capability.
 Facebook photo paths use the HTML post reader before falling back to the extractor. Supported platforms
 are X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram, Bilibili and
 Facebook.
