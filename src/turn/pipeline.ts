@@ -498,6 +498,8 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
             combined.partial = [...(combined.partial ?? []), ...linkRead.partial]
           }
           combined.calls.push(...linkRead.calls)
+          if (linkRead.tried && linkRead.tried.length > 0)
+            combined.tried = [...(combined.tried ?? []), ...linkRead.tried]
         }
         const readLinks = (combined.links ?? []).filter((link) => link.post.platform !== 'youtube' || link.reading)
         context.intakeKinds = [
@@ -513,20 +515,23 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         // A link is closed to read_post and read_page only when intake watched its video or image (owner, 17 Nov).
         // Text alone, or a failed watch, leaves the tools open: they also return the replies and the media.
         context.intakeUrls = readLinks.map((link) => link.post.canonicalUrl).filter((url) => url.length > 0)
-        // A share link the reader resolved is closed under both its own address and the post's.
+        // A share or alias link the reader resolved is closed under both its own address and the post's.
         context.intakeWatchedUrls = [
           ...new Set(
             readLinks
               .filter((link) => link.reading !== undefined)
-              .flatMap((link) => [link.post.canonicalUrl, link.post.target.canonicalUrl])
+              .flatMap((link) => [link.post.canonicalUrl, link.post.target.canonicalUrl, link.post.target.originalUrl])
               .filter((url): url is string => typeof url === 'string' && url.length > 0)
           )
         ]
+        // Every social address intake opened, watched or not. read_post and read_page refuse one that failed.
+        context.intakeTriedSocialUrls = combined.tried ?? []
         for (const link of combined.links ?? []) {
           for (const url of [link.post.canonicalUrl, link.post.target.canonicalUrl]) {
             if (typeof url === 'string') context.sources.add(url, 'intake')
           }
         }
+        for (const tried of context.intakeTriedSocialUrls) context.sources.add(tried.url, 'intake')
         // identify_image's pictures, in index order: this turn's valid ones, then intake post photos.
         context.images = [
           ...(combined.pictures ?? []).map((attachment) => ({ kind: 'file' as const, attachment })),

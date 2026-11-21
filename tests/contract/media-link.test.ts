@@ -605,7 +605,7 @@ describe('createLinkReader', () => {
     })
     expect(r1.unreadable).toEqual([{ kind: 'YouTube video', reason: 'unreadable' }])
     expect(r1.partial).toBeUndefined()
-    expect(r1.links).toEqual([{ post }])
+    expect(r1.links).toEqual([expect.objectContaining({ post })])
     expect(r1.calls).toHaveLength(4)
 
     const mixedReader = createLinkReader({
@@ -631,7 +631,7 @@ describe('createLinkReader', () => {
     })
     expect(r2.unreadable).toEqual([{ kind: 'YouTube video', reason: 'unavailable' }])
     expect(r2.partial).toBeUndefined()
-    expect(r2.links).toEqual([{ post }])
+    expect(r2.links).toEqual([expect.objectContaining({ post })])
     expect(r2.calls).toHaveLength(4)
   })
 
@@ -1059,7 +1059,21 @@ describe('turn pipeline link intake and media switch', () => {
         },
         post: {
           async read(url) {
-            return { author: 'testuser', text: `Tool post ${url}`, media: [] }
+            return {
+              untrusted: true,
+              author: 'testuser',
+              text: `Tool post ${url}`,
+              media: [],
+              platform: 'x',
+              handle: 'testuser',
+              createdAt: null,
+              quotedText: '',
+              replyCount: null,
+              canonicalUrl: url,
+              thread: [],
+              replies: [],
+              durationSec: null
+            }
           }
         }
       })

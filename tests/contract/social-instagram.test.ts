@@ -205,13 +205,17 @@ describe('SocialPostViewer on Instagram and Facebook', () => {
       }
     ]
   ])('falls back to yt-dlp on %s', async (_name, fetcher) => {
-    const runExtractor = vi.fn(async () => ({
+    const runExtractor = vi.fn(async (_binaryPath: string, _url: string, _timeoutMs: number) => ({
       metadata: { title: 'From yt-dlp', channel: 'poster_one', thumbnail: 'https://cdn.example/t.jpg' }
     }))
     const viewer = buildViewer(settings, { fetcher: vi.fn(fetcher), runExtractor, lookup: async () => ['8.8.8.8'] })
 
     expect(await viewer.lookup(post)).toMatchObject({ status: 'found', post: { text: 'From yt-dlp' } })
-    expect(runExtractor).toHaveBeenCalledWith('yt-dlp', 'https://www.instagram.com/p/DPost00001/', 1000)
+    expect(runExtractor).toHaveBeenCalledOnce()
+    expect(runExtractor).toHaveBeenCalledWith('yt-dlp', 'https://www.instagram.com/p/DPost00001/', expect.any(Number))
+    const timeoutArg = runExtractor.mock.calls[0]![2]
+    expect(timeoutArg).toBeGreaterThan(0)
+    expect(timeoutArg).toBeLessThanOrEqual(settings.timeoutMs)
   })
 
   it('still reads an Instagram page when yt-dlp is missing', async () => {
@@ -226,7 +230,7 @@ describe('SocialPostViewer on Instagram and Facebook', () => {
 
   it('reads a Facebook video through yt-dlp from the resolved official video URL', async () => {
     const target = parseSocialPostUrl('https://www.facebook.com/share/v/1AbCdEf9x/?mibextid=wwXIfr')!
-    const runExtractor = vi.fn(async () => ({
+    const runExtractor = vi.fn(async (_binaryPath: string, _url: string, _timeoutMs: number) => ({
       metadata: {
         title: 'A clip',
         uploader: 'Example Page',
@@ -250,7 +254,11 @@ describe('SocialPostViewer on Instagram and Facebook', () => {
       status: 'found',
       post: { platform: 'facebook', text: 'A clip', videoCount: 1, video: { url: 'https://video.example/sd.mp4' } }
     })
-    expect(runExtractor).toHaveBeenCalledWith('yt-dlp', 'https://www.facebook.com/reel/1234567890', 1000)
+    expect(runExtractor).toHaveBeenCalledOnce()
+    expect(runExtractor).toHaveBeenCalledWith('yt-dlp', 'https://www.facebook.com/reel/1234567890', expect.any(Number))
+    const timeoutArg = runExtractor.mock.calls[0]![2]
+    expect(timeoutArg).toBeGreaterThan(0)
+    expect(timeoutArg).toBeLessThanOrEqual(settings.timeoutMs)
   })
 
   it('reports Facebook replies as unsupported', async () => {

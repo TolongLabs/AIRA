@@ -130,7 +130,21 @@ function makeFakePorts() {
 
   const post: PostPort = {
     async read(url) {
-      return { author: 'author1', text: `Post from ${url}`, media: ['https://example.com/m.jpg'] }
+      return {
+        untrusted: true,
+        author: 'author1',
+        text: `Post from ${url}`,
+        media: ['https://example.com/m.jpg'],
+        platform: 'x',
+        handle: 'author1',
+        createdAt: null,
+        quotedText: '',
+        replyCount: null,
+        canonicalUrl: url,
+        thread: [],
+        replies: [],
+        durationSec: null
+      }
     }
   }
 
@@ -287,7 +301,16 @@ describe('core tools', () => {
       })
     ).toEqual({
       ok: true,
-      data: { author: 'author1', text: 'Post from https://x.com/user/status/1', media: ['https://example.com/m.jpg'] }
+      data: {
+        status: 'readable',
+        untrusted: true,
+        platform: 'X',
+        post: expect.objectContaining({
+          author: 'author1',
+          text: 'Post from https://x.com/user/status/1',
+          media: ['https://example.com/m.jpg']
+        })
+      }
     })
 
     // No command names either reader: a link in a message is read at intake.
@@ -547,7 +570,21 @@ describe('core tools', () => {
       post: {
         async read(url) {
           seenPosts.push(url)
-          return { author: 'chan', text: `Post ${url}`, media: [] }
+          return {
+            untrusted: true,
+            author: 'chan',
+            text: `Post ${url}`,
+            media: [],
+            platform: 'youtube',
+            handle: 'chan',
+            createdAt: null,
+            quotedText: '',
+            replyCount: null,
+            canonicalUrl: url,
+            thread: [],
+            replies: [],
+            durationSec: null
+          }
         }
       }
     })

@@ -37,6 +37,8 @@ export interface TurnContext {
   intakeUrls?: string[]
   /** Links whose video or image intake watched; read_post and read_page refuse only these. */
   intakeWatchedUrls?: string[]
+  /** Social addresses intake opened this turn. A failed one closes read_post and read_page to it. */
+  intakeTriedSocialUrls?: { url: string; failed: boolean }[]
   /** Text of the message(s) this turn answers, supplied by code. */
   messageText?: string
   /** True when `/think` raised effort for this turn. */

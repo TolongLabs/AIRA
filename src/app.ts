@@ -601,7 +601,7 @@ export async function createApp(options: AppOptions): Promise<App> {
           viewer,
           findTarget: (text) => findLinkTarget([text], (entry) => socialLog.info('social.unknown_host', entry)),
           ...(mediaWatcher ? { watcher: mediaWatcher } : {}),
-          download: (url, signal, maxBytes) => plainPage.download(url, signal, maxBytes),
+          download: (url, signal, maxBytes, headers) => plainPage.download(url, signal, maxBytes, headers),
           model: mediaModel ?? '',
           limits: {
             ...DEFAULT_MEDIA_LIMITS,

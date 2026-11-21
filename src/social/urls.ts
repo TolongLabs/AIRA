@@ -3,6 +3,19 @@ import { isIP } from 'node:net'
 export type SocialPlatform =
   'x' | 'bluesky' | 'youtube' | 'tiktok' | 'reddit' | 'instagram' | 'bilibili' | 'threads' | 'facebook'
 
+/** The name a person sees for each platform: a footer, a note or a model sentence. */
+export const PLATFORM_NAME: Record<SocialPlatform, string> = {
+  x: 'X',
+  bluesky: 'Bluesky',
+  threads: 'Threads',
+  youtube: 'YouTube',
+  tiktok: 'TikTok',
+  reddit: 'Reddit',
+  instagram: 'Instagram',
+  facebook: 'Facebook',
+  bilibili: 'Bilibili'
+}
+
 export interface SocialPostTarget {
   platform: SocialPlatform
   id: string
@@ -13,6 +26,8 @@ export interface SocialPostTarget {
   startSec?: number
   /** A share or short link. Its address names no post, so resolveShareLink follows it before the lookup. */
   needsRedirect?: boolean
+  /** The unwrapped input URL before normalization, when it differs from `canonicalUrl`. */
+  originalUrl?: string
 }
 
 const HOSTS: Record<SocialPlatform, string[]> = {
@@ -330,14 +345,15 @@ function parseFor(platform: SocialPlatform, url: URL, host: string, unknown: boo
 }
 
 function parseUrl(value: string, officialOnly: boolean): SocialPostTarget | null {
+  const trimmed = value.trim()
   let url: URL
   try {
-    url = new URL(value.trim())
+    url = new URL(trimmed)
   } catch {
     return null
   }
 
-  const authority = value.trim().match(/^https:\/\/([^/?#]+)/i)?.[1]
+  const authority = trimmed.match(/^https:\/\/([^/?#]+)/i)?.[1]
   if (
     url.protocol !== 'https:' ||
     !authority ||
@@ -350,13 +366,16 @@ function parseUrl(value: string, officialOnly: boolean): SocialPostTarget | null
 
   const host = url.hostname.toLowerCase()
   const platform = platformForHost(host)
-  if (platform) return parseFor(platform, url, host, false)
-  if (officialOnly) return null
-  for (const candidate of UNKNOWN_HOST_PLATFORMS) {
-    const parsed = parseFor(candidate, url, host, true)
-    if (parsed) return parsed
+  let parsed: SocialPostTarget | null = null
+  if (platform) parsed = parseFor(platform, url, host, false)
+  else if (!officialOnly) {
+    for (const candidate of UNKNOWN_HOST_PLATFORMS) {
+      parsed = parseFor(candidate, url, host, true)
+      if (parsed) break
+    }
   }
-  return null
+  if (!parsed) return null
+  return trimmed === parsed.canonicalUrl ? parsed : { ...parsed, originalUrl: trimmed }
 }
 
 /** A post link on any host. A link on an unknown host has the platform's own address as its target. */

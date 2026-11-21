@@ -187,7 +187,9 @@ describe('SocialPostViewer on share links', () => {
     const fetcher = routes({
       'https://vm.tiktok.com/ZMexample/': () => redirect('https://www.tiktok.com/@example_user/video/1234567890')
     })
-    const runExtractor = vi.fn(async () => ({ metadata: { title: 'A clip', uploader: 'example_user' } }))
+    const runExtractor = vi.fn(async (_binaryPath: string, _url: string, _timeoutMs: number) => ({
+      metadata: { title: 'A clip', uploader: 'example_user' }
+    }))
     const viewer = new SocialPostViewer(settings, {
       fetcher,
       runExtractor,
@@ -199,7 +201,15 @@ describe('SocialPostViewer on share links', () => {
       status: 'found',
       post: { target: { lookupKey: 'tiktok:share:ZMexample' } }
     })
-    expect(runExtractor).toHaveBeenCalledWith('yt-dlp', 'https://www.tiktok.com/@example_user/video/1234567890', 1000)
+    expect(runExtractor).toHaveBeenCalledOnce()
+    expect(runExtractor).toHaveBeenCalledWith(
+      'yt-dlp',
+      'https://www.tiktok.com/@example_user/video/1234567890',
+      expect.any(Number)
+    )
+    const timeoutArg = runExtractor.mock.calls[0]![2]
+    expect(timeoutArg).toBeGreaterThan(0)
+    expect(timeoutArg).toBeLessThanOrEqual(settings.timeoutMs)
   })
 
   it('caches a resolved share, so a post that then fails is not resolved again', async () => {
@@ -262,7 +272,9 @@ describe('SocialPostViewer on Facebook share links', () => {
     const fetcher = routes({
       'https://fb.watch/AbC12dEf/': () => redirect('https://www.facebook.com/watch/?v=1234567890')
     })
-    const runExtractor = vi.fn(async () => ({ metadata: { title: 'A clip', uploader: 'Example Page' } }))
+    const runExtractor = vi.fn(async (_binaryPath: string, _url: string, _timeoutMs: number) => ({
+      metadata: { title: 'A clip', uploader: 'Example Page' }
+    }))
     const viewer = new SocialPostViewer(settings, {
       fetcher,
       runExtractor,
@@ -274,6 +286,90 @@ describe('SocialPostViewer on Facebook share links', () => {
       status: 'found',
       post: { target: { lookupKey: 'facebook:watch:AbC12dEf' } }
     })
-    expect(runExtractor).toHaveBeenCalledWith('yt-dlp', 'https://www.facebook.com/watch/?v=1234567890', 1000)
+    expect(runExtractor).toHaveBeenCalledOnce()
+    expect(runExtractor).toHaveBeenCalledWith(
+      'yt-dlp',
+      'https://www.facebook.com/watch/?v=1234567890',
+      expect.any(Number)
+    )
+    const timeoutArg = runExtractor.mock.calls[0]![2]
+    expect(timeoutArg).toBeGreaterThan(0)
+    expect(timeoutArg).toBeLessThanOrEqual(settings.timeoutMs)
+  })
+})
+
+describe('SocialPostViewer share deadlines and failure propagation', () => {
+  it('takes deadlineAt once before resolving a share, clipping the extractor timeout', async () => {
+    let clock = 1000
+    const fetcher = vi.fn(async () => {
+      clock += 650
+      return redirect('https://www.tiktok.com/@example_user/video/1234567890')
+    })
+    const runExtractor = vi.fn(async (_binaryPath: string, _url: string, _timeoutMs: number) => ({
+      metadata: { title: 'Clip', uploader: 'example_user' }
+    }))
+    const viewer = new SocialPostViewer(settings, {
+      fetcher,
+      runExtractor,
+      lookup: async () => ['8.8.8.8'],
+      now: () => clock,
+      warn: vi.fn()
+    })
+
+    expect(await viewer.lookup(TIKTOK_SHORT)).toMatchObject({ status: 'found' })
+    expect(fetcher).toHaveBeenCalledOnce()
+    expect(runExtractor).toHaveBeenCalledOnce()
+    const timeoutArg = runExtractor.mock.calls[0]![2]
+    expect(timeoutArg).toBeGreaterThan(0)
+    expect(timeoutArg).toBeLessThanOrEqual(350)
+  })
+
+  it('keeps the hard deadline even when a fake extractor ignores cancellation', async () => {
+    const fetcher = routes({
+      'https://vm.tiktok.com/ZMexample/': () => redirect('https://www.tiktok.com/@example_user/video/1234567890')
+    })
+    const runExtractor = vi.fn(() => new Promise<{ metadata: unknown }>(() => {}))
+    const viewer = new SocialPostViewer(
+      { ...settings, timeoutMs: 50 },
+      { fetcher, runExtractor, lookup: async () => ['8.8.8.8'], warn: vi.fn() }
+    )
+
+    const startedAt = Date.now()
+    expect(await viewer.lookup(TIKTOK_SHORT)).toEqual({
+      status: 'failed',
+      platform: 'tiktok',
+      reason: 'timeout',
+      canonicalUrl: 'https://www.tiktok.com/@example_user/video/1234567890'
+    })
+    expect(Date.now() - startedAt).toBeLessThan(1000)
+    expect(fetcher).toHaveBeenCalledOnce()
+    expect(runExtractor).toHaveBeenCalledOnce()
+  })
+
+  it('propagates the resolved canonical URL on a failed lookup while keeping original endpoints', async () => {
+    const fetcher = routes({
+      'https://www.reddit.com/r/example_sub/s/AbC123xyz/': () =>
+        redirect('https://www.reddit.com/r/example_sub/comments/abc123/a_post/?share_id=x'),
+      'https://www.reddit.com/comments/abc123/.rss?limit=1': () => new Response('', { status: 500 })
+    })
+    const runExtractor = vi.fn(async () => ({ reason: 'exit_1' }))
+    const viewer = new SocialPostViewer(settings, {
+      fetcher,
+      runExtractor,
+      lookup: async () => ['8.8.8.8'],
+      warn: vi.fn()
+    })
+
+    expect(await viewer.lookup(REDDIT_SHARE)).toEqual({
+      status: 'failed',
+      platform: 'reddit',
+      reason: 'exit_1',
+      canonicalUrl: 'https://www.reddit.com/comments/abc123/'
+    })
+    expect(fetcher.mock.calls.map(([input]) => String(input))).toEqual([
+      'https://www.reddit.com/r/example_sub/s/AbC123xyz/',
+      'https://www.reddit.com/comments/abc123/.rss?limit=1'
+    ])
+    expect(runExtractor).toHaveBeenCalledWith('yt-dlp', 'https://www.reddit.com/comments/abc123/', expect.any(Number))
   })
 })

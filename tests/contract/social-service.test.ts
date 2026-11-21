@@ -331,7 +331,8 @@ describe('SocialPostViewer', () => {
 
     expect(refused).toHaveBeenCalled()
     expect(fromFeed).toMatchObject({ status: 'found', post: { authorHandle: 'poster_one', videoCount: 1 } })
-    expect(fromYtDlp).toMatchObject({ status: 'found', post: { text: 'From yt-dlp' } })
+    // The feed is the first reader, so its title stands; yt-dlp fills the field the feed lacks (fill-gaps rule).
+    expect(fromYtDlp).toMatchObject({ status: 'found', post: { authorHandle: 'poster_one', durationSec: 12 } })
   })
 
   // Reddit refuses an IP it has flagged for both the feed and the JSON yt-dlp reads, so waiting ~9 s for yt-dlp

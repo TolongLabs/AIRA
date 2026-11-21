@@ -142,7 +142,9 @@ describe('SocialPostViewer on Facebook posts', () => {
 
   it('falls back to yt-dlp on the resolved official permalink when the resolved page has no story', async () => {
     const share = parseSocialPostUrl('https://www.facebook.com/share/p/1FrDwJtBqj/')!
-    const runExtractor = vi.fn(async () => ({ metadata: { title: 'From yt-dlp', uploader: 'Example Page' } }))
+    const runExtractor = vi.fn(async (_binaryPath: string, _url: string, _timeoutMs: number) => ({
+      metadata: { title: 'From yt-dlp', uploader: 'Example Page' }
+    }))
     const fetcher = vi.fn(async (input: string | URL | Request) =>
       String(input).includes('/share/')
         ? new Response(null, {
@@ -156,11 +158,15 @@ describe('SocialPostViewer on Facebook posts', () => {
     const viewer = buildViewer(settings, { fetcher, runExtractor, lookup: async () => ['8.8.8.8'] })
 
     expect(await viewer.lookup(share)).toMatchObject({ status: 'found', post: { text: 'From yt-dlp' } })
+    expect(runExtractor).toHaveBeenCalledOnce()
     expect(runExtractor).toHaveBeenCalledWith(
       'yt-dlp',
       'https://www.facebook.com/groups/12345/permalink/2921750018/',
-      1000
+      expect.any(Number)
     )
+    const timeoutArg = runExtractor.mock.calls[0]![2]
+    expect(timeoutArg).toBeGreaterThan(0)
+    expect(timeoutArg).toBeLessThanOrEqual(settings.timeoutMs)
   })
 
   it.each([
@@ -229,7 +235,9 @@ describe('SocialPostViewer on Facebook posts', () => {
 
   it('falls back to yt-dlp on the photo link when its page holds no post', async () => {
     const photoLink = parseSocialPostUrl('https://www.facebook.com/photo/?fbid=1234567890')!
-    const runExtractor = vi.fn(async () => ({ metadata: { title: 'From yt-dlp' } }))
+    const runExtractor = vi.fn(async (_binaryPath: string, _url: string, _timeoutMs: number) => ({
+      metadata: { title: 'From yt-dlp' }
+    }))
     const viewer = buildViewer(settings, {
       fetcher: vi.fn(async (_input: string | URL | Request) => new Response('<html></html>')),
       runExtractor,
@@ -237,6 +245,14 @@ describe('SocialPostViewer on Facebook posts', () => {
     })
 
     expect(await viewer.lookup(photoLink)).toMatchObject({ status: 'found', post: { text: 'From yt-dlp' } })
-    expect(runExtractor).toHaveBeenCalledWith('yt-dlp', 'https://www.facebook.com/photo/?fbid=1234567890', 1000)
+    expect(runExtractor).toHaveBeenCalledOnce()
+    expect(runExtractor).toHaveBeenCalledWith(
+      'yt-dlp',
+      'https://www.facebook.com/photo/?fbid=1234567890',
+      expect.any(Number)
+    )
+    const timeoutArg = runExtractor.mock.calls[0]![2]
+    expect(timeoutArg).toBeGreaterThan(0)
+    expect(timeoutArg).toBeLessThanOrEqual(settings.timeoutMs)
   })
 })
