@@ -58,7 +58,10 @@ export function pruneRecords(
       tool_call: 0,
       failure: 0,
       turn: 0,
-      job_run: 0
+      job_run: 0,
+      social_turn_lookup: 0,
+      social_lookup: 0,
+      autofetch_delivery: 0
     }
 
     counts.failure_diagnostics = db
@@ -85,7 +88,7 @@ export function pruneRecords(
       .run(retentionCutoff).changes
     counts.inbound_message += deleteRows(db, 'inbound_message', oldTurnSubquery, [retentionCutoff], beforeDelete)
     counts.model_call += deleteRows(db, 'model_call', oldTurnSubquery, [retentionCutoff], beforeDelete)
-    deleteRows(
+    counts.social_turn_lookup += deleteRows(
       db,
       'social_turn_lookup',
       `${oldTurnSubquery} OR tool_call_id IN (
@@ -114,8 +117,8 @@ export function pruneRecords(
     db.prepare('DELETE FROM autofetch_repeat WHERE expires_at <= ?').run(nowIso)
     const oldJob = 'job_run_id IN (SELECT id FROM job_run WHERE started_at < ?)'
     db.prepare(`DELETE FROM autofetch_delivery_key WHERE ${oldJob}`).run(retentionCutoff)
-    deleteRows(db, 'social_lookup', oldJob, [retentionCutoff], beforeDelete)
-    deleteRows(db, 'autofetch_delivery', oldJob, [retentionCutoff], beforeDelete)
+    counts.social_lookup += deleteRows(db, 'social_lookup', oldJob, [retentionCutoff], beforeDelete)
+    counts.autofetch_delivery += deleteRows(db, 'autofetch_delivery', oldJob, [retentionCutoff], beforeDelete)
     counts.job_run += deleteRows(db, 'job_run', 'started_at < ?', [retentionCutoff], beforeDelete)
     counts.inbound_message += deleteRows(
       db,

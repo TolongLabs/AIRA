@@ -44,15 +44,18 @@ function readBody(request: IncomingMessage, limit: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
     let size = 0
-    request.on('data', (chunk: Buffer) => {
+    const onData = (chunk: Buffer) => {
       size += chunk.length
       if (size > limit) {
+        // Stop keeping the body but let it drain, so the caller still gets its 400 answer.
+        request.off('data', onData)
+        request.resume()
         reject(new MalformedRequestError('the request body is too large'))
-        request.destroy()
         return
       }
       chunks.push(chunk)
-    })
+    }
+    request.on('data', onData)
     request.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
     request.on('error', reject)
   })
@@ -240,7 +243,7 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
   async function autofetch(request: IncomingMessage, response: ServerResponse): Promise<void> {
     let input: z.infer<typeof autofetchBody>
     try {
-      const raw = await readBody(request, options.maxBodyBytes ?? DEFAULT_MAX_BODY)
+      const raw = await readBody(request, Math.min(options.maxBodyBytes ?? DEFAULT_MAX_BODY, AUTOFETCH_MAX_BODY))
       if (Buffer.byteLength(raw) > AUTOFETCH_MAX_BODY) throw new MalformedRequestError('the request body is too large')
       input = autofetchBody.parse(JSON.parse(raw))
     } catch {

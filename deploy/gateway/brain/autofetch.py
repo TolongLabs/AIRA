@@ -85,7 +85,8 @@ def ask_core(chat: str, text: str, *, timeout: float = CORE_TIMEOUT, opener=None
             if kind in ("image", "video") and isinstance(path, str) and path:
                 media.append({"kind": kind, "path": path})
         key = data.get("deliveryKey") if isinstance(data, dict) else None
-        if not isinstance(key, str) or len(key) != 36 or len(media) != len(items or []):
+        listed = items if isinstance(items, list) else []
+        if not isinstance(key, str) or len(key) != 36 or len(media) != len(listed):
             return [], None
         return media, key
     except Exception as exc:
@@ -136,7 +137,11 @@ async def _run(adapter, chat: str, text: str) -> None:
         if not media or not key or not await asyncio.to_thread(_delivery, "claim", {"key": key}):
             return
         outcomes = await send_all(adapter, chat, media)
-        await asyncio.to_thread(_delivery, "complete", {"key": key, "outcomes": outcomes})
+        # The core accepts one completion per claim, so a retry after a refused connection is safe.
+        for delay in (0, 1, 2):
+            await asyncio.sleep(delay)
+            if await asyncio.to_thread(_delivery, "complete", {"key": key, "outcomes": outcomes}):
+                break
         LOG.info("autofetch sent %d of %d", sum(outcomes), len(outcomes))
 
 

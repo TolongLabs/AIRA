@@ -604,7 +604,7 @@ describe('POST /v1/aira/autofetch', () => {
     ).toEqual({ eligible_files: 2, downloaded_files: 2 })
 
     const archived: Record<string, unknown> = {}
-    pruneRecords(
+    const pruned = pruneRecords(
       env.storage,
       { retentionDays: 1, diagnosticsHours: 72, windowDays: 7 },
       {
@@ -615,6 +615,7 @@ describe('POST /v1/aira/autofetch', () => {
       }
     )
     expect(Object.keys(archived)).toEqual(['social_lookup', 'autofetch_delivery', 'job_run'])
+    expect(pruned.counts).toMatchObject({ social_lookup: 1, autofetch_delivery: 1 })
     expect(JSON.stringify(archived)).not.toMatch(/http|secret|token|digest|expires_at|example/)
     expect(delivery()).toBeUndefined()
   })

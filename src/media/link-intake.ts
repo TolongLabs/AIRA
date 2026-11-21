@@ -158,6 +158,8 @@ function failCall(model: string, failureKind: ModelFailureKind, durationMs: numb
   }
 }
 
+const LOOKUP_TRACE_GRACE_MS = 250
+
 async function lookupWithTimeout(
   viewer: LinkPostViewer,
   target: LinkTarget,
@@ -165,19 +167,27 @@ async function lookupWithTimeout(
   onTrace?: (trace: SocialLookupTrace) => void
 ): Promise<SocialPostLookup> {
   if (signal.aborted) return { status: 'failed', platform: target.platform, reason: 'timeout' }
+  let onAbort = () => {}
+  let grace: ReturnType<typeof setTimeout> | undefined
   try {
     return await Promise.race([
       viewer.lookup(target, signal, onTrace),
       new Promise<SocialPostLookup>((resolve) => {
-        signal.addEventListener(
-          'abort',
-          () => resolve({ status: 'failed', platform: target.platform, reason: 'timeout' }),
-          { once: true }
-        )
+        // A short grace lets the aborted chain report its attempts before the timeout answer wins.
+        onAbort = () => {
+          grace = setTimeout(
+            () => resolve({ status: 'failed', platform: target.platform, reason: 'timeout' }),
+            LOOKUP_TRACE_GRACE_MS
+          )
+        }
+        signal.addEventListener('abort', onAbort, { once: true })
       })
     ])
   } catch {
     return { status: 'failed', platform: target.platform, reason: signal.aborted ? 'timeout' : 'error' }
+  } finally {
+    signal.removeEventListener('abort', onAbort)
+    clearTimeout(grace)
   }
 }
 

@@ -152,6 +152,23 @@ class AutofetchTest(unittest.TestCase):
         self.assertEqual([call.args[0] for call in calls], [GROUP])
         self.assertEqual(adapter.sent, [("image", GROUP, "/c/a.jpg")])
 
+    def test_retries_a_completion_the_core_did_not_take(self):
+        adapter = _Adapter()
+        answer = ([{"kind": "image", "path": "/c/a.jpg"}], "key")
+
+        async def scenario():
+            with (
+                mock.patch.object(autofetch, "ask_core", return_value=answer),
+                mock.patch.object(autofetch, "_delivery", side_effect=[True, False, True]) as delivery,
+                mock.patch.object(autofetch.asyncio, "sleep", new=mock.AsyncMock()),
+            ):
+                autofetch.offer(adapter, self.message())
+                await asyncio.gather(*list(autofetch._tasks))
+                return delivery.call_args_list
+
+        calls = asyncio.run(scenario())
+        self.assertEqual([call.args[0] for call in calls], ["claim", "complete", "complete"])
+
     def test_offer_outside_an_event_loop_never_raises(self):
         autofetch.offer(_Adapter(), self.message())
 

@@ -598,6 +598,43 @@ describe('pictures and post photos in one turn', () => {
     expect(JSON.stringify(row)).not.toMatch(/https:|synthetic-intake-marker/)
   })
 
+  it('keeps a server error, a parse error and a long attempt in the intake lookup record', async () => {
+    const links = createLinkReader({
+      viewer: {
+        async lookup(_target, _signal, trace) {
+          trace?.({
+            attempts: [
+              { readerId: 'threads.page', ok: false, reason: 'http_502', ms: 7_000 },
+              { readerId: 'yt_dlp', ok: false, reason: 'invalid_json', ms: 5 }
+            ]
+          })
+          return { status: 'failed', platform: 'threads', reason: 'http_502' }
+        }
+      },
+      limits: { ...DEFAULT_MEDIA_LIMITS, maxVideoSeconds: 180 },
+      model: 'fake-media-model',
+      findTarget: findSocialPostTarget
+    })
+    const media = createTurnMedia({
+      model: 'fake-media-model',
+      limits: { ...DEFAULT_MEDIA_LIMITS, maxVideoSeconds: 180 },
+      gatewayDirs: [],
+      timeoutMs: 1000,
+      links
+    })
+    const core = await startTestCore({ runner: scriptedRunner(() => 'Example: I could not open it.'), deps: { media } })
+    core.activate(CHAT)
+    await core.gateway.send(msg('m-lookup-2', POST))
+    const row = core.storage.read((db) => db.prepare('SELECT reason, attempts FROM social_turn_lookup').get())
+    expect(row).toEqual({
+      reason: 'server_error',
+      attempts: JSON.stringify([
+        { reader: 'threads.page', ok: false, reason: 'server_error', ms: 7_000 },
+        { reader: 'yt_dlp', ok: false, reason: 'invalid_json', ms: 5 }
+      ])
+    })
+  })
+
   it('lists the valid local pictures in order, then the photos of the post named in the quoted text', async () => {
     expect(await imagesOfQuotingReply(true)).toEqual([
       { kind: 'file', attachment: { kind: 'image', path: `${HOST_CACHE}/images/img_a1b2.jpg` } },

@@ -1476,3 +1476,25 @@ it('does not download a compression-sized file for a video of unknown length, an
   expect(caps.at(-1)).toBeGreaterThan(64)
   expect(logs).toContainEqual(expect.objectContaining({ event: 'media.link_compress_failed', reason: 'no_output' }))
 })
+
+it('keeps the attempts of a lookup that ran out of time', async () => {
+  let seen: unknown
+  const reader = createLinkReader({
+    viewer: {
+      lookup: (_target, signal, trace) =>
+        new Promise((resolve) => {
+          signal?.addEventListener('abort', () => {
+            trace?.({ attempts: [{ readerId: 'x.fxtwitter', ok: false, reason: 'timeout', ms: 50 }] })
+            resolve({ status: 'failed', platform: 'x', reason: 'timeout' })
+          })
+        })
+    },
+    findTarget: fakeFindTarget,
+    model: 'test',
+    limits: { ...DEFAULT_MEDIA_LIMITS, maxVideoSeconds: 180 }
+  })
+  await reader.read(['https://x.com/testuser/status/99'], 50, { media: true, social: true }, undefined, (event) => {
+    seen = event.trace
+  })
+  expect(seen).toEqual({ attempts: [{ readerId: 'x.fxtwitter', ok: false, reason: 'timeout', ms: 50 }] })
+})
