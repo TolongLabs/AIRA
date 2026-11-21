@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { loadPack, type Pack, PackError } from '../../src/character/loader.js'
 import { readWebpInfo, stickerFault } from '../../src/character/webp.js'
 import { pickSticker, withStickers } from '../../src/prompt/stickers.js'
+import { createTurnSources } from '../../src/turn/sources.js'
 import type { CleanedReply, ReplyCleaner, TurnContext } from '../../src/turn/types.js'
 import { tmpDir, tmpStorage } from '../support/tmp.js'
 
@@ -172,7 +173,8 @@ describe('withStickers', () => {
         settings,
         kind: 'reply' as const,
         delivery: { kind: 'reply' as const },
-        deadline: Date.now() + 10_000
+        deadline: Date.now() + 10_000,
+        sources: createTurnSources()
       },
       built: {
         system: [],

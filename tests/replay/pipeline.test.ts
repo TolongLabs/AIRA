@@ -1374,3 +1374,106 @@ describe('a reply that steps out of its role', () => {
     expect(delivery.content).toBe(core.packs().packs.get('example')?.lines.error)
   })
 })
+
+describe('turn sources through the pipeline', () => {
+  it('registers the links in the window before the model runs, in order of arrival', async () => {
+    const runner = scriptedRunner(() => 'noted')
+    const core = await startTestCore({ runner })
+    core.activate(CHAT)
+
+    await core.gateway.send(msg('m-1', 'first, https://example.com/one'))
+    await core.gateway.send(msg('m-2', 'then https://example.com/two?utm_source=feed'))
+
+    const sources = runner.inputs.at(-1)?.context.sources
+    expect(sources?.find({ source: 's1' })).toMatchObject({ url: 'https://example.com/one', lookup: 'message' })
+    expect(sources?.find({ url: 'https://example.com/two' })).toMatchObject({ id: 's2', lookup: 'message' })
+    expect(sources?.find({ source: 's3' })).toBeUndefined()
+  })
+
+  it('reads quote chains once per turn across seen sources and link intake, ordered earliest first with stable dedup', async () => {
+    const readLink = vi.fn(async (_texts: string[]) => ({ readings: [], unreadable: [], calls: [] }))
+    const media: TurnMedia = {
+      async read() {
+        return { readings: [], unreadable: [], calls: [] }
+      },
+      readLink
+    }
+    const runner = scriptedRunner(() => 'noted')
+    const config = testConfig()
+    const core = await startTestCore({
+      runner,
+      config,
+      deps: { media, cleaner: createReplyCleaner(config) }
+    })
+    const chatId = core.activate(CHAT)
+
+    await core.gateway.send(msg('m-1', 'root https://example.com/root'))
+    await core.gateway.send({
+      ...msg('m-2', 'mid https://example.com/mid'),
+      quote: { text: 'root https://example.com/root', id: 'm-1' }
+    })
+    await core.gateway.send(msg('m-3', 'visible https://example.com/visible'))
+
+    setSetting(core.storage, { level: 'chat', scope: chatId, key: 'features.context', value: false, actor: 'test' })
+
+    let quoteChainReads = 0
+    const origRead = core.storage.read.bind(core.storage)
+    vi.spyOn(core.storage, 'read').mockImplementation(((fn) =>
+      origRead((db) => {
+        const origPrepare = db.prepare.bind(db)
+        const spy = vi.spyOn(db, 'prepare').mockImplementation(((sql: string) => {
+          if (sql.includes('SELECT quote, quote_mid FROM session_message')) quoteChainReads += 1
+          return origPrepare(sql)
+        }) as typeof db.prepare)
+        try {
+          return fn(db)
+        } finally {
+          spy.mockRestore()
+        }
+      })) as typeof core.storage.read)
+
+    await core.gateway.send({
+      ...msg('m-4', 'pending https://example.com/root?utm_source=dup and https://example.com/pending'),
+      quote: { text: 'mid https://example.com/mid', id: 'm-2' }
+    })
+
+    expect(quoteChainReads).toBe(1)
+    expect(readLink.mock.calls.at(-1)?.[0]).toEqual([
+      'pending https://example.com/root?utm_source=dup and https://example.com/pending',
+      'mid https://example.com/mid',
+      'root https://example.com/root'
+    ])
+    const hiddenOffSources = runner.inputs.at(-1)?.context.sources
+    expect(hiddenOffSources?.find({ source: 's1' })).toMatchObject({ url: 'https://example.com/root', lookup: 'quote' })
+    expect(hiddenOffSources?.find({ source: 's2' })).toMatchObject({ url: 'https://example.com/mid', lookup: 'quote' })
+    expect(hiddenOffSources?.find({ source: 's3' })).toMatchObject({
+      url: 'https://example.com/pending',
+      lookup: 'message'
+    })
+    expect(hiddenOffSources?.find({ url: 'https://example.com/visible' })).toBeUndefined()
+    expect(hiddenOffSources?.find({ source: 's4' })).toBeUndefined()
+
+    setSetting(core.storage, { level: 'chat', scope: chatId, key: 'features.context', value: true, actor: 'test' })
+    await core.gateway.send({
+      ...msg('m-5', 'final https://example.com/visible?fbclid=1 and https://example.com/final'),
+      quote: { text: 'root https://example.com/root', id: 'm-1' }
+    })
+
+    const visibleSources = runner.inputs.at(-1)?.context.sources
+    expect(visibleSources?.find({ source: 's1' })).toMatchObject({ url: 'https://example.com/root', lookup: 'message' })
+    expect(visibleSources?.find({ source: 's2' })).toMatchObject({ url: 'https://example.com/mid', lookup: 'message' })
+    expect(visibleSources?.find({ source: 's3' })).toMatchObject({
+      url: 'https://example.com/visible',
+      lookup: 'message'
+    })
+    expect(visibleSources?.find({ source: 's4' })).toMatchObject({
+      url: 'https://example.com/pending',
+      lookup: 'message'
+    })
+    expect(visibleSources?.find({ source: 's5' })).toMatchObject({
+      url: 'https://example.com/final',
+      lookup: 'message'
+    })
+    expect(visibleSources?.find({ source: 's6' })).toBeUndefined()
+  })
+})

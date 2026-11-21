@@ -3,9 +3,10 @@ import { SocialPostError } from '../../social/port.js'
 import { parseSocialPostUrl } from '../../social/urls.js'
 import type { Storage } from '../../storage/database.js'
 import { putFile } from '../../storage/files.js'
+import { SOURCE_ID } from '../../turn/sources.js'
 import type { TurnContext } from '../../turn/types.js'
 import { isForbiddenUrl, type ToolPorts } from '../ports.js'
-import type { ToolDefinition, ToolFailure } from '../types.js'
+import type { ToolContext, ToolDefinition, ToolFailure } from '../types.js'
 
 /** Recorded reason for a refused link already watched at intake. The model reads its outcome sentence. */
 export const INTAKE_REFUSAL =
@@ -31,9 +32,23 @@ const querySchema = z.strictObject({
   query: z.string().trim().min(1).max(200)
 })
 
-const urlSchema = z.strictObject({
-  url: z.string().trim().min(1).max(2000)
+/** A read takes one address the turn has seen: a URL, or the source id the turn gave it (docs/trd/tools.md#turn-sources). */
+const readSchema = z.strictObject({
+  url: z.string().trim().min(1).max(2000).optional().describe('A link this chat or your search showed'),
+  source: z.string().trim().regex(SOURCE_ID).optional().describe('The id of such a link, such as s1')
 })
+
+/** The address a read opens, or the refusal when the turn never saw it. Runs before any network call. */
+function resolveRead(args: z.infer<typeof readSchema>, context: ToolContext): { ok: true; url: string } | ToolFailure {
+  if ((args.url === undefined) === (args.source === undefined)) {
+    return { ok: false, kind: 'invalid', reason: 'give exactly one of url or source', code: 'schema' }
+  }
+  const seen = context.sources.find(args)
+  if (seen === undefined) {
+    return { ok: false, kind: 'refused', reason: 'address not seen in this turn', code: 'unseen_link' }
+  }
+  return { ok: true, url: seen.url }
+}
 
 export function webSearchTool(ports: ToolPorts): ToolDefinition<z.infer<typeof querySchema>> {
   return {
@@ -62,26 +77,28 @@ export function webSearchTool(ports: ToolPorts): ToolDefinition<z.infer<typeof q
   }
 }
 
-export function readPageTool(ports: ToolPorts): ToolDefinition<z.infer<typeof urlSchema>> {
+export function readPageTool(ports: ToolPorts): ToolDefinition<z.infer<typeof readSchema>> {
   return {
     name: 'read_page',
     description: 'Opens and reads one web page.',
-    schema: urlSchema,
+    schema: readSchema,
     mode: 'implicit',
     mutates: false,
     feature: 'features.search',
     async handler(args, context) {
-      if (isForbiddenUrl(args.url)) {
+      const target = resolveRead(args, context)
+      if (!target.ok) return target
+      if (isForbiddenUrl(target.url)) {
         return { ok: false, kind: 'refused', reason: 'forbidden address' }
       }
-      if (alreadyReadAtIntake(args.url, context)) {
+      if (alreadyReadAtIntake(target.url, context)) {
         return { ok: false, kind: 'refused', reason: INTAKE_REFUSAL, code: 'already_read' }
       }
       if (!ports.page) {
         return { ok: false, kind: 'unavailable', reason: 'page reader is not set up' }
       }
       try {
-        const page = await ports.page.read(args.url, context.signal)
+        const page = await ports.page.read(target.url, context.signal)
         return { ok: true, data: { title: page.title, text: page.text } }
       } catch (error) {
         return { ok: false, kind: 'error', reason: 'page read failed', code: 'read_failed', cause: error }
@@ -90,26 +107,29 @@ export function readPageTool(ports: ToolPorts): ToolDefinition<z.infer<typeof ur
   }
 }
 
-export function readPostTool(ports: ToolPorts): ToolDefinition<z.infer<typeof urlSchema>> {
+export function readPostTool(ports: ToolPorts): ToolDefinition<z.infer<typeof readSchema>> {
   return {
     name: 'read_post',
     description: 'Opens one social post with its media.',
-    schema: urlSchema,
+    schema: readSchema,
     mode: 'implicit',
     mutates: false,
     feature: 'features.social',
     async handler(args, context) {
-      if (isForbiddenUrl(args.url)) {
+      const target = resolveRead(args, context)
+      if (!target.ok) return target
+      if (isForbiddenUrl(target.url)) {
         return { ok: false, kind: 'refused', reason: 'forbidden address' }
       }
-      if (alreadyReadAtIntake(args.url, context)) {
+      if (alreadyReadAtIntake(target.url, context)) {
         return { ok: false, kind: 'refused', reason: INTAKE_REFUSAL, code: 'already_read' }
       }
       if (!ports.post) {
         return { ok: false, kind: 'unavailable', reason: 'post reader is not set up' }
       }
       try {
-        const post = await ports.post.read(args.url, context.signal)
+        const post = await ports.post.read(target.url, context.signal)
+        if (post.canonicalUrl !== undefined) context.sources.add(post.canonicalUrl, 'canonical')
         return { ok: true, data: { ...post } }
       } catch (error) {
         if (error instanceof SocialPostError) {

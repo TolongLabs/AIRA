@@ -5,7 +5,15 @@ import type { FailureCode, ToolFailure, ToolFailureKind } from './types.js'
 // schema guidance: the issue text follows its prefix, because the model needs it to make the call again.
 
 export const TOOL_FAILURE_KINDS: readonly ToolFailureKind[] = ['timeout', 'refused', 'invalid', 'unavailable', 'error']
-export const FAILURE_CODES: readonly FailureCode[] = ['already_read', 'read_failed', 'schema', 'tool_limit', 'not_now']
+export const FAILURE_CODES: readonly FailureCode[] = [
+  'already_read',
+  'after_read',
+  'read_failed',
+  'schema',
+  'tool_limit',
+  'not_now',
+  'unseen_link'
+]
 
 const BY_KIND: Record<ToolFailureKind, string> = {
   timeout: 'It took too long, so you stopped trying for now.',
@@ -19,7 +27,9 @@ const BY_CODE: Record<Exclude<FailureCode, 'schema'>, string> = {
   already_read: 'You have already looked at that link in this message.',
   read_failed: 'You could not get that post or page to open. It may be private, removed or blocked.',
   tool_limit: 'You cannot do any more of that for this message.',
-  not_now: 'You cannot do that right now.'
+  not_now: 'You cannot do that right now.',
+  unseen_link: 'You only open links that came up in this chat or in your own search.',
+  after_read: 'You will not change anything based on that page.'
 }
 
 const SCHEMA_PREFIX = 'Try once more with corrected details:'

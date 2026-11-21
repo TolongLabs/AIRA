@@ -387,6 +387,11 @@ function unwrapLink(candidate: string): string {
 /** Receives a link's platform and hostname when its host is no platform's own. Never its path or query. */
 export type UnknownHostReport = (entry: { platform: SocialPlatform; hostname: string }) => void
 
+/** Every http(s) link in a text, in order, with trailing punctuation and wrapping format marks removed. */
+export function linkUrls(text: string): string[] {
+  return (text.match(LINK_CANDIDATE) ?? []).map(unwrapLink).filter((link) => link.length > 0)
+}
+
 /** Every supported post link in a text, in order. A link on an unknown host is reported by platform and hostname. */
 export function findSocialPostTargets(text: string, onUnknownHost?: UnknownHostReport): SocialPostTarget[] {
   const targets: SocialPostTarget[] = []

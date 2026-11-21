@@ -23,6 +23,7 @@ import {
   type ToolPorts
 } from '../../src/tools/ports.js'
 import { createToolRegistry } from '../../src/tools/registry.js'
+import { createTurnSources } from '../../src/turn/sources.js'
 import type { TurnContext } from '../../src/turn/types.js'
 import { tmpDir, tmpStorage } from '../support/tmp.js'
 
@@ -64,7 +65,8 @@ function setup(
       settings: resolveSettings(storage, chat),
       kind: 'reply',
       delivery: { kind: 'reply' },
-      deadline: Date.now() + 10_000
+      deadline: Date.now() + 10_000,
+      sources: createTurnSources()
     }
   }
   return { storage, filesDir, registry, makeCtx }
@@ -267,6 +269,7 @@ describe('core tools', () => {
       post: fakes.post
     })
     const ctx = makeCtx()
+    ctx.sources.addText('https://example.com/page https://x.com/user/status/1', 'message')
 
     expect(await registry.call('web_search', { query: 'vitest' }, ctx, { callId: 'c-ws', source: 'model' })).toEqual({
       ok: true,
@@ -300,7 +303,9 @@ describe('core tools', () => {
       })
     }
 
-    const photoRes = await registry.call('send_photo', { query: 'cat' }, ctx, {
+    // A state change after a page read is refused, so the photo is sent in a turn that has read no page.
+    const photoCtx = makeCtx()
+    const photoRes = await registry.call('send_photo', { query: 'cat' }, photoCtx, {
       callId: 'c-photo',
       source: 'model'
     })
@@ -486,6 +491,7 @@ describe('core tools', () => {
       }
     })
     const ctx = makeCtx()
+    ctx.sources.addText('https://x.com/someone/status/7', 'message')
     ctx.intakeUrls = ['https://x.com/i/status/7']
     ctx.intakeWatchedUrls = []
     const read = await registry.call('read_page', { url: 'https://x.com/someone/status/7' }, ctx, {
@@ -510,6 +516,7 @@ describe('core tools', () => {
       }
     })
     const ctx = makeCtx()
+    ctx.sources.addText('https://twitter.com/user/status/1 https://example.com/article', 'message')
     ctx.intakeWatchedUrls = ['https://x.com/i/status/1']
 
     const refused = await registry.call('read_page', { url: 'https://twitter.com/user/status/1' }, ctx, {
@@ -529,7 +536,9 @@ describe('core tools', () => {
     })
     expect(allowed).toEqual({ ok: true, data: { title: 'Title of https://example.com/article', text: 'Body' } })
     expect(seenPages).toEqual(['https://example.com/article'])
-    expect(registry.takeSources(ctx.turnId)).toEqual(['https://example.com/article'])
+    expect(registry.takeSources(ctx.turnId)).toEqual([
+      { url: 'https://example.com/article', lookup: 'message', kind: 'read' }
+    ])
   })
 
   it('read_post: refuses a YouTube short link whose canonical URL was read at intake', async () => {
@@ -543,6 +552,8 @@ describe('core tools', () => {
       }
     })
     const ctx = makeCtx()
+    ctx.sources.addText('https://youtu.be/dQw4w9WgXcQ?t=15 https://www.youtube.com/shorts/dQw4w9WgXcQ', 'message')
+    ctx.sources.addText('https://youtu.be/otherVideo99', 'message')
     ctx.intakeWatchedUrls = ['https://www.youtube.com/watch?v=dQw4w9WgXcQ']
 
     const shortRefused = await registry.call('read_post', { url: 'https://youtu.be/dQw4w9WgXcQ?t=15' }, ctx, {
@@ -796,6 +807,7 @@ describe('core tools', () => {
       ok: false,
       kind: 'unavailable'
     })
+    ctx.sources.addText('https://example.com https://x.com/a/status/1', 'message')
     expect(
       await registry.call('read_page', { url: 'https://example.com' }, ctx, { callId: 'c-u3', source: 'model' })
     ).toMatchObject({ ok: false, kind: 'unavailable' })
@@ -828,6 +840,7 @@ describe('core tools', () => {
       }
     })
     const errCtx = throwingSetup.makeCtx()
+    errCtx.sources.addText('https://example.com https://x.com/a/status/1', 'message')
     expect(
       await throwingSetup.registry.call('web_search', { query: 'x' }, errCtx, { callId: 'c-e1', source: 'model' })
     ).toMatchObject({ ok: false, kind: 'error' })

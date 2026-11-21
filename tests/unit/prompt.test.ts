@@ -13,6 +13,7 @@ import { createModelMoodJudge, detectMood, detectMoodByRules, type MoodJudge } f
 import { pick, seededRandom } from '../../src/prompt/random.js'
 import { detectLengthBypass, drawShape, FACE_LIMIT, LENGTH_CHARS, shapeText } from '../../src/prompt/shape.js'
 import { ensureSubject, setDisplayName } from '../../src/settings/chats.js'
+import { createTurnSources } from '../../src/turn/sources.js'
 import type { TurnInput } from '../../src/turn/types.js'
 import { tmpStorage } from '../support/tmp.js'
 
@@ -59,7 +60,8 @@ function makeTurnInput(overrides: {
       settings: overrides.settings ?? {},
       kind: 'reply',
       delivery: { kind: 'reply' },
-      deadline: Date.now() + 30_000
+      deadline: Date.now() + 30_000,
+      sources: createTurnSources()
     },
     window,
     pending: overrides.pending ?? window.slice(-1)

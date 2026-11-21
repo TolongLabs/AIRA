@@ -7,6 +7,7 @@ import { resolveSettings, setSetting } from '../../src/settings/settings.js'
 import { createCommandRouter } from '../../src/tools/commands.js'
 import { registerCoreTools } from '../../src/tools/core/index.js'
 import { createToolRegistry } from '../../src/tools/registry.js'
+import { createTurnSources } from '../../src/turn/sources.js'
 import type { TurnContext } from '../../src/turn/types.js'
 import { tmpDir, tmpStorage } from '../support/tmp.js'
 
@@ -40,7 +41,8 @@ function setup(maxPerMessage?: number) {
     settings: resolveSettings(storage, chat),
     kind: 'reply',
     delivery: { kind: 'reply' },
-    deadline: Date.now() + 30_000
+    deadline: Date.now() + 30_000,
+    sources: createTurnSources()
   }
   return { router: createCommandRouter(registry), context }
 }

@@ -20,6 +20,7 @@ import { registerCoreTools } from '../../src/tools/core/index.js'
 import { createToolRegistry } from '../../src/tools/registry.js'
 import { basicPromptBuilder } from '../../src/turn/defaults.js'
 import { createTurnService } from '../../src/turn/pipeline.js'
+import { createTurnSources } from '../../src/turn/sources.js'
 import type { TurnContext } from '../../src/turn/types.js'
 import { scriptedRunner, testConfig } from '../support/core.js'
 import { tmpDir, tmpStorage } from '../support/tmp.js'
@@ -65,7 +66,8 @@ function fixture(replyText = 'The findings are ready.') {
       settings: resolveSettings(storage, chat),
       kind: 'reply',
       delivery: { kind: 'reply' },
-      deadline: clock.getTime() + 10000
+      deadline: clock.getTime() + 10000,
+      sources: createTurnSources()
     }
   }
   const queue = (id = 'res_test', wantsPdf = false) =>

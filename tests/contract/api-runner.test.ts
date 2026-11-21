@@ -80,6 +80,22 @@ describe('the API runner', () => {
     expect(model.requests[0]?.tools).toEqual([lookupTool().schema])
   })
 
+  it('declares a tool at a model step only while it is available then', async () => {
+    let available = true
+    const log: { args: unknown; callId: string }[] = []
+    const tool: OfferedTool = {
+      ...lookupTool(log, () => {
+        available = false
+      }),
+      available: () => available
+    }
+    const model = queueModel([{ toolCalls: [call('a')] }, { text: 'done' }])
+    await run(model, [tool])
+    expect(model.requests[0]?.tools.map((schema) => schema.name)).toEqual(['lookup'])
+    expect(model.requests[1]?.tools).toEqual([])
+    expect(log).toHaveLength(1)
+  })
+
   it('runs the tool the model calls and gives the model its result', async () => {
     const log: { args: unknown; callId: string }[] = []
     const model = queueModel([{ toolCalls: [call('a')] }, { text: 'found it' }])

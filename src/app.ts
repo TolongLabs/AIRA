@@ -563,7 +563,7 @@ export async function createApp(options: AppOptions): Promise<App> {
           config,
           () => registry.toolNames(),
           (turnId) => okToolsOfTurn(storage, turnId),
-          (turnId) => registry.takeSources(turnId)
+          (turnId) => registry.takeSources(turnId).map((use) => use.url)
         ),
         { storage, hostDataDir }
       ),

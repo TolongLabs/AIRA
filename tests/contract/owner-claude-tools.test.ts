@@ -10,6 +10,7 @@ import { openTurn, receiveInbound } from '../../src/storage/turns.js'
 import { claudeTools } from '../../src/tools/owner/claude.js'
 import { createToolRegistry, type ToolRegistry } from '../../src/tools/registry.js'
 import type { ToolDefinition, ToolResult } from '../../src/tools/types.js'
+import { createTurnSources } from '../../src/turn/sources.js'
 import type { TurnContext } from '../../src/turn/types.js'
 import { tmpDir, tmpStorage } from '../support/tmp.js'
 
@@ -51,7 +52,8 @@ function setup(options: { projectsDir?: string; routesFile?: string; now?: () =>
       settings,
       kind: 'reply',
       delivery: { kind: 'reply' },
-      deadline: Date.now() + 10_000
+      deadline: Date.now() + 10_000,
+      sources: createTurnSources()
     }
   }
 

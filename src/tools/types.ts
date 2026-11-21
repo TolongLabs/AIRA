@@ -15,7 +15,8 @@ export type ToolFailureKind = 'timeout' | 'refused' | 'invalid' | 'unavailable' 
  * not say what the character should say. `read_failed` is for kind `error` only: a timeout or unavailable read keeps
  * its kind sentence. `schema` marks invalid arguments whose issue text the model needs.
  */
-export type FailureCode = 'already_read' | 'read_failed' | 'schema' | 'tool_limit' | 'not_now'
+export type FailureCode =
+  'already_read' | 'after_read' | 'read_failed' | 'schema' | 'tool_limit' | 'not_now' | 'unseen_link'
 
 /** What a state change was: built by code from the committed result, never from the model's words. */
 export interface ReceiptDraft {
