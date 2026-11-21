@@ -210,7 +210,7 @@ replication of the write-ahead log is the upgrade if 15 minutes is ever too much
 
 ## Analytics And The Archive
 
-Social operational records follow the parent record retention window. Archive permitted structured fields
+Social lookup rows follow their owning turn, tool call or group job retention window. Archive permitted structured fields
 before pruning children and then parents. Raw URLs, post IDs, identifiers from share tokens, content,
 headers and file paths stay out of social telemetry and archive rows. Keep delivery acknowledgement keys
 and temporary repeat claims out of analytics exports.

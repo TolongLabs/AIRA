@@ -363,6 +363,12 @@ partial data. Previews, cards and quoted or earlier-thread media can describe a 
 delivery requires separate native attachment evidence. Enable a new operation only after verifying the
 specific post identity, fields, retrieval permission and intended use. Xiaohongshu/rednote, Douyin and
 LinkedIn start with all operations disabled. Evaluate reading, intake and redistribution independently.
+AIRA has no approved dev2 integration for these three platforms. A public embed or a public browser
+page does not establish permission for automated reads, model processing or redistribution. Douyin
+documents OAuth-protected account capabilities. LinkedIn restricts automated access and copying in
+its user agreement. Record the approved fields and uses before enabling a provider.
+[Douyin capabilities](https://partner.open-douyin.com/docs/resource/zh-CN/dop/ability/common-solution)
+and [LinkedIn User Agreement](https://www.linkedin.com/legal/user-agreement).
 
 `read_post` takes one seen `url` or `source` id from [Turn Sources](#turn-sources). Only the
 model calls it; no command names it. A post link in a member's message is read

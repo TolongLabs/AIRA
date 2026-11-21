@@ -40,12 +40,20 @@ The writers live in `src/records/turn-record.ts`: `markStage`, `updateTurnRecord
 
 ## Child Records
 
-Group social lookup evidence is stored in `social_lookup` under the job ID and target ordinal, with
-only bounded enum values, durations and counts. Resolve, read and select outcomes are distinct from download and gateway delivery. In group
-autofetch, core counts validated downloads and returned files separately. A file counts as delivered only
-after the gateway reports adapter success for its returned slot. Missing reports and legacy `sent` outcomes
-leave delivery unknown. Core stores the ordered slot kinds and acknowledgements in `autofetch_delivery`. It ignores duplicate
-reports and is the sole writer.
+Each redacted social lookup row belongs to one parent and ordinal. In `social_turn_lookup`, automatic
+intake uses the turn ID and `read_post` uses the exact `tool_call.id`. Group autofetch uses the job ID
+in `social_lookup`.
+The row carries bounded reader attempts, a missing-field bitset, elapsed time, outcome, and a reason code.
+Metrics write failures leave the surrounding read and its parent result available.
+
+For eligible group platforms, core records the verified video duration in one of five bands: at most 60,
+over 60 through 120, over 120 through 180, above 180 seconds, or unknown. Boundaries use unrounded seconds. These bands measure
+the effect that proposed limits would have on candidate videos.
+
+Group selection and download counts are distinct from the returned slots and their gateway confirmations.
+A file counts as delivered only after the adapter reports success. Missing reports and legacy `sent` outcomes
+leave delivery unknown. Core stores ordered slot kinds and acknowledgements in `autofetch_delivery` and
+ignores duplicate reports.
 
 | Table            | One Row Per                   | Key Fields                                                                  |
 | ---------------- | ----------------------------- | --------------------------------------------------------------------------- |
