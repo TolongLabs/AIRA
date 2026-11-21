@@ -5,7 +5,7 @@ import { listChatItems } from '../memory/store.js'
 import { buildReport, newestSnapshotFile } from '../records/report.js'
 import { listChats } from '../settings/chats.js'
 import { resolveSettings } from '../settings/settings.js'
-import { socialCapabilities } from '../social/readers.js'
+import { type SocialMirrorSettings, socialCapabilities } from '../social/readers.js'
 import type { Storage } from '../storage/database.js'
 import type { DataPaths } from '../storage/startup.js'
 import type { ToolRegistry } from '../tools/registry.js'
@@ -24,6 +24,7 @@ export interface SiteApiDeps {
   onWrite?: () => void
   registry: ToolRegistry
   extractorAvailable?: boolean
+  socialMirrors?: SocialMirrorSettings
   storage: Storage
   /** The character packs as they load now. */
   packs: () => PackSet
@@ -89,7 +90,7 @@ function handleTools(deps: SiteApiDeps): RouteResult {
   }
   return ok({
     features: [...features].map(([key, tools]) => ({ key, tools })),
-    socialCapabilities: socialCapabilities(deps.extractorAvailable ?? false)
+    socialCapabilities: socialCapabilities(deps.extractorAvailable ?? false, deps.socialMirrors)
   })
 }
 
