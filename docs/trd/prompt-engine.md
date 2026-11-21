@@ -213,7 +213,8 @@ them alike and leaves the domains tappable.
   bubble cap. A turn with neither an intake read nor an `ok` tool call has no footer. A direct command answer, which
   runs no model, has none.
 - Labels come from the card's `toolFooter.labels`, keyed by footer kind (a tool name or an intake kind), else a
-  plain default from code. Plain labels hold no persona text. The intake defaults are `watched a video`
+  plain default from code. A successful `identify_image` call defaults to `searched by image`.
+  Plain labels hold no persona text. The intake defaults are `watched a video`
   (`media_video`, `media_youtube`), `looked at an image`, `listened to audio`, `read a document` and `read a post`.
   A label or icon holds no `_ * ~`, backtick, `<`, `>` or line break, and a label is 1 to 40 characters; the pack
   loader and the site check the same rule. The owner edits a data pack's labels and icon on the site
