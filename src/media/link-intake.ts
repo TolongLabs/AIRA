@@ -1,5 +1,6 @@
 import type { ModelFailureKind } from '../models/types.js'
 import type { Logger } from '../records/logger.js'
+import { mirrorVideoRangeBytes } from '../social/mirror-readers.js'
 import { type ModelPostResult, modelPostResult, toPostPortResult } from '../social/result.js'
 import type { SocialLookupObserver, SocialLookupTrace, SocialPost, SocialPostLookup } from '../social/types.js'
 import { PLATFORM_NAME } from '../social/urls.js'
@@ -422,13 +423,17 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
           url: string,
           expectedKind: 'video' | 'image',
           durationSeconds?: number,
-          headers?: Record<string, string> | null
+          headers?: Record<string, string> | null,
+          rangeBytes?: number
         ): Promise<{ kind: 'video' | 'image'; reading: MediaReading } | undefined> {
           if (!options.download || !options.watcher) return undefined
           let downloaded: { data: Buffer; contentType: string }
           try {
             const cap = expectedKind === 'video' ? videoDownloadLimit : options.limits.maxBytes
-            downloaded = await options.download(url, controller.signal, cap, headers)
+            downloaded =
+              rangeBytes === undefined
+                ? await options.download(url, controller.signal, cap, headers)
+                : await options.download(url, controller.signal, cap, headers, rangeBytes)
           } catch (error) {
             const status = error instanceof Error ? /^http status (\d{3})$/.exec(error.message)?.[1] : undefined
             options.logger?.warn('media.link_download_failed', {
@@ -483,7 +488,15 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
         const photos = canWatch ? linkPhotos(post) : []
         const attempted = photos.slice(0, MAX_LINK_PHOTOS)
         const [videoWatch, ...photoWatches] = await Promise.all([
-          video ? watchRemoteMedia(video.url, 'video', post.durationSec ?? undefined, video.headers) : undefined,
+          video
+            ? watchRemoteMedia(
+                video.url,
+                'video',
+                post.durationSec ?? undefined,
+                video.headers,
+                mirrorVideoRangeBytes(video)
+              )
+            : undefined,
           ...attempted.map((photo) => watchRemoteMedia(photo.url, 'image'))
         ])
         const parts = [

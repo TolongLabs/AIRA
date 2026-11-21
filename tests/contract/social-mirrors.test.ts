@@ -25,14 +25,15 @@ const nativeReddit = 'https://www.reddit.com/r/example/comments/abc123/sample/'
 const tikTokAsset = 'https://v16m.tiktokcdn-us.com/sample.mp4'
 const redditAsset = 'https://v.redd.it/fixture/DASH_720.mp4'
 const mp4 = Buffer.from('00000010667479706d70343200000000', 'hex')
+const largeMp4 = Buffer.concat([mp4, Buffer.alloc(8_000_001 - mp4.length, 0x42)])
 const lookup = async () => ['8.8.8.8']
 const logger = createLogger({ level: 'error', module: 'test', sink: () => {} })
 
 function stack(
   mirrors: SocialMirrorSettings,
-  options: { wrongId?: boolean; foreignAsset?: boolean; redditRefusal?: number } = {}
+  options: { wrongId?: boolean; foreignAsset?: boolean; redditRefusal?: number; ranges?: 'valid' | 'invalid' } = {}
 ) {
-  const fetcher = vi.fn(async (input: string | URL | Request) => {
+  const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(String(input))
     if (url.href === tikTokLink || url.href === redditLink) {
       return new Response(null, {
@@ -49,6 +50,7 @@ function stack(
           title: 'A short video',
           author: { unique_id: 'example' },
           duration: 12,
+          ...(options.ranges ? { wm_size: largeMp4.length } : {}),
           wmplay: options.foreignAsset ? 'https://unrelated.example/test.mp4' : tikTokAsset
         }
       })
@@ -76,6 +78,19 @@ function stack(
             }
           }
         ]
+      })
+    }
+    if (url.href === tikTokAsset && options.ranges) {
+      const range = /^bytes=(\d+)-(\d+)$/.exec(new Headers(init?.headers).get('range') ?? '')
+      if (!range) return new Response(null, { status: 403 })
+      const start = Number(range[1])
+      const end = Number(range[2])
+      return new Response(new Uint8Array(largeMp4.subarray(start, end + 1)), {
+        status: 206,
+        headers: {
+          'content-type': 'video/mp4',
+          'content-range': options.ranges === 'invalid' ? 'bytes 0-1/2' : `bytes ${start}-${end}/${largeMp4.length}`
+        }
       })
     }
     if (url.href === tikTokAsset || url.href === redditAsset) {
@@ -149,6 +164,31 @@ describe('approved mirror readers', () => {
     expect(watch).toHaveBeenCalledOnce()
   })
 
+  it.each(['valid', 'invalid'] as const)('only watches a complete TikTok byte-range batch (%s)', async (ranges) => {
+    const { viewer, download, fetcher } = stack({ tiktok: 'read' }, { ranges })
+    const watch = vi.fn<MediaWatcher['watch']>(async (file) => {
+      expect(file.data.equals(largeMp4)).toBe(true)
+      return {
+        reading: { description: 'Watched complete clip' },
+        usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 },
+        costUsd: 0,
+        model: 'fixture'
+      }
+    })
+    const reader = createLinkReader({
+      viewer,
+      download,
+      findTarget: parseOfficialSocialPostUrl,
+      watcher: { watch },
+      model: 'fixture',
+      limits: { ...DEFAULT_MEDIA_LIMITS, maxVideoSeconds: 180 }
+    })
+    const result = await reader.read([tikTokLink], 12000, { media: true, social: true })
+    expect(result.links?.[0]?.reading?.description).toBe(ranges === 'valid' ? 'Watched complete clip' : undefined)
+    expect(fetcher.mock.calls.filter(([url]) => url === tikTokAsset)).toHaveLength(4)
+    expect(watch).toHaveBeenCalledTimes(ranges === 'valid' ? 1 : 0)
+  })
+
   it.each([tikTokLink, redditLink])('discards mismatched IDs and non-native assets for %s', async (link) => {
     const target = parseOfficialSocialPostUrl(link)!
     const mode = { tiktok: 'read_and_group', reddit: 'read_and_group' } as const
@@ -172,6 +212,7 @@ describe('approved mirror readers', () => {
     setSetting(storage, { level: 'chat', scope: chat.chatId, key: 'features.autofetch', value: true, actor: 'test' })
     const cache = tmpDir('aira-mirror-gateway-')
     const autofetch = createAutofetch({ storage, viewer, download, mirrors, cacheDir: cache, hostCacheDir: cache })
+    const downloadTimeout = vi.spyOn(AbortSignal, 'timeout')
     const server = createGatewayServer({
       turns: {} as TurnService,
       storage,
@@ -193,6 +234,8 @@ describe('approved mirror readers', () => {
         ).json()
       const result = (await post('', { chat: chat.waId, text: `${tikTokLink} ${redditLink}` })) as AutofetchBatch
       expect(result.media).toHaveLength(2)
+      expect(downloadTimeout).toHaveBeenCalledWith(10000)
+      expect(downloadTimeout).toHaveBeenCalledWith(25000)
       for (const item of result.media) {
         expect(item.kind).toBe('video')
         expect(readFileSync(join(cache, item.path.split('/').at(-1)!))).toEqual(mp4)
@@ -204,6 +247,7 @@ describe('approved mirror readers', () => {
       expect(outcome()).toEqual({ outcomes: '[true,false]' })
     } finally {
       server.close()
+      downloadTimeout.mockRestore()
     }
   })
 })

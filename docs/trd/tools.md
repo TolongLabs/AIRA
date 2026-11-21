@@ -400,7 +400,11 @@ watermarked rendition and can take up to 5,500 ms for lookup by default, within 
 Arctic Shift is an archive. Its Reddit fallback MP4 may be video-only. The Reddit reader checks the first-party feed
 before the mirror and stops further attempts on an explicit refusal or rate limit. The normal watch and group byte,
 duration and timeout limits apply, including linked MP4 compression. Mirror lookup endpoints disallow redirects,
-and asset downloads keep redirects on the original origin. A failed mirror lookup grants no group attachment.
+and asset downloads keep redirects on the original origin. The watch path downloads a verified TikWM watermarked
+MP4 from `v16m.tiktokcdn-us.com` in four parallel byte ranges when its declared size is at least 8 MB and within
+the intake download cap. Each response must be a matching MP4 range of the declared total. Reassembly must
+produce the complete file before watch or compression. An invalid or refused part stops the batch. The watch
+deadline includes the lookup, downloads, compression, and model call. A failed mirror lookup grants no group attachment.
 Facebook photo paths use the HTML post reader before falling back to the extractor. Supported platforms
 are X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram, Bilibili and
 Facebook.

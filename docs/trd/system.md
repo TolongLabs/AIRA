@@ -288,7 +288,8 @@ auto-fetch hook hands it to `brain.autofetch` first, which asks the core.
 
 - **Limits.** Three links per message and ten files per post. Images up to 8 MB and MP4 up to 16 MB
   require matching media signatures. Downloads keep HTTPS redirects on the asset origin and send no cookies.
-  Each file has up to 10 s within the 60 s core job deadline. The gateway waits up to 90 s for the core.
+  Each file has up to 10 s to download within the 60 s core job deadline. A verified Reddit archive MP4 has up to
+  25 s to download before compression. The gateway waits up to 90 s for the core.
 - **Repeats.** Core reserves a keyed digest of the chat and target for ten minutes, including failed reads.
   Resolved aliases must also win the canonical target reservation. Reservations survive restart.
 - **Records.** A recognized target can create a `job_run` even when selection skips it. Outcomes include

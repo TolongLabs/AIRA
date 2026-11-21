@@ -22,6 +22,7 @@ export const AUTOFETCH_MAX_VIDEO_BYTES = 16_000_000
 export const AUTOFETCH_REPEAT_MS = 10 * 60_000
 const AUTOFETCH_TIMEOUT_MS = 60_000
 const AUTOFETCH_ASSET_TIMEOUT_MS = 10_000
+const REDDIT_ARCHIVE_VIDEO_TIMEOUT_MS = 25_000
 
 const EXTENSIONS: Record<string, string> = {
   'image/jpeg': '.jpg',
@@ -90,7 +91,13 @@ function postMedia(
   post: SocialPost,
   target: SocialPostTarget,
   mirrors?: SocialMirrorSettings
-): { kind: AutofetchMedia['kind']; url: string; headers?: Record<string, string> | null; durationSec?: number }[] {
+): {
+  kind: AutofetchMedia['kind']
+  url: string
+  headers?: Record<string, string> | null
+  durationSec?: number
+  downloadTimeoutMs?: number
+}[] {
   const resolved = parseOfficialSocialPostUrl(post.canonicalUrl)
   if (
     !resolved ||
@@ -112,7 +119,15 @@ function postMedia(
   const photos = attachments.flatMap((item) => (item.kind === 'image' ? [{ kind: item.kind, url: item.url }] : []))
   return [
     ...(video?.kind === 'video'
-      ? [{ kind: video.kind, url: video.video.url, headers: video.video.headers, durationSec: video.durationSec }]
+      ? [
+          {
+            kind: video.kind,
+            url: video.video.url,
+            headers: video.video.headers,
+            durationSec: video.durationSec,
+            ...(video.video.mirror === 'reddit' ? { downloadTimeoutMs: REDDIT_ARCHIVE_VIDEO_TIMEOUT_MS } : {})
+          }
+        ]
       : []),
     ...photos
   ].slice(0, AUTOFETCH_MAX_FILES)
@@ -197,7 +212,10 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
     let downloaded = false
     const maxBytes = item.kind === 'video' ? AUTOFETCH_MAX_VIDEO_BYTES : AUTOFETCH_MAX_IMAGE_BYTES
     try {
-      const budget = AbortSignal.any([signal, AbortSignal.timeout(AUTOFETCH_ASSET_TIMEOUT_MS)])
+      const budget = AbortSignal.any([
+        signal,
+        AbortSignal.timeout(item.downloadTimeoutMs ?? AUTOFETCH_ASSET_TIMEOUT_MS)
+      ])
       const compressor =
         item.kind === 'video' && (item.durationSec ?? Infinity) <= COMPRESSION_MAX_SECONDS
           ? options.compressVideo
