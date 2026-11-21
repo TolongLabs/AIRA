@@ -14,12 +14,16 @@ Rules:
   raw source browsing.
 - Read `graphify-out/GRAPH_REPORT.md` only for broad architecture review or when
   query/path/explain do not surface enough context.
-- After modifying code, run `bun run graph` to keep the graph current. It
-  runs `graphify update .`, which is AST-only and costs no API calls, then
-  formats what it rewrote. Nothing does this for you: the pre-commit hook
-  does not refresh the graph.
-- That pass leaves the doc and concept nodes alone. Refreshing those is the
-  `/graphify --update` skill, which spends API budget. Never delete
-  `graphify-out/` first: `graphify update .` merges into the tracked
-  `graph.json`, and rebuilding from an empty directory drops every semantic
-  node.
+- For a local refresh, run `graphify update .` with `graphifyy[sql]==0.9.71`.
+  The AST pass uses no model calls. It merges into the tracked
+  `graphify-out/graph.json` and preserves its curated semantic nodes. Keep that
+  file in place. Use the Graphify skill to refresh semantic nodes when needed.
+- The `graph` workflow refreshes the committed graph after changes land on
+  `main`. It publishes graph changes on `automation/graph` through the release
+  GitHub App. The pull request contains only `graphify-out/graph.json` and
+  follows the required checks and rebase rules for `main`. The workflow
+  merges the App’s graph-only pull request after the required checks pass for
+  its current head commit.
+- Graph-only pushes skip the refresh. A successful refresh with no changes
+  beyond the source commit stamp skips the pull request. To retry a refresh,
+  run the `graph` workflow on `main`.
