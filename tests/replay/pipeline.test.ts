@@ -1125,6 +1125,27 @@ describe('intake footer kinds and URLs in pipeline', () => {
     ])
   })
 
+  it('registers the resolved address of a social share intake could not read', async () => {
+    const share = 'https://www.reddit.com/r/example/s/Example1'
+    const canonical = 'https://www.reddit.com/comments/abc123/'
+    const tried = [share, canonical].map((url) => ({ url, failed: true }))
+    const runner = scriptedRunner(() => 'I could not open it.')
+    const media: TurnMedia = {
+      async read() {
+        return { readings: [], unreadable: [], calls: [] }
+      },
+      async readLink() {
+        return { readings: [], unreadable: [{ kind: 'Reddit link', reason: 'link' }], tried, calls: [] }
+      }
+    }
+    const core = await startTestCore({ runner, deps: { media } })
+    core.activate(CHAT)
+    await core.gateway.send(msg('m-1', 'sum up ' + share))
+    const context = runner.inputs[0]?.context
+    expect(context?.intakeTriedSocialUrls).toEqual(tried)
+    expect(context?.sources.find({ url: canonical })).toMatchObject({ url: canonical, lookup: 'intake' })
+  })
+
   it('reads a link up to three quote hops back in the same chat, and no further', async () => {
     const readLink = vi.fn(async (_texts: string[]) => ({ readings: [], unreadable: [], calls: [] }))
     const media: TurnMedia = {
