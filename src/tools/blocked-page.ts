@@ -1,5 +1,14 @@
 /** Phrases that only an access-block or challenge page carries. Matched case-insensitively. */
-const BLOCK_MARKERS = ['access denied', 'just a moment', 'blocked by network security', 'log in to continue']
+const BLOCK_MARKERS = [
+  'access denied',
+  'just a moment',
+  'blocked by network security',
+  'log in to continue',
+  'captcha',
+  'verify you are human',
+  'are you a robot',
+  'enable javascript and cookies'
+]
 const SITE_NAME_MAX_CHARS = 25
 const MARKED_MAX_CHARS = 1_000
 
@@ -49,17 +58,15 @@ function siteNames(url: string): string[] {
 
 /**
  * True when a page's text is a failed read, not content: a short text that is only the site's host, registrable
- * domain, or site label, a text under 1,000 characters that holds an access-block marker, or an empty body whose
- * title under 1,000 characters holds an access-block marker. Exa's page port and the plain fetch both use it
- * (docs/trd/tools.md).
+ * domain, or site label, or a body under 1,000 characters whose text or title holds an access-block marker. Exa's
+ * page port and the plain fetch both use it (docs/trd/tools.md).
  */
 export function isBlockedPage(text: string, url: string, title = ''): boolean {
   const body = text.trim()
   if (charCount(body) < SITE_NAME_MAX_CHARS && siteNames(url).includes(comparable(body))) return true
-  if (charCount(body) < MARKED_MAX_CHARS && hasBlockMarker(body)) return true
-  if (body.length === 0) {
-    const heading = title.trim()
-    if (charCount(heading) < MARKED_MAX_CHARS && hasBlockMarker(heading)) return true
-  }
-  return false
+  const heading = title.trim()
+  return (
+    charCount(body) < MARKED_MAX_CHARS &&
+    (hasBlockMarker(body) || (charCount(heading) < MARKED_MAX_CHARS && hasBlockMarker(heading)))
+  )
 }

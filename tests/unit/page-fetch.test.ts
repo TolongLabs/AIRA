@@ -48,6 +48,16 @@ describe('isBlockedPage', () => {
     expect(isBlockedPage('', 'https://example.com/', 'Example')).toBe(false)
   })
 
+  it('treats a short challenge page as blocked by its text or its title', () => {
+    expect(isBlockedPage('Please complete the CAPTCHA to continue.', 'https://example.com/')).toBe(true)
+    expect(isBlockedPage('Verify you are human by completing the action below.', 'https://example.com/')).toBe(true)
+    expect(isBlockedPage('Enable JavaScript and cookies to continue', 'https://example.com/')).toBe(true)
+    expect(isBlockedPage('Reference #18.abc', 'https://example.com/', 'Access Denied')).toBe(true)
+    expect(isBlockedPage('Ray ID: 1234', 'https://example.com/', 'Just a moment...')).toBe(true)
+    expect(isBlockedPage(`Opening hours. ${'x'.repeat(1000)}`, 'https://example.com/', 'Just a moment')).toBe(false)
+    expect(isBlockedPage('The road was blocked by snow overnight.', 'https://example.com/', 'Snow day')).toBe(false)
+  })
+
   it('reads a long page with a marker word, and a short real page', () => {
     expect(isBlockedPage(`Access denied. ${'x'.repeat(1000)}`, 'https://example.com/')).toBe(false)
     expect(isBlockedPage('Hi, the page is up.', 'https://example.com/')).toBe(false)
