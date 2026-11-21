@@ -385,7 +385,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       }
     }
     // read_page goes through Exa when search does, so pages that refuse plain fetches still read.
-    const plainPage = createFetchPagePort()
+    const plainPage = createFetchPagePort({ maxChars: config.search.pageMaxChars })
     const page =
       config.search.provider === 'exa' && typeof exaKey === 'string' && exaKey.length > 0
         ? createExaPagePort({ apiKey: exaKey, fallback: plainPage, maxChars: config.search.pageMaxChars })
@@ -506,7 +506,8 @@ export async function createApp(options: AppOptions): Promise<App> {
         }),
         // The plain reader refuses private addresses, also after a redirect; the Exa reader falls back to it.
         page,
-        searchPage: options.ports?.page ?? createFetchPagePort({ preserveLines: true }),
+        searchPage:
+          options.ports?.page ?? createFetchPagePort({ preserveLines: true, maxChars: config.search.pageMaxChars }),
         schedule,
         ...(search ? { search } : {}),
         ...options.ports,

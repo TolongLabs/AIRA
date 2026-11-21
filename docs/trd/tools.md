@@ -336,8 +336,10 @@ measurement or release date.
 ### Page Reads
 
 A plain page fetch follows up to five manual redirects. Every hop goes through the public-address guard.
-Keep a request-local jar of cookie names and values per host. Send those cookies only back to that host
-during the same lookup, then discard them.
+Keep a request-local jar of cookie names and values per origin. Send those cookies only back to that origin
+during the same lookup, so a cookie set over HTTPS never goes over HTTP, and drop one the site deletes with
+`Max-Age=0`. A plain read returns at most `search.pageMaxChars` characters. Refused and unsupported responses
+cancel their body.
 
 Exa and the plain fetch share a block-page check. A short page holding only the site name, or a page under
 1,000 characters with an access-block marker in its text or its title, is a failed read. Markers cover access
