@@ -1483,9 +1483,12 @@ it('keeps the attempts of a lookup that ran out of time', async () => {
     viewer: {
       lookup: (_target, signal, trace) =>
         new Promise((resolve) => {
+          // Like the real chain, the aborted lookup reports its attempts a moment after the abort.
           signal?.addEventListener('abort', () => {
-            trace?.({ attempts: [{ readerId: 'x.fxtwitter', ok: false, reason: 'timeout', ms: 50 }] })
-            resolve({ status: 'failed', platform: 'x', reason: 'timeout' })
+            setTimeout(() => {
+              trace?.({ attempts: [{ readerId: 'x.fxtwitter', ok: false, reason: 'timeout', ms: 50 }] })
+              resolve({ status: 'failed', platform: 'x', reason: 'timeout' })
+            }, 20)
           })
         })
     },

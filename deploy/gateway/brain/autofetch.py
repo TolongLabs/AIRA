@@ -85,8 +85,7 @@ def ask_core(chat: str, text: str, *, timeout: float = CORE_TIMEOUT, opener=None
             if kind in ("image", "video") and isinstance(path, str) and path:
                 media.append({"kind": kind, "path": path})
         key = data.get("deliveryKey") if isinstance(data, dict) else None
-        listed = items if isinstance(items, list) else []
-        if not isinstance(key, str) or len(key) != 36 or len(media) != len(listed):
+        if not isinstance(items, list) or not isinstance(key, str) or len(key) != 36 or len(media) != len(items):
             return [], None
         return media, key
     except Exception as exc:

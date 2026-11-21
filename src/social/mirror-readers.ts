@@ -47,9 +47,13 @@ function allowedPreview(url: URL): boolean {
   )
 }
 
-export function isMirrorAssetUrl(value: string): boolean {
+/** The mirror platform whose media origin serves this URL, if any. */
+export function mirrorAssetPlatform(value: string): 'tiktok' | 'reddit' | undefined {
   const url = httpsUrl(value)
-  return Boolean(url && (url.hostname === 'v.redd.it' || TIKTOK_VIDEO_HOSTS.has(url.hostname) || allowedPreview(url)))
+  if (!url) return undefined
+  if (TIKTOK_VIDEO_HOSTS.has(url.hostname)) return 'tiktok'
+  if (url.hostname === 'v.redd.it' || allowedPreview(url)) return 'reddit'
+  return undefined
 }
 
 function preview(value: unknown): string | null {

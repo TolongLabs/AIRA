@@ -310,7 +310,7 @@ character.
   of the core is not affected.
 - A fetch guard wraps every page and post read. It refuses non-http(s) addresses, credentials, localhost and private
   or link-local IPs. The page fetch re-checks DNS after each redirect, follows at most 5 redirects, and caps bodies
-  at 2 MB and text at 8,000 characters. `read_page` accepts one seen `url` or `source` id from
+  at 2 MB and text at `search.pageMaxChars` characters (12,000 by default). `read_page` accepts one seen `url` or `source` id from
   [Turn Sources](#turn-sources).
 
 ### Search Depth

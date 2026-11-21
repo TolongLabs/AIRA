@@ -37,6 +37,8 @@ export interface GatewayServerOptions {
 
 const DEFAULT_MAX_BODY = 20 * 1024 * 1024
 const AUTOFETCH_MAX_BODY = 64 * 1024
+/** Past this the connection is destroyed; between the two the request gets a 400. */
+const AUTOFETCH_READ_LIMIT = 1024 * 1024
 const autofetchDeliveryKey = z.uuid()
 const autofetchBody = z.strictObject({ chat: z.string().min(1).max(256), text: z.string() })
 
@@ -44,18 +46,15 @@ function readBody(request: IncomingMessage, limit: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
     let size = 0
-    const onData = (chunk: Buffer) => {
+    request.on('data', (chunk: Buffer) => {
       size += chunk.length
       if (size > limit) {
-        // Stop keeping the body but let it drain, so the caller still gets its 400 answer.
-        request.off('data', onData)
-        request.resume()
         reject(new MalformedRequestError('the request body is too large'))
+        request.destroy()
         return
       }
       chunks.push(chunk)
-    }
-    request.on('data', onData)
+    })
     request.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
     request.on('error', reject)
   })
@@ -243,7 +242,7 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
   async function autofetch(request: IncomingMessage, response: ServerResponse): Promise<void> {
     let input: z.infer<typeof autofetchBody>
     try {
-      const raw = await readBody(request, Math.min(options.maxBodyBytes ?? DEFAULT_MAX_BODY, AUTOFETCH_MAX_BODY))
+      const raw = await readBody(request, Math.min(options.maxBodyBytes ?? DEFAULT_MAX_BODY, AUTOFETCH_READ_LIMIT))
       if (Buffer.byteLength(raw) > AUTOFETCH_MAX_BODY) throw new MalformedRequestError('the request body is too large')
       input = autofetchBody.parse(JSON.parse(raw))
     } catch {

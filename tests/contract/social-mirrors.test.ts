@@ -40,7 +40,7 @@ function stack(
     redditPhoto?: 'native' | 'preview' | 'crosspost'
     redditFeed?: 'photo' | 'video'
     archiveRefusal?: number
-    ranges?: 'valid' | 'invalid' | 'stall' | 'drop' | 'refused'
+    ranges?: 'valid' | 'invalid' | 'stall' | 'drop' | 'refused' | 'tail-drop'
     etag?: string | null
   } = {}
 ) {
@@ -127,6 +127,22 @@ function stack(
       }
       const second = Math.floor(largeMp4.length / 4)
       if (options.ranges === 'refused' && start === second) return new Response(null, { status: 403 })
+      if (options.ranges === 'tail-drop' && start === second && !interrupted.has(start)) {
+        // Every byte of the part arrives, then the connection drops before the end of the body.
+        interrupted.add(start)
+        const whole = largeMp4.subarray(start, end + 1)
+        let sent = false
+        return new Response(
+          new ReadableStream({
+            pull(controller) {
+              if (sent) controller.error(new TypeError('terminated'))
+              else controller.enqueue(new Uint8Array(whole))
+              sent = true
+            }
+          }),
+          { status: 206, headers }
+        )
+      }
       if ((options.ranges === 'stall' || options.ranges === 'drop') && start === second && !interrupted.has(start)) {
         interrupted.add(start)
         // The first request for the second part sends half of it, then stalls or drops.
@@ -324,6 +340,14 @@ describe('approved mirror readers', () => {
     const { result, requests } = await watchTikTok({ ranges: 'drop' })
     expect(result.links?.[0]?.reading?.description).toBe('Watched complete clip')
     expect(requests.filter((headers) => headers.get('if-range') === '"v1"')).toHaveLength(1)
+  })
+
+  it('restarts a part that dropped after its last byte instead of asking for an empty range', async () => {
+    const { result, requests } = await watchTikTok({ ranges: 'tail-drop' })
+    expect(result.links?.[0]?.reading?.description).toBe('Watched complete clip')
+    const ranges = requests.map((headers) => headers.get('range') ?? '')
+    expect(ranges.every((range) => Number(range.split('-')[0]?.slice(6)) <= Number(range.split('-')[1]))).toBe(true)
+    expect(ranges).toHaveLength(5)
   })
 
   it.each([null, 'W/"v1"'])('restarts a dropped part from its start without a strong validator (%s)', async (etag) => {

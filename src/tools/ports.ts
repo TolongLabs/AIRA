@@ -363,6 +363,7 @@ export function createFetchPagePort(
     headers?: Record<string, string>
   ): Promise<{ res: Response; url: string }> => {
     let currentUrl = initialUrl
+    if (isForbiddenUrl(initialUrl)) throw new Error('forbidden url')
     const firstOrigin = new URL(initialUrl).origin
     const lockedOrigin = options.sameOriginCookieless ? firstOrigin : undefined
     const jar: CookieJar | undefined = lockedOrigin || options.cookieless ? undefined : new Map()
@@ -389,9 +390,9 @@ export function createFetchPagePort(
       })
       if (jar) rememberCookies(jar, parsed.origin, res.headers.getSetCookie())
       if (REDIRECT_STATUSES.has(res.status)) {
-        if (hops === MAX_REDIRECTS) throw new Error('too many redirects')
         const location = res.headers.get('location')
         await res.body?.cancel()
+        if (hops === MAX_REDIRECTS) throw new Error('too many redirects')
         if (!location) throw new Error('redirect missing location')
         currentUrl = new URL(location, currentUrl).toString()
         continue
@@ -422,8 +423,9 @@ export function createFetchPagePort(
     let received = 0
     let first: { finalUrl: string; version: string | null } | undefined
     for (let attempt = 0; ; attempt++) {
-      // Only a strong validator proves resumed bytes belong to the same file; without one the part starts over.
-      if (received > 0 && !strongValidator(first?.version)) {
+      // Only a strong validator proves resumed bytes belong to the same file; without one, or once every byte came
+      // but the end did not, the part starts over.
+      if (received > 0 && (received >= size || !strongValidator(first?.version))) {
         chunks.length = 0
         received = 0
         first = undefined
@@ -486,7 +488,7 @@ export function createFetchPagePort(
       } catch (error) {
         // A stall, or a drop or early end after a valid range began, resumes. A refusal, a policy error, a wrong
         // response or the caller's deadline does not.
-        const resumable = idle.signal.aborted || (streaming && !(error instanceof InvalidRange))
+        const resumable = !(error instanceof InvalidRange) && (idle.signal.aborted || streaming)
         if (resumable && !batchSignal.aborted && attempt < RANGE_RESUMES) continue
         throw error
       } finally {

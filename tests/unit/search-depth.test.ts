@@ -32,6 +32,8 @@ describe('search field evidence', () => {
     const field = { kind: 'list', subject: 'Drink sizes' } as const
     expect(passageMatches(field, '- Small\n- Medium\n- Large')).toBe(false)
     expect(passageMatches(field, '- Short\n- Tall\n- Grande')).toBe(false)
+    expect(passageMatches(field, '- Short (8 fl oz)\n- Tall (12 fl oz)\n- Grande (16 fl oz)')).toBe(false)
+    expect(passageMatches(field, '- Small 250 ml\n- Medium 350 ml\n- Large 500 ml')).toBe(false)
     const phones = { kind: 'list', subject: 'Phone models' } as const
     expect(passageMatches(phones, '- Example One\n- Example One Pro\n- Example Air')).toBe(true)
   })
@@ -55,6 +57,21 @@ describe('search field evidence', () => {
 })
 
 describe('search depth', () => {
+  it('reads a page whose result names a list before one that does not', async () => {
+    const plain = { title: 'Example models', url: 'https://plain.example/a', snippet: 'Example news.' }
+    const lineup = { title: 'Example models lineup', url: 'https://lineup.example/b', snippet: 'Example news.' }
+    const read = vi.fn(async () => ({ title: '', text: '' }))
+    await createSearchDepth(
+      { search: { search: vi.fn(async () => [plain, lineup]) }, searchPage: { read } },
+      {
+        maxSearches: 1,
+        maxPages: 1,
+        maxProviderCalls: 2
+      }
+    ).deep({ query: 'example models', fields: [{ kind: 'list', subject: 'Example models' }] }, context())
+    expect(read).toHaveBeenCalledWith(lineup.url, expect.any(AbortSignal))
+  })
+
   it('fails the call when the provider fails the first search, without a retry', async () => {
     const search = vi.fn(async () => {
       throw new Error('http status 401')

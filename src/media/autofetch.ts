@@ -296,9 +296,11 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
             const canonical = parseOfficialSocialPostUrl(lookup.post.canonicalUrl)
             if (
               canonical &&
+              canonical.platform === target.platform &&
+              lookup.post.platform === target.platform &&
+              canonical.id === lookup.post.id &&
               canonical.lookupKey !== target.lookupKey &&
-              !options.storage.tx((db) => reserveRepeat(db, chatId, canonical.lookupKey, now())) &&
-              items.length
+              !options.storage.tx((db) => reserveRepeat(db, chatId, canonical.lookupKey, now()))
             ) {
               skip = 'repeat'
               items.length = 0

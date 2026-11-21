@@ -110,6 +110,12 @@ class AutofetchTest(unittest.TestCase):
         self.assertEqual(autofetch.ask_core(GROUP, "x", opener=broken), ([], None))
         self.assertEqual(autofetch.ask_core(GROUP, "x", opener=lambda r, timeout: _Response(b"not json")), ([], None))
 
+    def test_a_media_field_that_is_not_a_list_returns_no_key(self):
+        for media in (123, "bad", {"kind": "image"}):
+            body = json.dumps({"media": media, "deliveryKey": "00000000-0000-4000-8000-000000000001"}).encode()
+            opener = lambda request, timeout, body=body: _Response(body)  # noqa: E731
+            self.assertEqual(autofetch.ask_core(GROUP, "https://x.com/a/status/1", opener=opener), ([], None))
+
     def test_only_a_loopback_core_url_is_used(self):
         with mock.patch.dict(os.environ, {"AIRA_CORE_URL": "http://127.0.0.1:9999/"}):
             self.assertEqual(autofetch.core_url(), "http://127.0.0.1:9999")
