@@ -9490,7 +9490,7 @@
       "file_type": "code",
       "norm_label": "recall()",
       "source_file": "tests/contract/tools.test.ts",
-      "source_location": "L736"
+      "source_location": "L755"
     },
     {
       "id": "tests_contract_tools_test_search",
@@ -9502,7 +9502,7 @@
       "file_type": "code",
       "norm_label": "search()",
       "source_file": "tests/contract/tools.test.ts",
-      "source_location": "L730"
+      "source_location": "L749"
     },
     {
       "id": "tests_contract_tools_test_sync",
@@ -193156,7 +193156,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "tests/contract/tools.test.ts",
-      "source_location": "L730",
+      "source_location": "L749",
       "weight": 1.0
     },
     {
@@ -193167,7 +193167,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "tests/contract/tools.test.ts",
-      "source_location": "L736",
+      "source_location": "L755",
       "weight": 1.0
     },
     {
@@ -205960,5 +205960,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "18e4382b5d0bfe301d3f5b5d5cd4d55ce6241824"
+  "built_at_commit": "1b3f7859cd79c2fb0a60bf2f36b52467f6f22375"
 }
