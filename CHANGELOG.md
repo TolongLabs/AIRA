@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.3.0](https://github.com/TolongLabs/AIRA/compare/v1.2.0...v1.3.0) (2026-11-21)
+
+
+### Features
+
+* **feedback:** implement private report form flow ([2cc8449](https://github.com/TolongLabs/AIRA/commit/2cc844940a05c44a54a8eb7a16d21b0109face0e)), closes [#125](https://github.com/TolongLabs/AIRA/issues/125)
+* **footer:** cite the sources used in replies ([f69b3bd](https://github.com/TolongLabs/AIRA/commit/f69b3bd306ced257de689aa50694bdb231acbbc6))
+* **format:** label successful image searches ([be502b9](https://github.com/TolongLabs/AIRA/commit/be502b9f24206f2635d4a224573b2d98f5afb0f7))
+* **site:** list enabled social capabilities in chats ([595b854](https://github.com/TolongLabs/AIRA/commit/595b85459113bcb70b336b9edfcb35b187909204))
+* **social:** recognise and resolve more post links ([c3bab69](https://github.com/TolongLabs/AIRA/commit/c3bab69cda129b383c2235c05918ae2572fc5b36))
+* **social:** run an ordered reader chain ([f83f660](https://github.com/TolongLabs/AIRA/commit/f83f66049958c168c922b8a4f4123d7656e3859f))
+* **social:** verify and track group autofetch attachments ([351ec31](https://github.com/TolongLabs/AIRA/commit/351ec311cf06d62d7303b16560b024e54cbd1795))
+* **tools:** add reverse-image hints ([bc27afc](https://github.com/TolongLabs/AIRA/commit/bc27afc96bb5bfba810d45abdd816381036ee1a0))
+* **tools:** deepen web search for structured facts ([2ce8843](https://github.com/TolongLabs/AIRA/commit/2ce8843167157778813d8540a8a92042d786dc84))
+
+
+### Bug Fixes
+
+* **feedback:** contain sync failures and preserve retention ([57bd7cc](https://github.com/TolongLabs/AIRA/commit/57bd7cc7f07298a1f871e16ba13dd2149e848802)), closes [#125](https://github.com/TolongLabs/AIRA/issues/125)
+* **media:** keep the model in role about media ([f3dae78](https://github.com/TolongLabs/AIRA/commit/f3dae788af2a29eb20043901918d3ef6b3596721))
+* **persona:** keep replies in character ([b11aeb5](https://github.com/TolongLabs/AIRA/commit/b11aeb54ec140aeb7ce0f251961964a091dc70c3))
+* **prompt:** tie the newest message to its media ([aab72ab](https://github.com/TolongLabs/AIRA/commit/aab72abf95294b9bc29e271e6dc75d58613792c4))
+* **records:** preserve the claimed window cursor during pruning ([b7ef984](https://github.com/TolongLabs/AIRA/commit/b7ef984882bde927c4738e7f8a09a2a253f8084c)), closes [#125](https://github.com/TolongLabs/AIRA/issues/125)
+* **social:** bound the share resolver deadline ([7dc0909](https://github.com/TolongLabs/AIRA/commit/7dc09096a3e2b080e44d4c3ff767363637f9f617))
+* **social:** preserve known fields when filling gaps ([8e6b9a0](https://github.com/TolongLabs/AIRA/commit/8e6b9a0f5590b46c2c11b23a2946bb84ab1e3269))
+* **social:** read Facebook photos from the page ([61a5d11](https://github.com/TolongLabs/AIRA/commit/61a5d117ae5fda6d042fd132108f80c8223eb807))
+* **social:** record reader attempts and reject empty partials ([195aa5a](https://github.com/TolongLabs/AIRA/commit/195aa5ae4f7f234ddea4162d5105b136a6c617f5))
+* **tools:** handle redirects and blocked pages ([3e74c34](https://github.com/TolongLabs/AIRA/commit/3e74c34909c2678e1ab6037ca8099649612c362c))
+* **tools:** index only validated turn images ([bc8269a](https://github.com/TolongLabs/AIRA/commit/bc8269a5343afbcf018eb8200d2320b03f402015))
+* **tools:** preserve social failure outcomes ([1959a40](https://github.com/TolongLabs/AIRA/commit/1959a40678f1ed984025fa587ca5f64ac25d515b))
+* **tools:** restrict reads to links seen this turn ([8fefbc1](https://github.com/TolongLabs/AIRA/commit/8fefbc109216bebc0868229843ddd3a9b7a62fdc))
+* **tools:** retain intake links and padded source ids ([513463b](https://github.com/TolongLabs/AIRA/commit/513463bfabf6f49e470608c9ddeefafc97eeb220))
+
 ## [1.2.0](https://github.com/TolongLabs/AIRA/compare/v1.1.0...v1.2.0) (2026-11-18)
 
 
