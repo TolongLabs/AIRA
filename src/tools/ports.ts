@@ -343,6 +343,8 @@ export function createFetchPagePort(
     fetch?: typeof fetch
     preserveLines?: boolean
     sameOriginCookieless?: boolean
+    /** No cookie jar, and forwarded headers stay on the first origin; redirects to other origins still work. */
+    cookieless?: boolean
     /** Longest page text a read returns. */
     maxChars?: number
   } = {}
@@ -361,8 +363,9 @@ export function createFetchPagePort(
     headers?: Record<string, string>
   ): Promise<{ res: Response; url: string }> => {
     let currentUrl = initialUrl
-    const lockedOrigin = options.sameOriginCookieless ? new URL(initialUrl).origin : undefined
-    const jar: CookieJar | undefined = lockedOrigin ? undefined : new Map()
+    const firstOrigin = new URL(initialUrl).origin
+    const lockedOrigin = options.sameOriginCookieless ? firstOrigin : undefined
+    const jar: CookieJar | undefined = lockedOrigin || options.cookieless ? undefined : new Map()
     for (let hops = 0; hops <= MAX_REDIRECTS; hops++) {
       if (isForbiddenUrl(currentUrl)) {
         throw new Error('forbidden url')
@@ -378,10 +381,11 @@ export function createFetchPagePort(
         if (addresses.some(isForbiddenIp)) throw new Error('host resolved to a forbidden address')
       }
       const cookie = jar ? cookieHeader(jar, parsed.origin) : undefined
+      const sent = options.cookieless && parsed.origin !== firstOrigin ? undefined : headers
       const res = await fetchFn(currentUrl, {
         redirect: 'manual',
         signal,
-        headers: { ...headers, ...(cookie ? { cookie } : {}) }
+        headers: { ...sent, ...(cookie ? { cookie } : {}) }
       })
       if (jar) rememberCookies(jar, parsed.origin, res.headers.getSetCookie())
       if (REDIRECT_STATUSES.has(res.status)) {

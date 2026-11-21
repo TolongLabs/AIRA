@@ -415,7 +415,7 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
         const canWatch = Boolean(options.watcher) && allow.media && Boolean(options.download)
 
         const videoDownloadLimit =
-          options.compressVideo && (post.durationSec ?? 0) <= COMPRESSION_MAX_SECONDS
+          options.compressVideo && (post.durationSec ?? Infinity) <= COMPRESSION_MAX_SECONDS
             ? Math.max(options.limits.maxBytes, COMPRESSION_MAX_INPUT_BYTES)
             : options.limits.maxBytes
 
@@ -453,7 +453,13 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
             const compressed = await options
               .compressVideo?.(data, options.limits.maxBytes, options.limits.maxVideoSeconds, controller.signal)
               .catch(() => undefined)
-            if (!compressed || !isMp4(compressed) || controller.signal.aborted) return undefined
+            if (!compressed || !isMp4(compressed) || controller.signal.aborted) {
+              options.logger?.warn('media.link_compress_failed', {
+                platform: post.platform,
+                reason: controller.signal.aborted ? 'timeout' : compressed ? 'not_mp4' : 'no_output'
+              })
+              return undefined
+            }
             data = compressed
           }
           const startedAt = now()

@@ -67,6 +67,24 @@ describe('isBlockedPage', () => {
 })
 
 describe('createFetchPagePort redirects and cookies', () => {
+  it('keeps a cookieless download free of cookies and keeps forwarded headers on the first origin', async () => {
+    const seen: { url: string; cookie: string | undefined; referer: string | null }[] = []
+    const fetchFn = async (url: string, init: RequestInit) => {
+      const headers = new Headers(init.headers)
+      seen.push({ url, cookie: cookieSent(init), referer: headers.get('referer') })
+      if (url.includes('cdn.example')) return new Response('data', { headers: { 'content-type': 'video/mp4' } })
+      if (url.endsWith('/b')) return redirect('https://cdn.example/clip.mp4')
+      return redirect('https://media.example/b', 'session=abc')
+    }
+    const port = createFetchPagePort({ fetch: fetchFn as typeof fetch, lookup: publicHost, cookieless: true })
+    await port.download('https://media.example/a', signal, 1000, { Referer: 'https://media.example/' })
+    expect(seen).toEqual([
+      { url: 'https://media.example/a', cookie: undefined, referer: 'https://media.example/' },
+      { url: 'https://media.example/b', cookie: undefined, referer: 'https://media.example/' },
+      { url: 'https://cdn.example/clip.mp4', cookie: undefined, referer: null }
+    ])
+  })
+
   it('never sends a cookie from an HTTPS response to the same host over HTTP', async () => {
     const seen: (string | undefined)[] = []
     const fetchFn = async (url: string, init: RequestInit) => {
