@@ -255,7 +255,8 @@ export const configSchema = z.strictObject({
       mirrors: z
         .strictObject({
           tiktok: z.enum(['off', 'read', 'read_and_group']).default('off'),
-          reddit: z.enum(['off', 'read', 'read_and_group']).default('off')
+          reddit: z.enum(['off', 'read', 'read_and_group']).default('off'),
+          redditGroupChatIds: z.array(z.string().regex(/^c_[0-9a-f]{12}$/)).optional()
         })
         .prefault({}),
       timeoutMs: ms.default(6000),

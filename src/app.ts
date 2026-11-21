@@ -401,7 +401,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     // Social downloads keep user agent and referrer on the asset origin and carry no cookies.
     const compressVideo = createVideoCompressor()
     const socialAssetDownload = createFetchPagePort({ sameOriginCookieless: true }).download
-    const mirrorsEnabled = Object.values(config.social.mirrors).some((mode) => mode !== 'off')
+    const mirrorsEnabled = config.social.mirrors.tiktok !== 'off' || config.social.mirrors.reddit !== 'off'
     const autofetch = createAutofetch({
       mirrors: config.social.mirrors,
       compressVideo,

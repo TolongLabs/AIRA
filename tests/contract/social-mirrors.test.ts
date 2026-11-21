@@ -24,6 +24,8 @@ const redditLink = 'https://www.reddit.com/r/example/s/Fixture2/'
 const nativeReddit = 'https://www.reddit.com/r/example/comments/abc123/sample/'
 const tikTokAsset = 'https://v16m.tiktokcdn-us.com/sample.mp4'
 const redditAsset = 'https://v.redd.it/fixture/DASH_720.mp4'
+const redditPhoto = 'https://i.redd.it/fixture.png'
+const redditPreview = 'https://preview.redd.it/fixture.png'
 const mp4 = Buffer.from('00000010667479706d70343200000000', 'hex')
 const largeMp4 = Buffer.concat([mp4, Buffer.alloc(8_000_001 - mp4.length, 0x42)])
 const lookup = async () => ['8.8.8.8']
@@ -31,7 +33,13 @@ const logger = createLogger({ level: 'error', module: 'test', sink: () => {} })
 
 function stack(
   mirrors: SocialMirrorSettings,
-  options: { wrongId?: boolean; foreignAsset?: boolean; redditRefusal?: number; ranges?: 'valid' | 'invalid' } = {}
+  options: {
+    wrongId?: boolean
+    foreignAsset?: boolean
+    redditRefusal?: number
+    redditPhoto?: 'native' | 'preview' | 'crosspost'
+    ranges?: 'valid' | 'invalid'
+  } = {}
 ) {
   const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(String(input))
@@ -68,14 +76,25 @@ function stack(
             title: 'A video',
             selftext: 'The body of the post.',
             author: 'example',
-            is_video: true,
-            url: 'https://v.redd.it/fixture',
-            secure_media: {
-              reddit_video: {
-                fallback_url: options.foreignAsset ? 'https://v.redd.it/other/DASH_720.mp4' : redditAsset,
-                duration: 12
-              }
-            }
+            ...(options.redditPhoto
+              ? {
+                  post_hint: 'image',
+                  is_video: false,
+                  is_gallery: false,
+                  url: options.redditPhoto === 'preview' ? 'https://image.example/fixture.png' : redditPhoto,
+                  thumbnail: redditPreview,
+                  ...(options.redditPhoto === 'crosspost' ? { crosspost_parent: 't3_aaaaaa' } : {})
+                }
+              : {
+                  is_video: true,
+                  url: 'https://v.redd.it/fixture',
+                  secure_media: {
+                    reddit_video: {
+                      fallback_url: options.foreignAsset ? 'https://v.redd.it/other/DASH_720.mp4' : redditAsset,
+                      duration: 12
+                    }
+                  }
+                })
           }
         ]
       })
@@ -133,9 +152,12 @@ describe('approved mirror readers', () => {
       name: 'TikTok',
       operations: ['text', 'preview', 'video']
     })
-    expect(caps['features.autofetch']).toContainEqual({ id: 'reddit', name: 'Reddit', operations: ['video'] })
+    expect(caps['features.autofetch']).toContainEqual({ id: 'reddit', name: 'Reddit', operations: ['photos', 'video'] })
     expect(caps['features.autofetch'].map((entry) => entry.id)).not.toContain('tiktok')
     expect(caps['features.autofetch'].map((entry) => entry.id)).not.toContain('youtube')
+    const noRedditGroups = socialCapabilities(false, { reddit: 'read_and_group', redditGroupChatIds: [] })
+    expect(noRedditGroups['features.autofetch'].map((entry) => entry.id)).not.toContain('reddit')
+    expect(noRedditGroups['features.social'].map((entry) => entry.id)).toContain('reddit')
   })
 
   it.each([tikTokLink, redditLink])('watches the verified video from %s with no extractor', async (link) => {
@@ -203,13 +225,30 @@ describe('approved mirror readers', () => {
     }
   })
 
+  it.each(['native', 'preview', 'crosspost'] as const)(
+    'attaches only the original native Reddit photo (%s)',
+    async (sample) => {
+      const { viewer } = stack({ reddit: 'read_and_group' }, { redditPhoto: sample })
+      const result = await viewer.lookup(parseOfficialSocialPostUrl(redditLink)!)
+      expect(result.status).toBe('found')
+      if (result.status !== 'found') return
+      expect(result.post.photoUrls).toEqual(sample === 'native' ? [redditPhoto] : [])
+      expect(result.post.attachments ?? []).toEqual(
+        sample === 'native' ? [{ kind: 'image', url: redditPhoto, owner: 'reddit:abc123' }] : []
+      )
+    }
+  )
+
   it('hands verified clips to the gateway and records the gateway’s confirmation separately', async () => {
-    const mirrors = { tiktok: 'read_and_group', reddit: 'read_and_group' } as const
-    const { viewer, download } = stack(mirrors)
     const storage = tmpStorage()
     const chat = ensureChat(storage, { waId: '12345678901@g.us', type: 'group' })
-    setChatStatus(storage, { chatId: chat.chatId, status: 'active', actor: 'test' })
-    setSetting(storage, { level: 'chat', scope: chat.chatId, key: 'features.autofetch', value: true, actor: 'test' })
+    const other = ensureChat(storage, { waId: '00000000000@g.us', type: 'group' })
+    for (const group of [chat, other]) {
+      setChatStatus(storage, { chatId: group.chatId, status: 'active', actor: 'test' })
+      setSetting(storage, { level: 'chat', scope: group.chatId, key: 'features.autofetch', value: true, actor: 'test' })
+    }
+    const mirrors = { tiktok: 'read_and_group', reddit: 'read_and_group', redditGroupChatIds: [chat.chatId] } as const
+    const { viewer, download, fetcher } = stack(mirrors)
     const cache = tmpDir('aira-mirror-gateway-')
     const autofetch = createAutofetch({ storage, viewer, download, mirrors, cacheDir: cache, hostCacheDir: cache })
     const downloadTimeout = vi.spyOn(AbortSignal, 'timeout')
@@ -232,6 +271,9 @@ describe('approved mirror readers', () => {
             body: JSON.stringify(body)
           })
         ).json()
+      const outside = (await post('', { chat: other.waId, text: redditLink })) as AutofetchBatch
+      expect(outside.media).toEqual([])
+      expect(fetcher).not.toHaveBeenCalled()
       const result = (await post('', { chat: chat.waId, text: `${tikTokLink} ${redditLink}` })) as AutofetchBatch
       expect(result.media).toHaveLength(2)
       expect(downloadTimeout).toHaveBeenCalledWith(10000)

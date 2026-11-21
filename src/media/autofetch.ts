@@ -90,6 +90,7 @@ export interface AutofetchOptions {
 function postMedia(
   post: SocialPost,
   target: SocialPostTarget,
+  chatId: string,
   mirrors?: SocialMirrorSettings
 ): {
   kind: AutofetchMedia['kind']
@@ -109,7 +110,7 @@ function postMedia(
   }
   const threadsAlias = target.platform === 'threads' && /^\/(?:t|share)\//.test(new URL(target.canonicalUrl).pathname)
   if (resolved.lookupKey !== target.lookupKey && !target.needsRedirect && !threadsAlias) return []
-  const operations = groupOperations(resolved.platform, mirrors)
+  const operations = groupOperations(resolved.platform, mirrors, chatId)
   const attachments = (post.attachments ?? []).filter(
     (item) => item.owner === resolved.lookupKey && operations.includes(item.kind === 'image' ? 'photos' : 'video')
   )
@@ -191,7 +192,7 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
       let skips = 0
       for (const target of targets) {
         let skip: Skip | undefined
-        if (groupOperations(target.platform, options.mirrors).length === 0) skip = 'platform_excluded'
+        if (groupOperations(target.platform, options.mirrors, chatId).length === 0) skip = 'platform_excluded'
         else if (selected >= AUTOFETCH_MAX_LINKS) continue
         else if (!reserveRepeat(db, chatId, target.lookupKey, at)) skip = 'repeat'
         if (skip) {
@@ -280,7 +281,7 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
                   .catch(() => undefined)
           const items =
             lookup?.status === 'found' && !controller.signal.aborted
-              ? postMedia(lookup.post, target, options.mirrors)
+              ? postMedia(lookup.post, target, chatId, options.mirrors)
               : []
           if (items.length && lookup?.status === 'found') {
             const canonical = parseOfficialSocialPostUrl(lookup.post.canonicalUrl)

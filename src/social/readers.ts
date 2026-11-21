@@ -127,7 +127,9 @@ export class BlueskyPdsDirectory {
   }
 }
 
-export type SocialMirrorSettings = Partial<Record<MirrorPlatform, 'off' | 'read' | 'read_and_group'>>
+export type SocialMirrorSettings = Partial<Record<MirrorPlatform, 'off' | 'read' | 'read_and_group'>> & {
+  redditGroupChatIds?: readonly string[] | undefined
+}
 
 export interface ReaderEnv {
   mirrors?: SocialMirrorSettings | undefined
@@ -215,9 +217,15 @@ export function requiresExtractor(target: SocialPostTarget, mirrors?: SocialMirr
   )
 }
 
-export function groupOperations(platform: SocialPlatform, mirrors?: SocialMirrorSettings): readonly GroupOperation[] {
-  if (mirrorMode(platform, mirrors) === 'read_and_group') return ['video']
-  return adapters[platform].group
+export function groupOperations(
+  platform: SocialPlatform,
+  mirrors?: SocialMirrorSettings,
+  chatId?: string
+): readonly GroupOperation[] {
+  if (mirrorMode(platform, mirrors) !== 'read_and_group') return adapters[platform].group
+  const scope = platform === 'reddit' ? mirrors?.redditGroupChatIds : undefined
+  if (scope !== undefined && (chatId === undefined ? scope.length === 0 : !scope.includes(chatId))) return []
+  return platform === 'reddit' ? ['photos', 'video'] : ['video']
 }
 
 export function socialCapabilities(extractorAvailable: boolean, mirrors?: SocialMirrorSettings) {
@@ -232,8 +240,9 @@ export function socialCapabilities(extractorAvailable: boolean, mirrors?: Social
       const adapter = adapters[id]
       const mirror = mirrorMode(id, mirrors) !== 'off'
       if (adapter.extractorRequired && !extractorAvailable && !mirror) return []
+      if (id === 'reddit' && mirror) return [entry(id, ['text', 'preview', 'photos', 'video'])]
       const operations =
-        !extractorAvailable && !mirror && (id === 'reddit' || id === 'facebook')
+        !extractorAvailable && (id === 'reddit' || id === 'facebook')
           ? adapter.read.filter((value) => value !== 'video')
           : adapter.read
       return [entry(id, operations)]
