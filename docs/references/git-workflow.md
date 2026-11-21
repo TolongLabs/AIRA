@@ -137,17 +137,12 @@ Local hooks install themselves:
 bun install
 ```
 
-The knowledge graph in `graphify-out/` is refreshed deliberately rather than on every commit:
+The `graph` workflow refreshes the knowledge graph after changes land on
+`main`. See [Graphify](../agents/graphify.md) for the bot pull request and local
+refresh commands. To install the same Graphify version locally:
 
 ```sh
-bun run graph
-```
-
-Committing no longer needs [graphify](https://github.com/graphify-labs/graphify), but querying the graph does, and
-`bun install` does not provide it. Install it once:
-
-```sh
-uv tool install graphifyy
+uv tool install 'graphifyy[sql]==0.9.71'
 ```
 
 The merge settings are applied once, by someone with admin on the repository. They make rebase the only merge method and

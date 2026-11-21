@@ -1,0 +1,213 @@
+name: graph
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'graphify-out/**'
+  workflow_dispatch:
+  workflow_run:
+    workflows: [ci, pr-header]
+    types: [completed]
+    branches: [automation/graph]
+
+permissions:
+  contents: read
+
+env:
+  GRAPH_BRANCH: automation/graph
+
+jobs:
+  refresh:
+    if: github.event_name != 'workflow_run' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    concurrency:
+      group: graph-main
+      cancel-in-progress: false
+    env:
+      GRAPH_TITLE: 'chore(graph): refresh the repository graph'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          clean: true
+          persist-credentials: false
+
+      - name: Install Graphify
+        run: pipx install 'graphifyy[sql]==0.9.71'
+
+      - name: Rebuild and validate the graph
+        id: rebuild
+        run: |
+          graphify update .
+          graph=graphify-out/graph.json
+          [[ -f "$graph" && ! -L "$graph" ]]
+          jq -es '
+            length == 1 and (.[0] |
+              type == "object" and
+              (.directed | type == "boolean") and (.multigraph | type == "boolean") and
+              (.graph | type == "object") and
+              (.nodes | type == "array" and length > 0 and all(.[]; (.id | type == "string" and length > 0))) and
+              (.links | type == "array") and
+              (INDEX(.nodes[]; .id) as $nodes |
+                ($nodes | length) == (.nodes | length) and
+                all(.links[]; (.source | type == "string") and (.target | type == "string") and
+                  $nodes[.source] != null and $nodes[.target] != null)))
+          ' "$graph" > /dev/null
+
+          # A clean checkout has no generated report, so Graphify can rewrite the commit stamp alone.
+          if git cat-file -e "HEAD:$graph"; then
+            previous="$RUNNER_TEMP/previous-graph.json"
+            git show "HEAD:$graph" > "$previous"
+            if jq -es 'map(del(.built_at_commit)) | .[0] == .[1]' "$previous" "$graph" > /dev/null; then
+              echo 'The graph is unchanged.'
+              exit 0
+            fi
+          fi
+
+          git add -- "$graph"
+          git -c user.name='Graph automation' -c user.email='graph-automation@users.noreply.github.com' \
+            commit -m "$GRAPH_TITLE"
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+
+      # The release App opens the PR so GitHub runs its required checks.
+      - name: Create release App token
+        id: app-token
+        if: steps.rebuild.outputs.changed == 'true'
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Publish the graph pull request
+        if: steps.rebuild.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          ref="refs/heads/$GRAPH_BRANCH"
+          base=$(git rev-parse HEAD^)
+          tree=$(git rev-parse 'HEAD^{tree}')
+          remote_refs=$(git ls-remote --refs origin refs/heads/main "$ref")
+          latest=$(awk '$2 == "refs/heads/main" {print $1}' <<< "$remote_refs")
+          previous=$(awk -v ref="$ref" '$2 == ref {print $1}' <<< "$remote_refs")
+          if [[ "$base" != "$latest" ]]; then
+            echo '::error::main moved during the rebuild. Rerun the workflow on the latest main.'
+            exit 1
+          fi
+
+          repo="repos/$GITHUB_REPOSITORY"
+          previous_tip=''
+          if [[ -n "$previous" ]]; then
+            previous_tip=$(gh api "$repo/git/commits/$previous" --jq '[.tree.sha, .parents[].sha] | @tsv')
+          fi
+          if [[ "$previous_tip" != "$tree"$'\t'"$base" ]]; then
+            git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
+              push --force-with-lease="$ref:$previous" origin "HEAD:$ref"
+          fi
+
+          body=$(cat <<'EOF'
+          ## Summary
+
+          Refresh the AIRA repository graph from main.
+
+          | Field             | Answer |
+          | ----------------- | ------ |
+          | **Review**        | Skim |
+          | **Action needed** | None |
+          | **Not tested**    | Application behavior. This PR updates only the graph. |
+          | **Door**          | two-way |
+          | **Blast radius**  | Repository graph consumers. Merging runs AIRA's standard main workflow. |
+          | **Start at**      | `graphify-out/graph.json`, the only changed file. |
+
+          Visual: none, the diff is generated graph data.
+
+          ## What Changed
+
+          Ran `graphify update .` and validated the resulting graph schema.
+
+          Refs #263
+          EOF
+          )
+
+          pr=$(gh api --method GET "$repo/pulls" -f state=open -f base=main \
+            -f head="$GITHUB_REPOSITORY_OWNER:$GRAPH_BRANCH" --jq 'first // empty')
+          if [[ -z "$pr" ]]; then
+            gh api --method POST "$repo/pulls" -f base=main -f head="$GRAPH_BRANCH" \
+              -f title="$GRAPH_TITLE" -f body="$body" --jq .html_url
+          elif ! jq -e --arg title "$GRAPH_TITLE" --arg body "$body" \
+            '.title == $title and .body == $body' <<< "$pr" > /dev/null; then
+            number=$(jq -r .number <<< "$pr")
+            gh api --method PATCH "$repo/pulls/$number" -f title="$GRAPH_TITLE" -f body="$body" --jq .html_url
+          fi
+
+  merge:
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_branch == 'automation/graph'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      checks: read
+      pull-requests: read
+    concurrency:
+      group: graph-merge
+      cancel-in-progress: false
+    steps:
+      - name: Check the current graph pull request
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHECKED_HEAD: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          repo="repos/$GITHUB_REPOSITORY"
+          pr=$(gh api --method GET "$repo/pulls" -f state=open -f base=main \
+            -f head="$GITHUB_REPOSITORY_OWNER:$GRAPH_BRANCH" --jq 'first // empty')
+          if ! jq -e --arg sha "$CHECKED_HEAD" --arg repo "$GITHUB_REPOSITORY" \
+            '.head.sha == $sha and .head.repo.full_name == $repo and .user.type == "Bot"' <<< "$pr" > /dev/null; then
+            exit 0
+          fi
+          number=$(jq -r .number <<< "$pr")
+          files=$(gh api "$repo/pulls/$number/files" --paginate --jq '.[].filename')
+          [[ "$files" == 'graphify-out/graph.json' ]]
+          if ! gh pr checks "$number" --repo "$GITHUB_REPOSITORY" --required; then
+            exit 0
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      - name: Create release App token
+        id: app-token
+        if: steps.candidate.outputs.number != ''
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: read
+
+      - name: Rebase the checked graph pull request
+        if: steps.candidate.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          PR_NUMBER: ${{ steps.candidate.outputs.number }}
+          CHECKED_HEAD: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          repo="repos/$GITHUB_REPOSITORY"
+          pr=$(gh api "$repo/pulls/$PR_NUMBER")
+          parent=$(gh api "$repo/git/commits/$CHECKED_HEAD" --jq '[.parents[].sha] | @tsv')
+          if ! jq -e --arg bot "$APP_SLUG[bot]" --arg parent "$parent" \
+            '.state == "open" and .user.login == $bot and .base.sha == $parent' <<< "$pr" > /dev/null; then
+            exit 0
+          fi
+          gh api --method PUT "$repo/pulls/$PR_NUMBER/merge" \
+            -f merge_method=rebase -f sha="$CHECKED_HEAD" --jq .merged
