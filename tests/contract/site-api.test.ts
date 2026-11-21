@@ -77,6 +77,7 @@ describe('site API read routes', () => {
     expect(res.status).toBe(200)
     const body = (await res.json()) as {
       features: { key: string; tools: { name: string; mode: string; commands: string[] }[] }[]
+      socialCapabilities: Record<string, { id: string; name: string; operations: string[] }[]>
     }
     expect(body.features.find((feature) => feature.key === 'features.site_test')).toEqual({
       key: 'features.site_test',
@@ -89,6 +90,19 @@ describe('site API read routes', () => {
     expect(body.features.flatMap((feature) => feature.tools).length).toBeGreaterThan(3)
     expect(body.features.every((feature) => feature.key.length > 0)).toBe(true)
     expect(body.features.flatMap((feature) => feature.tools).some((tool) => tool.name === 'help')).toBe(false)
+    expect(body.socialCapabilities['features.social']).toContainEqual(expect.objectContaining({ id: 'x', name: 'X' }))
+    expect(body.socialCapabilities['features.autofetch']?.map(({ id }) => id).sort()).toEqual([
+      'bluesky',
+      'facebook',
+      'instagram',
+      'threads',
+      'x'
+    ])
+    expect(body.socialCapabilities['features.autofetch']).toContainEqual({
+      id: 'x',
+      name: 'X',
+      operations: ['photos', 'video']
+    })
     expect(JSON.stringify(body)).not.toContain('Private tool implementation detail')
   })
 

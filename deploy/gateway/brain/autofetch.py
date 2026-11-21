@@ -65,8 +65,8 @@ def wanted(data) -> str | None:
         return None
 
 
-def ask_core(chat: str, text: str, *, timeout: float = CORE_TIMEOUT, opener=None) -> list[dict]:
-    """The files the core answers for one message, as [{"kind", "path"}]; [] on any failure. Never raises."""
+def ask_core(chat: str, text: str, *, timeout: float = CORE_TIMEOUT, opener=None) -> tuple[list[dict], str | None]:
+    """The ordered files and the delivery key. Never raises."""
     try:
         request = _urlreq.Request(
             f"{core_url()}/v1/aira/autofetch",
@@ -84,40 +84,60 @@ def ask_core(chat: str, text: str, *, timeout: float = CORE_TIMEOUT, opener=None
             kind, path = item.get("kind"), item.get("path")
             if kind in ("image", "video") and isinstance(path, str) and path:
                 media.append({"kind": kind, "path": path})
-        return media
+        key = data.get("deliveryKey") if isinstance(data, dict) else None
+        if not isinstance(key, str) or len(key) != 36 or len(media) != len(items or []):
+            return [], None
+        return media, key
     except Exception as exc:
         try:
             LOG.warning("autofetch core request failed: error=%s", type(exc).__name__)
         except Exception:
             pass
-        return []
+        return [], None
 
 
-async def send_all(adapter, chat: str, media: list[dict]) -> int:
-    """Sends each file in order: a video as a video, anything else as an image. Returns how many went out."""
-    sent = 0
+def _delivery(action: str, body: dict) -> bool:
+    try:
+        request = _urlreq.Request(
+            f"{core_url()}/v1/aira/autofetch/{action}",
+            data=json.dumps(body).encode("utf-8"),
+            method="POST",
+            headers={"content-type": "application/json"},
+        )
+        with _urlreq.urlopen(request, timeout=5.0) as response:
+            return json.loads(response.read(1024)).get("accepted") is True
+    except Exception:
+        LOG.warning("autofetch delivery record failed: phase=%s", action)
+        return False
+
+
+async def send_all(adapter, chat: str, media: list[dict]) -> list[bool]:
+    """Return adapter outcomes in the core's slot order."""
+    outcomes = []
     for item in media:
         try:
             send = adapter.send_video if item.get("kind") == "video" else adapter.send_image_file
             result = await send(chat, item["path"])
-            sent += bool(getattr(result, "success", False))
+            outcomes.append(bool(getattr(result, "success", False)))
         except Exception as exc:
+            outcomes.append(False)
             try:
                 LOG.warning("autofetch send failed: error=%s", type(exc).__name__)
             except Exception:
                 pass
-    return sent
+    return outcomes
 
 
 async def _run(adapter, chat: str, text: str) -> None:
     # One job per chat at a time, so a burst of links arrives in order.
     lock = _locks.setdefault(chat, asyncio.Lock())
     async with lock:
-        media = await asyncio.get_running_loop().run_in_executor(None, ask_core, chat, text)
-        if not media:
+        media, key = await asyncio.to_thread(ask_core, chat, text)
+        if not media or not key or not await asyncio.to_thread(_delivery, "claim", {"key": key}):
             return
-        sent = await send_all(adapter, chat, media)
-        LOG.info("autofetch sent %d of %d", sent, len(media))
+        outcomes = await send_all(adapter, chat, media)
+        await asyncio.to_thread(_delivery, "complete", {"key": key, "outcomes": outcomes})
+        LOG.info("autofetch sent %d of %d", sum(outcomes), len(outcomes))
 
 
 def offer(adapter, data) -> None:

@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { z } from 'zod'
 import type { Autofetch } from '../media/autofetch.js'
+import { claimAutofetchDelivery, completeAutofetchDelivery } from '../records/autofetch.js'
 import type { FailureKind } from '../records/kinds.js'
 import type { Logger } from '../records/logger.js'
 import type { Redactor } from '../records/redact.js'
@@ -36,6 +37,7 @@ export interface GatewayServerOptions {
 
 const DEFAULT_MAX_BODY = 20 * 1024 * 1024
 const AUTOFETCH_MAX_BODY = 64 * 1024
+const autofetchDeliveryKey = z.uuid()
 const autofetchBody = z.strictObject({ chat: z.string().min(1).max(256), text: z.string() })
 
 function readBody(request: IncomingMessage, limit: number): Promise<string> {
@@ -246,10 +248,34 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
       return
     }
     try {
-      json(response, 200, { media: options.autofetch ? await options.autofetch.fetch(input) : [] }, log)
+      json(response, 200, options.autofetch ? await options.autofetch.fetch(input) : { media: [] }, log)
     } catch (error) {
       log.error('autofetch.failed', { kind: error instanceof Error ? error.name : 'unknown' })
       json(response, 200, { media: [] }, log)
+    }
+  }
+
+  async function autofetchDelivery(request: IncomingMessage, response: ServerResponse, claim: boolean): Promise<void> {
+    let input: { key: string; outcomes?: boolean[] }
+    try {
+      const raw = await readBody(request, 4096)
+      const shape = claim
+        ? z.strictObject({ key: autofetchDeliveryKey })
+        : z.strictObject({ key: autofetchDeliveryKey, outcomes: z.array(z.boolean()).min(1).max(30) })
+      input = shape.parse(JSON.parse(raw))
+    } catch {
+      json(response, 400, { accepted: false }, log)
+      return
+    }
+    try {
+      const at = options.now?.() ?? new Date()
+      const accepted = claim
+        ? claimAutofetchDelivery(options.storage, input.key, at)
+        : completeAutofetchDelivery(options.storage, input.key, input.outcomes ?? [], at)
+      json(response, 200, { accepted }, log)
+    } catch {
+      log.warn('autofetch.record_failed', { phase: claim ? 'claim' : 'receipt' })
+      json(response, 503, { accepted: false }, log)
     }
   }
 
@@ -279,6 +305,14 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
         if (response.headersSent) response.destroy()
         else json(response, 500, { error: { message: 'the request could not be handled', type: 'server_error' } }, log)
       })
+      return
+    }
+    if (request.method === 'POST' && (path === '/v1/aira/autofetch/claim' || path === '/v1/aira/autofetch/complete')) {
+      if (!options.ready()) {
+        json(response, 503, { accepted: false }, log)
+        return
+      }
+      void autofetchDelivery(request, response, path.endsWith('/claim'))
       return
     }
     if (request.method === 'POST' && path === '/v1/aira/autofetch') {

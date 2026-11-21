@@ -9,7 +9,13 @@ import { parseRedditFeedPost } from './redditFeed.js'
 import { BROWSER_USER_AGENT } from './replies/common.js'
 import { fetchThreadsPage, parseThreadsPage } from './threads.js'
 import type { PostField } from './types.js'
-import { isFacebookPost, isResolvedFacebookPost, type SocialPostTarget } from './urls.js'
+import {
+  isFacebookPost,
+  isResolvedFacebookPost,
+  PLATFORM_NAME,
+  type SocialPlatform,
+  type SocialPostTarget
+} from './urls.js'
 
 export const DEFAULT_HTTP_READER_TIMEOUT_MS = 2500
 export const DEFAULT_YTDLP_TIMEOUT_MS = 4500
@@ -120,23 +126,109 @@ export interface ReaderEnv {
   ytDlpTimeoutMs: number
 }
 
-/** The readers of one platform in their order (docs/trd/tools.md#social-post-reader). Built per lookup. */
-export function readersFor(target: SocialPostTarget, env: ReaderEnv): SocialReader[] {
-  if (target.platform === 'x') return [fxTwitterReader(env)]
-  if (target.platform === 'threads') return [threadsPageReader(env)]
-  if (target.platform === 'bluesky') return [blueskyApiReader(env)]
-  if (target.platform === 'instagram') return [instagramPageReader(env), ytDlpReader(env)]
-  if (isFacebookPost(target)) return [facebookPageReader(env), ytDlpReader(env)]
-  if (target.platform === 'reddit') {
-    // Reddit refuses a flagged IP on the feed and on the JSON yt-dlp reads alike, so a refused feed ends the yt-dlp try.
-    let refused = false
-    const feed = redditFeedReader(env, () => {
-      refused = true
-    })
-    return [feed, ytDlpReader(env, () => !refused)]
+type ReadOperation = 'text' | 'preview' | 'photos' | 'video'
+type GroupOperation = 'photos' | 'video'
+interface PlatformAdapter {
+  read: readonly ReadOperation[]
+  group: readonly GroupOperation[]
+  extractorRequired?: boolean
+  readers(target: SocialPostTarget, env: ReaderEnv): SocialReader[]
+}
+
+const adapters: Record<SocialPlatform, PlatformAdapter> = {
+  x: {
+    read: ['text', 'preview', 'photos', 'video'],
+    group: ['photos', 'video'],
+    readers: (_, env) => [fxTwitterReader(env)]
+  },
+  bluesky: {
+    read: ['text', 'preview', 'photos', 'video'],
+    group: ['photos'],
+    readers: (_, env) => [blueskyApiReader(env)]
+  },
+  threads: {
+    read: ['text', 'preview', 'photos', 'video'],
+    group: ['photos'],
+    readers: (_, env) => [threadsPageReader(env)]
+  },
+  instagram: {
+    read: ['text', 'preview', 'photos', 'video'],
+    group: ['photos'],
+    readers: (_, env) => [instagramPageReader(env), ytDlpReader(env)]
+  },
+  facebook: {
+    read: ['text', 'preview', 'photos', 'video'],
+    group: ['photos'],
+    readers: (target, env) =>
+      isFacebookPost(target) ? [facebookPageReader(env), ytDlpReader(env)] : [ytDlpReader(env)]
+  },
+  reddit: { read: ['text', 'preview', 'video'], group: [], readers: (_, env) => redditReaders(env) },
+  youtube: {
+    read: ['text', 'preview', 'video'],
+    group: [],
+    extractorRequired: true,
+    readers: (_, env) => [ytDlpReader(env), youtubeOEmbedReader(env)]
+  },
+  tiktok: {
+    read: ['text', 'preview', 'video'],
+    group: [],
+    extractorRequired: true,
+    readers: (_, env) => [ytDlpReader(env)]
+  },
+  bilibili: {
+    read: ['text', 'preview', 'video'],
+    group: [],
+    extractorRequired: true,
+    readers: (_, env) => [ytDlpReader(env)]
   }
-  if (target.platform === 'youtube') return [ytDlpReader(env), youtubeOEmbedReader(env)]
-  return [ytDlpReader(env)]
+}
+
+export function requiresExtractor(target: SocialPostTarget): boolean {
+  return (
+    adapters[target.platform].extractorRequired === true || (target.platform === 'facebook' && !isFacebookPost(target))
+  )
+}
+
+export function groupOperations(platform: SocialPlatform): readonly GroupOperation[] {
+  return adapters[platform].group
+}
+
+export function socialCapabilities(extractorAvailable: boolean) {
+  const platforms = Object.keys(adapters) as SocialPlatform[]
+  const entry = (id: SocialPlatform, operations: readonly ReadOperation[]) => ({
+    id,
+    name: PLATFORM_NAME[id],
+    operations
+  })
+  return {
+    'features.social': platforms.flatMap((id) => {
+      const adapter = adapters[id]
+      if (adapter.extractorRequired && !extractorAvailable) return []
+      const operations =
+        !extractorAvailable && (id === 'reddit' || id === 'facebook')
+          ? adapter.read.filter((value) => value !== 'video')
+          : adapter.read
+      return [entry(id, operations)]
+    }),
+    'features.autofetch': platforms.flatMap((id) => {
+      const operations = groupOperations(id)
+      return operations.length ? [entry(id, operations)] : []
+    })
+  }
+}
+
+/** The readers of one platform in their order, built per lookup. */
+export function readersFor(target: SocialPostTarget, env: ReaderEnv): SocialReader[] {
+  return adapters[target.platform].readers(target, env)
+}
+
+function redditReaders(env: ReaderEnv): SocialReader[] {
+  // A refused feed ends the yt-dlp try because Reddit refuses the same flagged IP.
+  let refused = false
+  const feed = redditFeedReader(env, () => {
+    refused = true
+  })
+  return [feed, ytDlpReader(env, () => !refused)]
 }
 
 function fxTwitterReader(env: ReaderEnv): SocialReader {
@@ -193,7 +285,7 @@ function blueskyApiReader(env: ReaderEnv): SocialReader {
         const gone = response.status === 404 || response.status === 410
         return { ok: false, reason: `http_${response.status}`, terminal: gone }
       }
-      const parsed = parseBlueskyThread(await response.json(), target, ctx.maxTextChars)
+      const parsed = parseBlueskyThread(await response.json(), target, ctx.maxTextChars, resolved.did)
       if (!parsed) return { ok: false, reason: 'missing_post' }
       const blob = parsed.blueskyBlob
       if (blob?.did.startsWith('did:plc:')) {

@@ -102,6 +102,10 @@ export function base(target: SocialPostTarget): SocialPost {
   }
 }
 
+export function nativePhotos(owner: string, urls: string[]): NonNullable<SocialPost['attachments']> {
+  return urls.map((url) => ({ kind: 'image', owner, url }))
+}
+
 export function parseFxTwitterResponse(payload: unknown, target: SocialPostTarget, maxTextChars: number): SocialPost {
   const tweet = object(object(payload).tweet)
   const author = object(tweet.author)
@@ -164,6 +168,18 @@ export function parseFxTwitterResponse(payload: unknown, target: SocialPostTarge
     headers: null
   }
   post.video = selectPlayableVideo(variants) ?? selectPlayableVideo(formats) ?? selectPlayableVideo([fallback])
+  if (tweet.id === target.id) {
+    const native = photos.map(object).filter((photo) => photo.type === 'photo')
+    post.attachments = nativePhotos(target.lookupKey, photoList(native.map((photo) => photo.url)))
+    if (firstVideo.type === 'video' && !media.broadcast && post.video && post.durationSec !== null) {
+      post.attachments.push({
+        kind: 'video',
+        owner: target.lookupKey,
+        video: post.video,
+        durationSec: post.durationSec
+      })
+    }
+  }
   return post
 }
 
@@ -197,7 +213,8 @@ function blueskyBlob(record: JsonObject, did: string): BlueskyBlob | undefined {
 export function parseBlueskyThread(
   payload: unknown,
   target: SocialPostTarget,
-  maxTextChars: number
+  maxTextChars: number,
+  resolvedDid?: string
 ): ParsedBlueskyThread | null {
   const thread = object(object(payload).thread)
   const postView = object(thread.post)
@@ -225,6 +242,14 @@ export function parseBlueskyThread(
   post.imageUrl = imageUrl(firstImage.fullsize) ?? imageUrl(videos[0]?.thumbnail) ?? imageUrl(external.thumb)
   post.photoUrls = photoList(images.map((image) => object(image).fullsize))
   post.replyCount = nonNegativeInteger(postView.replyCount)
+  if (
+    resolvedDid &&
+    author.did === resolvedDid &&
+    postView.uri === `at://${resolvedDid}/app.bsky.feed.post/${target.id}` &&
+    media.$type === 'app.bsky.embed.images#view'
+  ) {
+    post.attachments = nativePhotos(target.lookupKey, post.photoUrls)
+  }
   const blob = blueskyBlob(record, string(author.did))
   return blob ? { post, blueskyBlob: blob } : { post }
 }

@@ -77,6 +77,25 @@ const carousel = {
 
 const post = parseSocialPostUrl('https://www.instagram.com/p/DPost00001/')!
 
+it('keeps a video cover out of the owned photo list when there is no playable variant', () => {
+  const target = parseSocialPostUrl('https://www.instagram.com/reel/AbCdEfGhIjK/')!
+  const media = {
+    code: target.id,
+    media_type: 2,
+    image_versions2: { candidates: [{ url: 'https://cdn.example/cover.jpg' }] }
+  }
+  const html = `<script type="application/json" data-sjs>${JSON.stringify({
+    xig_polaris_media: { if_not_gated_logged_out: media }
+  })}</script>`
+  expect(parseInstagramPage(html, target, 1000)).toMatchObject({
+    imageUrl: 'https://cdn.example/cover.jpg',
+    videoCount: 1,
+    video: null,
+    photoUrls: [],
+    attachments: []
+  })
+})
+
 describe('Instagram and Facebook links', () => {
   it.each([
     ['a reels link', 'https://www.instagram.com/reels/DPost00001/', 'https://www.instagram.com/reel/DPost00001/'],

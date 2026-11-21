@@ -5,11 +5,14 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildChatFlags } from '../../src/gateway/chat-flags.js'
 import { createGatewayServer } from '../../src/gateway/server.js'
-import { type AutofetchMedia, createAutofetch } from '../../src/media/autofetch.js'
+import { type Autofetch, type AutofetchMedia, createAutofetch } from '../../src/media/autofetch.js'
+import { claimAutofetchDelivery } from '../../src/records/autofetch.js'
 import { createLogger } from '../../src/records/logger.js'
 import { createRedactor } from '../../src/records/redact.js'
+import { pruneRecords } from '../../src/records/retention.js'
 import { ensureChat, setChatStatus } from '../../src/settings/chats.js'
 import { setSetting } from '../../src/settings/settings.js'
+import { parseFxTwitterResponse } from '../../src/social/parsers.js'
 import type { SocialPost, SocialPostLookup } from '../../src/social/types.js'
 import type { SocialPostTarget } from '../../src/social/urls.js'
 import type { Storage } from '../../src/storage/database.js'
@@ -40,6 +43,12 @@ function post(target: SocialPostTarget, overrides: Partial<SocialPost> = {}): So
     replyCount: null,
     durationSec: null,
     video: null,
+    attachments: [
+      ...(overrides.photoUrls ?? []).map((url) => ({ kind: 'image' as const, owner: target.lookupKey, url })),
+      ...(overrides.video
+        ? [{ kind: 'video' as const, owner: target.lookupKey, video: overrides.video, durationSec: 42 }]
+        : [])
+    ],
     ...overrides
   }
 }
@@ -67,13 +76,14 @@ function setup(options: { posts?: Record<string, Partial<SocialPost>>; on?: bool
     downloads.push(url)
     if (url.includes('huge')) throw new Error(`body over ${maxBytes} bytes`)
     if (url.includes('page')) return { data: Buffer.from('<html>'), contentType: 'text/html' }
-    if (url.endsWith('.mp4')) return { data: Buffer.from(`video ${url}`), contentType: 'video/mp4' }
-    return { data: Buffer.from(`image ${url}`), contentType: url.endsWith('.png') ? 'image/png' : 'image/jpeg' }
+    if (url.endsWith('.mp4')) return { data: testMediaBytes('mp4', url), contentType: 'video/mp4' }
+    if (url.endsWith('.png')) return { data: testMediaBytes('png', url), contentType: 'image/png' }
+    return { data: testMediaBytes('jpg', url), contentType: 'image/jpeg' }
   })
   const dataDir = tmpDir('aira-autofetch-')
   let clock = new Date('2026-11-18T08:00:00Z')
   const logged: string[] = []
-  const autofetch = createAutofetch({
+  const optionsForAutofetch = {
     storage,
     viewer,
     download,
@@ -81,12 +91,19 @@ function setup(options: { posts?: Record<string, Partial<SocialPost>>; on?: bool
     hostCacheDir: '/host/aira/data/cache/autofetch',
     logger: createLogger({ level: 'info', module: 'autofetch', sink: (line) => logged.push(line) }),
     now: () => clock
-  })
+  }
+  const autofetch = createAutofetch(optionsForAutofetch)
   return {
     storage,
     chat,
     waId,
-    autofetch,
+    now: () => clock,
+    restart: () => createAutofetch(optionsForAutofetch),
+    autofetch: {
+      ...autofetch,
+      fetch: async (input: { chat: string; text: string }) => (await autofetch.fetch(input)).media,
+      batch: autofetch.fetch
+    },
     viewer,
     lookups,
     download,
@@ -105,7 +122,16 @@ function jobRuns(storage: Storage) {
   ) as { chat_id: string; outcome: string; counts: string }[]
 }
 
-const sha = (text: string) => createHash('sha256').update(text).digest('hex')
+function testMediaBytes(kind: 'jpg' | 'png' | 'mp4', url: string): Buffer {
+  const signature = {
+    jpg: 'ffd8ff',
+    png: '89504e470d0a1a0a',
+    mp4: '00000010667479706d70343200000000'
+  }[kind]
+  return Buffer.concat([Buffer.from(signature, 'hex'), Buffer.from(url)])
+}
+
+const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex')
 
 describe('autofetch', () => {
   it('sends every photo of a post in order, as files in the cache the gateway reads by host path', async () => {
@@ -122,15 +148,26 @@ describe('autofetch', () => {
     const media = await env.autofetch.fetch({ chat: env.waId, text: 'look https://x.com/someone/status/111 lol' })
 
     expect(media).toEqual([
-      { kind: 'image', path: `/host/aira/data/cache/autofetch/${sha('image https://img.example/a.jpg')}.jpg` },
-      { kind: 'image', path: `/host/aira/data/cache/autofetch/${sha('image https://img.example/b.png')}.png` }
+      {
+        kind: 'image',
+        path: `/host/aira/data/cache/autofetch/${sha(testMediaBytes('jpg', 'https://img.example/a.jpg'))}.jpg`
+      },
+      {
+        kind: 'image',
+        path: `/host/aira/data/cache/autofetch/${sha(testMediaBytes('png', 'https://img.example/b.png'))}.png`
+      }
     ])
-    const local = join(env.dataDir, 'cache', 'autofetch', `${sha('image https://img.example/a.jpg')}.jpg`)
-    expect(readFileSync(local, 'utf8')).toBe('image https://img.example/a.jpg')
+    const local = join(
+      env.dataDir,
+      'cache',
+      'autofetch',
+      `${sha(testMediaBytes('jpg', 'https://img.example/a.jpg'))}.jpg`
+    )
+    expect(readFileSync(local)).toEqual(testMediaBytes('jpg', 'https://img.example/a.jpg'))
     expect(jobRuns(env.storage)).toEqual([
       {
         chat_id: env.chat.chatId,
-        outcome: 'sent',
+        outcome: 'ready',
         counts: JSON.stringify({ links: 1, images: 2, videos: 0, failed: 0 })
       }
     ])
@@ -163,6 +200,69 @@ describe('autofetch', () => {
     expect(await env.autofetch.fetch({ chat: env.waId, text: 'https://x.com/someone/status/333' })).toEqual([])
     expect(env.downloads).toEqual([])
     expect(jobRuns(env.storage)[0]?.outcome).toBe('nothing')
+  })
+
+  it('skips an avatar listed as a photo when the reader supplied no native attachment evidence', async () => {
+    const env = setup({ posts: { 'x:333': { photoUrls: ['https://img.example/avatar.jpg'], attachments: [] } } })
+
+    expect(await env.autofetch.fetch({ chat: env.waId, text: 'https://x.com/someone/status/333' })).toEqual([])
+    expect(env.downloads).toEqual([])
+  })
+
+  it('requires a matching raw post and native type before downloading an apparent photo', async () => {
+    const env = setup()
+    env.viewer.lookup.mockImplementation(async (target) => ({
+      status: 'found',
+      post: parseFxTwitterResponse(
+        {
+          tweet: {
+            id: target.id === '1' ? 'foreign' : target.id,
+            media: {
+              photos: [
+                { type: 'avatar', url: 'https://img.example/avatar.jpg' },
+                { type: 'photo', url: 'https://img.example/native.jpg' }
+              ]
+            },
+            quote: { media: { photos: [{ type: 'photo', url: 'https://img.example/quoted.jpg' }] } }
+          }
+        },
+        target,
+        1000
+      )
+    }))
+    const text = 'https://x.com/example/status/1 https://x.com/example/status/2'
+    expect(await env.autofetch.fetch({ chat: env.waId, text })).toHaveLength(1)
+    expect(env.downloads).toEqual(['https://img.example/native.jpg'])
+  })
+
+  it('keeps three lookup slots after YouTube Shorts and records policy exclusions', async () => {
+    const env = setup()
+    const text =
+      'https://youtube.com/shorts/abc_123 https://x.com/a/status/1 https://x.com/a/status/2 https://x.com/a/status/3'
+    await env.autofetch.fetch({ chat: env.waId, text })
+    expect(env.lookups).toEqual(['x:1', 'x:2', 'x:3'])
+    expect(
+      env.storage.read((db) =>
+        db.prepare('SELECT platform, outcome, reason FROM social_lookup ORDER BY ordinal').all()
+      )[0]
+    ).toEqual({ platform: 'youtube', outcome: 'skipped', reason: 'platform_excluded' })
+  })
+
+  it('keeps repeat reservations and disallows claiming an unclaimed batch after restart', async () => {
+    const env = setup({ posts: { 'x:1': { photoUrls: ['https://img.example/a.jpg'] } } })
+    const input = { chat: env.waId, text: 'https://x.com/example/status/1' }
+    const batch = await env.autofetch.batch(input)
+    const restarted = env.restart()
+    expect(batch.deliveryKey).toBeTruthy()
+    expect(claimAutofetchDelivery(env.storage, batch.deliveryKey!, env.now())).toBe(false)
+    expect(await restarted.fetch(input)).toEqual({ media: [] })
+    expect(env.lookups).toEqual(['x:1'])
+  })
+
+  it('rejects an image MIME header without an image signature', async () => {
+    const env = setup({ posts: { 'x:555': { photoUrls: ['https://img.example/wrong.jpg'] } } })
+    env.download.mockResolvedValueOnce({ data: Buffer.from('<html>'), contentType: 'image/jpeg' })
+    expect(await env.autofetch.fetch({ chat: env.waId, text: 'https://x.com/example/status/555' })).toEqual([])
   })
 
   it('skips a file over its limit or of the wrong type, and keeps the rest', async () => {
@@ -255,14 +355,15 @@ describe('autofetch', () => {
     expect(existsSync(join(env.dataDir, 'cache', 'autofetch'))).toBe(false)
   })
 
-  it('sends a mirror-shaped Facebook video only after its first-party lookup succeeds', async () => {
+  it('does not send a Facebook video while its group capability is disabled', async () => {
     const link = 'https://fbmirror.test/example_page/videos/12345678901234567'
     const failed = setup()
     expect(await failed.autofetch.fetch({ chat: failed.waId, text: link })).toEqual([])
     expect(failed.lookups).toEqual(['facebook:12345678901234567'])
     expect(failed.viewer.lookup).toHaveBeenCalledWith(
       expect.objectContaining({ canonicalUrl: 'https://www.facebook.com/example_page/videos/12345678901234567/' }),
-      expect.anything()
+      expect.anything(),
+      expect.any(Function)
     )
 
     const found = setup({
@@ -273,7 +374,8 @@ describe('autofetch', () => {
       }
     })
     const media = await found.autofetch.fetch({ chat: found.waId, text: link })
-    expect(media.map((item) => item.kind)).toEqual(['video'])
+    expect(media).toEqual([])
+    expect(found.downloads).toEqual([])
   })
 
   it('reports a link on an unknown host by platform and hostname only, to the logger it was given', async () => {
@@ -318,22 +420,26 @@ describe('POST /v1/aira/autofetch', () => {
 
   async function serve(options: {
     ready?: boolean
+    autofetch?: Autofetch
+    storage?: Storage
+    now?: () => Date
     fetch?: (input: { chat: string; text: string }) => Promise<AutofetchMedia[]>
   }) {
-    const storage = tmpStorage()
+    const storage = options.storage ?? tmpStorage()
     const server = createGatewayServer({
       turns: {} as TurnService,
       storage,
       logger: createLogger({ level: 'error', module: 'test', sink: () => {} }),
       redactor: createRedactor(),
       ready: () => options.ready ?? true,
-      autofetch: { fetch: options.fetch ?? (async () => []) }
+      now: options.now,
+      autofetch: options.autofetch ?? { fetch: async (input) => ({ media: (await options.fetch?.(input)) ?? [] }) }
     })
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
     servers.push(server)
     const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1/aira/autofetch`
-    return (body: unknown) =>
-      fetch(url, {
+    return (body: unknown, action = '') =>
+      fetch(url + action, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: typeof body === 'string' ? body : JSON.stringify(body)
@@ -349,6 +455,47 @@ describe('POST /v1/aira/autofetch', () => {
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ media: [{ kind: 'image', path: '/host/a.jpg' }] })
     expect(fetchMedia).toHaveBeenCalledWith({ chat: GROUP, text: 'https://x.com/someone/status/1' })
+  })
+
+  it('counts only claimed adapter confirmations and exports telemetry without receipt keys', async () => {
+    const env = setup({ posts: { 'x:1': { photoUrls: ['https://img.example/a.jpg', 'https://img.example/b.jpg'] } } })
+    const post = await serve({ autofetch: { fetch: env.autofetch.batch }, storage: env.storage, now: env.now })
+    const batch = (await (
+      await post({ chat: env.waId, text: 'https://x.com/example/status/1?secret=token' })
+    ).json()) as {
+      deliveryKey: string
+      media: AutofetchMedia[]
+    }
+    const key = batch.deliveryKey
+    const delivery = () => env.storage.read((db) => db.prepare('SELECT slots, outcomes FROM autofetch_delivery').get())
+    const send = async (action: string, body: object) => (await post(body, action)).json()
+    expect(batch.media).toHaveLength(2)
+    expect(delivery()).toEqual({ slots: '["image","image"]', outcomes: null })
+    expect(await send('/complete', { key, outcomes: [true, true] })).toEqual({ accepted: false })
+    expect(await send('/claim', { key })).toEqual({ accepted: true })
+    expect(await send('/claim', { key })).toEqual({ accepted: false })
+    expect(await send('/complete', { key, outcomes: [true] })).toEqual({ accepted: false })
+    expect(await send('/complete', { key, outcomes: [true, false] })).toEqual({ accepted: true })
+    expect(await send('/complete', { key, outcomes: [true, true] })).toEqual({ accepted: false })
+    expect(delivery()).toEqual({ slots: '["image","image"]', outcomes: '[true,false]' })
+    expect(
+      env.storage.read((db) => db.prepare('SELECT eligible_files, downloaded_files FROM social_lookup').get())
+    ).toEqual({ eligible_files: 2, downloaded_files: 2 })
+
+    const archived: Record<string, unknown> = {}
+    pruneRecords(
+      env.storage,
+      { retentionDays: 1, diagnosticsHours: 72, windowDays: 7 },
+      {
+        now: () => new Date('2026-12-01T00:00:00Z'),
+        beforeDelete: (table, rows) => {
+          archived[table] = rows
+        }
+      }
+    )
+    expect(Object.keys(archived)).toEqual(['social_lookup', 'autofetch_delivery', 'job_run'])
+    expect(JSON.stringify(archived)).not.toMatch(/http|secret|token|digest|expires_at|example/)
+    expect(delivery()).toBeUndefined()
   })
 
   it.each([

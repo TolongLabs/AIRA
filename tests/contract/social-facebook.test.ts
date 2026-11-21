@@ -37,7 +37,7 @@ function pageWith(...stories: Record<string, unknown>[]): string {
 
 const permalink = parseSocialPostUrl('https://www.facebook.com/groups/12345/permalink/2921750018/')!
 const album = story('2921750018', { all_subattachments: { count: 2, nodes: [photo('p1'), photo('p2')] } })
-const photoPost = story('1234567890', { media: photo('ph1').media }, 'A photo from the lab.')
+const photoPost = story('1234567890', { media: photo('1234567890').media }, 'A photo from the lab.')
 
 describe('Facebook post links', () => {
   it.each([
@@ -87,6 +87,10 @@ describe('parseFacebookPage', () => {
   it('prefers the story with the linked post id over others on the page', () => {
     const other = story('777', { all_subattachments: { nodes: [photo('x1')] } }, 'Another post')
     expect(parseFacebookPage(pageWith(other, album), permalink, 1500)?.text).toBe('I solved the RAM crisis.')
+  })
+
+  it('does not use another story when the requested post is missing', () => {
+    expect(parseFacebookPage(pageWith(photoPost), permalink, 1500)).toBeNull()
   })
 
   it('leaves a video post, or a page with no story, to yt-dlp', () => {
@@ -180,9 +184,9 @@ describe('SocialPostViewer on Facebook posts', () => {
     expect(await viewer.lookup(parseSocialPostUrl(url)!)).toMatchObject({
       status: 'found',
       post: {
-        photoUrls: ['https://cdn.example/ph1.jpg'],
+        photoUrls: ['https://cdn.example/1234567890.jpg'],
         photoCount: 1,
-        imageUrl: 'https://cdn.example/ph1.jpg',
+        imageUrl: 'https://cdn.example/1234567890.jpg',
         target: { lookupKey: 'facebook:photo:1234567890' }
       }
     })
@@ -222,7 +226,7 @@ describe('SocialPostViewer on Facebook posts', () => {
     expect(await viewer.lookup(share)).toMatchObject({
       status: 'found',
       post: {
-        photoUrls: ['https://cdn.example/ph1.jpg'],
+        photoUrls: ['https://cdn.example/1234567890.jpg'],
         target: { lookupKey: 'facebook:post-share:1FrDwJtBqj' }
       }
     })
