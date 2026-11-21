@@ -80911,7 +80911,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/tools/search-depth.ts",
-      "source_location": "L237",
+      "source_location": "L238",
       "weight": 1.0
     },
     {
@@ -80923,7 +80923,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/tools/search-depth.ts",
-      "source_location": "L239",
+      "source_location": "L245",
       "weight": 1.0
     },
     {
@@ -80935,7 +80935,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/tools/search-depth.ts",
-      "source_location": "L240",
+      "source_location": "L246",
       "weight": 1.0
     },
     {
@@ -80947,7 +80947,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/tools/search-depth.ts",
-      "source_location": "L248",
+      "source_location": "L256",
       "weight": 1.0
     },
     {
@@ -80959,7 +80959,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/tools/search-depth.ts",
-      "source_location": "L252",
+      "source_location": "L260",
       "weight": 1.0
     },
     {
@@ -205960,5 +205960,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "7fad95b9d15487ed0f3e2ef00d446e9be9a1db2d"
+  "built_at_commit": "49f8d7a6b2d17f8a80027540165183aa522a2a0b"
 }
