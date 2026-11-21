@@ -68,7 +68,21 @@ function setup(overrides: Partial<ToolPorts> = {}, allTools = false) {
   const post: PostPort = {
     async read(url) {
       fakes.posts.push(url)
-      return { author: 'author', text: 'Post', media: [], canonicalUrl: 'https://x.com/author/status/9' }
+      return {
+        untrusted: true,
+        author: 'author',
+        text: 'Post',
+        media: [],
+        platform: 'x',
+        handle: 'author',
+        createdAt: null,
+        quotedText: '',
+        replyCount: null,
+        canonicalUrl: 'https://x.com/author/status/9',
+        thread: [],
+        replies: [],
+        durationSec: null
+      }
     }
   }
   const registry = createToolRegistry({

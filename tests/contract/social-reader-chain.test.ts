@@ -21,6 +21,7 @@ import { readPageTool, readPostTool } from '../../src/tools/core/web.js'
 import { outcomePayload } from '../../src/tools/outcomes.js'
 import { createFetchPagePort, type PagePort, type PostPort } from '../../src/tools/ports.js'
 import type { ToolContext, ToolResult } from '../../src/tools/types.js'
+import { createTurnSources } from '../../src/turn/sources.js'
 
 const ALL_FIELDS: PostField[] = ['text', 'author', 'media', 'video']
 const xTarget = parseSocialPostUrl('https://x.com/example_user/status/123')!
@@ -585,11 +586,15 @@ describe('model post result', () => {
 })
 
 describe('intake failures close the link to read_post and read_page', () => {
+  const seenPost = createTurnSources()
+  seenPost.add('https://x.com/example_user/status/123', 'message')
   const triedFailed = {
+    sources: seenPost,
     signal: new AbortController().signal,
     intakeTriedSocialUrls: [{ url: xTarget.canonicalUrl, failed: true }]
   }
   const triedRead = {
+    sources: seenPost,
     signal: new AbortController().signal,
     intakeTriedSocialUrls: [{ url: xTarget.canonicalUrl, failed: false }]
   }
@@ -743,7 +748,8 @@ describe('intake failures close the link to read_post and read_page', () => {
     const tool = readPostTool({ post: createSocialPostPort(viewer, replies), filesDir: '/tmp' })
     const failed = failedOf(
       await tool.handler({ url: 'https://x.com/example_user/status/123' }, {
-        signal: new AbortController().signal
+        signal: new AbortController().signal,
+        sources: seenPost
       } as ToolContext)
     )
     expect(JSON.parse(outcomePayload(failed))).toEqual({
@@ -797,7 +803,11 @@ describe('intake failures close the link to read_post and read_page', () => {
       { url: resolvedCanonical, failed: true }
     ])
 
+    const sources = createTurnSources()
+    for (const entry of intake.tried ?? []) sources.add(entry.url, 'intake')
+    sources.add(resolvedAlias, 'message')
     const context = {
+      sources,
       signal: new AbortController().signal,
       intakeTriedSocialUrls: intake.tried
     } as unknown as ToolContext
