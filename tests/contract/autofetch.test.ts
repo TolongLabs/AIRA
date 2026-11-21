@@ -248,6 +248,24 @@ describe('autofetch', () => {
     ).toEqual({ platform: 'youtube', outcome: 'skipped', reason: 'platform_excluded' })
   })
 
+  it.each([
+    ['tiktok', 'https://www.tiktok.com/@example/video/1234567890'],
+    ['tiktok', 'https://m.tiktok.com/@example/video/1234567890'],
+    ['tiktok', 'https://vt.tiktok.com/Synthetic1/'],
+    ['reddit', 'https://www.reddit.com/r/example/comments/abc123/a_post/'],
+    ['reddit', 'https://m.reddit.com/r/example/comments/abc123/a_post/'],
+    ['reddit', 'https://www.reddit.com/r/example/s/Synthetic2/']
+  ])('applies the same group policy to %s links at %s', async (platform, text) => {
+    const env = setup()
+
+    expect(await env.autofetch.fetch({ chat: env.waId, text })).toEqual([])
+    expect(env.viewer.lookup).not.toHaveBeenCalled()
+    expect(env.download).not.toHaveBeenCalled()
+    expect(env.storage.read((db) => db.prepare('SELECT platform, outcome, reason FROM social_lookup').all())).toEqual([
+      { platform, outcome: 'skipped', reason: 'platform_excluded' }
+    ])
+  })
+
   it('keeps repeat reservations and disallows claiming an unclaimed batch after restart', async () => {
     const env = setup({ posts: { 'x:1': { photoUrls: ['https://img.example/a.jpg'] } } })
     const input = { chat: env.waId, text: 'https://x.com/example/status/1' }

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { resolveShareLink, SHARE_TIMEOUT_MS } from '../../src/social/share.js'
 import { parseSocialPostUrl } from '../../src/social/urls.js'
@@ -183,9 +184,10 @@ describe('SocialPostViewer on share links', () => {
     expect(fetcher).toHaveBeenCalledOnce()
   }, 10000)
 
-  it('resolves a share before the platform lookup, and the post keeps the link it was asked for', async () => {
+  it.each(['vm', 'vt'])('uses the same native TikTok post after a %s share redirects to mobile', async (host) => {
+    const share = parseSocialPostUrl(`https://${host}.tiktok.com/ZMexample/`)!
     const fetcher = routes({
-      'https://vm.tiktok.com/ZMexample/': () => redirect('https://www.tiktok.com/@example_user/video/1234567890')
+      [share.canonicalUrl]: () => redirect('https://m.tiktok.com/@example_user/video/1234567890?_t=1')
     })
     const runExtractor = vi.fn(async (_binaryPath: string, _url: string, _timeoutMs: number) => ({
       metadata: { title: 'A clip', uploader: 'example_user' }
@@ -197,10 +199,11 @@ describe('SocialPostViewer on share links', () => {
       warn: vi.fn()
     })
 
+    const direct = parseSocialPostUrl('https://www.tiktok.com/@example_user/video/1234567890')!
     const observe = vi.fn()
-    expect(await viewer.lookup(TIKTOK_SHORT, undefined, observe)).toMatchObject({
+    expect(await viewer.lookup(share, undefined, observe)).toMatchObject({
       status: 'found',
-      post: { target: { lookupKey: 'tiktok:share:ZMexample' } }
+      post: { id: direct.id, canonicalUrl: direct.canonicalUrl, target: { lookupKey: share.lookupKey } }
     })
     expect(observe).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -220,6 +223,28 @@ describe('SocialPostViewer on share links', () => {
     expect(timeoutArg).toBeLessThanOrEqual(settings.timeoutMs)
   })
 
+  it.each(['https://redd.it/1x0b7lo', 'https://m.reddit.com/r/osugame/comments/1x0b7lo/sample/?share_id=example'])(
+    'reads the same Reddit post when a mobile share redirects to %s',
+    async (location) => {
+      const share = parseSocialPostUrl('https://m.reddit.com/r/example_sub/s/AbC123xyz')!
+      const direct = parseSocialPostUrl('https://www.reddit.com/comments/1x0b7lo/')!
+      const feed = readFileSync(new URL('../fixtures/social/reddit-post.rss', import.meta.url), 'utf8')
+      const fetcher = routes({
+        [share.canonicalUrl]: () => redirect(location),
+        'https://www.reddit.com/comments/1x0b7lo/.rss?limit=1': () => new Response(feed)
+      })
+      const runExtractor = vi.fn(async () => ({ reason: 'unused' }))
+      const viewer = new SocialPostViewer(settings, { fetcher, runExtractor, lookup: async () => ['8.8.8.8'] })
+
+      expect(await viewer.lookup(share)).toMatchObject({
+        status: 'found',
+        post: { id: direct.id, canonicalUrl: direct.canonicalUrl, target: { lookupKey: share.lookupKey } }
+      })
+      expect(fetcher).toHaveBeenCalledTimes(2)
+      expect(runExtractor).not.toHaveBeenCalled()
+    }
+  )
+
   it('caches a resolved share, so a post that then fails is not resolved again', async () => {
     const fetcher = routes({
       'https://vm.tiktok.com/ZMexample/': () => redirect('https://www.tiktok.com/@example_user/video/1234567890')
@@ -238,8 +263,11 @@ describe('SocialPostViewer on share links', () => {
     expect(runExtractor).toHaveBeenCalledTimes(2)
   })
 
-  it('fails a share that does not resolve, without reading the post', async () => {
-    const fetcher = routes({ 'https://vm.tiktok.com/ZMexample/': () => new Response('<html></html>') })
+  it.each([
+    ['TikTok', TIKTOK_SHORT, () => new Response('<html></html>')],
+    ['Reddit', REDDIT_SHARE, () => redirect('https://m.tiktok.com/@example_user/video/1234567890')]
+  ])('stops before lookup when a %s share has no verified destination', async (_platform, share, response) => {
+    const fetcher = routes({ [share.canonicalUrl]: response })
     const runExtractor = vi.fn(async () => ({ reason: 'unused' }))
     const viewer = new SocialPostViewer(settings, {
       fetcher,
@@ -248,7 +276,14 @@ describe('SocialPostViewer on share links', () => {
       warn: vi.fn()
     })
 
-    expect(await viewer.lookup(TIKTOK_SHORT)).toEqual({ status: 'failed', platform: 'tiktok', reason: 'redirect' })
+    const observe = vi.fn()
+    expect(await viewer.lookup(share, undefined, observe)).toEqual({
+      status: 'failed',
+      platform: share.platform,
+      reason: 'redirect'
+    })
+    expect(observe).toHaveBeenCalledWith(expect.objectContaining({ attempts: [] }))
+    expect(fetcher).toHaveBeenCalledOnce()
     expect(runExtractor).not.toHaveBeenCalled()
   })
 })

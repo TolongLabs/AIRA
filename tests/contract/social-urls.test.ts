@@ -267,3 +267,20 @@ describe('Facebook photo links', () => {
     expect(isFacebookPost(parseSocialPostUrl('https://www.facebook.com/example_page/videos/1234567890')!)).toBe(false)
   })
 })
+
+describe('mobile and web post identity', () => {
+  it.each([
+    ['/@example_user/video/1234567890', 'tiktok.com', 'tiktok:1234567890'],
+    ['/@example_user/photo/1234567890', 'tiktok.com', 'tiktok:1234567890'],
+    ['/r/example_sub/comments/abc123/a_post/def456/', 'reddit.com', 'reddit:abc123'],
+    ['/t/ZTexample/', 'tiktok.com', 'tiktok:share:ZTexample'],
+    ['/r/example_sub/s/AbC123xyz/', 'reddit.com', 'reddit:share:AbC123xyz']
+  ])('preserves the lookup key for %s across web and mobile', (path, domain, lookupKey) => {
+    const desktop = parseSocialPostUrl(`https://www.${domain}${path}`)
+    const mobile = parseSocialPostUrl(`https://m.${domain}${path}?share_id=example`)
+
+    expect(desktop).toMatchObject({ lookupKey })
+    expect(mobile).toMatchObject({ lookupKey, canonicalUrl: desktop?.canonicalUrl })
+    expect(mobile?.needsRedirect).toBe(desktop?.needsRedirect)
+  })
+})
