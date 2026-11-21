@@ -9343,7 +9343,7 @@
       "file_type": "code",
       "norm_label": "serve()",
       "source_file": "tests/contract/autofetch.test.ts",
-      "source_location": "L455"
+      "source_location": "L473"
     },
     {
       "id": "tests_contract_autofetch_test_setup",
@@ -27259,7 +27259,7 @@
       "file_type": "code",
       "norm_label": "redirect()",
       "source_file": "tests/contract/social-share.test.ts",
-      "source_location": "L10"
+      "source_location": "L11"
     },
     {
       "id": "tests_contract_social_share_test_routes",
@@ -27271,7 +27271,7 @@
       "file_type": "code",
       "norm_label": "routes()",
       "source_file": "tests/contract/social-share.test.ts",
-      "source_location": "L20"
+      "source_location": "L21"
     },
     {
       "id": "tests_contract_social_share_test_stuckredirect",
@@ -27283,7 +27283,7 @@
       "file_type": "code",
       "norm_label": "stuckredirect()",
       "source_file": "tests/contract/social-share.test.ts",
-      "source_location": "L13"
+      "source_location": "L14"
     },
     {
       "id": "tests_harness_sim_backend_slug",
@@ -48330,7 +48330,7 @@
       "file_type": "code",
       "norm_label": "settings",
       "source_file": "tests/contract/social-share.test.ts",
-      "source_location": "L6"
+      "source_location": "L7"
     },
     {
       "id": "site_package",
@@ -81423,7 +81423,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "tests/contract/autofetch.test.ts",
-      "source_location": "L462",
+      "source_location": "L480",
       "weight": 1.0
     },
     {
@@ -81435,7 +81435,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "tests/contract/autofetch.test.ts",
-      "source_location": "L463",
+      "source_location": "L481",
       "weight": 1.0
     },
     {
@@ -81447,7 +81447,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "tests/contract/autofetch.test.ts",
-      "source_location": "L466",
+      "source_location": "L484",
       "weight": 1.0
     },
     {
@@ -81459,7 +81459,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "tests/contract/autofetch.test.ts",
-      "source_location": "L467",
+      "source_location": "L485",
       "weight": 1.0
     },
     {
@@ -81471,7 +81471,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "tests/contract/autofetch.test.ts",
-      "source_location": "L476",
+      "source_location": "L494",
       "weight": 1.0
     },
     {
@@ -88155,7 +88155,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "tests/contract/autofetch.test.ts",
-      "source_location": "L455",
+      "source_location": "L473",
       "weight": 1.0
     },
     {
@@ -89571,7 +89571,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "tests/contract/social-share.test.ts",
-      "source_location": "L10",
+      "source_location": "L11",
       "weight": 1.0
     },
     {
@@ -89583,7 +89583,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "tests/contract/social-share.test.ts",
-      "source_location": "L13",
+      "source_location": "L14",
       "weight": 1.0
     },
     {
@@ -89595,7 +89595,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "tests/contract/social-share.test.ts",
-      "source_location": "L20",
+      "source_location": "L21",
       "weight": 1.0
     },
     {
@@ -122473,7 +122473,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "tests/contract/social-share.test.ts",
-      "source_location": "L2",
+      "source_location": "L3",
       "weight": 1.0
     },
     {
@@ -122485,7 +122485,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "tests/contract/social-share.test.ts",
-      "source_location": "L2",
+      "source_location": "L3",
       "weight": 1.0
     },
     {
@@ -122497,7 +122497,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "tests/contract/social-share.test.ts",
-      "source_location": "L3",
+      "source_location": "L4",
       "weight": 1.0
     },
     {
@@ -122509,7 +122509,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "tests/contract/social-share.test.ts",
-      "source_location": "L4",
+      "source_location": "L5",
       "weight": 1.0
     },
     {
@@ -150715,7 +150715,7 @@
     },
     {
       "source": "tests_contract_social_share_test",
-      "target": "ref_vitest",
+      "target": "ref_node_fs",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -150727,7 +150727,7 @@
     },
     {
       "source": "tests_contract_social_share_test",
-      "target": "src_social_share",
+      "target": "ref_vitest",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -150739,7 +150739,7 @@
     },
     {
       "source": "tests_contract_social_share_test",
-      "target": "src_social_urls",
+      "target": "src_social_share",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -150751,7 +150751,7 @@
     },
     {
       "source": "tests_contract_social_share_test",
-      "target": "src_social_viewer",
+      "target": "src_social_urls",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -150759,6 +150759,18 @@
       "context": "import",
       "source_file": "tests/contract/social-share.test.ts",
       "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_contract_social_share_test",
+      "target": "src_social_viewer",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "import",
+      "source_file": "tests/contract/social-share.test.ts",
+      "source_location": "L5",
       "weight": 1.0
     },
     {
@@ -190607,7 +190619,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "tests/contract/social-share.test.ts",
-      "source_location": "L6",
+      "source_location": "L7",
       "weight": 1.0
     },
     {
@@ -201054,6 +201066,18 @@
       "weight": 1.0
     },
     {
+      "source": "tests_contract_autofetch_test",
+      "target": "tests_harness_sim_level2_text",
+      "relation": "indirect_call",
+      "_origin": "ast",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "context": "collection",
+      "source_file": "tests/contract/autofetch.test.ts",
+      "source_location": "L261",
+      "weight": 1.0
+    },
+    {
       "source": "tests_contract_media_link_test",
       "target": "tests_contract_media_link_test_fakefindtarget",
       "relation": "indirect_call",
@@ -201111,6 +201135,18 @@
       "context": "collection",
       "source_file": "tests/contract/persistence.test.ts",
       "source_location": "L255",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_contract_social_share_test",
+      "target": "tests_contract_api_runner_test_response",
+      "relation": "indirect_call",
+      "_origin": "ast",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "context": "collection",
+      "source_file": "tests/contract/social-share.test.ts",
+      "source_location": "L270",
       "weight": 1.0
     },
     {
@@ -203472,5 +203508,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "4ab7c6114b2ce84f35f3bbce326ab55b1af38194"
+  "built_at_commit": "b03e2898d4e82fdfcb63d8c493237bb4ff62e842"
 }
