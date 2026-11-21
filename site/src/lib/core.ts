@@ -49,6 +49,16 @@ export interface CoreToolFeature {
   tools: { name: string; mode: 'implicit' | 'explicit' | 'both'; commands: string[] }[]
 }
 
+export type SocialCapabilityKey = 'features.social' | 'features.autofetch'
+
+export interface CoreToolCatalog {
+  features: CoreToolFeature[]
+  socialCapabilities?: Record<
+    SocialCapabilityKey,
+    { id: string; name: string; operations: ('text' | 'preview' | 'photos' | 'video')[] }[]
+  >
+}
+
 /** A refusal from the core, with its reason code. The body never holds message text. */
 export class CoreError extends Error {
   constructor(
@@ -87,7 +97,7 @@ function put<T>(path: string, body: unknown): Promise<T> {
 }
 
 export const core = {
-  tools: () => call<{ features: CoreToolFeature[] }>('/api/tools'),
+  tools: () => call<CoreToolCatalog>('/api/tools'),
   chats: () => call<{ chats: CoreChat[] }>('/api/chats'),
   characters: () =>
     call<{ characters: CoreCharacter[]; faults: { id: string; reason: string }[]; footerKinds: FooterKindInfo[] }>(
