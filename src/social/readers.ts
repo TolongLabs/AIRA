@@ -4,6 +4,7 @@ import { parseFacebookPage } from './facebook.js'
 import { type Lookup, publicAddress } from './fetch.js'
 import { parseInstagramPage } from './instagram.js'
 import { fetchPostPage, META_PAGE_HEADERS } from './meta.js'
+import { createMirrorReader, type MirrorPlatform } from './mirror-readers.js'
 import {
   object,
   parseBlueskyThread,
@@ -26,6 +27,7 @@ import {
 
 export const DEFAULT_HTTP_READER_TIMEOUT_MS = 2500
 export const DEFAULT_YTDLP_TIMEOUT_MS = 4500
+const TIKWM_TIMEOUT_MS = 5500
 
 const BLUESKY_PDS_TIMEOUT_MS = 1500
 const MAX_BLUESKY_PDS_CACHE_ENTRIES = 256
@@ -125,7 +127,10 @@ export class BlueskyPdsDirectory {
   }
 }
 
+export type SocialMirrorSettings = Partial<Record<MirrorPlatform, 'off' | 'read' | 'read_and_group'>>
+
 export interface ReaderEnv {
+  mirrors?: SocialMirrorSettings | undefined
   ytDlpPath: string
   ytDlpAvailable: () => boolean
   pds: BlueskyPdsDirectory
@@ -190,17 +195,32 @@ const adapters: Record<SocialPlatform, PlatformAdapter> = {
   }
 }
 
-export function requiresExtractor(target: SocialPostTarget): boolean {
+function mirrorMode(platform: SocialPlatform, mirrors?: SocialMirrorSettings) {
+  return platform === 'tiktok' || platform === 'reddit' ? (mirrors?.[platform] ?? 'off') : 'off'
+}
+
+function supportsMirror(target: SocialPostTarget, mirrors?: SocialMirrorSettings): boolean {
+  return (
+    mirrorMode(target.platform, mirrors) !== 'off' &&
+    (target.platform !== 'tiktok' ||
+      target.needsRedirect === true ||
+      new URL(target.canonicalUrl).pathname.includes('/video/'))
+  )
+}
+
+export function requiresExtractor(target: SocialPostTarget, mirrors?: SocialMirrorSettings): boolean {
+  if (supportsMirror(target, mirrors)) return false
   return (
     adapters[target.platform].extractorRequired === true || (target.platform === 'facebook' && !isFacebookPost(target))
   )
 }
 
-export function groupOperations(platform: SocialPlatform): readonly GroupOperation[] {
+export function groupOperations(platform: SocialPlatform, mirrors?: SocialMirrorSettings): readonly GroupOperation[] {
+  if (mirrorMode(platform, mirrors) === 'read_and_group') return ['video']
   return adapters[platform].group
 }
 
-export function socialCapabilities(extractorAvailable: boolean) {
+export function socialCapabilities(extractorAvailable: boolean, mirrors?: SocialMirrorSettings) {
   const platforms = Object.keys(adapters) as SocialPlatform[]
   const entry = (id: SocialPlatform, operations: readonly ReadOperation[]) => ({
     id,
@@ -210,15 +230,16 @@ export function socialCapabilities(extractorAvailable: boolean) {
   return {
     'features.social': platforms.flatMap((id) => {
       const adapter = adapters[id]
-      if (adapter.extractorRequired && !extractorAvailable) return []
+      const mirror = mirrorMode(id, mirrors) !== 'off'
+      if (adapter.extractorRequired && !extractorAvailable && !mirror) return []
       const operations =
-        !extractorAvailable && (id === 'reddit' || id === 'facebook')
+        !extractorAvailable && !mirror && (id === 'reddit' || id === 'facebook')
           ? adapter.read.filter((value) => value !== 'video')
           : adapter.read
       return [entry(id, operations)]
     }),
     'features.autofetch': platforms.flatMap((id) => {
-      const operations = groupOperations(id)
+      const operations = groupOperations(id, mirrors)
       return operations.length ? [entry(id, operations)] : []
     })
   }
@@ -226,16 +247,29 @@ export function socialCapabilities(extractorAvailable: boolean) {
 
 /** The readers of one platform in their order, built per lookup. */
 export function readersFor(target: SocialPostTarget, env: ReaderEnv): SocialReader[] {
-  return adapters[target.platform].readers(target, env)
+  const readers = adapters[target.platform].readers(target, env)
+  if (target.platform === 'tiktok' && supportsMirror(target, env.mirrors)) {
+    const timeoutMs = Math.max(TIKWM_TIMEOUT_MS, env.httpTimeoutMs)
+    readers.unshift(createMirrorReader('tiktok', timeoutMs, mirrorMode('tiktok', env.mirrors) === 'read_and_group'))
+  }
+  return readers
 }
 
 function redditReaders(env: ReaderEnv): SocialReader[] {
-  // A refused feed ends the yt-dlp try because Reddit refuses the same flagged IP.
+  // An explicit refusal ends the Reddit lookup, including the remaining fallback readers.
   let refused = false
-  const feed = redditFeedReader(env, () => {
+  const onRefused = () => {
     refused = true
-  })
-  return [feed, ytDlpReader(env, () => !refused)]
+  }
+  const canContinue = () => !refused
+  const readers = [redditFeedReader(env, onRefused)]
+  const mode = mirrorMode('reddit', env.mirrors)
+  if (mode !== 'off') {
+    const mirror = createMirrorReader('reddit', env.httpTimeoutMs, mode === 'read_and_group', onRefused)
+    readers.push({ ...mirror, isConfigured: canContinue })
+  }
+  readers.push(ytDlpReader(env, canContinue))
+  return readers
 }
 
 function fxTwitterReader(env: ReaderEnv): SocialReader {

@@ -55,6 +55,7 @@ import { createResearchOffers, type ReportRenderer } from './research/offer.js'
 import { createResearchWorker, type ResearchWorker } from './research/worker.js'
 import { listChats } from './settings/chats.js'
 import { resolveSettings } from './settings/settings.js'
+import { isMirrorAssetUrl } from './social/mirror-readers.js'
 import { createSocialPostPort } from './social/port.js'
 import { ReplyReader } from './social/replies/service.js'
 import { findLinkTarget } from './social/urls.js'
@@ -399,11 +400,14 @@ export async function createApp(options: AppOptions): Promise<App> {
     const hostDataDir = config.gateway.hostDataDir === '' ? paths.root : config.gateway.hostDataDir
     // Social downloads keep user agent and referrer on the asset origin and carry no cookies.
     const compressVideo = createVideoCompressor()
+    const socialAssetDownload = createFetchPagePort({ sameOriginCookieless: true }).download
+    const mirrorsEnabled = Object.values(config.social.mirrors).some((mode) => mode !== 'off')
     const autofetch = createAutofetch({
+      mirrors: config.social.mirrors,
       compressVideo,
       storage,
       viewer,
-      download: createFetchPagePort({ sameOriginCookieless: true }).download,
+      download: socialAssetDownload,
       cacheDir: join(paths.cache, 'autofetch'),
       hostCacheDir: join(hostDataDir, 'cache', 'autofetch'),
       logger: logger.child({ module: 'autofetch' }),
@@ -611,7 +615,10 @@ export async function createApp(options: AppOptions): Promise<App> {
           viewer,
           findTarget: (text) => findLinkTarget([text], (entry) => socialLog.info('social.unknown_host', entry)),
           ...(mediaWatcher ? { watcher: mediaWatcher } : {}),
-          download: (url, signal, maxBytes, headers) => plainPage.download(url, signal, maxBytes, headers),
+          download: (url, signal, maxBytes, headers) =>
+            mirrorsEnabled && isMirrorAssetUrl(url)
+              ? socialAssetDownload(url, signal, maxBytes, headers)
+              : plainPage.download(url, signal, maxBytes, headers),
           model: mediaModel ?? '',
           limits: {
             ...DEFAULT_MEDIA_LIMITS,
@@ -843,6 +850,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     if (siteToken !== undefined && siteToken.length >= MIN_SITE_TOKEN_LENGTH) {
       siteServer = createSiteApiServer({
         extractorAvailable,
+        socialMirrors: config.social.mirrors,
         token: siteToken,
         allowedOrigins: config.site.allowedOrigins,
         registry,

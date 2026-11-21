@@ -122,6 +122,9 @@ media:
 
 # Owned by docs/trd/reliability.md
 social:
+  mirrors:
+    tiktok: off
+    reddit: off
   timeoutMs: 6000
   httpReaderTimeoutMs: 2500
   ytDlpTimeoutMs: 4500

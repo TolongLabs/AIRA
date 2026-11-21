@@ -6,7 +6,8 @@ import {
   DEFAULT_HTTP_READER_TIMEOUT_MS,
   DEFAULT_YTDLP_TIMEOUT_MS,
   readersFor,
-  requiresExtractor
+  requiresExtractor,
+  type SocialMirrorSettings
 } from './readers.js'
 import { resolveShareLink } from './share.js'
 import type { PostField, SocialLookupTrace, SocialPost, SocialPostLookup } from './types.js'
@@ -14,6 +15,7 @@ import type { SocialPlatform, SocialPostTarget } from './urls.js'
 import { runYtDlp } from './yt-dlp.js'
 
 export interface SocialPostSettings {
+  mirrors?: SocialMirrorSettings
   /** The deadline of one lookup, across every reader. */
   timeoutMs: number
   httpReaderTimeoutMs?: number
@@ -149,7 +151,8 @@ export class SocialPostViewer {
     observe?: (trace: SocialLookupTrace) => void
   ): Promise<SocialPostLookup> {
     // Without the extractor, a platform that needs it stays unreadable. That is expected, not a fault to warn about.
-    if (requiresExtractor(target) && !this.ytDlpAvailable) return failure(target.platform, 'binary_missing')
+    if (requiresExtractor(target, this.settings.mirrors) && !this.ytDlpAvailable)
+      return failure(target.platform, 'binary_missing')
     const cached = this.getCached(target.lookupKey)
     // The cache key ignores timestamps, so the cached post's target may carry another link's `t=`.
     if (cached) {
@@ -238,6 +241,7 @@ export class SocialPostViewer {
 
       const outcome = await runChain(
         readersFor(resolved, {
+          mirrors: this.settings.mirrors,
           ytDlpPath: this.settings.ytDlpPath,
           ytDlpAvailable: () => this.ytDlpAvailable,
           pds: this.pds,

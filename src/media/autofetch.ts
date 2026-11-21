@@ -5,7 +5,7 @@ import type { Logger } from '../records/logger.js'
 import { endJobRun, startJobRun } from '../records/turn-record.js'
 import { getChatByWaId } from '../settings/chats.js'
 import { resolveSettings } from '../settings/settings.js'
-import { groupOperations } from '../social/readers.js'
+import { groupOperations, type SocialMirrorSettings } from '../social/readers.js'
 import type { SocialLookupTrace, SocialPost, SocialPostLookup } from '../social/types.js'
 import { findSocialPostTargets, parseOfficialSocialPostUrl, type SocialPostTarget } from '../social/urls.js'
 import type { Db, Storage } from '../storage/database.js'
@@ -77,6 +77,7 @@ export interface AutofetchOptions {
   }
   download: PagePort['download']
   compressVideo?: CompressVideo
+  mirrors?: SocialMirrorSettings
   /** `<dataDir>/cache/autofetch`, where the core writes. */
   cacheDir: string
   /** The same folder as the gateway sees it on the host. */
@@ -87,7 +88,8 @@ export interface AutofetchOptions {
 
 function postMedia(
   post: SocialPost,
-  target: SocialPostTarget
+  target: SocialPostTarget,
+  mirrors?: SocialMirrorSettings
 ): { kind: AutofetchMedia['kind']; url: string; headers?: Record<string, string> | null; durationSec?: number }[] {
   const resolved = parseOfficialSocialPostUrl(post.canonicalUrl)
   if (
@@ -100,7 +102,7 @@ function postMedia(
   }
   const threadsAlias = target.platform === 'threads' && /^\/(?:t|share)\//.test(new URL(target.canonicalUrl).pathname)
   if (resolved.lookupKey !== target.lookupKey && !target.needsRedirect && !threadsAlias) return []
-  const operations = groupOperations(resolved.platform)
+  const operations = groupOperations(resolved.platform, mirrors)
   const attachments = (post.attachments ?? []).filter(
     (item) => item.owner === resolved.lookupKey && operations.includes(item.kind === 'image' ? 'photos' : 'video')
   )
@@ -174,7 +176,7 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
       let skips = 0
       for (const target of targets) {
         let skip: Skip | undefined
-        if (groupOperations(target.platform).length === 0) skip = 'platform_excluded'
+        if (groupOperations(target.platform, options.mirrors).length === 0) skip = 'platform_excluded'
         else if (selected >= AUTOFETCH_MAX_LINKS) continue
         else if (!reserveRepeat(db, chatId, target.lookupKey, at)) skip = 'repeat'
         if (skip) {
@@ -258,7 +260,10 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
                     trace = value
                   })
                   .catch(() => undefined)
-          const items = lookup?.status === 'found' && !controller.signal.aborted ? postMedia(lookup.post, target) : []
+          const items =
+            lookup?.status === 'found' && !controller.signal.aborted
+              ? postMedia(lookup.post, target, options.mirrors)
+              : []
           if (items.length && lookup?.status === 'found') {
             const canonical = parseOfficialSocialPostUrl(lookup.post.canonicalUrl)
             if (

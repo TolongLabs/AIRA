@@ -387,6 +387,20 @@ TikTok and Reddit desktop, mobile and app share links for the same post converge
 A share token remains provisional until the guarded resolver verifies a direct post URL. The resolved identity
 is used for viewer lookup and for deduplication of eligible group fetches. URL recognition and resolution grant
 no media capability.
+
+TikTok and Reddit can opt into a fixed mirror using `social.mirrors.tiktok` or `social.mirrors.reddit`.
+Each defaults to `off`. Use `read` after approving the mirror for post lookup and model processing.
+Use `read_and_group` after also approving group redistribution. The server publishes those same permissions
+in the site capability list. TikWM receives the resolved canonical video URL and Arctic Shift receives the native
+Reddit post ID. Neither receives the member’s original share token or chat data.
+
+The reader requires a matching post identity and a supported first-party or mirror media origin. Only native
+video with known duration and verified post ownership qualifies for group attachment. TikWM uses the
+watermarked rendition and can take up to 5,500 ms for lookup by default, within the shared lookup deadline.
+Arctic Shift is an archive. Its Reddit fallback MP4 may be video-only. The Reddit reader checks the first-party feed
+before the mirror and stops further attempts on an explicit refusal or rate limit. The normal watch and group byte,
+duration and timeout limits apply, including linked MP4 compression. Mirror lookup endpoints disallow redirects,
+and asset downloads keep redirects on the original origin. A failed mirror lookup grants no group attachment.
 Facebook photo paths use the HTML post reader before falling back to the extractor. Supported platforms
 are X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram, Bilibili and
 Facebook.
