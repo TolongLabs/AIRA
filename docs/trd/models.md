@@ -372,6 +372,10 @@ card's image), and then to its text only (`src/media/link-intake.ts`). The promp
 picture as a preview. For a video post without a successful watch, the prompt states that video and audio
 were unavailable. Only successful video watches can supply a transcript for a linked post.
 
+When intake reads a social post and successfully watches its video in the same turn, both the configured
+`media_post` and `media_video` labels enter the [tool footer](prompt-engine.md#tool-footer).
+A successful fallback preview uses `media_image`. YouTube uses its dedicated `media_youtube` label.
+
 The post's text, author, most-liked replies and media enter block 4 as lines with its platform, author, date, reply
 count and canonical URL. The earlier posts of its thread come first, each with its author and text
 (`src/media/turn-media.ts`).

@@ -1,7 +1,8 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { App } from '../../src/app.js'
+import { createReplyCleaner } from '../../src/format/clean.js'
 import type { MediaWatcher } from '../../src/media/gemini-watcher.js'
 import { DEFAULT_MEDIA_LIMITS } from '../../src/media/limits.js'
 import { createLinkReader, type LinkReader } from '../../src/media/link-intake.js'
@@ -13,7 +14,7 @@ import type { SocialPost } from '../../src/social/types.js'
 import { findSocialPostTarget } from '../../src/social/urls.js'
 import type { GatewayMessage } from '../harness/gateway.js'
 import { CHAT, lastTurn, msg, queueModel, startApp } from '../support/app.js'
-import { scriptedRunner, startTestCore } from '../support/core.js'
+import { addPack, scriptedRunner, startTestCore, testConfig } from '../support/core.js'
 import { tmpDir } from '../support/tmp.js'
 
 // Media watching through the whole service (docs/trd/models.md#media-watching): the gateway names a saved file in a
@@ -611,5 +612,78 @@ describe('pictures and post photos in one turn', () => {
       { kind: 'url', url: photos[0] },
       { kind: 'url', url: photos[1] }
     ])
+  })
+})
+
+describe('linked video reply labels', () => {
+  it.each([
+    { failure: false, type: 'video/mp4', labels: 'read the caption · watched the clip' },
+    { failure: true, type: 'image/jpeg', labels: 'looked at an image' }
+  ])('prints the configured labels for $type', async ({ failure, type, labels }) => {
+    const url = 'https://www.tiktok.com/@example/video/1234567890'
+    const target = findSocialPostTarget(url)!
+    const post: SocialPost = {
+      platform: 'tiktok',
+      id: target.id,
+      canonicalUrl: target.canonicalUrl,
+      target,
+      authorHandle: 'example',
+      authorName: '',
+      createdAt: null,
+      text: 'A synthetic post',
+      quotedText: '',
+      quotedAuthorHandle: '',
+      photoCount: 0,
+      videoCount: 1,
+      imageUrl: 'https://img.example/preview.jpg',
+      photoUrls: [],
+      durationSec: 12,
+      thread: [],
+      externalTitle: '',
+      replyCount: null,
+      video: { url: 'https://video.example/clip.mp4', bytes: null, headers: null, hasAudio: true }
+    }
+    const watcher = fakeWatcher(() => ({ description: 'A short clip or its preview.' }))
+    const model = 'fake-media-model'
+    const limits = { ...DEFAULT_MEDIA_LIMITS, maxVideoSeconds: 180 }
+    const links = createLinkReader({
+      viewer: { lookup: async () => ({ status: 'found', post }) },
+      findTarget: findSocialPostTarget,
+      watcher,
+      limits,
+      model,
+      download: async (asset) => {
+        if (asset === post.video?.url) {
+          if (failure) throw new Error('http status 403')
+          return { data: Buffer.from('00000010667479706d70343200000000', 'hex'), contentType: 'video/mp4' }
+        }
+        expect(asset).toBe(post.imageUrl)
+        return { data: Buffer.from('ffd8ff', 'hex'), contentType: 'image/jpeg' }
+      }
+    })
+    const media = createTurnMedia({ model, limits, timeoutMs: 1000, gatewayDirs: [], links })
+    const config = testConfig()
+    const dataDir = tmpDir('aira-linked-footer-')
+    addPack(dataDir, 'custom')
+    const cardPath = join(dataDir, 'characters', 'custom', 'card.yml')
+    writeFileSync(
+      cardPath,
+      readFileSync(cardPath, 'utf8')
+        .replace('media_post: read a post', 'media_post: read the caption')
+        .replace('media_video: watched a video', 'media_video: watched the clip')
+    )
+    const core = await startTestCore({
+      runner: scriptedRunner(() => 'Example: Nice clip.'),
+      config,
+      dataDir,
+      defaultCharacter: 'custom',
+      deps: { media, cleaner: createReplyCleaner(config) }
+    })
+    core.activate(CHAT)
+
+    const delivery = await core.gateway.send(msg('m-1', url))
+
+    expect(watcher.seen.map((asset) => asset.contentType)).toEqual([type])
+    expect(delivery.content).toContain(`_🛠️ ${labels}_`)
   })
 })
