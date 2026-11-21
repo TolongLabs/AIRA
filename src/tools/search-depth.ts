@@ -232,9 +232,15 @@ export function createSearchDepth(ports: Pick<ToolPorts, 'search' | 'searchPage'
       }
     }
 
+    let failure: unknown
     const look = async (query: string, suffix?: string) => {
       if (!canSpend() || usage.searches >= config.maxSearches) return
-      const found = await untilAbort(signal, () => search(query, context, signal, suffix, true))
+      const found = await untilAbort(signal, () =>
+        search(query, context, signal, suffix, true).catch((error: unknown) => {
+          failure = error
+          throw error
+        })
+      )
       for (const result of found ?? []) {
         const key = sourceKey(result.url)
         if (key === undefined || isForbiddenUrl(result.url)) continue
@@ -245,6 +251,8 @@ export function createSearchDepth(ports: Pick<ToolPorts, 'search' | 'searchPage'
 
     try {
       await look(args.query)
+      // A provider that fails the first search fails the call, as a plain search does.
+      if (failure !== undefined && !signal.aborted) throw failure
       if (missing.size > 0) await look(retryQuery(args, [...missing]), ':local')
       const page = ports.searchPage ?? ports.page
       if (page && missing.size > 0) {
