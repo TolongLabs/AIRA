@@ -1,3 +1,4 @@
+import { isBlockedPage } from './blocked-page.js'
 import type { PagePort, SearchPort } from './ports.js'
 
 const EXA_SEARCH_URL = 'https://api.exa.ai/search'
@@ -184,9 +185,10 @@ export function createExaPagePort(options: {
       if (!response.ok) return undefined
       const data = (await response.json()) as { results?: { title?: unknown; text?: unknown }[] }
       const first = Array.isArray(data.results) ? data.results[0] : undefined
+      const title = typeof first?.title === 'string' ? first.title : ''
       const text = typeof first?.text === 'string' ? first.text.trim() : ''
-      if (text.length === 0) return undefined
-      return { title: typeof first?.title === 'string' ? first.title : '', text: text.slice(0, maxChars) }
+      if (text.length === 0 || isBlockedPage(text, url)) return undefined
+      return { title, text: text.slice(0, maxChars) }
     } catch {
       return undefined
     }
