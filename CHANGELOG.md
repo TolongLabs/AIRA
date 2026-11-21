@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.4.0](https://github.com/TolongLabs/AIRA/compare/v1.3.0...v1.4.0) (2026-11-21)
+
+
+### Features
+
+* **devops:** refresh the Graphify graph on main ([4ab7c61](https://github.com/TolongLabs/AIRA/commit/4ab7c6114b2ce84f35f3bbce326ab55b1af38194))
+* **social:** correlate all lookup consumers with system records ([cc01773](https://github.com/TolongLabs/AIRA/commit/cc01773a55fbf5c1493057962373527ecad36d95))
+
+
+### Bug Fixes
+
+* **footer:** show both linked-video labels ([5083b8d](https://github.com/TolongLabs/AIRA/commit/5083b8d6e64dd78c405ce657610ba110a5ef0540))
+* **media:** label thumbnail fallback and log download failures ([d9b7d00](https://github.com/TolongLabs/AIRA/commit/d9b7d00b3dc73abeb4d152897512ac39a3ee5829))
+
 ## [1.3.0](https://github.com/TolongLabs/AIRA/compare/v1.2.0...v1.3.0) (2026-11-21)
 
 
