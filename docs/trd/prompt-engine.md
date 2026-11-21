@@ -200,7 +200,7 @@ done and, for research, the sources used in the reply. Tool labels use italics.
 
 - The first line lists each footer kind, once, in order: first what intake read (`media_video`, `media_youtube`,
   `media_image`, `media_audio`, `media_document`, `media_post`), then each tool that ran with outcome `ok`, in call
-  order: `_<emoji> <label> · <label> +N_`. At most 2 labels show; `+N` counts the rest. Labels are lower case. A
+  order: `_<emoji> <label> · <label> · <label> +N_`. At most 3 labels show; `+N` counts the rest. Labels are lower case. A
   label text shows once, so a video file and a YouTube link both read `watched a video` once. An item intake could
   not read adds nothing.
 - The fixed prompt asks the model to mark sourced sentences with their `[sN]` ids. Cleaning removes every

@@ -13,7 +13,7 @@ export const LIST_COMMAND_TOOLS: ReadonlySet<string> = new Set(['recall', 'histo
 export const RESEARCH_MAX_CHARS = LENGTH_CHARS.long
 
 export const DEFAULT_FOOTER_ICON = '🛠️'
-const MAX_LABELS = 2
+const MAX_LABELS = 3
 
 /** Plain labels for the footer. They hold no persona text; a card may replace any of them. */
 export const DEFAULT_TOOL_LABELS: Readonly<Record<string, string>> = {
