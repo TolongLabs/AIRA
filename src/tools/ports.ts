@@ -389,27 +389,32 @@ export function createFetchPagePort(
       Array.from({ length: rangeCount }, async (_, index) => {
         const start = Math.floor((index * bytes) / rangeCount)
         const end = Math.floor(((index + 1) * bytes) / rangeCount) - 1
-        try {
-          const { res, url: finalUrl } = await fetchChecked(url, batchSignal, {
-            ...headers,
-            Range: `bytes=${start}-${end}`,
-            'Accept-Encoding': 'identity'
-          })
-          const mime = res.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase()
-          if (
-            res.status !== 206 ||
-            mime !== 'video/mp4' ||
-            res.headers.get('content-range') !== `bytes ${start}-${end}/${bytes}`
-          ) {
-            void res.body?.cancel().catch(() => undefined)
-            throw new Error('invalid MP4 byte range')
+        for (let attempt = 0; ; attempt++) {
+          const deadline = AbortSignal.timeout(8_000)
+          const attemptSignal = AbortSignal.any([batchSignal, deadline])
+          try {
+            const { res, url: finalUrl } = await fetchChecked(url, attemptSignal, {
+              ...headers,
+              Range: `bytes=${start}-${end}`,
+              'Accept-Encoding': 'identity'
+            })
+            const mime = res.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase()
+            if (
+              res.status !== 206 ||
+              mime !== 'video/mp4' ||
+              res.headers.get('content-range') !== `bytes ${start}-${end}/${bytes}`
+            ) {
+              void res.body?.cancel().catch(() => undefined)
+              throw new Error('invalid MP4 byte range')
+            }
+            const part = await readBodyLimited(res, end - start + 1)
+            if (part.length !== end - start + 1) throw new Error('incomplete MP4 byte range')
+            return { part, finalUrl, version: res.headers.get('etag') ?? res.headers.get('last-modified') }
+          } catch (error) {
+            if (attempt === 0 && deadline.aborted && !batchSignal.aborted && error instanceof DOMException) continue
+            cancel.abort()
+            throw error
           }
-          const part = await readBodyLimited(res, end - start + 1)
-          if (part.length !== end - start + 1) throw new Error('incomplete MP4 byte range')
-          return { part, finalUrl, version: res.headers.get('etag') ?? res.headers.get('last-modified') }
-        } catch (error) {
-          cancel.abort()
-          throw error
         }
       })
     )

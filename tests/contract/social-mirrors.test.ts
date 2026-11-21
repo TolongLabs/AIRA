@@ -31,7 +31,12 @@ const logger = createLogger({ level: 'error', module: 'test', sink: () => {} })
 
 function stack(
   mirrors: SocialMirrorSettings,
-  options: { wrongId?: boolean; foreignAsset?: boolean; redditRefusal?: number; ranges?: 'valid' | 'invalid' } = {}
+  options: {
+    wrongId?: boolean
+    foreignAsset?: boolean
+    redditRefusal?: number
+    ranges?: 'valid' | 'invalid' | 'timeout' | 'refused'
+  } = {}
 ) {
   const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(String(input))
@@ -81,6 +86,8 @@ function stack(
       })
     }
     if (url.href === tikTokAsset && options.ranges) {
+      init?.signal?.throwIfAborted()
+      if (options.ranges === 'refused') return new Response(null, { status: 403 })
       const range = /^bytes=(\d+)-(\d+)$/.exec(new Headers(init?.headers).get('range') ?? '')
       if (!range) return new Response(null, { status: 403 })
       const start = Number(range[1])
@@ -164,7 +171,12 @@ describe('approved mirror readers', () => {
     expect(watch).toHaveBeenCalledOnce()
   })
 
-  it.each(['valid', 'invalid'] as const)('only watches a complete TikTok byte-range batch (%s)', async (ranges) => {
+  it.each([
+    { ranges: 'valid', requests: 4, watched: true },
+    { ranges: 'invalid', requests: 4, watched: false },
+    { ranges: 'timeout', requests: 5, watched: true },
+    { ranges: 'refused', requests: 4, watched: false }
+  ] as const)('watches only complete TikTok byte-range batches ($ranges)', async ({ ranges, requests, watched }) => {
     const { viewer, download, fetcher } = stack({ tiktok: 'read' }, { ranges })
     const watch = vi.fn<MediaWatcher['watch']>(async (file) => {
       expect(file.data.equals(largeMp4)).toBe(true)
@@ -183,10 +195,20 @@ describe('approved mirror readers', () => {
       model: 'fixture',
       limits: { ...DEFAULT_MEDIA_LIMITS, maxVideoSeconds: 180 }
     })
-    const result = await reader.read([tikTokLink], 12000, { media: true, social: true })
-    expect(result.links?.[0]?.reading?.description).toBe(ranges === 'valid' ? 'Watched complete clip' : undefined)
-    expect(fetcher.mock.calls.filter(([url]) => url === tikTokAsset)).toHaveLength(4)
-    expect(watch).toHaveBeenCalledTimes(ranges === 'valid' ? 1 : 0)
+    const deadline =
+      ranges === 'timeout'
+        ? vi
+            .spyOn(AbortSignal, 'timeout')
+            .mockReturnValueOnce(AbortSignal.abort(new DOMException('Timed out', 'TimeoutError')))
+        : undefined
+    try {
+      const result = await reader.read([tikTokLink], 12000, { media: true, social: true })
+      expect(result.links?.[0]?.reading?.description).toBe(watched ? 'Watched complete clip' : undefined)
+      expect(fetcher.mock.calls.filter(([url]) => url === tikTokAsset)).toHaveLength(requests)
+      expect(watch).toHaveBeenCalledTimes(watched ? 1 : 0)
+    } finally {
+      deadline?.mockRestore()
+    }
   })
 
   it.each([tikTokLink, redditLink])('discards mismatched IDs and non-native assets for %s', async (link) => {
