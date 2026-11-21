@@ -56,6 +56,24 @@ A tool that cannot meet these rules is split until each part can.
 A handler never receives identity from the model. The turn context carries the chat id, sender id, character id,
 resolved settings, the turn id, the call id and a deadline. It is built in code at step 2 of the turn.
 
+### Turn Sources
+
+Each turn registers URLs from its visible conversation window, pending messages, their quote chains
+(earliest first with stable deduplication), intake readings and web search results. A resolved share
+link also registers its canonical URL. Entries receive stable `s1`, `s2`, and later ids in arrival
+order. Lower-case the hostname and drop fragments and the `utm_*`, `fbclid`, and `si` query parameters
+for deduplication. Keep which lookup found each entry: each successful `web_search` records its own
+call id (`search:<callId>`), keeping the first producer on a deduplicated entry and the actual call id on
+each per-search footer use, even for a URL seen earlier.
+
+`read_page` and `read_post` take exactly one URL or source id. Refuse a URL the turn has never seen
+before any network call. The guarded fetcher still checks each network address.
+
+After a successful page or post read, the registry refuses every core tool with `mutates: true` for the
+rest of the turn, except the turn's `commandTool` when `kind` is `command`. The registry enforces this
+when the tool is called, including tools offered earlier. Later API model steps omit those tools. A core state change that
+starts while a read is still running waits for that read first.
+
 ## Modes
 
 | Mode       | Called By                             | Use For                                                              |
@@ -309,7 +327,7 @@ has up to five matches with title, domain, link and price when present. It carri
 
 ### Social Post Reader
 
-`read_post` takes one `url`; its argument schema stays unchanged. Only the
+`read_post` takes one seen `url` or `source` id from [Turn Sources](#turn-sources). Only the
 model calls it; no command names it. A post link in a member's message is read
 at intake instead, with its media watched ([Models](models.md#post-links)).
 Profiles and home pages use `read_page`. Direct post paths can also be recognised on an unknown host when
