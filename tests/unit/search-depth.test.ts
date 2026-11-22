@@ -34,6 +34,10 @@ describe('search field evidence', () => {
     expect(passageMatches(field, '- Short\n- Tall\n- Grande')).toBe(false)
     expect(passageMatches(field, '- Short (8 fl oz)\n- Tall (12 fl oz)\n- Grande (16 fl oz)')).toBe(false)
     expect(passageMatches(field, '- Small 250 ml\n- Medium 350 ml\n- Large 500 ml')).toBe(false)
+    expect(passageMatches(field, '- Short (8 fl. oz.)\n- Tall (12 fl. oz.)\n- Grande (16 fl. oz.)')).toBe(false)
+    expect(
+      passageMatches(field, '- Short (8 fl oz / 236 ml)\n- Tall (12 fl oz / 355 ml)\n- Grande (16 fl oz / 473 ml)')
+    ).toBe(false)
     const phones = { kind: 'list', subject: 'Phone models' } as const
     expect(passageMatches(phones, '- Example One\n- Example One Pro\n- Example Air')).toBe(true)
   })

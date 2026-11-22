@@ -41,7 +41,7 @@ const TIME =
   /(?:\b(?:[01]?\d|2[0-3]):[0-5]\d\b|\b(?:0?[1-9]|1[0-2])(?:[:.][0-5]\d)?\s*(?:[ap]\.?m\.?)(?![\p{L}\p{N}])|\d{1,2}\s*(?:時|点|點))/giu
 /** A size or portion label, such as `Small / Medium / Large`, which names no item of a list. */
 const SIZE_LABEL =
-  /^(?:(?:extra\s+)?(?:small|medium|large|regular|short|tall|grande|venti|mini|kids?|single|double|half|full)(?:®|サイズ|\s+size)?(?:\s*\(?\d+(?:[.,]\d+)?\s*(?:fl\.?\s*oz|oz|ml|l)\)?)?[\s/,|〜～-]*)+$/i
+  /^(?:(?:extra\s+)?(?:small|medium|large|regular|short|tall|grande|venti|mini|kids?|single|double|half|full)(?:®|サイズ|\s+size)?(?:\s*\(?\d+(?:[.,]\d+)?\s*(?:fl\.?\s*oz\.?|oz\.?|ml\.?|l)(?:\s*[/:-]\s*\d+(?:[.,]\d+)?\s*(?:fl\.?\s*oz\.?|oz\.?|ml\.?|l))?\)?)?[\s/,|〜～-]*)+$/i
 const GENERIC_LIST_ENTRY =
   /^(?:menu|food|drinks?|beverages?|coffee|tea|snacks?|breakfast|lunch|dinner|desserts?|home|about|contact|sign in|search|shop|more|price|hours|overview|order now)$/i
 

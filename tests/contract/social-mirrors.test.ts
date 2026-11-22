@@ -11,6 +11,7 @@ import { createLogger } from '../../src/records/logger.js'
 import { createRedactor } from '../../src/records/redact.js'
 import { ensureChat, setChatStatus } from '../../src/settings/chats.js'
 import { setSetting } from '../../src/settings/settings.js'
+import { mirrorAssetPlatform } from '../../src/social/mirror-readers.js'
 import { type SocialMirrorSettings, socialCapabilities } from '../../src/social/readers.js'
 import { parseOfficialSocialPostUrl } from '../../src/social/urls.js'
 import { SocialPostViewer } from '../../src/social/viewer.js'
@@ -42,6 +43,8 @@ function stack(
     archiveRefusal?: number
     ranges?: 'valid' | 'invalid' | 'stall' | 'drop' | 'refused' | 'tail-drop'
     etag?: string | null
+    lastModified?: string
+    slowRefusal?: boolean
   } = {}
 ) {
   const runExtractor = vi.fn(async () => ({ reason: 'fixture' }))
@@ -123,10 +126,15 @@ function stack(
       const headers: Record<string, string> = {
         'content-type': 'video/mp4',
         'content-range': `bytes ${start}-${end}/${largeMp4.length}`,
-        ...(etag ? { etag } : {})
+        ...(etag ? { etag } : {}),
+        ...(options.lastModified ? { 'last-modified': options.lastModified } : {})
       }
       const second = Math.floor(largeMp4.length / 4)
-      if (options.ranges === 'refused' && start === second) return new Response(null, { status: 403 })
+      if (options.ranges === 'refused' && start === second) {
+        // A refusal that arrives after the idle timer has fired is still a refusal.
+        if (options.slowRefusal) await new Promise((resolve) => setTimeout(resolve, 4_200))
+        return new Response(null, { status: 403 })
+      }
       if (options.ranges === 'tail-drop' && start === second && !interrupted.has(start)) {
         // Every byte of the part arrives, then the connection drops before the end of the body.
         interrupted.add(start)
@@ -185,6 +193,19 @@ function stack(
 }
 
 describe('approved mirror readers', () => {
+  it.each([
+    ['https://v16m.tiktokcdn-us.com/clip.mp4', 'tiktok'],
+    ['https://v16-webapp-prime.tiktokcdn.com/clip.mp4', 'tiktok'],
+    ['https://p16-sign.tiktokcdn-us.com/cover.jpg', 'tiktok'],
+    ['https://www.tikwm.com/video/media/play.mp4', 'tiktok'],
+    ['https://v.redd.it/fixture/DASH_720.mp4', 'reddit'],
+    ['https://i.redd.it/fixture.png', 'reddit'],
+    ['https://preview.redd.it/fixture.png', 'reddit'],
+    ['https://video.example/clip.mp4', undefined]
+  ] as const)('routes %s to the %s mirror origin', (url, platform) => {
+    expect(mirrorAssetPlatform(url)).toBe(platform)
+  })
+
   it('keeps the mirror off by default and does not contact it', async () => {
     const { viewer, fetcher } = stack({})
     expect((await viewer.lookup(parseOfficialSocialPostUrl(tikTokLink)!)).status).toBe('failed')
@@ -334,6 +355,22 @@ describe('approved mirror readers', () => {
     const { requests, watch } = await watchTikTok({ ranges: 'refused' })
     expect(requests).toHaveLength(4)
     expect(watch).not.toHaveBeenCalled()
+  })
+
+  it('stops on a refusal that arrives after the idle timer fired', async () => {
+    const { requests, watch } = await watchTikTok({ ranges: 'refused', slowRefusal: true })
+    expect(requests).toHaveLength(4)
+    expect(watch).not.toHaveBeenCalled()
+  }, 15_000)
+
+  it('restarts a dropped part when only Last-Modified names the file', async () => {
+    const { result, requests } = await watchTikTok({
+      ranges: 'drop',
+      etag: null,
+      lastModified: 'Sun, 22 Nov 2026 00:00:00 GMT'
+    })
+    expect(result.links?.[0]?.reading?.description).toBe('Watched complete clip')
+    expect(requests.some((headers) => headers.has('if-range'))).toBe(false)
   })
 
   it('resumes with If-Range under a strong validator', async () => {

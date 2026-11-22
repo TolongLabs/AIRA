@@ -89,6 +89,26 @@ export interface AutofetchOptions {
   now?: () => Date
 }
 
+/**
+ * The post's own canonical target, when it is the post the link named: same platform and id, and either the link
+ * itself or a share or alias link that resolves to it. Anything else may be another post.
+ */
+function canonicalTarget(post: SocialPost, target: SocialPostTarget): SocialPostTarget | undefined {
+  const resolved = parseOfficialSocialPostUrl(post.canonicalUrl)
+  if (
+    !resolved ||
+    resolved.needsRedirect ||
+    resolved.platform !== target.platform ||
+    post.platform !== target.platform ||
+    resolved.id !== post.id
+  ) {
+    return undefined
+  }
+  const threadsAlias = target.platform === 'threads' && /^\/(?:t|share)\//.test(new URL(target.canonicalUrl).pathname)
+  if (resolved.lookupKey !== target.lookupKey && !target.needsRedirect && !threadsAlias) return undefined
+  return resolved
+}
+
 function postMedia(
   post: SocialPost,
   target: SocialPostTarget,
@@ -102,17 +122,8 @@ function postMedia(
   downloadTimeoutMs?: number
   rangeBytes?: number
 }[] {
-  const resolved = parseOfficialSocialPostUrl(post.canonicalUrl)
-  if (
-    !resolved ||
-    resolved.platform !== target.platform ||
-    post.platform !== target.platform ||
-    resolved.id !== post.id
-  ) {
-    return []
-  }
-  const threadsAlias = target.platform === 'threads' && /^\/(?:t|share)\//.test(new URL(target.canonicalUrl).pathname)
-  if (resolved.lookupKey !== target.lookupKey && !target.needsRedirect && !threadsAlias) return []
+  const resolved = canonicalTarget(post, target)
+  if (!resolved) return []
   const operations = groupOperations(resolved.platform, mirrors, chatId)
   const attachments = (post.attachments ?? []).filter(
     (item) => item.owner === resolved.lookupKey && operations.includes(item.kind === 'image' ? 'photos' : 'video')
@@ -293,12 +304,9 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
               : []
           if (lookup?.status === 'found') {
             // Reserve the canonical post too, so another share link to it is not looked up again, media or not.
-            const canonical = parseOfficialSocialPostUrl(lookup.post.canonicalUrl)
+            const canonical = canonicalTarget(lookup.post, target)
             if (
               canonical &&
-              canonical.platform === target.platform &&
-              lookup.post.platform === target.platform &&
-              canonical.id === lookup.post.id &&
               canonical.lookupKey !== target.lookupKey &&
               !options.storage.tx((db) => reserveRepeat(db, chatId, canonical.lookupKey, now()))
             ) {
