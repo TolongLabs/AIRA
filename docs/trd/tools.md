@@ -61,7 +61,7 @@ resolved settings, the turn id, the call id and a deadline. It is built in code 
 Each turn registers URLs from its visible conversation window, pending messages, their quote chains
 (earliest first with stable deduplication), intake readings and web search results. A resolved share
 link also registers its canonical URL. Entries receive stable `s1`, `s2`, and later ids in arrival
-order. Lower-case the hostname and drop fragments and the `utm_*`, `fbclid`, and `si` query parameters
+order. Retain a YouTube start-time fragment that selects a video span. Lower-case the hostname and drop other fragments and the `utm_*`, `fbclid`, and `si` query parameters
 for deduplication. Keep which lookup found each entry: each successful `web_search` records its own
 call id (`search:<callId>`), keeping the first producer on a deduplicated entry and the actual call id on
 each per-search footer use, even for a URL seen earlier.
