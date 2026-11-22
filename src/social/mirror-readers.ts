@@ -40,7 +40,7 @@ export function mirrorVideoRangeBytes(video: PlayableVideo): number | undefined 
 const REDDIT_PREVIEW_HOSTS = new Set(['i.redd.it', 'preview.redd.it', 'external-preview.redd.it'])
 
 function isTikTokCdnHost(host: string): boolean {
-  return /^[a-z0-9-]+(?:\.[a-z0-9-]+)*\.tiktokcdn(?:-us)?\.com$/.test(host)
+  return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.tiktokcdn(?:-us)?\.com$/.test(host)
 }
 
 /** The mirror platform whose media origin serves this URL, if any. */
