@@ -725,6 +725,20 @@ describe('site API settings write', () => {
     expect(await missing.json()).toEqual({ error: 'unknown_character' })
   })
 
+  it('preserves an active chat binding when clearing its type or global default', async () => {
+    const { app, siteUrl, chatId } = await startWithSite()
+    const loaded = [...app.packs().packs.keys()][0] as string
+    setSetting(app.storage, { level: 'global', scope: '', key: 'character', value: loaded, actor: 'test' })
+    const clear = (level: 'global' | 'type', scope: string) =>
+      writeSetting(siteUrl, { level, scope, key: 'character', value: null })
+    expect((await clear('global', '')).status).toBe(400)
+    setSetting(app.storage, { level: 'type', scope: 'group', key: 'character', value: loaded, actor: 'test' })
+    expect((await clear('global', '')).status).toBe(200)
+    expect((await clear('type', 'group')).status).toBe(400)
+    setSetting(app.storage, { level: 'chat', scope: chatId, key: 'character', value: loaded, actor: 'test' })
+    expect((await clear('type', 'group')).status).toBe(200)
+  })
+
   it('refuses clearing chat character on an active chat without a loaded inherited character', async () => {
     const { app, siteUrl } = await startWithSite()
     const loaded = [...app.packs().packs.keys()][0] as string

@@ -1,6 +1,5 @@
-import { getChat } from '../settings/chats.js'
-import { definitionFor } from '../settings/keys.js'
-import { resolveSettings } from '../settings/settings.js'
+import { getChat, listChats } from '../settings/chats.js'
+import { resolveSettings, type SettingLevel } from '../settings/settings.js'
 import type { SiteApiDeps } from './routes.js'
 
 /** Enforces that active chats keep a loaded effective character binding. */
@@ -14,39 +13,17 @@ export class ChatBindingPolicy {
     return this.isLoadedCharacter(resolved['character']?.value)
   }
 
-  canClearChatCharacter(chatId: string): boolean {
-    const chat = getChat(this.deps.storage, chatId)
-    if (chat?.status !== 'active') return true
-    return this.isLoadedCharacter(this.inheritedCharacter(chat.type))
-  }
-
-  private inheritedCharacter(chatType: 'dm' | 'group'): unknown {
-    const def = definitionFor('character')
-    if (!def) return undefined
-    const rows = this.deps.storage.read(
-      (db) =>
-        db
-          .prepare(
-            `SELECT value
-             FROM setting
-             WHERE key = 'character'
-               AND ((level = 'type' AND scope = ?)
-                 OR (level = 'global' AND scope = ''))
-             ORDER BY CASE level WHEN 'type' THEN 1 ELSE 2 END`
-          )
-          .all(chatType) as { value: string }[]
-    )
-    for (const row of rows) {
-      let parsed: unknown
-      try {
-        parsed = JSON.parse(row.value)
-      } catch {
-        continue
-      }
-      const checked = def.schema.safeParse(parsed)
-      if (checked.success) return checked.data
+  canClearCharacter(level: SettingLevel, scope: string): boolean {
+    const chats = level === 'chat' ? [getChat(this.deps.storage, scope)] : listChats(this.deps.storage)
+    const loaded = this.deps.packs().packs
+    for (const chat of chats) {
+      if (chat?.status !== 'active' || (level === 'type' && chat.type !== scope)) continue
+      const binding = resolveSettings(this.deps.storage, chat)['character']
+      if (binding?.level !== level) continue
+      const next = resolveSettings(this.deps.storage, chat, { level, key: 'character' })['character']?.value
+      if (typeof next !== 'string' || !loaded.has(next)) return false
     }
-    return undefined
+    return true
   }
 
   private isLoadedCharacter(value: unknown): boolean {

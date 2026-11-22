@@ -200,6 +200,9 @@ bearer token.
   Container installs expose only the gateway directory index to the core. The index refreshes after replacement. Each chat row includes the time of its latest inbound message, or null
   for a record with no inbound messages. Phone and linked-device identities remain separate unless verified.
 
+Clearing a character at global, type or chat level must leave each active chat that uses that binding
+with a loaded effective character. A more specific binding keeps its precedence.
+
 ## Owner Page Edits
 
 The Settings editor keeps its selected file and unsaved buffer until Save or Revert. A failed read disables
