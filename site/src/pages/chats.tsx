@@ -120,7 +120,7 @@ function SocialPlatforms({
             const key = `${feature === 'features.social' ? 'social' : 'autofetch'}.platforms.${id}`
             const level = chat.settings[key]?.level ?? 'default'
             const hint = [operations.join(', '), sourceText(level, chat.type)]
-            if (id === 'youtube' && disabled && valueOf(chat, 'features.media', true)) {
+            if (id === 'youtube' && !valueOf(chat, 'features.social', false) && valueOf(chat, 'features.media', true)) {
               hint.push('Media watching still uses this setting for YouTube links.')
             }
             return (

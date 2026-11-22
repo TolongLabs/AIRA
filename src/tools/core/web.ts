@@ -1,6 +1,5 @@
 import { z } from 'zod'
 import type { Config } from '../../config/schema.js'
-import { platformSwitchOn } from '../../settings/settings.js'
 import { SocialPostError } from '../../social/port.js'
 import { modelPostResult } from '../../social/result.js'
 import { PLATFORM_NAME, parseSocialPostUrl, recognitionOnlyName, type SocialPostTarget } from '../../social/urls.js'
@@ -9,6 +8,7 @@ import { putFile } from '../../storage/files.js'
 import { SOURCE_ID, type SourceEntry } from '../../turn/sources.js'
 import type { TurnContext } from '../../turn/types.js'
 import { isForbiddenUrl, type ToolPorts } from '../ports.js'
+import { switchedOffPost } from '../read-policy.js'
 import { createSearchDepth, webSearchSchema } from '../search-depth.js'
 import type { ToolContext, ToolDefinition, ToolFailure } from '../types.js'
 
@@ -44,12 +44,6 @@ function failedAtIntake(url: string, context: Pick<TurnContext, 'intakeTriedSoci
             (entry.url === canonical || parseSocialPostUrl(entry.url)?.canonicalUrl === canonical)))
     ) ?? false
   )
-}
-
-/** The post a read names when the chat's read switch for its platform is off. Runs before any network call. */
-function switchedOffPost(url: string, settings: TurnContext['settings']): SocialPostTarget | undefined {
-  const target = parseSocialPostUrl(url.trim())
-  return target && !platformSwitchOn(settings, 'social', target.platform) ? target : undefined
 }
 
 function platformDisabledRefusal(target: SocialPostTarget): ToolFailure {
@@ -149,11 +143,11 @@ export function readPageTool(ports: ToolPorts): ToolDefinition<z.infer<typeof re
     async handler(args, context) {
       const target = resolveRead(args, context)
       if (!target.ok) return target
-      const off = switchedOffPost(target.url, context.settings)
-      if (off) return platformDisabledRefusal(off)
       if (isForbiddenUrl(target.url)) {
         return { ok: false, kind: 'refused', reason: 'forbidden address' }
       }
+      const off = switchedOffPost(target.url, context.settings)
+      if (off) return platformDisabledRefusal(off)
       if (alreadyReadAtIntake(target.url, context)) {
         return { ok: false, kind: 'refused', reason: INTAKE_REFUSAL, code: 'already_read' }
       }
@@ -184,14 +178,14 @@ export function readPostTool(ports: ToolPorts): ToolDefinition<z.infer<typeof re
     async handler(args, context) {
       const target = resolveRead(args, context)
       if (!target.ok) return target
+      if (isForbiddenUrl(target.url)) {
+        return { ok: false, kind: 'refused', reason: 'forbidden address' }
+      }
       const off = switchedOffPost(target.url, context.settings)
       if (off) {
         const at = context.now()
         context.observeSocialLookup?.({ target: off, started: at, ended: at, skip: 'platform_disabled' })
         return platformDisabledRefusal(off)
-      }
-      if (isForbiddenUrl(target.url)) {
-        return { ok: false, kind: 'refused', reason: 'forbidden address' }
       }
       if (alreadyReadAtIntake(target.url, context)) {
         return { ok: false, kind: 'refused', reason: INTAKE_REFUSAL, code: 'already_read' }
