@@ -102,6 +102,7 @@ export function fillMetaPost(post: SocialPost, media: JsonObject, maxTextChars: 
   post.imageUrl = items[0] ? firstCandidate(items[0]) : firstCandidate(media)
   post.photoUrls = metaPhotoUrls(media)
   if (videoSource) {
+    post.durationSec = positiveFiniteNumber(videoSource.video_duration)
     post.video = {
       url: firstVideoUrl(videoSource) as string,
       bytes: null,

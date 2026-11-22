@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 export const COMPRESSION_MAX_INPUT_BYTES = 48_000_000
-export const COMPRESSION_MAX_SECONDS = 180
+export const COMPRESSION_MAX_SECONDS = 300
 const COMPRESSION_TIMEOUT_MS = 12_000
 
 export type CompressVideo = (
@@ -139,7 +139,7 @@ export function createVideoCompressor(): CompressVideo {
           '-filter_threads',
           '2',
           '-vf',
-          "scale=w='min(960,iw)':h='min(540,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=fast_bilinear,fps=24",
+          "scale=w='min(960,iw)':h='min(540,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=fast_bilinear,fps='if(gt(source_fps,0),min(source_fps,24),24)'",
           '-c:v',
           'libx264',
           '-preset',

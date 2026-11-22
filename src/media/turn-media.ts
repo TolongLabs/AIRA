@@ -275,7 +275,9 @@ function formatLinkLines(link: LinkReading, share: number): string[] {
   const note = noteText ? [`  (${noteText})`] : []
   const readKind = link.reading ? (link.mediaKind ?? 'video') : undefined
   if (readKind !== 'video' && (link.post.videoCount > 0 || link.post.video)) {
-    note.push('  Video playback and audio were unavailable.')
+    note.push(
+      '  Only describe the post text and any images actually seen. No video or audio was observed. Do not infer a playback problem.'
+    )
   }
   if (!link.reading) return [...threadLines, formatPostLine(link, rest), ...note]
   const postBudget = Math.max(120, Math.floor(rest * 0.4))

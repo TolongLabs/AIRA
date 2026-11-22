@@ -291,7 +291,7 @@ describe('autofetch', () => {
   it('records duration bands on both sides of the cutoff without rounding', async () => {
     const env = setup()
     env.viewer.lookup.mockImplementation(async (target) => {
-      const seconds = target.id === '1' ? 180 : target.id === '2' ? 180.1 : undefined
+      const seconds = target.id === '1' ? 180 : target.id === '2' ? 300.1 : undefined
       return {
         status: 'found',
         post: parseFxTwitterResponse(
@@ -755,7 +755,7 @@ it('caches the bounded compressed MP4 and keeps gateway delivery pending', async
   expect(compressVideo).toHaveBeenCalledTimes(1)
   const args = compressVideo.mock.calls[0]!
   expect(args[0] === input).toBe(true)
-  expect(args.slice(1)).toEqual([16_000_000, 180, expect.any(AbortSignal)])
+  expect(args.slice(1)).toEqual([16_000_000, 300, expect.any(AbortSignal)])
   expect(result.deliveryKey).toBeTruthy()
   expect(result.media).toHaveLength(1)
   const delivered = result.media[0]!
@@ -911,11 +911,11 @@ describe('autofetch video duration and compression', () => {
     )
   }
 
-  it('sends a 180s native video and skips 180.1s before downloading', async () => {
+  it('sends a 300s native video and skips 300.1s before downloading', async () => {
     const env = setup()
     env.viewer.lookup.mockImplementation(async (target: SocialPostTarget) => ({
       status: 'found',
-      post: videoPost(target, target.id === '180' ? 180 : 180.1, `https://video.example/clip-${target.id}.mp4`)
+      post: videoPost(target, target.id === '180' ? 300 : 300.1, `https://video.example/clip-${target.id}.mp4`)
     }))
     const media = await env.autofetch.fetch({
       chat: env.waId,
@@ -929,10 +929,15 @@ describe('autofetch video duration and compression', () => {
       env.storage.read((db) =>
         db.prepare('SELECT video_duration_band FROM social_lookup ORDER BY ordinal').pluck().all()
       )
-    ).toEqual(['le_180', 'gt_180'])
+    ).toEqual(['gt_180', 'gt_180'])
     expect(
       env.storage.read((db) => db.prepare('SELECT reason FROM social_lookup ORDER BY ordinal').pluck().all())
     ).toEqual([null, 'too_long'])
+    expect(
+      env.storage.read((db) =>
+        db.prepare("SELECT json_extract(counts, '$.failed') FROM job_run WHERE kind = 'autofetch'").pluck().get()
+      )
+    ).toBe(0)
   })
 
   it('sends an unknown-duration video once a real probe succeeds', async () => {
@@ -976,7 +981,7 @@ describe('autofetch video duration and compression', () => {
   })
 
   it('measures a long unknown-duration video after download and keeps its sibling photos', async () => {
-    const clip = await makeClip(185)
+    const clip = await makeClip(305)
     const env = setup()
     const photoA = 'https://img.example/kept-a.jpg'
     const photoB = 'https://img.example/kept-b.jpg'

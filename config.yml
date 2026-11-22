@@ -112,7 +112,7 @@ media:
   # read-only. Empty here: the host's config.yml lists ~/.hermes/cache and ~/.hermes/audio_cache (docs/trd/deployment.md).
   gatewayDirs: []
   timeoutMs: 30000 # One media read, within two thirds of the time left in the turn deadline
-  maxVideoSeconds: 180 # Longest video that is watched
+  maxVideoSeconds: 300 # Longest video that is watched
   maxLinkVideoSeconds: 600 # Longest span watched from a YouTube link
   linkWatchMs: 12000 # All segment watches of one YouTube link, from the end of its lookup
   linkSegmentSeconds: 180 # One YouTube segment; a 3-minute span measured 5 s
