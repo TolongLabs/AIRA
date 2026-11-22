@@ -364,15 +364,38 @@ describe('autofetch', () => {
     expect(await env.autofetch.fetch({ chat: env.waId, text: 'again https://x.com/someone/status/1' })).toHaveLength(1)
   })
 
-  it.each([
-    ['the switch is off', { on: false }],
-    ['the chat is a DM', { type: 'dm' as const }]
-  ])('does nothing when %s', async (_name, options) => {
-    const env = setup({ ...options, posts: { 'x:1': { photoCount: 1, photoUrls: ['https://img.example/1.jpg'] } } })
+  it('does nothing when the switch is off', async () => {
+    const env = setup({
+      on: false,
+      posts: { 'x:1': { photoCount: 1, photoUrls: ['https://img.example/1.jpg'] } }
+    })
 
     expect(await env.autofetch.fetch({ chat: env.waId, text: 'https://x.com/someone/status/1' })).toEqual([])
     expect(env.viewer.lookup).not.toHaveBeenCalled()
     expect(jobRuns(env.storage)).toEqual([])
+  })
+
+  it('sends files in an active opt-in DM, and not when off or muted', async () => {
+    const posts = { 'x:1': { photoCount: 1, photoUrls: ['https://img.example/1.jpg'] } }
+    const env = setup({ type: 'dm', posts })
+
+    const media = await env.autofetch.fetch({ chat: env.waId, text: 'https://x.com/someone/status/1' })
+    expect(media).toHaveLength(1)
+    expect(media[0]?.kind).toBe('image')
+
+    const off = setup({ type: 'dm', on: false, posts })
+    expect(await off.autofetch.fetch({ chat: off.waId, text: 'https://x.com/someone/status/1' })).toEqual([])
+    expect(off.viewer.lookup).not.toHaveBeenCalled()
+    expect(jobRuns(off.storage)).toEqual([])
+
+    setSetting(env.storage, {
+      level: 'chat',
+      scope: env.chat.chatId,
+      key: 'muted',
+      value: { by: 'someone', at: '2026-11-18T07:00:00.000Z' },
+      actor: 'test'
+    })
+    expect(await env.autofetch.fetch({ chat: env.waId, text: 'https://x.com/someone/status/1' })).toEqual([])
   })
 
   it('does nothing in a muted group, a pending chat or an unknown chat', async () => {
@@ -562,8 +585,20 @@ describe('chat flags for autofetch', () => {
     expect(buildChatFlags(env.storage).chats[GROUP]).toBeUndefined()
   })
 
-  it('never declares autofetch for a DM', () => {
+  it('declares autofetch for an active opt-in DM, and not when off or muted', () => {
     const env = setup({ type: 'dm' })
+    expect(buildChatFlags(env.storage).chats[DM]).toEqual({ autofetch: true })
+
+    const off = setup({ type: 'dm', on: false })
+    expect(buildChatFlags(off.storage).chats[DM]).toBeUndefined()
+
+    setSetting(env.storage, {
+      level: 'chat',
+      scope: env.chat.chatId,
+      key: 'muted',
+      value: { by: 'someone', at: '2026-11-18T07:00:00.000Z' },
+      actor: 'test'
+    })
     expect(buildChatFlags(env.storage).chats[DM]).toBeUndefined()
   })
 })
