@@ -789,6 +789,42 @@ describe('the subscription transport', () => {
       expect(runnerStdout.slice(before).some((line) => line.startsWith('run ended '))).toBe(true)
     })
 
+    it('records a lost response after a tool ran and keeps the fallback from repeating it', async () => {
+      const { server, url } = await startToolServer()
+      const fallback = makeFallback()
+      const noteLog: { args: unknown; callId: string }[] = []
+      const onCall = vi.fn()
+      const runner = createSubscriptionRunner({
+        subscription: { runnerUrl, toolServerUrl: url },
+        model: '',
+        effort: '',
+        runnerToken: RUNNER_TOKEN,
+        toolServer: server,
+        breaker: createBreaker({ breakerMs: 60_000 }),
+        fallback,
+        fetch: async (request, init) => {
+          const response = await fetch(request, init)
+          await response.text()
+          throw new Error('connection lost after tool execution')
+        },
+        logger: createLogger({ level: 'error', module: 'sub-test' })
+      })
+
+      await expect(
+        runner.run({
+          system: [{ name: 'core', text: 'Rules: save the note' }],
+          messages: [{ role: 'user', content: 'CALL note {"q":"green"}' }],
+          tools: [makeTool('note', noteLog)],
+          context: makeContext('turn-lost'),
+          signal: new AbortController().signal,
+          onCall
+        })
+      ).rejects.toMatchObject({ kind: 'transient' })
+      expect(noteLog).toEqual([{ args: { q: 'green' }, callId: 'turn-lost:1' }])
+      expect(fallback.calls).toBe(0)
+      expect(onCall).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ failureKind: 'transient' }))
+    })
+
     it('treats a closed runner port as transient and uses fallback, and revokes the session token', async () => {
       const closedPort = await freePort()
       const { server, url } = await startToolServer()

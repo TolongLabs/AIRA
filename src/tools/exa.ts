@@ -1,5 +1,6 @@
 import { isBlockedPage } from './blocked-page.js'
-import type { PagePort, SearchPort } from './ports.js'
+import { EXCLUDED_DOMAINS, isExcludedUrl } from './excluded-hosts.js'
+import { isForbiddenUrl, type PagePort, type SearchPort } from './ports.js'
 
 const EXA_SEARCH_URL = 'https://api.exa.ai/search'
 const DEFAULT_TIMEOUT_MS = 10_000
@@ -43,7 +44,7 @@ function mapResults(raw: unknown, preserveLayout = false): { title: string; url:
   for (const entry of results) {
     if (!entry || typeof entry !== 'object') continue
     const record = entry as { title?: unknown; url?: unknown; highlights?: unknown }
-    if (typeof record.url !== 'string') continue
+    if (typeof record.url !== 'string' || isExcludedUrl(record.url)) continue
     const title = typeof record.title === 'string' ? record.title : ''
     mapped.push({ title, url: record.url, snippet: firstSnippet(record.highlights, preserveLayout) })
   }
@@ -63,13 +64,16 @@ function toHttpsUrl(value: unknown): string | undefined {
 }
 
 function mapImageCandidates(raw: unknown): { url: string }[] {
-  const results = readResults(raw)
+  const results = readResults(raw).filter((entry) => {
+    const source = (entry as { url?: unknown } | null)?.url
+    return typeof source !== 'string' || !isExcludedUrl(source)
+  })
   const seen = new Set<string>()
   const candidates: { url: string }[] = []
   const add = (value: unknown): void => {
     if (candidates.length >= MAX_IMAGE_CANDIDATES) return
     const url = toHttpsUrl(value)
-    if (!url || seen.has(url)) return
+    if (!url || isForbiddenUrl(url) || seen.has(url)) return
     seen.add(url)
     candidates.push({ url })
   }
@@ -108,7 +112,7 @@ export function createExaSearchPort(options: { apiKey: string; fetch?: typeof fe
           'content-type': 'application/json',
           'x-api-key': options.apiKey
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, excludeDomains: EXCLUDED_DOMAINS }),
         signal: combined
       })
     } catch (cause) {
@@ -186,8 +190,9 @@ export function createExaPagePort(options: {
         signal: combined
       })
       if (!response.ok) return undefined
-      const data = (await response.json()) as { results?: { title?: unknown; text?: unknown }[] }
+      const data = (await response.json()) as { results?: { url?: unknown; title?: unknown; text?: unknown }[] }
       const first = Array.isArray(data.results) ? data.results[0] : undefined
+      if (typeof first?.url === 'string' && isForbiddenUrl(first.url)) return undefined
       const title = typeof first?.title === 'string' ? first.title : ''
       const text = typeof first?.text === 'string' ? first.text.trim() : ''
       if (text.length === 0 || isBlockedPage(text, url, title)) return undefined
@@ -200,6 +205,7 @@ export function createExaPagePort(options: {
   return {
     async read(url, signal) {
       signal.throwIfAborted()
+      if (isForbiddenUrl(url)) throw new Error('forbidden url')
       const page = await viaExa(url, signal)
       if (page) return page
       signal.throwIfAborted()

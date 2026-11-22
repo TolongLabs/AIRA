@@ -66,7 +66,6 @@ function expectRefusedDouyin(result: { ok: boolean; kind?: string; reason?: stri
   if (result.ok) throw new Error('expected a refusal')
   expect(result.kind).toBe('refused')
   expect(result.reason).toContain('Douyin')
-  expect(result.reason).not.toContain('LinkedIn')
 }
 
 describe('douyin recognition', () => {

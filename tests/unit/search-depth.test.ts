@@ -130,7 +130,15 @@ describe('search depth', () => {
     expect(read).toHaveBeenCalledWith(lineup.url, expect.any(AbortSignal))
   })
 
-  it('skips a recognised LinkedIn candidate and reads the next eligible page', async () => {
+  it('drops excluded snippets before registering or returning a plain search result', async () => {
+    const excluded = { title: 'Example', url: 'https://lnkd.in/example', snippet: 'Excluded snippet' }
+    const turn = context()
+    const search = createSearchDepth({ search: { search: async () => [excluded, menu] } })
+    expect(await search.plain(query, turn)).toEqual([{ ...menu, source: 's1' }])
+    expect(turn.sources.find({ url: excluded.url })).toBeUndefined()
+  })
+
+  it('skips an excluded candidate and reads the next eligible page', async () => {
     const linkedin = {
       title: 'Example models lineup',
       url: 'https://www.linkedin.com/posts/synthetic-update-activity-1234567890123456789',

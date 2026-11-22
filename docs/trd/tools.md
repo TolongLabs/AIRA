@@ -365,14 +365,12 @@ has up to five matches with title, domain, link and price when present. It carri
 Intake, `read_post` and chat autofetch use the same post resolver and reader dispatch. A reader may return
 partial data. Previews, cards and quoted or earlier-thread media can describe a post to the reader. Group
 delivery requires separate native attachment evidence. Enable a new operation only after verifying the
-specific post identity, fields, retrieval permission and intended use. Xiaohongshu/rednote, Douyin and
-LinkedIn start with all operations disabled. Evaluate reading, intake and redistribution independently.
-AIRA has no approved dev2 integration for these three platforms. A public embed or a public browser
+specific post identity, fields, retrieval permission and intended use. Xiaohongshu/rednote and Douyin
+start with all operations disabled. Evaluate reading, intake and redistribution independently.
+AIRA has no approved dev2 integration for either platform. A public embed or a public browser
 page does not establish permission for automated reads, model processing or redistribution. Douyin
-documents OAuth-protected account capabilities. LinkedIn restricts automated access and copying in
-its user agreement. Record the approved fields and uses before enabling a provider.
-[Douyin capabilities](https://partner.open-douyin.com/docs/resource/zh-CN/dop/ability/common-solution)
-and [LinkedIn User Agreement](https://www.linkedin.com/legal/user-agreement).
+documents OAuth-protected account capabilities. Record the approved fields and uses before enabling a provider.
+[Douyin capabilities](https://partner.open-douyin.com/docs/resource/zh-CN/dop/ability/common-solution).
 
 `read_post` takes one seen `url` or `source` id from [Turn Sources](#turn-sources). Only the
 model calls it; no command names it. A post link in a member's message is read
@@ -435,13 +433,8 @@ and `xhslink.cn/o/{code}`. A short link has no verified note identity. Name the 
 leave the link out of read, intake, fetch and the capability catalog. Profiles and unrelated pages have
 no post classification. Keep the query and short code out of logs.
 
-LinkedIn has recognition only (T0 on both deployments). Recognise official post slugs with a numeric activity or ugcPost ID,
-feed update activity URNs, and single-token and /p/{token} lnkd.in shares. A short link identifies the service only.
-Keep these links out of intake and fetch selection. The read tools name LinkedIn and refuse a recognised URL
-before any network call. This includes HTTP links, official regional and mobile hosts, and a host with a trailing dot.
-The model sees a named refusal through the tool registry. Search and research skip recognised posts before
-selecting pages for a read. Profiles and articles are outside this post contract. The platform has no active
-read or fetch operation in the capability catalog.
+Excluded source hosts and their short links receive a generic refusal. Page reads, post reads, redirects and
+search results must respect host exclusions before retrieving or passing content to the model.
 
 Official direct paths include Reddit comment permalinks, TikTok photos, Threads posts with or without an account,
 Facebook stories and photos, Instagram TV, YouTube live and embeds, and X web-status links. Official short

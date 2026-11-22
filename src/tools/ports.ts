@@ -6,6 +6,7 @@ import type { PostPortResult } from '../social/result.js'
 import type { SocialLookupObserver } from '../social/types.js'
 import type { Db } from '../storage/database.js'
 import { isBlockedPage } from './blocked-page.js'
+import { isExcludedHost } from './excluded-hosts.js'
 
 export interface MemoryPort {
   /** Facts and summaries of this chat. With an asker, a line says whether a fact is about them or another member. */
@@ -183,7 +184,7 @@ function stripHostBrackets(hostname: string): string {
   return lower
 }
 
-/** True for an address the core must never fetch: not http or https, localhost, or a private or link-local IP. */
+/** True for an address the core must never fetch: not http or https, an excluded host, localhost, or a private or link-local IP. */
 export function isForbiddenUrl(url: string): boolean {
   let parsed: URL
   try {
@@ -195,7 +196,7 @@ export function isForbiddenUrl(url: string): boolean {
   if (parsed.username !== '' || parsed.password !== '') return true
 
   const host = stripHostBrackets(parsed.hostname)
-  if (host === '') return true
+  if (host === '' || isExcludedHost(host)) return true
   if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) {
     return true
   }
