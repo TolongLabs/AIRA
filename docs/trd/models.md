@@ -268,9 +268,9 @@ media folders.
    and social readers.
 8. **Failure.** A file that is refused, over a limit, of an unsupported type, unread because media is off, or whose
    read fails or times out, does not end the turn. Block 4 gets a short note naming the kind of file and why, and the
-   pack's `unreadableMedia` line. The model tells the sender in its own voice, so the reply can also answer the
-   files that were read and the text that came with them. For direct attachments, the model does not ask the sender
-   to resend the file. The note never carries the path.
+   pack's `unreadableMedia` line for link-only failures. For direct attachments the model briefly acknowledges
+   the failed read in character, without asking the sender to resend the file. It can still answer from the files
+   that were read and the text that came with them. The note never carries the path.
 9. **Record.** Every request to the media model is one `model_call` row with role `media`, with its tokens and its
    failure kind when it failed. Every unreadable file is one `failure` row with kind `media_unreadable`, stage
    `media`, handled by `line:unreadableMedia`, and a message with the kind of file and the reason, never the path.
@@ -452,13 +452,13 @@ are not read, and each one gets the unreadable note with the reason `off`. The t
 
 Every media failure is contained. The turn continues and answers in character.
 
-| Failure                                                                                                            | What The Member Sees                                                                    |
-| ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| Refused path, missing file, unsupported type, empty file, too large, too long, media off, failed read, failed link | The pack's `unreadableMedia` line, voiced by the model, beside the files that were read |
-| One YouTube segment fails while another answers                                                                    | Nothing about the failure; the merged text names the unwatched part                     |
-| Every segment fails                                                                                                | The whole video unreadable; the post text stays when the lookup gave it                 |
-| Private or removed video                                                                                           | Unreadable with the reason `unavailable`                                                |
-| Media model auth failure                                                                                           | The same unreadable outcome, plus an operator alert                                     |
+| Failure                                                                                                            | What The Member Sees                                                    |
+| ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| Refused path, missing file, unsupported type, empty file, too large, too long, media off, failed read, failed link | An in-character acknowledgment beside the files that were read (rule 8) |
+| One YouTube segment fails while another answers                                                                    | Nothing about the failure; the merged text names the unwatched part     |
+| Every segment fails                                                                                                | The whole video unreadable; the post text stays when the lookup gave it |
+| Private or removed video                                                                                           | Unreadable with the reason `unavailable`                                |
+| Media model auth failure                                                                                           | The same unreadable outcome, plus an operator alert                     |
 
 ## Social Post And Reply Readers
 
