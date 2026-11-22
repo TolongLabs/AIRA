@@ -291,9 +291,13 @@ const RANGE_RESUMES = 2
 /** A response that is not the requested range of the same file. It ends the batch without a resume. */
 class InvalidRange extends Error {}
 
-/** An ETag or Last-Modified value that names one exact version of a file. A weak ETag does not. */
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')
+}
+
+/** A strong ETag names one exact version of a file. A weak ETag or a Last-Modified date does not. */
 function strongValidator(version: string | null | undefined): version is string {
-  return typeof version === 'string' && version.length > 0 && !/^W\//i.test(version)
+  return typeof version === 'string' && /^"[^"]*"$/.test(version)
 }
 
 /** The only request headers a media download may carry: a host's user agent and referrer, never cookies. */
@@ -391,7 +395,7 @@ export function createFetchPagePort(
       if (jar) rememberCookies(jar, parsed.origin, res.headers.getSetCookie())
       if (REDIRECT_STATUSES.has(res.status)) {
         const location = res.headers.get('location')
-        await res.body?.cancel()
+        void res.body?.cancel().catch(() => undefined)
         if (hops === MAX_REDIRECTS) throw new Error('too many redirects')
         if (!location) throw new Error('redirect missing location')
         currentUrl = new URL(location, currentUrl).toString()
@@ -438,15 +442,18 @@ export function createFetchPagePort(
         timer = setTimeout(() => idle.abort(), RANGE_IDLE_MS)
       }
       let streaming = false
+      let requesting = false
       let fail = () => {}
       try {
         const from = start + received
+        requesting = true
         const { res, url: finalUrl } = await fetchChecked(url, attemptSignal, {
           ...headers,
           Range: `bytes=${from}-${end}`,
           'Accept-Encoding': 'identity',
           ...(received > 0 && first?.version ? { 'If-Range': first.version } : {})
         })
+        requesting = false
         const mime = res.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase()
         const version = res.headers.get('etag') ?? res.headers.get('last-modified')
         if (
@@ -488,7 +495,10 @@ export function createFetchPagePort(
       } catch (error) {
         // A stall, or a drop or early end after a valid range began, resumes. A refusal, a policy error, a wrong
         // response or the caller's deadline does not.
-        const resumable = !(error instanceof InvalidRange) && (idle.signal.aborted || streaming)
+        // While the request is open, only an abort the idle timer caused resumes; a refusal or policy error after the
+        // timer fired still stops the batch.
+        const idleAbort = idle.signal.aborted && requesting && isAbortError(error)
+        const resumable = !(error instanceof InvalidRange) && (idleAbort || streaming)
         if (resumable && !batchSignal.aborted && attempt < RANGE_RESUMES) continue
         throw error
       } finally {

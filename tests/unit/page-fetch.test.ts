@@ -67,6 +67,20 @@ describe('isBlockedPage', () => {
 })
 
 describe('createFetchPagePort redirects and cookies', () => {
+  it('refuses a malformed address as forbidden and cancels the body of the redirect past the limit', async () => {
+    const port = createFetchPagePort({ fetch: (async () => page('x', 'y')) as typeof fetch, lookup: publicHost })
+    await expect(port.read('not a url', signal)).rejects.toThrow('forbidden url')
+    const cancels: ReturnType<typeof vi.spyOn>[] = []
+    const looping = async (url: string) => {
+      const res = new Response('moved', { status: 302, headers: { location: `${url}x` } })
+      cancels.push(vi.spyOn(res.body!, 'cancel'))
+      return res
+    }
+    const loop = createFetchPagePort({ fetch: looping as typeof fetch, lookup: publicHost })
+    await expect(loop.read('https://example.com/', signal)).rejects.toThrow('too many redirects')
+    expect(cancels.at(-1)).toHaveBeenCalled()
+  })
+
   it('keeps a cookieless download free of cookies and keeps forwarded headers on the first origin', async () => {
     const seen: { url: string; cookie: string | undefined; referer: string | null }[] = []
     const fetchFn = async (url: string, init: RequestInit) => {

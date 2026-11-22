@@ -460,6 +460,18 @@ describe('autofetch', () => {
     expect(env.download).toHaveBeenCalledWith(video.url, expect.any(AbortSignal), expect.any(Number), null, 9_000_000)
   })
 
+  it('reserves nothing for a direct link whose lookup names another post', async () => {
+    const env = setup()
+    env.viewer.lookup.mockImplementation(async (target: SocialPostTarget) => {
+      env.lookups.push(target.lookupKey)
+      const other = parseOfficialSocialPostUrl('https://x.com/other/status/2')!
+      return { status: 'found', post: post(other, { attachments: [] }) }
+    })
+    await env.autofetch.fetch({ chat: env.waId, text: 'https://x.com/example/status/1' })
+    await env.autofetch.fetch({ chat: env.waId, text: 'https://x.com/other/status/2' })
+    expect(env.lookups).toEqual(['x:1', 'x:2'])
+  })
+
   it('reserves the canonical post of a share link even when it has no media to send', async () => {
     const env = setup()
     env.viewer.lookup.mockImplementation(async (target: SocialPostTarget) => {

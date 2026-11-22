@@ -37,22 +37,22 @@ export function mirrorVideoRangeBytes(video: PlayableVideo): number | undefined 
     return video.bytes
   }
 }
-const PREVIEW_HOSTS = new Set(['i.redd.it', 'preview.redd.it', 'external-preview.redd.it'])
+const REDDIT_PREVIEW_HOSTS = new Set(['i.redd.it', 'preview.redd.it', 'external-preview.redd.it'])
+
+function isTikTokCdnHost(host: string): boolean {
+  return host.endsWith('.tiktokcdn.com') || host.endsWith('.tiktokcdn-us.com')
+}
 
 function allowedPreview(url: URL): boolean {
-  return (
-    PREVIEW_HOSTS.has(url.hostname) ||
-    url.hostname.endsWith('.tiktokcdn.com') ||
-    url.hostname.endsWith('.tiktokcdn-us.com')
-  )
+  return REDDIT_PREVIEW_HOSTS.has(url.hostname) || isTikTokCdnHost(url.hostname)
 }
 
 /** The mirror platform whose media origin serves this URL, if any. */
 export function mirrorAssetPlatform(value: string): 'tiktok' | 'reddit' | undefined {
   const url = httpsUrl(value)
   if (!url) return undefined
-  if (TIKTOK_VIDEO_HOSTS.has(url.hostname)) return 'tiktok'
-  if (url.hostname === 'v.redd.it' || allowedPreview(url)) return 'reddit'
+  if (TIKTOK_VIDEO_HOSTS.has(url.hostname) || isTikTokCdnHost(url.hostname)) return 'tiktok'
+  if (url.hostname === 'v.redd.it' || REDDIT_PREVIEW_HOSTS.has(url.hostname)) return 'reddit'
   return undefined
 }
 

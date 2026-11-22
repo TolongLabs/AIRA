@@ -666,20 +666,17 @@ describe('core tools', () => {
         }
       }
     })
-    const turns: TurnContext[] = []
-    for (let i = 0; i < 70; i++) {
-      const ctx = makeCtx()
-      ctx.sources.addText('https://example.com/article', 'message')
-      // Half refused (an unseen link), half read, and none cleaned.
-      const url = i % 2 === 0 ? 'https://unseen.example/' : 'https://example.com/article'
-      await registry.call('read_page', { url }, ctx, { callId: `c-${i}`, source: 'model' })
-      turns.push(ctx)
+    // One read that stores a source, then only refused calls, which never reach the success path.
+    const first = makeCtx()
+    first.sources.addText('https://example.com/article', 'message')
+    await registry.call('read_page', { url: 'https://example.com/article' }, first, { callId: 'c-0', source: 'model' })
+    let last = first
+    for (let i = 1; i <= 64; i++) {
+      last = makeCtx()
+      await registry.call('read_page', { url: 'https://unseen.example/' }, last, { callId: `c-${i}`, source: 'model' })
     }
-    expect(registry.takeSources(turns[0]!.turnId)).toEqual([])
-    expect(registry.takeSources(turns[5]!.turnId)).toEqual([])
-    expect(registry.takeSources(turns[69]!.turnId)).toEqual([
-      { url: 'https://example.com/article', lookup: 'message', kind: 'read' }
-    ])
+    expect(registry.takeSources(first.turnId)).toEqual([])
+    expect(registry.takeSources(last.turnId)).toEqual([])
   })
 
   it('read_post: refuses a YouTube short link whose canonical URL was read at intake', async () => {
