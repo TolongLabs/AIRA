@@ -59,10 +59,27 @@ async function probe(path: string, signal: AbortSignal) {
 /** Seconds the MP4 plays, or undefined when ffprobe cannot establish a finite positive length. */
 export type ProbeVideoDuration = (data: Buffer, signal: AbortSignal) => Promise<number | undefined>
 
-/** Probes an MP4 held in memory through a temporary file, which is removed before the call returns. */
-export const probeVideoDuration: ProbeVideoDuration = async (data, signal) => {
+/** Duration probes running at once. A probe over this cap is refused, so its video is skipped as unknown duration. */
+const PROBE_CONCURRENCY = 2
+let runningProbes = 0
+
+/**
+ * Probes an MP4 held in memory for its duration only, through a temporary file removed before the call returns.
+ * Refused without running ffprobe: an aborted caller, a non-MP4, an input over the compressor's cap, or a probe over
+ * the concurrency cap. The probe shares the compressor's local deadline.
+ */
+export const probeVideoDuration: ProbeVideoDuration = async (data, callerSignal) => {
+  if (
+    callerSignal.aborted ||
+    runningProbes >= PROBE_CONCURRENCY ||
+    data.length > COMPRESSION_MAX_INPUT_BYTES ||
+    !isMp4(data)
+  )
+    return undefined
+  runningProbes++
   let root: string | undefined
   try {
+    const signal = AbortSignal.any([callerSignal, AbortSignal.timeout(COMPRESSION_TIMEOUT_MS)])
     root = await mkdtemp(join(tmpdir(), 'aira-probe-'))
     const input = join(root, 'input.mp4')
     await writeFile(input, data, { signal })
@@ -71,6 +88,7 @@ export const probeVideoDuration: ProbeVideoDuration = async (data, signal) => {
   } catch {
     return undefined
   } finally {
+    runningProbes--
     if (root) await rm(root, { recursive: true, force: true }).catch(() => undefined)
   }
 }

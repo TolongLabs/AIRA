@@ -157,24 +157,35 @@ assert scope["_aira_autofetch"]() is fake
 DM_AUTOFETCH_TEST = r'''import ast, sys
 from pathlib import Path
 from types import SimpleNamespace
-tree = ast.parse(Path(sys.argv[1]).read_text())
-# Exercise the installed adapter's gate and both offer calls without importing or starting the real gateway.
-gate = next(n for n in ast.walk(tree) if isinstance(n, ast.If)
-            and "_should_process_message" in ast.unparse(n.test)
-            and any(isinstance(c, ast.Call) and getattr(c.func, "attr", None) == "offer" for c in ast.walk(n)))
-block = next(n.body for n in ast.walk(tree) if isinstance(getattr(n, "body", None), list) and gate in n.body)
-index = block.index(gate)
-snippet = "def dispatch(self, data):\n" + "\n".join("    " + line for stmt in block[index:index + 3]
-           for line in ast.unparse(stmt).splitlines()) + "\n    return 'normal reply'"
-seen = []
-af = SimpleNamespace(offer=lambda adapter, data, **kwargs: seen.append(kwargs))
-scope = {"_aira_autofetch": lambda: af}
-exec(snippet, scope)
-assert scope["dispatch"](SimpleNamespace(_should_process_message=lambda data: True), {"isGroup": False}) == "normal reply"
-assert seen == [{"accepted": True}], seen
-seen.clear()
-assert scope["dispatch"](SimpleNamespace(_should_process_message=lambda data: False), {"isGroup": True}) is None
-assert seen == [{}], seen
+from unittest.mock import Mock
+tree = ast.parse(Path(sys.argv[1]).read_text(encoding="utf-8"))
+# Execute the installed hook between event construction and return, in isolation from adapter imports and I/O.
+body = next(n.body for n in ast.walk(tree) if isinstance(n, ast.Try)
+            and any(isinstance(s, ast.Assign) and "MessageEvent(" in ast.unparse(s.value) for s in n.body)
+            and any(isinstance(s, ast.Try) and "_is_sender_authorized" in ast.unparse(s) for s in n.body))
+event, hook, ret = body[-3:]
+assert isinstance(event, ast.Assign) and "MessageEvent(" in ast.unparse(event.value)
+assert isinstance(hook, ast.Try) and isinstance(ret, ast.Return) and ast.unparse(ret.value) == ast.unparse(event.targets[0])
+compiled = compile(ast.Module(body=[hook], type_ignores=[]), "adapter", "exec")
+source = SimpleNamespace(user_id="synthetic-user", chat_id="synthetic-chat", chat_type="dm")
+adapter, helper = Mock(), Mock()
+data = {"isGroup": False}
+scope = {"self": adapter, "data": data, "source": source, "_aira_autofetch": lambda: helper}
+for authorized in (False, None, True):
+    adapter._is_sender_authorized.return_value = authorized
+    exec(compiled, scope)
+    if authorized:
+        helper.offer.assert_called_once_with(adapter, data, accepted=True)
+    else:
+        helper.offer.assert_not_called()
+adapter._is_sender_authorized.assert_called_with(source.user_id, "dm", source.chat_id)
+helper.reset_mock()
+source.chat_type = "group"
+exec(compiled, scope)
+helper.offer.assert_not_called()
+source.chat_type = "dm"
+helper.offer.side_effect = TypeError("old helper")
+exec(compiled, scope)
 '''
 
 
@@ -674,20 +685,48 @@ async def test_reply_prefix_still_injected_when_text_in_history():
             "name": "autofetch-dm",
             "target": ADAPTER,
             "present": "[aira] autofetch-dm",
-            "edits": (('''                    _af.offer(self, data)
-                return None
-
-            # Determine message type
+            "edits": (('''            return MessageEvent(
+                text=body,
+                message_type=msg_type,
+                source=source,
+                raw_message=data,
+                message_id=data.get("messageId"),
+                media_urls=cached_urls,
+                media_types=media_types,
+                metadata=metadata,
+                reply_to_message_id=reply_to_message_id,
+                reply_to_text=reply_to_text,
+                reply_to_author_id=reply_to_author_id,
+                reply_to_is_own_message=reply_to_is_own_message,
+            )
 ''',
-                       '''                    _af.offer(self, data)
-                return None
-
-            # [aira] autofetch-dm: accepted DMs can fetch media while the reply continues.
-            _af = _aira_autofetch()
-            if _af is not None:
-                _af.offer(self, data, accepted=True)
-
-            # Determine message type
+                       '''            _aira_event = MessageEvent(
+                text=body,
+                message_type=msg_type,
+                source=source,
+                raw_message=data,
+                message_id=data.get("messageId"),
+                media_urls=cached_urls,
+                media_types=media_types,
+                metadata=metadata,
+                reply_to_message_id=reply_to_message_id,
+                reply_to_text=reply_to_text,
+                reply_to_author_id=reply_to_author_id,
+                reply_to_is_own_message=reply_to_is_own_message,
+            )
+            # [aira] autofetch-dm: an accepted DM is offered once its event is built and the adapter authorizes its
+            # sender. A legacy, missing or failing helper never stops the reply.
+            try:
+                _af = _aira_autofetch()
+                if (
+                    _af is not None
+                    and source.chat_type == "dm"
+                    and self._is_sender_authorized(source.user_id, source.chat_type, source.chat_id) is True
+                ):
+                    _af.offer(self, data, accepted=True)
+            except Exception:
+                pass
+            return _aira_event
 '''),),
             "syntax": py,
             "tests": [["{python}", "-c", DM_AUTOFETCH_TEST, "{target}"]],

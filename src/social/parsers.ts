@@ -319,6 +319,7 @@ function isNativeYtDlpVideo(
   formats: readonly VideoCandidate[],
   video: PlayableVideo
 ): boolean {
+  if (target.invalidPart) return false
   if (!formats.some((format) => format.url === video.url && format.container === 'mp4')) return false
   if (data._type !== 'video' || Array.isArray(data.entries) || data.playlist_id != null || data.playlist_index != null)
     return false
