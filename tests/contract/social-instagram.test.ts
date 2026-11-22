@@ -302,6 +302,7 @@ it('attaches the typed carousel clip with its own duration alongside the two pho
     )
   }
   const parsed = parseInstagramPage(pageWith(media), post, 1500)!
+  expect(parsed.durationSec).toBe(11.5)
   expect(parsed.attachments).toEqual([
     { kind: 'image', owner: post.lookupKey, url: 'https://cdn.example/one.jpg' },
     { kind: 'image', owner: post.lookupKey, url: 'https://cdn.example/three.jpg' },

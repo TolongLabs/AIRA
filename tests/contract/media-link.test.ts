@@ -784,6 +784,40 @@ describe('createLinkReader', () => {
     expect(textRes.unreadable).toEqual([])
   })
 
+  it('retries a transient video watch using the same bytes before trying the preview', async () => {
+    const watch = vi
+      .fn<MediaWatcher['watch']>()
+      .mockRejectedValueOnce(new ModelError('transient', 'temporary outage'))
+      .mockResolvedValueOnce({
+        reading: { description: 'A train is moving.' },
+        usage: { inputTokens: 12, outputTokens: 4, cachedTokens: 0 },
+        model: 'test',
+        costUsd: 0
+      })
+    const download = vi.fn(async () => ({ data: Buffer.from('clip'), contentType: 'video/mp4' }))
+    const post = makePost({
+      videoCount: 1,
+      durationSec: 270,
+      video: { url: 'https://video.example/clip.mp4', bytes: 4, headers: null, hasAudio: true },
+      imageUrl: 'https://img.example/preview.jpg'
+    })
+    const reader = createLinkReader({
+      findTarget: fakeFindTarget,
+      viewer: { lookup: async () => ({ status: 'found', post }) },
+      watcher: { watch },
+      download,
+      model: 'test',
+      limits: { ...baseLimits, maxVideoSeconds: 300 }
+    })
+    const result = await reader.read(['https://x.com/testuser/status/7'], 5000, { media: true, social: true })
+    expect(download).toHaveBeenCalledTimes(1)
+    expect(result.links?.[0]).toMatchObject({ mediaKind: 'video', reading: { description: 'A train is moving.' } })
+    expect(result.calls.map((c) => [c.attempt, c.failureKind])).toEqual([
+      [1, 'transient'],
+      [2, undefined]
+    ])
+  })
+
   it('watches every photo of a post at once, up to 4, and names the rest', async () => {
     let running = 0
     let maxRunning = 0
@@ -826,7 +860,7 @@ describe('createLinkReader', () => {
     const result = await reader.read(['https://x.com/testuser/status/7'], 5000, { media: true, social: true })
 
     expect(maxRunning).toBe(4)
-    expect(watched.sort()).toEqual(['p1', 'p2', 'p3', 'p4'])
+    expect(watched.sort()).toEqual(['p1', 'p2', 'p3', 'p3', 'p4'])
     expect(result.links?.[0]?.mediaKind).toBe('image')
     expect(result.links?.[0]?.reading?.description).toBe(
       [
@@ -836,8 +870,8 @@ describe('createLinkReader', () => {
         '(1 photo could not be read; 2 more not watched)'
       ].join(' | ')
     )
-    expect(result.calls).toHaveLength(4)
-    expect(result.calls.filter((call) => call.failureKind)).toHaveLength(1)
+    expect(result.calls).toHaveLength(5)
+    expect(result.calls.filter((call) => call.failureKind).map((call) => call.attempt)).toEqual([1, 2])
   })
 
   it('watches the photos of the earlier posts in a thread after the linked post, and a video with them', async () => {
@@ -964,7 +998,7 @@ describe('createLinkReader', () => {
     expect(result.links?.[0]?.mediaKind).toBe('image')
     expect(result.calls).toHaveLength(1)
     expect(prompt).toContain('preview image: A still frame')
-    expect(prompt).toContain('Video playback and audio were unavailable.')
+    expect(prompt).toContain('No video or audio was observed.')
     expect(prompt).not.toContain('Imagined audio')
     expect(logLines).toContainEqual(
       expect.objectContaining({

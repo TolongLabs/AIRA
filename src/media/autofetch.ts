@@ -164,7 +164,7 @@ function durationBand(seconds: number | null | undefined): DurationBand {
   if (sec === undefined) return 'unknown'
   if (sec <= 60) return 'le_60'
   if (sec <= 120) return 'le_120'
-  return sec <= COMPRESSION_MAX_SECONDS ? 'le_180' : 'gt_180'
+  return sec <= 180 ? 'le_180' : 'gt_180'
 }
 
 /**
@@ -435,7 +435,7 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
           const downloads = await Promise.all(items.map((item) => save(item, controller.signal)))
           const downloaded = downloads.filter((item) => item.downloaded).length
           const saved = downloads.flatMap((item) => (item.file ? [item.file] : []))
-          failed += items.length - saved.length
+          failed += downloads.filter((result) => !result.file && result.skip !== 'too_long').length
           written.push(...saved.map((file) => file.name))
           media.push(...saved.map((file) => file.media))
           try {

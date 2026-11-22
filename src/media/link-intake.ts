@@ -491,24 +491,25 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
             }
             data = compressed
           }
-          const startedAt = now()
-          const outcome = await readMedia(
-            {
-              data,
-              contentType,
-              ...(durationSeconds !== undefined ? { durationSeconds } : {})
-            },
-            { watcher: options.watcher, limits: options.limits, timeoutMs: remainingMs() },
-            controller.signal
-          )
-          if (outcome.ok) {
-            calls.push(okCall(outcome, startedAt))
-            return { kind: expectedKind, reading: outcome.reading }
+          for (let attempt = 1; attempt <= 2; attempt++) {
+            const startedAt = now()
+            const outcome = await readMedia(
+              { data, contentType, ...(durationSeconds !== undefined ? { durationSeconds } : {}) },
+              { watcher: options.watcher, limits: options.limits, timeoutMs: remainingMs() },
+              controller.signal
+            )
+            if (outcome.ok) {
+              calls.push({ ...okCall(outcome, startedAt), attempt })
+              return { kind: expectedKind, reading: outcome.reading }
+            }
+            if (outcome.failureKind) {
+              calls.push({ ...failCall(options.model, outcome.failureKind, outcome.durationMs, startedAt), attempt })
+            }
+            if (attempt === 1 && outcome.failureKind === 'transient' && !controller.signal.aborted && remainingMs() > 1)
+              continue
+            options.logger?.warn('media.link_watch_failed', { platform: post.platform, reason: outcome.reason })
+            break
           }
-          if (outcome.failureKind) {
-            calls.push(failCall(options.model, outcome.failureKind, outcome.durationMs, startedAt))
-          }
-          options.logger?.warn('media.link_watch_failed', { platform: post.platform, reason: outcome.reason })
           return undefined
         }
 

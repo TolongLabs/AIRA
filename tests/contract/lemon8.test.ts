@@ -260,8 +260,8 @@ describe('lemon8 post operations', () => {
   it('requests measurement at the rounded video boundary and preserves precise durations', async () => {
     for (const [reported, expected] of [
       [179, 179],
-      [180, null],
-      [180.1, 180.1]
+      [300, null],
+      [300.1, 300.1]
     ] as const) {
       const post = await readHtml(lemon8Html({ articleClass: 'Video', videoDuration: reported }))
       expect(post?.attachments?.[0]).toMatchObject({ kind: 'video', durationSec: expected })
