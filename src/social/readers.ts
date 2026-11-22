@@ -3,6 +3,7 @@ import type { ReaderResult, SocialReader } from './chain.js'
 import { parseFacebookPage } from './facebook.js'
 import { type Lookup, publicAddress } from './fetch.js'
 import { parseInstagramPage } from './instagram.js'
+import { parseLemon8Page } from './lemon8.js'
 import { fetchPostPage, META_PAGE_HEADERS } from './meta.js'
 import { createMirrorReader, type MirrorPlatform } from './mirror-readers.js'
 import {
@@ -195,6 +196,11 @@ const adapters: Record<SocialPlatform, PlatformAdapter> = {
     group: ['video'],
     extractorRequired: true,
     readers: (_, env) => [ytDlpReader(env)]
+  },
+  lemon8: {
+    read: ['text', 'preview', 'photos', 'video'],
+    group: ['photos', 'video'],
+    readers: (_, env) => [lemon8PageReader(env)]
   }
 }
 
@@ -423,6 +429,64 @@ function facebookPageReader(env: ReaderEnv): SocialReader {
           return { ok: false, reason: `http_${fetched.response.status}` }
         }
         const post = parseFacebookPage(await fetched.response.text(), fetched.page, ctx.maxTextChars)
+        return post ? { ok: true, post } : { ok: false, reason: 'no_post_data' }
+      } catch {
+        return { ok: false, reason: ctx.signal.aborted ? 'timeout' : 'network_error' }
+      }
+    }
+  }
+}
+
+const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308])
+const LEMON8_ORIGIN = 'https://www.lemon8-app.com'
+const LEMON8_REGION = /^[a-z]{2}$/i
+
+/**
+ * The page of a Lemon8 post. The canonical address may answer one region redirect, which is followed once: only to the
+ * same origin, author and post, keeping only a two-letter `region`. Any other redirect yields null.
+ */
+async function fetchLemon8Page(
+  fetcher: typeof fetch,
+  target: SocialPostTarget,
+  signal: AbortSignal
+): Promise<Response | null> {
+  const first = await fetcher(target.canonicalUrl, { headers: META_PAGE_HEADERS, signal })
+  if (!REDIRECT_STATUSES.has(first.status)) return first
+  await first.body?.cancel()
+  const location = first.headers.get('location')
+  if (!location) return null
+  let next: URL
+  try {
+    next = new URL(location, target.canonicalUrl)
+  } catch {
+    return null
+  }
+  const named = next.origin === LEMON8_ORIGIN ? parseOfficialSocialPostUrl(next.href) : null
+  if (named?.lookupKey !== target.lookupKey || next.username || next.password) return null
+  const outbound = new URL(target.canonicalUrl)
+  const region = next.searchParams.get('region')
+  if (!region || !LEMON8_REGION.test(region)) return null
+  outbound.searchParams.set('region', region)
+  return fetcher(outbound, { headers: META_PAGE_HEADERS, signal })
+}
+
+/** Lemon8's logged-out article page: text, author, photos and video. There is no extractor fallback. */
+function lemon8PageReader(env: ReaderEnv): SocialReader {
+  return {
+    id: 'lemon8.page',
+    kind: 'page_meta',
+    provides: ALL_FIELDS,
+    timeoutMs: env.httpTimeoutMs,
+    isConfigured: () => true,
+    async read(target, ctx): Promise<ReaderResult> {
+      try {
+        const response = await fetchLemon8Page(ctx.fetcher, target, ctx.signal)
+        if (!response) return { ok: false, reason: 'redirect' }
+        if (!response.ok) {
+          await response.body?.cancel()
+          return { ok: false, reason: `http_${response.status}` }
+        }
+        const post = parseLemon8Page(await response.text(), target, ctx.maxTextChars)
         return post ? { ok: true, post } : { ok: false, reason: 'no_post_data' }
       } catch {
         return { ok: false, reason: ctx.signal.aborted ? 'timeout' : 'network_error' }

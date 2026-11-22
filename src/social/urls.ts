@@ -1,7 +1,7 @@
 import { isIP } from 'node:net'
 
 export type SocialPlatform =
-  'x' | 'bluesky' | 'youtube' | 'tiktok' | 'reddit' | 'instagram' | 'bilibili' | 'threads' | 'facebook'
+  'x' | 'bluesky' | 'youtube' | 'tiktok' | 'reddit' | 'instagram' | 'bilibili' | 'threads' | 'facebook' | 'lemon8'
 
 /** The name a person sees for each platform: a footer, a note or a model sentence. */
 export const PLATFORM_NAME: Record<SocialPlatform, string> = {
@@ -13,7 +13,8 @@ export const PLATFORM_NAME: Record<SocialPlatform, string> = {
   reddit: 'Reddit',
   instagram: 'Instagram',
   facebook: 'Facebook',
-  bilibili: 'Bilibili'
+  bilibili: 'Bilibili',
+  lemon8: 'Lemon8'
 }
 
 export interface SocialPostTarget {
@@ -41,7 +42,8 @@ const HOSTS: Record<SocialPlatform, string[]> = {
   instagram: ['instagram.com'],
   bilibili: ['bilibili.com', 'b23.tv'],
   threads: ['threads.com', 'threads.net'],
-  facebook: ['facebook.com', 'fb.watch']
+  facebook: ['facebook.com', 'fb.watch'],
+  lemon8: ['lemon8-app.com']
 }
 
 // Tried in this order on a host that is no platform's own. YouTube is host-only and never matches there.
@@ -331,6 +333,27 @@ function parseFacebook(url: URL, host: string, unknown: boolean): SocialPostTarg
   return null
 }
 
+// Lemon8 is read on its own hosts only. A post is `www.lemon8-app.com/@handle/{19-digit id}`, its handle written with
+// `@` or `%40`. Shares name a code on their own host: `s.lemon8-app.com/s/{code}` and `v.lemon8-app.com/al/{code}`.
+function parseLemon8(url: URL, host: string): SocialPostTarget | null {
+  if (host === 'www.lemon8-app.com') {
+    const match = url.pathname.replace(/%40/gi, '@').match(/^\/@([\w.]+)\/(\d{19})\/?$/)
+    if (!match) return null
+    const [, profile = '', id = ''] = match
+    const post = target('lemon8', id, `https://www.lemon8-app.com/@${profile}/${id}`, profile)
+    return { ...post, lookupKey: `lemon8:${profile.toLowerCase()}:${id}` }
+  }
+  if (host === 's.lemon8-app.com') {
+    const code = url.pathname.match(/^\/s\/([a-z0-9]+)\/?$/i)?.[1]
+    return code ? shareTarget('lemon8', code, `https://s.lemon8-app.com/s/${code}`, `lemon8:s:${code}`) : null
+  }
+  if (host === 'v.lemon8-app.com') {
+    const code = url.pathname.match(/^\/al\/([a-z0-9]+)\/?$/i)?.[1]
+    return code ? shareTarget('lemon8', code, `https://v.lemon8-app.com/al/${code}`, `lemon8:v:${code}`) : null
+  }
+  return null
+}
+
 function parseFor(platform: SocialPlatform, url: URL, host: string, unknown: boolean): SocialPostTarget | null {
   switch (platform) {
     case 'x':
@@ -351,6 +374,8 @@ function parseFor(platform: SocialPlatform, url: URL, host: string, unknown: boo
       return parseThreads(url, unknown)
     case 'facebook':
       return parseFacebook(url, host, unknown)
+    case 'lemon8':
+      return parseLemon8(url, host)
   }
 }
 

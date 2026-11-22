@@ -8,6 +8,7 @@ const ATTEMPT_IDS = new Set([
   'bluesky.api',
   'threads.page',
   'instagram.page',
+  'lemon8.page',
   'facebook.page',
   'reddit.feed',
   'reddit.arctic_shift',

@@ -100,6 +100,7 @@ describe('site API read routes', () => {
       'bluesky',
       'facebook',
       'instagram',
+      'lemon8',
       'threads',
       'x'
     ])
