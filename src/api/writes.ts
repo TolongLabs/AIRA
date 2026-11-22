@@ -58,12 +58,7 @@ function writeSetting(deps: SiteApiDeps, body: unknown): RouteResult {
   if (key === 'character' && value !== null && !(typeof value === 'string' && deps.packs().packs.has(value))) {
     return { status: 400, body: { error: 'unknown_character' } }
   }
-  if (
-    level === 'chat' &&
-    key === 'character' &&
-    value === null &&
-    !new ChatBindingPolicy(deps).canClearChatCharacter(scope)
-  ) {
+  if (key === 'character' && value === null && !new ChatBindingPolicy(deps).canClearCharacter(level, scope)) {
     return { status: 400, body: { error: 'missing_character' } }
   }
   const current = deps.storage.read(

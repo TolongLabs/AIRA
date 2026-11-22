@@ -43,7 +43,8 @@ function parseRowValue(def: SettingDefinition, raw: string): { ok: true; value: 
 /** Every key with its value and the level it came from. The nearest level that has a value wins. */
 export function resolveSettings(
   storage: Storage,
-  chat: { chatId: string; type: 'dm' | 'group' }
+  chat: { chatId: string; type: 'dm' | 'group' },
+  ignore?: { level: SettingLevel; key: string }
 ): Record<string, Resolved> {
   const rows = storage.read(
     (db) =>
@@ -61,6 +62,7 @@ export function resolveSettings(
 
   const resolved: Record<string, Resolved> = {}
   for (const row of rows) {
+    if (row.level === ignore?.level && row.key === ignore.key) continue
     if (Object.hasOwn(resolved, row.key)) continue
     const def = definitionFor(row.key)
     if (!def) continue
