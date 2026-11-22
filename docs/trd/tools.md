@@ -362,7 +362,7 @@ has up to five matches with title, domain, link and price when present. It carri
 
 ### Social Post Reader
 
-Intake, `read_post` and group autofetch use the same post resolver and reader dispatch. A reader may return
+Intake, `read_post` and chat autofetch use the same post resolver and reader dispatch. A reader may return
 partial data. Previews, cards and quoted or earlier-thread media can describe a post to the reader. Group
 delivery requires separate native attachment evidence. Enable a new operation only after verifying the
 specific post identity, fields, retrieval permission and intended use. Xiaohongshu/rednote, Douyin and
@@ -386,10 +386,15 @@ A disabled `social.platforms.<id>` makes that platform's link plain text for int
 `read_post` call for the link or its source ID. The page tool and automatic page reads from typed search also respect that
 choice while `features.search` is on, including when `features.social` is off. Recognise equivalent HTTP
 links, explicit default ports and a trailing DNS dot for this local check before selecting a page for reading.
-A disabled `autofetch.platforms.<id>` skips group fetch independently. Apply each check to the parsed
+A disabled `autofetch.platforms.<id>` skips fetch independently in groups and DMs. Apply each check to the parsed
 platform before resolving a share, calling a reader or fetching bytes. Record `platform_disabled` for
 the skipped lookup with zero reader attempts. A skipped link leaves later eligible links and their
 lookup slots available and creates no repeat reservation. The YouTube watch gate still applies.
+
+Video delivery requires a native video attachment bound to the selected post. Enable each non-YouTube
+platform's video operation only after three successful live checks on each host. Keep a platform at its
+verified capability if either host lacks a suitable attachment. Preserve mirror settings and per-chat scope.
+For file limits, duration and receipt handling see [Autofetch](system.md#autofetch).
 
 LinkedIn has recognition only (T0 on both deployments). Recognise official post slugs with an activity ID,
 feed update activity URNs, and single-token lnkd.in shares. A short link identifies the service only.
