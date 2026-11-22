@@ -1,6 +1,7 @@
 import { createLogger, type Logger } from '../records/logger.js'
 import { type ChainAttempt, type ChainOutcome, runChain } from './chain.js'
 import { checkedFetcher, type Lookup } from './fetch.js'
+import { PendingRequests } from './pending.js'
 import {
   BlueskyPdsDirectory,
   DEFAULT_HTTP_READER_TIMEOUT_MS,
@@ -113,6 +114,7 @@ function untilAborted<T>(work: Promise<T>, signal: AbortSignal, onAbort: T): Pro
 
 export class SocialPostViewer {
   private readonly cache = new Map<string, { post: SocialPost; missing: PostField[]; expiresAt: number }>()
+  private readonly pending = new PendingRequests<{ result: ReadResult; trace?: SocialLookupTrace }>()
   private readonly shareCache = new Map<string, { target: SocialPostTarget; expiresAt: number }>()
   private readonly pds: BlueskyPdsDirectory
   private ytDlpAvailable = true
@@ -161,9 +163,26 @@ export class SocialPostViewer {
     }
     if (signal?.aborted) return failure(target.platform, 'timeout')
 
-    const result = await this.read(target, signal, observe)
+    const key = JSON.stringify([target.lookupKey, target.canonicalUrl, target.originalUrl])
+    const shared = await this.pending
+      .run(key, signal, async (sharedSignal) => {
+        let trace: SocialLookupTrace | undefined
+        const result = await this.read(target, sharedSignal, (value) => {
+          trace = value
+        })
+        return { result, ...(trace ? { trace } : {}) }
+      })
+      .catch((error: unknown) => {
+        if (!signal?.aborted) throw error
+        return undefined
+      })
+    if (!shared) {
+      observe?.({ reason: 'timeout', attempts: [] })
+      return failure(target.platform, 'timeout')
+    }
+    if (shared.trace) observe?.(shared.trace)
+    const { result } = shared
     if (result.status === 'failed') return this.reportFailure(target.platform, result.reason, result.canonicalUrl)
-    this.setCached(target.lookupKey, result.post, result.missing)
     return found(result.post, result.missing, target)
   }
 
@@ -245,6 +264,13 @@ export class SocialPostViewer {
       }
       if (resolved.canonicalUrl !== requested.canonicalUrl) resolvedCanonical = resolved.canonicalUrl
 
+      if (requested.needsRedirect) {
+        const cached = this.getCached(resolved.lookupKey)
+        if (cached) {
+          observe?.({ ...resolution, attempts: [], reason: 'cache_hit' })
+          return { status: 'found', post: cached.post, missing: cached.missing }
+        }
+      }
       const outcome = await runChain(
         readersFor(resolved, {
           mirrors: this.settings.mirrors,
@@ -276,6 +302,7 @@ export class SocialPostViewer {
         }
       }
       this.logLookup(requested.platform, outcome.status, outcome.attempts)
+      this.setCached(resolved.lookupKey, outcome.post, outcome.missing)
       return { status: 'found', post: outcome.post, missing: outcome.missing }
     } catch {
       const reason = controller.signal.aborted ? 'timeout' : 'network_error'

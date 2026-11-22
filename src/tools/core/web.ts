@@ -2,13 +2,7 @@ import { z } from 'zod'
 import type { Config } from '../../config/schema.js'
 import { SocialPostError } from '../../social/port.js'
 import { modelPostResult } from '../../social/result.js'
-import {
-  PLATFORM_NAME,
-  parseSocialPostUrl,
-  readPolicyTarget,
-  recognitionOnlyName,
-  type SocialPostTarget
-} from '../../social/urls.js'
+import { PLATFORM_NAME, readPolicyTarget, recognitionOnlyName, type SocialPostTarget } from '../../social/urls.js'
 import type { Storage } from '../../storage/database.js'
 import { putFile } from '../../storage/files.js'
 import { SOURCE_ID, type SourceEntry } from '../../turn/sources.js'
@@ -21,6 +15,12 @@ import type { FailureCode, ToolContext, ToolDefinition, ToolFailure } from '../t
 /** Recorded reason for a social link intake could not open. The model reads its outcome sentence. */
 const INTAKE_FAILED_REASON = 'intake could not open this link'
 
+function sameReading(target: SocialPostTarget | null, alias: string): boolean {
+  if (!target) return false
+  const other = readPolicyTarget(alias)
+  return other?.lookupKey === target.lookupKey && (other.startSec ?? 0) === (target.startSec ?? 0)
+}
+
 function watchedAtIntake(url: string, context: Pick<TurnContext, 'watchedEvidence'>) {
   const evidence = context.watchedEvidence
   if (!evidence?.size) return undefined
@@ -29,8 +29,7 @@ function watchedAtIntake(url: string, context: Pick<TurnContext, 'watchedEvidenc
   const target = readPolicyTarget(url)
   if (!target) return undefined
   for (const [alias, reading] of evidence) {
-    const watched = readPolicyTarget(alias)
-    if (watched?.lookupKey === target.lookupKey && (watched.startSec ?? 0) === (target.startSec ?? 0)) return reading
+    if (sameReading(target, alias)) return reading
   }
   return undefined
 }
@@ -38,14 +37,10 @@ function watchedAtIntake(url: string, context: Pick<TurnContext, 'watchedEvidenc
 /** A social address intake tried and could not open. read_post and read_page refuse it for the rest of the turn. */
 function failedAtIntake(url: string, context: Pick<TurnContext, 'intakeTriedSocialUrls'>): boolean {
   const trimmed = url.trim()
-  const canonical = parseSocialPostUrl(trimmed)?.canonicalUrl
+  const target = readPolicyTarget(trimmed)
   return (
     context.intakeTriedSocialUrls?.some(
-      (entry) =>
-        entry.failed &&
-        (entry.url === trimmed ||
-          (canonical !== undefined &&
-            (entry.url === canonical || parseSocialPostUrl(entry.url)?.canonicalUrl === canonical)))
+      (entry) => entry.failed && (entry.url === trimmed || sameReading(target, entry.url))
     ) ?? false
   )
 }
