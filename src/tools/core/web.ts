@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { Config } from '../../config/schema.js'
 import { SocialPostError } from '../../social/port.js'
 import { modelPostResult } from '../../social/result.js'
-import { parseSocialPostUrl } from '../../social/urls.js'
+import { parseSocialPostUrl, recognitionOnlyName } from '../../social/urls.js'
 import type { Storage } from '../../storage/database.js'
 import { putFile } from '../../storage/files.js'
 import { SOURCE_ID, type SourceEntry } from '../../turn/sources.js'
@@ -78,6 +78,8 @@ function resolveRead(
   if (seen === undefined) {
     return { ok: false, kind: 'refused', reason: 'address not seen in this turn', code: 'unseen_link' }
   }
+  const name = recognitionOnlyName(seen.url)
+  if (name) return { ok: false, kind: 'refused', reason: `${name} links are recognised but never read` }
   return { ok: true, ...seen }
 }
 

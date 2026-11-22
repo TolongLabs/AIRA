@@ -344,6 +344,33 @@ function parseFor(platform: SocialPlatform, url: URL, host: string, unknown: boo
   }
 }
 
+// LinkedIn is recognised, never read. Its links are no post target, so intake, autofetch and read_post skip them.
+// Only the official HTTPS host and lnkd.in count. Profiles and articles are not posts. See
+// docs/trd/tools.md#social-post-reader.
+const LINKEDIN_HOSTS = ['linkedin.com', 'www.linkedin.com']
+const LINKEDIN_SHORT_HOST = 'lnkd.in'
+const LINKEDIN_POST_PATH = /^\/posts\/[\w%-]+?-activity-\d+(?:-[\w-]+)?\/?$/
+const LINKEDIN_UPDATE_PATH = /^\/feed\/update\/urn(?::|%3A)li(?::|%3A)activity(?::|%3A)\d+\/?$/i
+const LINKEDIN_SHORT_PATH = /^\/[\w-]+\/?$/
+/** Recognition-only URL shapes are kept outside the reader and fetch registry. */
+function isLinkedInLink(url: URL): boolean {
+  if (url.protocol !== 'https:' || url.username || url.password || url.port) return false
+  const host = url.hostname
+  return host === LINKEDIN_SHORT_HOST
+    ? LINKEDIN_SHORT_PATH.test(url.pathname)
+    : LINKEDIN_HOSTS.includes(host) &&
+        (LINKEDIN_POST_PATH.test(url.pathname) || LINKEDIN_UPDATE_PATH.test(url.pathname))
+}
+
+/** Display name for a recognised post link with no approved read operation. */
+export function recognitionOnlyName(value: string): string | null {
+  try {
+    return isLinkedInLink(new URL(value)) ? 'LinkedIn' : null
+  } catch {
+    return null
+  }
+}
+
 function parseUrl(value: string, officialOnly: boolean): SocialPostTarget | null {
   const trimmed = value.trim()
   let url: URL
@@ -365,6 +392,7 @@ function parseUrl(value: string, officialOnly: boolean): SocialPostTarget | null
   }
 
   const host = url.hostname.toLowerCase()
+  if (isLinkedInLink(url)) return null
   const platform = platformForHost(host)
   let parsed: SocialPostTarget | null = null
   if (platform) parsed = parseFor(platform, url, host, false)
