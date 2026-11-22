@@ -382,6 +382,12 @@ their platform shape is strict. Lookups use the platform target. The unknown hos
 YouTube requires an official host. Instagram's `/p/<id>` needs an Instagram-like hostname on an unknown host.
 Facebook's unknown-host shapes require a long numeric id or a `pfbid` post id.
 
+LinkedIn has recognition only (T0 on both deployments). Recognise official post slugs with an activity ID,
+feed update activity URNs, and single-token lnkd.in shares. A short link identifies the service only.
+Keep these links out of intake and fetch selection. The read tools name LinkedIn and refuse a recognised URL
+before any network call. Profiles and articles are outside this post contract. The platform has no active
+read or fetch operation in the capability catalog.
+
 Official direct paths include Reddit comment permalinks, TikTok photos, Threads posts with or without an account,
 Facebook stories and photos, Instagram TV, YouTube live and embeds, and X web-status links. Official short
 links from Reddit, TikTok, Bilibili, Facebook and Instagram use a shared guarded resolver. It allows up to two
