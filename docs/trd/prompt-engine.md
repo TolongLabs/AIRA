@@ -189,9 +189,11 @@ media and link intake use plain sentences that the character can express natural
 
 After the prompt leak check, `fourthWall` flags internal mechanism phrases and tool names before rendering.
 Tool names with underscores or dots match as whole words. Other tool names match in backticks or call syntax.
-The turn tries one regeneration with the same prompt and model, with tools disabled, when the deadline allows.
-If regeneration cannot run or still breaks role, the turn delivers the pack's in-character error line.
-The cleaner records `fourth_wall`. The failure stores only the matched pattern name as `persona_leak`.
+The `rate_limit` pattern matches provider, API, model, or HTTP 429 rate-limit leaks rather than ordinary
+conversational mentions. The turn tries one regeneration with the same prompt and model, with tools disabled,
+when the deadline allows. If regeneration cannot run or still breaks role, the turn delivers the pack's
+in-character error line. The cleaner records `fourth_wall`. The failure stores only the matched pattern name as
+`persona_leak`.
 
 ## Tool Footer
 
