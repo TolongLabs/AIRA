@@ -441,33 +441,60 @@ const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]
 const LEMON8_ORIGIN = 'https://www.lemon8-app.com'
 const LEMON8_REGION = /^[a-z]{2}$/i
 
+/** The two-letter `region` of a URL, or null. The caller adds nothing else from a URL. */
+function lemon8Region(value: string | undefined): string | null {
+  if (!value) return null
+  let region: string | null
+  try {
+    region = new URL(value).searchParams.get('region')
+  } catch {
+    return null
+  }
+  return region && LEMON8_REGION.test(region) ? region : null
+}
+
+/** A post's address on `base`, with only its two-letter region added. Tracking parameters never reach the page. */
+function lemon8Address(base: string, region: string | null): URL {
+  const url = new URL(base)
+  if (region) url.searchParams.set('region', region)
+  return url
+}
+
 /**
- * The page of a Lemon8 post. The canonical address may answer one region redirect, which is followed once: only to the
- * same origin, author and post, keeping only a two-letter `region`. Any other redirect yields null.
+ * The page of a Lemon8 post, requested with the region its address carries. One redirect is followed, and only to the
+ * www address of the same post and author, keeping its handle case and a two-letter region. A self-redirect, another
+ * post, an invalid region or a second redirect yields null. Every body that is not read is released.
  */
 async function fetchLemon8Page(
   fetcher: typeof fetch,
   target: SocialPostTarget,
   signal: AbortSignal
 ): Promise<Response | null> {
-  const first = await fetcher(target.canonicalUrl, { headers: META_PAGE_HEADERS, signal })
+  const requested = lemon8Address(target.canonicalUrl, lemon8Region(target.originalUrl))
+  const first = await fetcher(requested, { headers: META_PAGE_HEADERS, signal })
   if (!REDIRECT_STATUSES.has(first.status)) return first
   await first.body?.cancel()
   const location = first.headers.get('location')
   if (!location) return null
   let next: URL
   try {
-    next = new URL(location, target.canonicalUrl)
+    next = new URL(location, requested)
   } catch {
     return null
   }
-  const named = next.origin === LEMON8_ORIGIN ? parseOfficialSocialPostUrl(next.href) : null
-  if (named?.lookupKey !== target.lookupKey || next.username || next.password) return null
-  const outbound = new URL(target.canonicalUrl)
-  const region = next.searchParams.get('region')
-  if (!region || !LEMON8_REGION.test(region)) return null
-  outbound.searchParams.set('region', region)
-  return fetcher(outbound, { headers: META_PAGE_HEADERS, signal })
+  if (next.origin !== LEMON8_ORIGIN || next.username || next.password) return null
+  const named = parseOfficialSocialPostUrl(next.href)
+  if (!named || named.lookupKey !== target.lookupKey) return null
+  const region = lemon8Region(next.href)
+  if (!region) return null
+  const followed = lemon8Address(named.canonicalUrl, region)
+  if (followed.href === requested.href) return null
+  const second = await fetcher(followed, { headers: META_PAGE_HEADERS, signal })
+  if (REDIRECT_STATUSES.has(second.status)) {
+    await second.body?.cancel()
+    return null
+  }
+  return second
 }
 
 /** Lemon8's logged-out article page: text, author, photos and video. There is no extractor fallback. */

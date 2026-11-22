@@ -333,10 +333,11 @@ function parseFacebook(url: URL, host: string, unknown: boolean): SocialPostTarg
   return null
 }
 
-// Lemon8 is read on its own hosts only. A post is `www.lemon8-app.com/@handle/{19-digit id}`, its handle written with
-// `@` or `%40`. Shares name a code on their own host: `s.lemon8-app.com/s/{code}` and `v.lemon8-app.com/al/{code}`.
+// Lemon8 is read on its own hosts only. A post is `www.lemon8-app.com/@handle/{19-digit id}`, or the same path on the
+// apex `lemon8-app.com`; both name the www address. Its handle is written with `@` or `%40`. Shares name a code on
+// their own host: `s.lemon8-app.com/s/{code}` and `v.lemon8-app.com/al/{code}`.
 function parseLemon8(url: URL, host: string): SocialPostTarget | null {
-  if (host === 'www.lemon8-app.com') {
+  if (host === 'www.lemon8-app.com' || host === 'lemon8-app.com') {
     const match = url.pathname.replace(/%40/gi, '@').match(/^\/@([\w.]+)\/(\d{19})\/?$/)
     if (!match) return null
     const [, profile = '', id = ''] = match

@@ -4,7 +4,6 @@ import { mirrorVideoRangeBytes } from '../social/mirror-readers.js'
 import { type ModelPostResult, modelPostResult, toPostPortResult } from '../social/result.js'
 import type { SocialLookupObserver, SocialLookupTrace, SocialPost, SocialPostLookup } from '../social/types.js'
 import { linkUrls, PLATFORM_NAME } from '../social/urls.js'
-import type { PagePort } from '../tools/ports.js'
 import type { ModelCallRecord } from '../turn/types.js'
 import type { MediaUnreadable } from './files.js'
 import type { MediaReading, MediaWatcher, WatchUrlSource } from './gemini-watcher.js'
@@ -85,12 +84,22 @@ export interface LinkReader {
   ): Promise<LinkReadResult>
 }
 
+/** Downloads one file for a link read. `source` is the post's platform, so the caller can choose the origin policy. */
+export type LinkDownload = (
+  url: string,
+  signal: AbortSignal,
+  maxBytes: number,
+  headers?: Record<string, string> | null,
+  rangeBytes?: number,
+  source?: LinkPlatform
+) => Promise<{ data: Buffer; contentType: string }>
+
 export interface LinkReaderOptions {
   viewer: LinkPostViewer
   /** Extracts the first supported post or YouTube target from a text string. */
   findTarget: (text: string) => LinkTarget | null | undefined
   watcher?: MediaWatcher
-  download?: PagePort['download']
+  download?: LinkDownload
   compressVideo?: CompressVideo
   model: string
   limits: MediaLimits & {
@@ -453,10 +462,7 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
           let downloaded: { data: Buffer; contentType: string }
           try {
             const cap = expectedKind === 'video' ? videoDownloadLimit : options.limits.maxBytes
-            downloaded =
-              rangeBytes === undefined
-                ? await options.download(url, controller.signal, cap, headers)
-                : await options.download(url, controller.signal, cap, headers, rangeBytes)
+            downloaded = await options.download(url, controller.signal, cap, headers, rangeBytes, post.platform)
           } catch (error) {
             const status = error instanceof Error ? /^http status (\d{3})$/.exec(error.message)?.[1] : undefined
             options.logger?.warn('media.link_download_failed', {

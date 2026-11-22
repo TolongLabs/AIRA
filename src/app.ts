@@ -55,7 +55,7 @@ import { createResearchOffers, type ReportRenderer } from './research/offer.js'
 import { createResearchWorker, type ResearchWorker } from './research/worker.js'
 import { listChats } from './settings/chats.js'
 import { resolveSettings } from './settings/settings.js'
-import { mirrorAssetPlatform } from './social/mirror-readers.js'
+import { enabledMirrorAsset } from './social/mirror-readers.js'
 import { createSocialPostPort } from './social/port.js'
 import { ReplyReader } from './social/replies/service.js'
 import { findLinkTarget } from './social/urls.js'
@@ -403,11 +403,6 @@ export async function createApp(options: AppOptions): Promise<App> {
     const socialAssetDownload = createFetchPagePort({ sameOriginCookieless: true }).download
     // Other social media files may redirect to a CDN on another origin; they still carry no cookies.
     const socialMediaDownload = createFetchPagePort({ cookieless: true }).download
-    // Only an enabled mirror's own media origin uses the origin-locked port.
-    const mirrorAssetEnabled = (url: string): boolean => {
-      const platform = mirrorAssetPlatform(url)
-      return platform !== undefined && config.social.mirrors[platform] !== 'off'
-    }
     const autofetch = createAutofetch({
       mirrors: config.social.mirrors,
       compressVideo,
@@ -622,8 +617,8 @@ export async function createApp(options: AppOptions): Promise<App> {
           viewer,
           findTarget: (text) => findLinkTarget([text], (entry) => socialLog.info('social.unknown_host', entry)),
           ...(mediaWatcher ? { watcher: mediaWatcher } : {}),
-          download: (url, signal, maxBytes, headers, rangeBytes) =>
-            mirrorAssetEnabled(url)
+          download: (url, signal, maxBytes, headers, rangeBytes, source) =>
+            enabledMirrorAsset(url, source, config.social.mirrors)
               ? socialAssetDownload(url, signal, maxBytes, headers, rangeBytes)
               : socialMediaDownload(url, signal, maxBytes, headers),
           model: mediaModel ?? '',
