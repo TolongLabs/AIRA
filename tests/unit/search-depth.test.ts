@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
+import { ensureChat } from '../../src/settings/chats.js'
+import { resolveSettings, setSetting } from '../../src/settings/settings.js'
 import { createSearchDepth, passageMatches } from '../../src/tools/search-depth.js'
 import { createTurnSources } from '../../src/turn/sources.js'
+import { tmpStorage } from '../support/tmp.js'
 
 const sourceUrl = 'https://cafe.example/menu'
 const fields = [{ kind: 'price' as const, subject: 'Oat latte' }]
@@ -252,5 +255,27 @@ describe('search depth', () => {
     expect(await tool.plain(query, context())).toEqual([{ ...menu, source: 's1' }])
     expect(search).toHaveBeenCalledTimes(1)
     expect(depthSearch).not.toHaveBeenCalled()
+  })
+
+  it('skips a disabled-platform candidate without reading it or spending a page slot', async () => {
+    const storage = tmpStorage()
+    const chat = ensureChat(storage, { waId: 'fake-platform-search', type: 'group' })
+    setSetting(storage, { level: 'global', scope: '', key: 'social.platforms.x', value: false, actor: 'test' })
+    const settings = resolveSettings(storage, { chatId: chat.chatId, type: 'group' })
+    const disabled = {
+      title: 'Example models lineup catalog',
+      url: 'https://x.com/i/status/1234567890123456789',
+      snippet: 'Example news.'
+    }
+    const eligible = { title: 'Example models', url: 'https://lineup.example/b', snippet: 'Example news.' }
+    const read = vi.fn(async () => ({ title: 'Example models', text: '- Example One\n- Example Two\n- Example Three' }))
+    const ctx = { ...context(), settings }
+    const { brief } = await createSearchDepth(
+      { search: { search: vi.fn(async () => [disabled, eligible]) }, searchPage: { read } },
+      { maxSearches: 1, maxPages: 1, maxProviderCalls: 3 }
+    ).deep({ query: 'example models', fields: [{ kind: 'list', subject: 'Example models' }] }, ctx)
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(read).toHaveBeenCalledWith(eligible.url, expect.any(AbortSignal))
+    expect(brief.passages.map((passage) => passage.url)).toEqual([eligible.url])
   })
 })

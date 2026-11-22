@@ -747,3 +747,35 @@ it('skips a disabled platform before lookup and preserves its repeat eligibility
   await env.autofetch.fetch({ chat: env.waId, text: xUrl })
   expect(env.lookups.at(-1)).toBe('x:1')
 })
+
+it('skips a disabled platform share before lookup and preserves slots and repeat eligibility', async () => {
+  const ids = [1, 2, 3]
+  const photos = ids.map((id) => 'https://img.example/' + id + '.jpg')
+  const env = setup({ posts: Object.fromEntries(ids.map((id, i) => ['x:' + id, { photoUrls: [photos[i]!] }])) })
+  setSetting(env.storage, {
+    level: 'type',
+    scope: 'group',
+    key: 'autofetch.platforms.threads',
+    value: false,
+    actor: 'test'
+  })
+  const media = await env.autofetch.fetch({
+    chat: env.waId,
+    text: [
+      'https://www.threads.com/share/BShare12x',
+      'https://youtu.be/dQw4w9WgXcQ',
+      ...ids.map((id) => 'https://x.com/someone/status/' + id)
+    ].join(' ')
+  })
+  expect(media).toHaveLength(3)
+  expect(env.lookups).toEqual(['x:1', 'x:2', 'x:3'])
+  expect(env.downloads).toEqual(photos)
+  expect(
+    env.storage.read((db) =>
+      db.prepare('SELECT platform,outcome,reason,attempts FROM social_lookup ORDER BY ordinal').all()
+    )[0]
+  ).toEqual({ platform: 'threads', outcome: 'skipped', reason: 'platform_disabled', attempts: '[]' })
+  await env.autofetch.fetch({ chat: env.waId, text: 'https://www.threads.com/share/BShare12x' })
+  expect(env.lookups).toEqual(['x:1', 'x:2', 'x:3'])
+  expect(env.storage.read((db) => db.prepare('SELECT count(*) FROM autofetch_repeat').pluck().get())).toBe(3)
+})
