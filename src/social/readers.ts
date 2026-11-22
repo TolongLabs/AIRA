@@ -15,7 +15,7 @@ import {
 import { parseRedditFeedPost } from './redditFeed.js'
 import { BROWSER_USER_AGENT } from './replies/common.js'
 import { fetchThreadsPage, parseThreadsPage } from './threads.js'
-import type { PostField } from './types.js'
+import type { PlayableVideo, PostField } from './types.js'
 import {
   isFacebookPost,
   isResolvedFacebookPost,
@@ -168,12 +168,12 @@ const adapters: Record<SocialPlatform, PlatformAdapter> = {
   },
   instagram: {
     read: ['text', 'preview', 'photos', 'video'],
-    group: ['photos'],
+    group: ['photos', 'video'],
     readers: (_, env) => [instagramPageReader(env), ytDlpReader(env)]
   },
   facebook: {
     read: ['text', 'preview', 'photos', 'video'],
-    group: ['photos'],
+    group: ['photos', 'video'],
     readers: (target, env) =>
       isFacebookPost(target) ? [facebookPageReader(env), ytDlpReader(env)] : [ytDlpReader(env)]
   },
@@ -192,7 +192,7 @@ const adapters: Record<SocialPlatform, PlatformAdapter> = {
   },
   bilibili: {
     read: ['text', 'preview', 'video'],
-    group: [],
+    group: ['video'],
     extractorRequired: true,
     readers: (_, env) => [ytDlpReader(env)]
   }
@@ -354,11 +354,16 @@ function blueskyApiReader(env: ReaderEnv): SocialReader {
       if (blob?.did.startsWith('did:plc:')) {
         const endpoint = await env.pds.resolve(blob.did, ctx.fetcher, ctx.signal)
         if (endpoint) {
-          parsed.post.video = {
+          const video: PlayableVideo = {
             url: `${endpoint}/xrpc/com.atproto.sync.getBlob?did=${encodeURIComponent(blob.did)}&cid=${encodeURIComponent(blob.cid)}`,
             bytes: blob.bytes,
             headers: null,
             hasAudio: null
+          }
+          parsed.post.video = video
+          // Bluesky's view carries no duration, so the attachment's duration stays null for the probe to measure.
+          if (parsed.nativeVideo) {
+            parsed.post.attachments = [{ kind: 'video', owner: target.lookupKey, video, durationSec: null }]
           }
         }
       }

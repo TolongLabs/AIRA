@@ -1,5 +1,5 @@
-import type { SocialPost } from './types.js'
-import type { SocialPostTarget } from './urls.js'
+import type { PlayableVideo, SocialPost } from './types.js'
+import { parseOfficialSocialPostUrl, type SocialPostTarget } from './urls.js'
 import { selectPlayableVideo, type VideoCandidate } from './videoVariant.js'
 
 type JsonObject = Record<string, unknown>
@@ -39,7 +39,7 @@ function finiteNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
-function positiveFiniteNumber(value: unknown): number | null {
+export function positiveFiniteNumber(value: unknown): number | null {
   const number = finiteNumber(value)
   return number !== null && number > 0 ? number : null
 }
@@ -200,6 +200,8 @@ export interface BlueskyBlob {
 export interface ParsedBlueskyThread {
   post: SocialPost
   blueskyBlob?: BlueskyBlob
+  /** True when the post's own video is the blob its verified record names. Only then may it be offered as native. */
+  nativeVideo?: boolean
 }
 
 function blueskyBlob(record: JsonObject, did: string): BlueskyBlob | undefined {
@@ -257,7 +259,15 @@ export function parseBlueskyThread(
     post.attachments = nativePhotos(target.lookupKey, post.photoUrls)
   }
   const blob = blueskyBlob(record, string(author.did))
-  return blob ? { post, blueskyBlob: blob } : { post }
+  // Native only when the record's own DID, URI and blob CID all name this post, and the view is its own video.
+  const nativeVideo =
+    Boolean(resolvedDid) &&
+    author.did === resolvedDid &&
+    postView.uri === `at://${resolvedDid}/app.bsky.feed.post/${target.id}` &&
+    media.$type === 'app.bsky.embed.video#view' &&
+    blob !== undefined &&
+    string(media.cid) === blob.cid
+  return blob ? { post, blueskyBlob: blob, nativeVideo } : { post }
 }
 
 export function parseYouTubeOEmbed(
@@ -275,6 +285,51 @@ export function parseYouTubeOEmbed(
   post.imageUrl = imageUrl(data.thumbnail_url)
   post.videoCount = 1
   return post
+}
+
+const BILIBILI_BV_ID = /^BV[\da-z]+$/i
+const BILIBILI_PART_ID = /^(BV[\da-z]+)_p(\d+)$/i
+const PART_NUMBER = /^[1-9]\d*$/
+
+/** The part selected in the canonical address, if any. */
+function requestedPart(target: SocialPostTarget): string | null {
+  return new URL(target.canonicalUrl).searchParams.get('p')
+}
+
+/**
+ * A Bilibili id is the target's own when it is the exact BV id of a single video, or the one part the link named.
+ * A multi-part id never stands for its first part, nor for a part the link did not name.
+ */
+function bilibiliIdMatches(id: string, target: SocialPostTarget): boolean {
+  if (!BILIBILI_BV_ID.test(target.id)) return false
+  const requested = requestedPart(target)
+  if (requested === null) return id === target.id
+  const part = BILIBILI_PART_ID.exec(id)
+  return PART_NUMBER.test(requested) && part !== null && part[1] === target.id && part[2] === requested
+}
+
+/**
+ * Whether a yt-dlp envelope proves the target's own native video: the target's id and page, an MP4 the extractor
+ * selected, and neither a live stream nor a playlist. Only Facebook and Bilibili are native here. YouTube, TikTok
+ * and Reddit take video from their own readers and mirrors; Instagram takes it from its page.
+ */
+function isNativeYtDlpVideo(
+  data: JsonObject,
+  target: SocialPostTarget,
+  formats: readonly VideoCandidate[],
+  video: PlayableVideo
+): boolean {
+  if (!formats.some((format) => format.url === video.url && format.container === 'mp4')) return false
+  if (data._type !== 'video' || Array.isArray(data.entries) || data.playlist_id != null || data.playlist_index != null)
+    return false
+  if (data.is_live === true || (typeof data.live_status === 'string' && data.live_status !== 'not_live')) return false
+  const page = typeof data.webpage_url === 'string' ? parseOfficialSocialPostUrl(data.webpage_url) : null
+  if (page === null || page.lookupKey !== target.lookupKey) return false
+  if (target.platform === 'facebook') return data.extractor_key === 'Facebook' && data.id === target.id
+  if (target.platform === 'bilibili') {
+    return data.extractor_key === 'BiliBili' && bilibiliIdMatches(string(data.id), target)
+  }
+  return false
 }
 
 export function parseYtDlpMetadata(payload: unknown, target: SocialPostTarget, maxTextChars: number): SocialPost {
@@ -309,7 +364,11 @@ export function parseYtDlpMetadata(payload: unknown, target: SocialPostTarget, m
       headers: headers(format.http_headers)
     }
   })
-  post.video = selectPlayableVideo(formats)
+  const video = selectPlayableVideo(formats)
+  post.video = video
+  if (video && isNativeYtDlpVideo(data, target, formats, video)) {
+    post.attachments = [{ kind: 'video', owner: target.lookupKey, video, durationSec: post.durationSec }]
+  }
   // yt-dlp gives an Instagram reel no duration, so a playable format is what marks it as a video.
   post.videoCount = typeof data.duration === 'number' || post.video ? 1 : 0
   post.photoCount = target.platform === 'instagram' && post.videoCount === 0 ? 1 : 0
