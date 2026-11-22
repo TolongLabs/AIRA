@@ -415,7 +415,7 @@ MP4 from `v16m.tiktokcdn-us.com` in four parallel byte ranges when its declared 
 the intake download cap; group autofetch uses the same ranges for a verified TikWM video, and every verified
 mirror video gets 25 s to download. Each response must be a matching MP4 range of the declared total. Reassembly must
 produce the complete file before watch or compression. A part that sends nothing for 4 s, drops or ends early
-resumes from its last byte, up to twice. A resume sends the part's strong, quoted ETag as `If-Range`;
+resumes from its last byte, up to twice. A resume sends the part's strong, quoted, non-empty ETag as `If-Range`;
 without one, including when only Last-Modified is sent, the part starts over. A refusal that arrives after the idle
 timer fired still stops the batch. An invalid, refused or redirected part stops the batch at once. The watch
 deadline includes the lookup, downloads, compression, and model call. A failed mirror lookup grants no group attachment.

@@ -61,6 +61,23 @@ describe('search field evidence', () => {
 })
 
 describe('search depth', () => {
+  it('does not take size lines with abbreviated units for list items in a real search', async () => {
+    const sizes = {
+      title: 'Drink sizes',
+      url: 'https://cafe.example/sizes',
+      snippet: '- Short (8 fl. oz.)\n- Tall (12 fl. oz.)\n- Grande (16 fl. oz.)'
+    }
+    const { brief } = await createSearchDepth(
+      { search: { search: vi.fn(async () => [sizes]) } },
+      {
+        maxSearches: 1,
+        maxPages: 0,
+        maxProviderCalls: 1
+      }
+    ).deep({ query: 'drink sizes', fields: [{ kind: 'list', subject: 'Drink sizes' }] }, context())
+    expect(brief.passages).toEqual([])
+  })
+
   it('reads a page whose result names a list before one that does not', async () => {
     const plain = { title: 'Example models', url: 'https://plain.example/a', snippet: 'Example news.' }
     const lineup = { title: 'Example models lineup', url: 'https://lineup.example/b', snippet: 'Example news.' }

@@ -43,10 +43,6 @@ function isTikTokCdnHost(host: string): boolean {
   return host.endsWith('.tiktokcdn.com') || host.endsWith('.tiktokcdn-us.com')
 }
 
-function allowedPreview(url: URL): boolean {
-  return REDDIT_PREVIEW_HOSTS.has(url.hostname) || isTikTokCdnHost(url.hostname)
-}
-
 /** The mirror platform whose media origin serves this URL, if any. */
 export function mirrorAssetPlatform(value: string): 'tiktok' | 'reddit' | undefined {
   const url = httpsUrl(value)
@@ -56,9 +52,12 @@ export function mirrorAssetPlatform(value: string): 'tiktok' | 'reddit' | undefi
   return undefined
 }
 
-function preview(value: unknown): string | null {
+/** A mirror's preview picture, only on that platform's own image hosts. */
+function preview(value: unknown, platform: MirrorPlatform): string | null {
   const url = httpsUrl(value)
-  return url && allowedPreview(url) ? url.href : null
+  if (!url) return null
+  const own = platform === 'tiktok' ? isTikTokCdnHost(url.hostname) : REDDIT_PREVIEW_HOSTS.has(url.hostname)
+  return own ? url.href : null
 }
 
 async function boundedJson(response: Response): Promise<unknown> {
@@ -99,7 +98,7 @@ function tikTokPost(document: unknown, target: SocialPostTarget, maxChars: numbe
   post.text = capped(postData.title, maxChars)
   post.authorHandle = capped(author.unique_id, 160)
   post.authorName = capped(author.nickname, 160)
-  post.imageUrl = preview(postData.cover)
+  post.imageUrl = preview(postData.cover, 'tiktok')
   post.durationSec = positive(postData.duration)
   post.videoCount = 1
   const raw = string(postData.wmplay)
@@ -157,7 +156,7 @@ function redditPost(document: unknown, target: SocialPostTarget, maxChars: numbe
   post.externalTitle = capped(row.title, maxChars)
   const author = capped(row.author, 160)
   if (author !== '[deleted]') post.authorHandle = author
-  post.imageUrl = preview(row.thumbnail)
+  post.imageUrl = preview(row.thumbnail, 'reddit')
   if (row.is_video !== true) {
     const photo = originalRedditPhoto(row)
     if (photo) {

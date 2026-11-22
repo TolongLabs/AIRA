@@ -45,6 +45,8 @@ function stack(
     etag?: string | null
     lastModified?: string
     slowRefusal?: boolean
+    headerStall?: boolean
+    thumbnail?: string
   } = {}
 ) {
   const runExtractor = vi.fn(async () => ({ reason: 'fixture' }))
@@ -100,7 +102,7 @@ function stack(
                   is_video: false,
                   is_gallery: false,
                   url: options.redditPhoto === 'preview' ? 'https://image.example/fixture.png' : redditPhoto,
-                  thumbnail: redditPreview,
+                  thumbnail: options.thumbnail ?? redditPreview,
                   ...(options.redditPhoto === 'crosspost' ? { crosspost_parent: 't3_aaaaaa' } : {})
                 }
               : {
@@ -130,6 +132,13 @@ function stack(
         ...(options.lastModified ? { 'last-modified': options.lastModified } : {})
       }
       const second = Math.floor(largeMp4.length / 4)
+      if (options.headerStall && start === second && !interrupted.has(start)) {
+        // The first request for the part sends no headers until the idle timer aborts it.
+        interrupted.add(start)
+        return new Promise<Response>((_, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))
+        })
+      }
       if (options.ranges === 'refused' && start === second) {
         // A refusal that arrives after the idle timer has fired is still a refusal.
         if (options.slowRefusal) await new Promise((resolve) => setTimeout(resolve, 4_200))
@@ -371,6 +380,32 @@ describe('approved mirror readers', () => {
     })
     expect(result.links?.[0]?.reading?.description).toBe('Watched complete clip')
     expect(requests.some((headers) => headers.has('if-range'))).toBe(false)
+    const second = Math.floor(largeMp4.length / 4)
+    const secondEnd = Math.floor(largeMp4.length / 2) - 1
+    expect(requests.filter((headers) => headers.get('range') === `bytes=${second}-${secondEnd}`)).toHaveLength(2)
+  })
+
+  it('retries a part whose request stalls before its headers', async () => {
+    const { result, requests } = await watchTikTok({ ranges: 'valid', headerStall: true })
+    expect(result.links?.[0]?.reading?.description).toBe('Watched complete clip')
+    expect(requests).toHaveLength(5)
+  }, 15_000)
+
+  it.each(['""', 'W/"v1"'])('restarts a dropped part under the ETag %s', async (etag) => {
+    const { requests } = await watchTikTok({ ranges: 'drop', etag })
+    const second = Math.floor(largeMp4.length / 4)
+    const secondEnd = Math.floor(largeMp4.length / 2) - 1
+    expect(requests.filter((headers) => headers.get('range') === `bytes=${second}-${secondEnd}`)).toHaveLength(2)
+    expect(requests.some((headers) => headers.has('if-range'))).toBe(false)
+  })
+
+  it('keeps a Reddit archive preview only on Reddit image hosts', async () => {
+    const { viewer } = stack(
+      { reddit: 'read' },
+      { redditPhoto: 'preview', thumbnail: 'https://p16-sign.tiktokcdn-us.com/cover.jpg' }
+    )
+    const result = await viewer.lookup(parseOfficialSocialPostUrl(redditLink)!)
+    expect(result.status === 'found' ? result.post.imageUrl : 'not found').toBeNull()
   })
 
   it('resumes with If-Range under a strong validator', async () => {
