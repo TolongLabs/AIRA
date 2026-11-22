@@ -115,6 +115,11 @@ The primary key is `(level, scope, key)`. Deleting a row at a level restores inh
 | `footerEmoji`            | One emoji, at most 8 characters                                                          | unset: the card's icon  |
 | `mcp.<server id>`        | Boolean                                                                                  | `false`                 |
 
+For each supported social operation, `social.platforms.<id>` and `autofetch.platforms.<id>` are
+independent Boolean settings. Each defaults to true. Chat, chat-type and global overrides follow the normal
+hierarchy. Clearing the chat override restores the inherited value. The main feature and the server's
+available operations still determine whether a platform can run. Setting a switch cannot enable a provider.
+
 **Not built yet:** `report.defaultFormat` is not in the settings registry, so a write to it is rejected as unknown
 (`src/settings/keys.ts`).
 

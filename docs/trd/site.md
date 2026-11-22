@@ -77,7 +77,10 @@ the footer route. No sticker, preview or memory forget route exists.
 The owner `GET /api/tools` response retains `features` and adds `socialCapabilities`, keyed by
 `features.social` and `features.autofetch`. Each list contains enabled platform IDs, display names and
 their operation labels, derived from server dispatch and attachment eligibility. Chat settings show both
-lists beside their separate toggles. Show the YouTube group exclusion, group-only eligibility, loading,
+lists as nested platform switches under their respective main toggles. Each row shows the platform name,
+operations, effective value and source. A chat override can be cleared with Use inherited. The main switch
+disables all nested controls while off, preserving their settings. Writes and clears use validated
+`PUT /api/settings` and create the usual `setting_change` record. Show the YouTube group exclusion, group-only eligibility, loading,
 empty and unavailable states. The catalog describes installation-wide support. Effective values and
 inheritance still come from `GET /api/chats` and writes use the existing settings endpoint.
 
