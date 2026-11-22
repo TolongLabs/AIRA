@@ -393,11 +393,10 @@ export async function createApp(options: AppOptions): Promise<App> {
         : plainPage
     const socialLog = logger.child({ module: 'social' })
     const apifyToken = env['APIFY_API_TOKEN']?.trim() || env['APIFY_API_KEY']?.trim() || undefined
-    if (config.social.mirrors.rednote !== 'off' && !apifyToken) {
-      logger.warn('social.mirror_off', { platform: 'rednote', reason: 'no_key' })
-    }
-    if (config.social.mirrors.douyin !== 'off' && !apifyToken) {
-      logger.warn('social.mirror_off', { platform: 'douyin', reason: 'no_key' })
+    for (const platform of ['rednote', 'douyin', 'linkedin'] as const) {
+      if (config.social.mirrors[platform] !== 'off' && !apifyToken) {
+        logger.warn('social.mirror_off', { platform, reason: 'no_key' })
+      }
     }
     const socialMirrors = { ...config.social.mirrors, ...(apifyToken ? { apifyToken } : {}) }
     const viewer = new SocialPostViewer({ ...config.social, mirrors: socialMirrors }, { logger })

@@ -1,10 +1,10 @@
 import type { ReaderContext, ReaderResult, SocialReader } from './chain.js'
-import { array, base, capped, object, string } from './parsers.js'
+import { array, base, capped, MAX_POST_PHOTOS, object, string } from './parsers.js'
 import type { SocialMirrorSettings } from './readers.js'
 import type { PlayableVideo, SocialPost } from './types.js'
 import { parseOfficialSocialPostUrl, type SocialPlatform, type SocialPostTarget } from './urls.js'
 
-export type MirrorPlatform = 'tiktok' | 'reddit' | 'rednote' | 'douyin'
+export type MirrorPlatform = 'tiktok' | 'reddit' | 'rednote' | 'douyin' | 'linkedin'
 
 const MAX_RESPONSE_BYTES = 256_000
 const MAX_REDNOTE_PHOTOS = 20
@@ -14,6 +14,8 @@ const APIFY_REDNOTE_ENDPOINT =
   'https://api.apify.com/v2/acts/socialdatax~socialdatax-xhs-data-api/run-sync-get-dataset-items?timeout=30&memory=256'
 const APIFY_DOUYIN_ENDPOINT =
   'https://api.apify.com/v2/acts/natanielsantos~douyin-scraper/run-sync-get-dataset-items?timeout=30&memory=512'
+const APIFY_LINKEDIN_ENDPOINT =
+  'https://api.apify.com/v2/acts/apimaestro~linkedin-post-detail/run-sync-get-dataset-items?timeout=30&memory=256'
 const APIFY_TIKTOK_ENDPOINT =
   'https://api.apify.com/v2/acts/gentle_cloud~tiktok-videos-watermark-free-scraper/run-sync-get-dataset-items?timeout=30&memory=128'
 
@@ -69,6 +71,14 @@ function isDouyinPreviewHost(host: string): boolean {
   return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.douyinpic\.com$/.test(host)
 }
 
+/** LinkedIn media CDN hosts (`*.licdn.com`), excluding profile pictures from post media. */
+function isLinkedInPostMediaUrl(url: URL): boolean {
+  return (
+    !url.pathname.toLowerCase().includes('/profile-displayphoto-') &&
+    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.licdn\.com$/.test(url.hostname)
+  )
+}
+
 function isApifyKvUrl(url: URL): boolean {
   return url.origin === 'https://api.apify.com' && url.pathname.startsWith('/v2/key-value-stores/')
 }
@@ -81,6 +91,7 @@ export function mirrorAssetPlatform(value: string): MirrorPlatform | undefined {
   if (url.hostname === 'v.redd.it' || REDDIT_PREVIEW_HOSTS.has(url.hostname)) return 'reddit'
   if (isXhsPostMediaHost(url.hostname)) return 'rednote'
   if (isDouyinMediaHost(url.hostname) || isDouyinPreviewHost(url.hostname)) return 'douyin'
+  if (isLinkedInPostMediaUrl(url)) return 'linkedin'
   return undefined
 }
 
@@ -90,8 +101,15 @@ export function enabledMirrorAsset(
   source: SocialPlatform | undefined,
   settings: SocialMirrorSettings
 ): boolean {
-  if (source !== 'tiktok' && source !== 'reddit' && source !== 'rednote' && source !== 'douyin') return false
-  if ((source === 'rednote' || source === 'douyin') && !settings.apifyToken) return false
+  if (
+    source !== 'tiktok' &&
+    source !== 'reddit' &&
+    source !== 'rednote' &&
+    source !== 'douyin' &&
+    source !== 'linkedin'
+  )
+    return false
+  if ((source === 'rednote' || source === 'douyin' || source === 'linkedin') && !settings.apifyToken) return false
   return (settings[source] ?? 'off') !== 'off' && mirrorAssetPlatform(value) === source
 }
 
@@ -332,6 +350,81 @@ function douyinPost(document: unknown, target: SocialPostTarget, maxChars: numbe
   return { ok: true, post }
 }
 
+function linkedInMediaUrl(value: unknown): string | null {
+  const url = httpsUrl(value)
+  return url && isLinkedInPostMediaUrl(url) ? url.href : null
+}
+
+function linkedInPostData(entry: Record<string, unknown>): Record<string, unknown> {
+  const nested = object(entry.post)
+  return Object.keys(nested).length > 0 ? nested : entry
+}
+
+function linkedInIds(postData: Record<string, unknown>): string[] {
+  const urn = object(postData.urn)
+  return [postData.id, urn.activity_urn, urn.ugcPost_urn, urn.share_urn].map(string).filter((value) => value.length > 0)
+}
+
+function linkedinPost(
+  document: unknown,
+  target: SocialPostTarget,
+  maxChars: number,
+  allowGroup: boolean
+): ReaderResult {
+  const entries = Array.isArray(document) ? document : [document]
+  const row = entries.map(object).find((candidate) => linkedInIds(linkedInPostData(candidate)).includes(target.id))
+  if (!row) {
+    const hasAnyId = entries.some((candidate) => linkedInIds(linkedInPostData(object(candidate))).length > 0)
+    return { ok: false, reason: hasAnyId ? 'identity_mismatch' : 'no_post_data' }
+  }
+
+  const postData = linkedInPostData(row)
+  const post = base(target)
+  const author = object(row.author ?? postData.author)
+  post.text = capped(postData.text, maxChars)
+  post.authorName = capped(author.name, 160)
+  const timestamp = positive(object(postData.created_at).timestamp)
+  if (timestamp !== null) {
+    const created = new Date(timestamp)
+    if (!Number.isNaN(created.valueOf())) post.createdAt = created.toISOString()
+  }
+
+  const rawMedia = row.media ?? postData.media
+  const mediaItems = (
+    Array.isArray(rawMedia) ? rawMedia : rawMedia && typeof rawMedia === 'object' ? [rawMedia] : []
+  ).map(object)
+  const videoItem = mediaItems.find((item) => item.type === 'video')
+  if (videoItem) {
+    post.videoCount = 1
+    const durationMs = positive(videoItem.duration)
+    post.durationSec = durationMs !== null ? durationMs / 1000 : null
+    post.imageUrl = linkedInMediaUrl(videoItem.thumbnail)
+    const videoUrl = linkedInMediaUrl(videoItem.video_url)
+    if (videoUrl) {
+      setVideo(post, { url: videoUrl, mirror: 'linkedin', bytes: null, hasAudio: null, headers: null }, allowGroup)
+    }
+    return { ok: true, post }
+  }
+
+  const seen = new Set<string>()
+  const photos: string[] = []
+  for (const item of mediaItems) {
+    if (item.type !== 'image') continue
+    const photo = linkedInMediaUrl(item.url ?? item.image_url)
+    if (!photo || seen.has(photo)) continue
+    seen.add(photo)
+    photos.push(photo)
+    if (photos.length >= MAX_POST_PHOTOS) break
+  }
+  post.photoUrls = photos
+  post.photoCount = photos.length
+  post.imageUrl = photos[0] ?? null
+  if (allowGroup && photos.length > 0) {
+    post.attachments = photos.map((url) => ({ kind: 'image', owner: target.lookupKey, url }))
+  }
+  return { ok: true, post }
+}
+
 function tikTokApifyPost(
   document: unknown,
   target: SocialPostTarget,
@@ -409,6 +502,14 @@ export function createTikTokApifyReader(timeoutMs: number, allowGroup: boolean, 
   }
 }
 
+const MIRROR_READER_IDS: Record<MirrorPlatform, string> = {
+  tiktok: 'tiktok.tikwm',
+  reddit: 'reddit.arctic_shift',
+  rednote: 'rednote.apify',
+  douyin: 'douyin.apify',
+  linkedin: 'linkedin.apify'
+}
+
 export function createMirrorReader(
   platform: MirrorPlatform,
   timeoutMs: number,
@@ -416,15 +517,8 @@ export function createMirrorReader(
   onRefused?: () => void,
   apifyToken?: string
 ): SocialReader {
-  const id =
-    platform === 'tiktok'
-      ? 'tiktok.tikwm'
-      : platform === 'reddit'
-        ? 'reddit.arctic_shift'
-        : platform === 'rednote'
-          ? 'rednote.apify'
-          : 'douyin.apify'
-  const needsApify = platform === 'rednote' || platform === 'douyin'
+  const id = MIRROR_READER_IDS[platform]
+  const needsApify = platform === 'rednote' || platform === 'douyin' || platform === 'linkedin'
   return {
     id,
     kind: 'mirror_api',
@@ -476,6 +570,19 @@ export function createMirrorReader(
           signal: ctx.signal,
           redirect: 'error'
         })
+      } else if (platform === 'linkedin') {
+        response = await ctx.fetcher(APIFY_LINKEDIN_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apifyToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            post_urls: [resolved.canonicalUrl]
+          }),
+          signal: ctx.signal,
+          redirect: 'error'
+        })
       } else {
         const tiktok = platform === 'tiktok'
         const endpoint = new URL(tiktok ? `${TIKWM}/api/` : `${ARCTIC_SHIFT}/api/posts/ids`)
@@ -496,7 +603,8 @@ export function createMirrorReader(
       if (platform === 'tiktok') return tikTokPost(document, target, ctx.maxTextChars, allowGroup)
       if (platform === 'reddit') return redditPost(document, target, ctx.maxTextChars, allowGroup)
       if (platform === 'rednote') return rednotePost(document, target, ctx.maxTextChars, allowGroup)
-      return douyinPost(document, target, ctx.maxTextChars, allowGroup)
+      if (platform === 'douyin') return douyinPost(document, target, ctx.maxTextChars, allowGroup)
+      return linkedinPost(document, target, ctx.maxTextChars, allowGroup)
     }
   }
 }

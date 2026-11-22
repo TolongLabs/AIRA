@@ -16,6 +16,7 @@ const ATTEMPT_IDS = new Set([
   'tiktok.apify',
   'rednote.apify',
   'douyin.apify',
+  'linkedin.apify',
   'youtube.oembed',
   'yt_dlp'
 ])

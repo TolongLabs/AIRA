@@ -8,6 +8,7 @@ import { findSocialPostTargets, parseSocialPostUrl, recognitionOnlyName } from '
 import type { Storage } from '../../src/storage/database.js'
 import { openTurn, receiveInbound } from '../../src/storage/turns.js'
 import { readPageTool, readPostTool } from '../../src/tools/core/web.js'
+import { EXCLUDED_DOMAINS, isExcludedHost } from '../../src/tools/excluded-hosts.js'
 import { createToolRegistry } from '../../src/tools/registry.js'
 import { createTurnSources } from '../../src/turn/sources.js'
 import type { TurnContext } from '../../src/turn/types.js'
@@ -49,51 +50,59 @@ function makeTurnContext(storage: Storage): TurnContext {
 }
 
 describe('excluded source hosts', () => {
-  it.each([
-    POST_URL,
-    FEED_URL,
-    SHORT_URL,
-    SHORT_WWW_URL,
-    SHORT_POST_URL,
-    UGC_POST_URL,
-    'https://de.linkedin.com./in/example'
-  ])('refuses a seen %s with the generic outcome before calling either reader', async (share) => {
-    const storage = tmpStorage()
-    const turn = makeTurnContext(storage)
-    const seen = turn.sources.add(share, 'message')
-    if (seen === undefined) throw new Error('source was not registered')
-    const pageRead = vi.fn(async () => ({ title: 'page', text: 'body' }))
-    const download = vi.fn(async () => {
-      throw new Error('download must not be called')
-    })
-    const postRead = vi.fn(async () => {
-      throw new Error('post reader must not be called')
-    })
-    const pageTool = readPageTool({ filesDir: tmpDir(), page: { read: pageRead, download } })
-    const postTool = readPostTool({ filesDir: tmpDir(), post: { read: postRead } })
-    const registry = createToolRegistry({
-      storage,
-      config: { tools: { defaultTimeoutMs: 1000 } },
-      logger: createLogger({ level: 'error', module: 'tools-test', sink: () => {} }),
-      redactor: createRedactor()
-    })
-    registry.register(pageTool)
-    registry.register(postTool)
-    const offered = registry.offered(turn)
-    expect(offered.map((tool) => tool.schema.name).sort()).toEqual(['read_page', 'read_post'])
-    for (const tool of offered) {
-      const response = await tool.call({ source: seen.id }, tool.schema.name, new AbortController().signal)
-      expect(JSON.parse(response.content)).toMatchObject({ ok: false, outcome: 'You cannot do that here.' })
-    }
-    expect(postRead).not.toHaveBeenCalled()
-    expect(pageRead).not.toHaveBeenCalled()
-    expect(download).not.toHaveBeenCalled()
+  it('leaves EXCLUDED_DOMAINS empty now that LinkedIn uses an opt-in mirror', () => {
+    expect(EXCLUDED_DOMAINS).toEqual([])
+    expect(isExcludedHost('linkedin.com')).toBe(false)
+    expect(isExcludedHost('lnkd.in')).toBe(false)
+    expect(isExcludedHost('licdn.com')).toBe(false)
   })
 
-  it('prevents excluded hosts from matching another platform', () => {
-    expect(recognitionOnlyName(MIRROR_URL)).toBeNull()
-    expect(parseSocialPostUrl(MIRROR_URL)).toBeNull()
+  it.each(['https://app.localhost/example', 'https://metadata.internal/example', 'http://127.0.0.1/example'])(
+    'refuses a seen forbidden %s with the generic outcome before calling either reader',
+    async (share) => {
+      const storage = tmpStorage()
+      const turn = makeTurnContext(storage)
+      const seen = turn.sources.add(share, 'message')
+      if (seen === undefined) throw new Error('source was not registered')
+      const pageRead = vi.fn(async () => ({ title: 'page', text: 'body' }))
+      const download = vi.fn(async () => {
+        throw new Error('download must not be called')
+      })
+      const postRead = vi.fn(async () => {
+        throw new Error('post reader must not be called')
+      })
+      const pageTool = readPageTool({ filesDir: tmpDir(), page: { read: pageRead, download } })
+      const postTool = readPostTool({ filesDir: tmpDir(), post: { read: postRead } })
+      const registry = createToolRegistry({
+        storage,
+        config: { tools: { defaultTimeoutMs: 1000 } },
+        logger: createLogger({ level: 'error', module: 'tools-test', sink: () => {} }),
+        redactor: createRedactor()
+      })
+      registry.register(pageTool)
+      registry.register(postTool)
+      const offered = registry.offered(turn)
+      expect(offered.map((tool) => tool.schema.name).sort()).toEqual(['read_page', 'read_post'])
+      for (const tool of offered) {
+        const response = await tool.call({ source: seen.id }, tool.schema.name, new AbortController().signal)
+        expect(JSON.parse(response.content)).toMatchObject({ ok: false, outcome: 'You cannot do that here.' })
+      }
+      expect(postRead).not.toHaveBeenCalled()
+      expect(pageRead).not.toHaveBeenCalled()
+      expect(download).not.toHaveBeenCalled()
+    }
+  )
+
+  it('prevents non-post LinkedIn hosts and paths from matching another platform', () => {
+    for (const url of [MIRROR_URL, UGC_POST_URL, SHORT_WWW_URL, 'https://de.linkedin.com./in/example']) {
+      expect(recognitionOnlyName(url)).toBeNull()
+      expect(parseSocialPostUrl(url)).toBeNull()
+    }
     const targets = findSocialPostTargets(`${MIRROR_URL} ${X_URL}`)
     expect(targets.map((target) => target.platform)).toEqual(['x'])
+    expect(parseSocialPostUrl(POST_URL)).toMatchObject({ platform: 'linkedin' })
+    expect(parseSocialPostUrl(FEED_URL)).toMatchObject({ platform: 'linkedin' })
+    expect(parseSocialPostUrl(SHORT_URL)).toMatchObject({ platform: 'linkedin', needsRedirect: true })
+    expect(parseSocialPostUrl(SHORT_POST_URL)).toMatchObject({ platform: 'linkedin', needsRedirect: true })
   })
 })

@@ -1,4 +1,4 @@
-export const EXCLUDED_DOMAINS = ['linkedin.com', 'lnkd.in', 'licdn.com'] as const
+export const EXCLUDED_DOMAINS: readonly string[] = []
 
 export function isExcludedHost(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/\.+$/, '')

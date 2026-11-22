@@ -208,6 +208,7 @@ export class SocialPostViewer {
     const needsApifyBudget =
       requested.platform === 'rednote' ||
       requested.platform === 'douyin' ||
+      requested.platform === 'linkedin' ||
       (requested.platform === 'tiktok' && Boolean(this.settings.mirrors?.apifyToken))
     const lookupTimeoutMs = needsApifyBudget ? Math.max(this.settings.timeoutMs, 20_000) : this.settings.timeoutMs
     const deadlineAt = this.now() + lookupTimeoutMs

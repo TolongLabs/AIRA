@@ -3,7 +3,7 @@ import type { SocialPlatform, SocialPostTarget } from './urls.js'
 export interface PlayableVideo {
   url: string
   /** The approved mirror that verified this video's ownership. */
-  mirror?: 'tiktok' | 'reddit' | 'rednote' | 'douyin'
+  mirror?: 'tiktok' | 'reddit' | 'rednote' | 'douyin' | 'linkedin'
   /** Exact or declared byte size when known. */
   bytes: number | null
   /** Request headers the host requires (yt-dlp `http_headers`), else null. */

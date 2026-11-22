@@ -215,12 +215,19 @@ const adapters: Record<SocialPlatform, PlatformAdapter> = {
     read: ['text', 'preview', 'video'],
     group: [],
     readers: (_, env) => apifyMirrorReaders('douyin', env)
+  },
+  linkedin: {
+    read: ['text', 'preview', 'photos', 'video'],
+    group: [],
+    readers: (_, env) => apifyMirrorReaders('linkedin', env)
   }
 }
 
 function mirrorMode(platform: SocialPlatform, mirrors?: SocialMirrorSettings) {
   if (platform === 'tiktok' || platform === 'reddit') return mirrors?.[platform] ?? 'off'
-  if (platform === 'rednote' || platform === 'douyin') return mirrors?.apifyToken ? (mirrors[platform] ?? 'off') : 'off'
+  if (platform === 'rednote' || platform === 'douyin' || platform === 'linkedin') {
+    return mirrors?.apifyToken ? (mirrors[platform] ?? 'off') : 'off'
+  }
   return 'off'
 }
 
@@ -256,7 +263,7 @@ export function groupOperations(
   if (mirrorMode(platform, mirrors) !== 'read_and_group') return adapters[platform].group
   const scope = platform === 'reddit' ? mirrors?.redditGroupChatIds : undefined
   if (scope !== undefined && (chatId === undefined ? scope.length === 0 : !scope.includes(chatId))) return []
-  return platform === 'reddit' || platform === 'rednote' ? ['photos', 'video'] : ['video']
+  return platform === 'reddit' || platform === 'rednote' || platform === 'linkedin' ? ['photos', 'video'] : ['video']
 }
 
 export function socialCapabilities(extractorAvailable: boolean, mirrors?: SocialMirrorSettings) {
@@ -270,7 +277,7 @@ export function socialCapabilities(extractorAvailable: boolean, mirrors?: Social
     'features.social': platforms.flatMap((id) => {
       const adapter = adapters[id]
       const mirror = mirrorMode(id, mirrors) !== 'off'
-      if ((id === 'rednote' || id === 'douyin') && !mirror) return []
+      if ((id === 'rednote' || id === 'douyin' || id === 'linkedin') && !mirror) return []
       if (adapter.extractorRequired && !extractorAvailable && !mirror) return []
       if (id === 'reddit' && mirror) return [entry(id, ['text', 'preview', 'photos', 'video'])]
       const operations =
@@ -295,6 +302,7 @@ export function switchablePlatforms(): { read: SocialPlatform[]; fetch: SocialPl
     reddit: 'read_and_group',
     rednote: 'read_and_group',
     douyin: 'read_and_group',
+    linkedin: 'read_and_group',
     apifyToken: 'configured'
   })
   return {
@@ -324,7 +332,7 @@ export function readersFor(target: SocialPostTarget, env: ReaderEnv): SocialRead
   return readers
 }
 
-function apifyMirrorReaders(platform: 'rednote' | 'douyin', env: ReaderEnv): SocialReader[] {
+function apifyMirrorReaders(platform: 'rednote' | 'douyin' | 'linkedin', env: ReaderEnv): SocialReader[] {
   const mode = mirrorMode(platform, env.mirrors)
   if (mode === 'off' || !env.mirrors?.apifyToken) return []
   const timeoutMs = Math.max(REDNOTE_APIFY_TIMEOUT_MS, env.httpTimeoutMs)

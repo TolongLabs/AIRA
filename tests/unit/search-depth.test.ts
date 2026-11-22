@@ -130,24 +130,27 @@ describe('search depth', () => {
     expect(read).toHaveBeenCalledWith(lineup.url, expect.any(AbortSignal))
   })
 
-  it('drops excluded snippets before registering or returning a plain search result', async () => {
-    const excluded = { title: 'Example', url: 'https://lnkd.in/example', snippet: 'Excluded snippet' }
+  it('keeps lnkd.in search results when EXCLUDED_DOMAINS is empty', async () => {
+    const lnkd = { title: 'Example', url: 'https://lnkd.in/example', snippet: 'LinkedIn short link' }
     const turn = context()
-    const search = createSearchDepth({ search: { search: async () => [excluded, menu] } })
-    expect(await search.plain(query, turn)).toEqual([{ ...menu, source: 's1' }])
-    expect(turn.sources.find({ url: excluded.url })).toBeUndefined()
+    const search = createSearchDepth({ search: { search: async () => [lnkd, menu] } })
+    expect(await search.plain(query, turn)).toEqual([
+      { ...lnkd, source: 's1' },
+      { ...menu, source: 's2' }
+    ])
+    expect(turn.sources.find({ url: lnkd.url })).toMatchObject({ id: 's1' })
   })
 
-  it('skips an excluded candidate and reads the next eligible page', async () => {
-    const linkedin = {
+  it('skips a forbidden candidate and reads the next eligible page', async () => {
+    const forbidden = {
       title: 'Example models lineup',
-      url: 'https://www.linkedin.com/posts/synthetic-update-activity-1234567890123456789',
+      url: 'https://metadata.internal/posts/example',
       snippet: 'Example news.'
     }
     const eligible = { title: 'Example models', url: 'https://lineup.example/b', snippet: 'Example news.' }
     const read = vi.fn(async () => ({ title: '', text: '- Example One\n- Example Two\n- Example Three' }))
     const { brief } = await createSearchDepth(
-      { search: { search: vi.fn(async () => [linkedin, eligible]) }, searchPage: { read } },
+      { search: { search: vi.fn(async () => [forbidden, eligible]) }, searchPage: { read } },
       {
         maxSearches: 1,
         maxPages: 2,
