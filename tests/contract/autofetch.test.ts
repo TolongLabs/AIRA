@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import type { AddressInfo } from 'node:net'
 import { basename, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -589,7 +589,12 @@ describe('POST /v1/aira/autofetch', () => {
       redactor: createRedactor(),
       ready: () => options.ready ?? true,
       now: options.now,
-      autofetch: options.autofetch ?? { fetch: async (input) => ({ media: (await options.fetch?.(input)) ?? [] }) }
+      autofetch: options.autofetch ?? {
+        claim: () => false,
+        complete: () => false,
+        abandon: () => {},
+        fetch: async (input) => ({ media: (await options.fetch?.(input)) ?? [] })
+      }
     })
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
     servers.push(server)
@@ -615,7 +620,11 @@ describe('POST /v1/aira/autofetch', () => {
 
   it('counts only claimed adapter confirmations and exports telemetry without receipt keys', async () => {
     const env = setup({ posts: { 'x:1': { photoUrls: ['https://img.example/a.jpg', 'https://img.example/b.jpg'] } } })
-    const post = await serve({ autofetch: { fetch: env.autofetch.batch }, storage: env.storage, now: env.now })
+    const post = await serve({
+      autofetch: { ...env.autofetch, fetch: env.autofetch.batch },
+      storage: env.storage,
+      now: env.now
+    })
     const batch = (await (
       await post({ chat: env.waId, text: 'https://x.com/example/status/1?secret=token' })
     ).json()) as {
@@ -631,8 +640,11 @@ describe('POST /v1/aira/autofetch', () => {
     expect(await send('/claim', { key })).toEqual({ accepted: true })
     expect(await send('/claim', { key })).toEqual({ accepted: false })
     expect(await send('/complete', { key, outcomes: [true] })).toEqual({ accepted: false })
+    const paths = batch.media.map((item) => join(env.options.cacheDir, basename(item.path)))
+    expect(paths.every((path) => existsSync(path))).toBe(true)
     expect(await send('/complete', { key, outcomes: [true, false] })).toEqual({ accepted: true })
     expect(await send('/complete', { key, outcomes: [true, true] })).toEqual({ accepted: false })
+    expect(paths.some((path) => existsSync(path))).toBe(false)
     expect(delivery()).toEqual({ slots: '["image","image"]', outcomes: '[true,false]' })
     expect(
       env.storage.read((db) => db.prepare('SELECT eligible_files, downloaded_files FROM social_lookup').get())
@@ -772,4 +784,52 @@ it('skips a disabled platform share before lookup and preserves slots and repeat
   await env.autofetch.fetch({ chat: env.waId, text: 'https://www.threads.com/share/BShare12x' })
   expect(env.lookups).toEqual(['x:1', 'x:2', 'x:3'])
   expect(env.storage.read((db) => db.prepare('SELECT count(*) FROM autofetch_repeat').pluck().get())).toBe(3)
+})
+
+describe('delivery file lifetime', () => {
+  const photo = { photoUrls: ['https://img.example/a.jpg'] }
+  const textFor = (id: number) => 'https://x.com/example/status/' + id
+  it('isolates identical files in concurrent deliveries', async () => {
+    const env = setup({ posts: { 'x:1': photo, 'x:2': photo } })
+    const [first, second] = await Promise.all(
+      [1, 2].map((id) => env.autofetch.batch({ chat: env.waId, text: textFor(id) }))
+    )
+    const pathFor = (item: AutofetchMedia) => join(env.options.cacheDir, basename(item.path))
+    const firstPath = pathFor(first!.media[0]!)
+    const secondPath = pathFor(second!.media[0]!)
+    expect(firstPath).not.toBe(secondPath)
+    expect(readFileSync(firstPath)).toEqual(readFileSync(secondPath))
+    expect(env.autofetch.claim(first!.deliveryKey!)).toBe(true)
+    expect(env.autofetch.complete(first!.deliveryKey!, [true])).toBe(true)
+    expect(existsSync(firstPath)).toBe(false)
+    expect(existsSync(secondPath)).toBe(true)
+    expect(existsSync(join(env.dataDir, 'files'))).toBe(false)
+  })
+
+  it('removes files at ten minutes while idle', async () => {
+    vi.useFakeTimers()
+    try {
+      const env = setup({ posts: { 'x:1': photo } })
+      const batch = await env.autofetch.batch({ chat: env.waId, text: textFor(1) })
+      const path = join(env.options.cacheDir, basename(batch.media[0]!.path))
+      env.advance(599999)
+      await vi.advanceTimersByTimeAsync(599999)
+      expect(existsSync(path)).toBe(true)
+      env.advance(1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(existsSync(path)).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('removes outstanding and legacy files on startup', async () => {
+    const env = setup({ posts: { 'x:1': photo } })
+    const batch = await env.autofetch.batch({ chat: env.waId, text: textFor(1) })
+    expect(batch.media).toHaveLength(1)
+    writeFileSync(join(env.options.cacheDir, 'ab'.repeat(32) + '.jpg'), Buffer.from('legacy'))
+    const restarted = env.restart()
+    expect(readdirSync(env.options.cacheDir)).toEqual([])
+    expect(restarted.claim(batch.deliveryKey!)).toBe(false)
+  })
 })

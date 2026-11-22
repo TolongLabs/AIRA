@@ -36,7 +36,7 @@ const REASONS = new Set([
   'platform_disabled',
   'no_verified_attachment'
 ])
-const receiptLifetimeMs = 10 * 60_000
+export const AUTOFETCH_KEY_LIFETIME_MS = 10 * 60_000
 
 function safeReason(reason?: string): string | null {
   if (!reason) return null
@@ -169,7 +169,7 @@ export function recordAutofetchHandoff(
   db.prepare('INSERT INTO autofetch_delivery_key (job_run_id, digest, expires_at) VALUES (?, ?, ?)').run(
     runId,
     digest(key),
-    new Date(now.getTime() + receiptLifetimeMs).toISOString()
+    new Date(now.getTime() + AUTOFETCH_KEY_LIFETIME_MS).toISOString()
   )
   return key
 }
@@ -188,8 +188,8 @@ export function claimAutofetchDelivery(storage: Storage, key: string, now: Date)
 
 export function completeAutofetchDelivery(storage: Storage, key: string, outcomes: boolean[], now: Date): boolean {
   const at = now.toISOString()
-  return storage.tx(
-    (db) =>
+  return storage.tx((db) => {
+    const accepted =
       db
         .prepare(
           `UPDATE autofetch_delivery SET completed_at = ?, outcomes = ?
@@ -197,5 +197,17 @@ export function completeAutofetchDelivery(storage: Storage, key: string, outcome
      AND json_array_length(slots) = ?`
         )
         .run(at, JSON.stringify(outcomes), digest(key), at, outcomes.length).changes === 1
-  )
+    // An accepted receipt ends the key: its bearer material is no longer needed.
+    if (accepted) invalidateKey(db, key)
+    return accepted
+  })
+}
+
+function invalidateKey(db: Db, key: string): void {
+  db.prepare('DELETE FROM autofetch_delivery_key WHERE digest = ?').run(digest(key))
+}
+
+/** Ends a key that has no receipt: the gateway never got it, or its batch expired. The caller removes the files. */
+export function invalidateAutofetchDelivery(storage: Storage, key: string): void {
+  storage.tx((db) => invalidateKey(db, key))
 }

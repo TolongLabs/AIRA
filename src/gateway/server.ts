@@ -1,7 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { z } from 'zod'
-import type { Autofetch } from '../media/autofetch.js'
-import { claimAutofetchDelivery, completeAutofetchDelivery } from '../records/autofetch.js'
+import type { Autofetch, AutofetchBatch } from '../media/autofetch.js'
 import type { FailureKind } from '../records/kinds.js'
 import type { Logger } from '../records/logger.js'
 import type { Redactor } from '../records/redact.js'
@@ -249,8 +248,20 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
       json(response, 400, { error: { message: 'the request could not be parsed', type: 'invalid_request_error' } }, log)
       return
     }
+    // A gateway that closed before the answer never gets the key: end the batch now, not at its timer.
     try {
-      json(response, 200, options.autofetch ? await options.autofetch.fetch(input) : { media: [] }, log)
+      const batch: AutofetchBatch = (await options.autofetch?.fetch(input)) ?? { media: [] }
+      const key = batch.deliveryKey
+      if (key !== undefined) {
+        if (response.destroyed) {
+          options.autofetch?.abandon(key)
+          return
+        }
+        response.once('close', () => {
+          if (!response.writableFinished) options.autofetch?.abandon(key)
+        })
+      }
+      json(response, 200, batch, log)
     } catch (error) {
       log.error('autofetch.failed', { kind: error instanceof Error ? error.name : 'unknown' })
       json(response, 200, { media: [] }, log)
@@ -270,10 +281,12 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
       return
     }
     try {
-      const at = options.now?.() ?? new Date()
-      const accepted = claim
-        ? claimAutofetchDelivery(options.storage, input.key, at)
-        : completeAutofetchDelivery(options.storage, input.key, input.outcomes ?? [], at)
+      const accepted =
+        options.autofetch === undefined
+          ? false
+          : claim
+            ? options.autofetch.claim(input.key)
+            : options.autofetch.complete(input.key, input.outcomes ?? [])
       json(response, 200, { accepted }, log)
     } catch {
       log.warn('autofetch.record_failed', { phase: claim ? 'claim' : 'receipt' })

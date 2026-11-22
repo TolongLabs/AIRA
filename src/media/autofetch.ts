@@ -1,6 +1,13 @@
-import { createHash, createHmac } from 'node:crypto'
+import { createHmac } from 'node:crypto'
 import { join } from 'node:path'
-import { recordAutofetchHandoff, recordSocialLookup } from '../records/autofetch.js'
+import {
+  AUTOFETCH_KEY_LIFETIME_MS,
+  claimAutofetchDelivery,
+  completeAutofetchDelivery,
+  invalidateAutofetchDelivery,
+  recordAutofetchHandoff,
+  recordSocialLookup
+} from '../records/autofetch.js'
 import type { Logger } from '../records/logger.js'
 import { endJobRun, startJobRun } from '../records/turn-record.js'
 import { getChatByWaId } from '../settings/chats.js'
@@ -15,8 +22,8 @@ import {
   type SocialPostTarget
 } from '../social/urls.js'
 import type { Db, Storage } from '../storage/database.js'
-import { writeFileAtomic } from '../storage/files.js'
 import type { PagePort } from '../tools/ports.js'
+import { openDeliveryFiles } from './autofetch-files.js'
 import { COMPRESSION_MAX_INPUT_BYTES, COMPRESSION_MAX_SECONDS, type CompressVideo, isMp4 } from './video-compression.js'
 
 // A group's post links answered with the posts' own media (docs/trd/system.md#autofetch).
@@ -72,6 +79,12 @@ export interface AutofetchBatch {
 export interface Autofetch {
   /** The media to send for one group message, in order. Empty when nothing applies. Never throws for a post. */
   fetch(input: { chat: string; text: string }): Promise<AutofetchBatch>
+  /** Accepts the gateway's claim of a batch once. False for an unknown, expired, claimed or completed key. */
+  claim(key: string): boolean
+  /** Accepts the gateway's outcomes once, one per slot, and removes the batch's files. False when refused. */
+  complete(key: string, outcomes: boolean[]): boolean
+  /** Ends a batch the gateway never received, and removes its files. */
+  abandon(key: string): void
 }
 
 export interface AutofetchOptions {
@@ -176,16 +189,43 @@ function videoDurationBand(post: SocialPost, items: ReturnType<typeof postMedia>
 
 export function createAutofetch(options: AutofetchOptions): Autofetch {
   const now = options.now ?? (() => new Date())
+  // A process starts with no key: every outstanding key is invalidated and every leftover file is removed.
+  const files = openDeliveryFiles(options.cacheDir)
   options.storage.tx((db) => {
     db.prepare(
       "UPDATE job_run SET outcome = 'interrupted', ended_at = ? WHERE kind = 'autofetch' AND ended_at IS NULL"
     ).run(now().toISOString())
-    db.prepare(
-      `DELETE FROM autofetch_delivery_key WHERE job_run_id IN (
-      SELECT job_run_id FROM autofetch_delivery WHERE claimed_at IS NULL
-    )`
-    ).run()
+    db.prepare('DELETE FROM autofetch_delivery_key').run()
   })
+  if (files.purged > 0) options.logger?.info('autofetch.purged', { files: files.purged })
+
+  // The files each outstanding key holds, with the timer that ends the key. Held in memory only.
+  const held = new Map<string, { names: string[]; timer: ReturnType<typeof setTimeout> }>()
+
+  /** Removes a key's files and stops its timer. Does nothing for a key it does not hold. */
+  function release(key: string): void {
+    const entry = held.get(key)
+    if (!entry) return
+    clearTimeout(entry.timer)
+    held.delete(key)
+    if (files.remove(entry.names) > 0) options.logger?.warn('autofetch.record_failed', { phase: 'remove' })
+  }
+
+  /** Ends a key without a receipt: its files go and the key is invalidated. Never throws. */
+  function end(key: string): void {
+    release(key)
+    try {
+      invalidateAutofetchDelivery(options.storage, key)
+    } catch {
+      options.logger?.warn('autofetch.record_failed', { phase: 'invalidate' })
+    }
+  }
+
+  function hold(key: string, names: string[]): void {
+    const timer = setTimeout(() => end(key), AUTOFETCH_KEY_LIFETIME_MS)
+    timer.unref()
+    held.set(key, { names, timer })
+  }
 
   /** True when the chat may get autofetch: an active group with the switch on, not muted. Also its platform switches. */
   function allowedChat(
@@ -245,7 +285,7 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
   async function save(
     item: ReturnType<typeof postMedia>[number],
     signal: AbortSignal
-  ): Promise<{ downloaded: boolean; media?: AutofetchMedia }> {
+  ): Promise<{ downloaded: boolean; file?: { name: string; media: AutofetchMedia } }> {
     let downloaded = false
     const maxBytes = item.kind === 'video' ? AUTOFETCH_MAX_VIDEO_BYTES : AUTOFETCH_MAX_IMAGE_BYTES
     try {
@@ -279,9 +319,8 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
           ? file.data
           : await compressor?.(file.data, maxBytes, COMPRESSION_MAX_SECONDS, signal)
       if (!data || signal.aborted || data.length > maxBytes || !matchesSignature(mime, data)) return { downloaded }
-      const name = `${createHash('sha256').update(data).digest('hex')}${ext}`
-      writeFileAtomic(join(options.cacheDir, name), data)
-      return { downloaded, media: { kind: item.kind, path: join(options.hostCacheDir, name) } }
+      const name = files.write(data, ext)
+      return { downloaded, file: { name, media: { kind: item.kind, path: join(options.hostCacheDir, name) } } }
     } catch {
       return { downloaded }
     }
@@ -299,6 +338,7 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), AUTOFETCH_TIMEOUT_MS)
       const media: AutofetchMedia[] = []
+      const written: string[] = []
       let failed = 0
       let threw = false
       let deliveryKey: string | undefined
@@ -333,9 +373,10 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
           }
           const downloads = await Promise.all(items.map((item) => save(item, controller.signal)))
           const downloaded = downloads.filter((item) => item.downloaded).length
-          const saved = downloads.flatMap((item) => (item.media ? [item.media] : []))
+          const saved = downloads.flatMap((item) => (item.file ? [item.file] : []))
           failed += items.length - saved.length
-          media.push(...saved)
+          written.push(...saved.map((file) => file.name))
+          media.push(...saved.map((file) => file.media))
           try {
             options.storage.tx((db) =>
               recordSocialLookup(
@@ -361,7 +402,7 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
           }
         }
         if (media.length) {
-          deliveryKey = options.storage.tx((db) =>
+          const key = options.storage.tx((db) =>
             recordAutofetchHandoff(
               db,
               runId,
@@ -369,12 +410,18 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
               now()
             )
           )
+          hold(key, written)
+          deliveryKey = key
         }
       } catch (error) {
         threw = true
         throw error
       } finally {
         clearTimeout(timer)
+        // A batch that was never handed over leaves no files behind.
+        if (!deliveryKey && files.remove(written) > 0) {
+          options.logger?.warn('autofetch.record_failed', { phase: 'discard' })
+        }
         const counts = {
           links: selected,
           images: media.filter((item) => item.kind === 'image').length,
@@ -391,6 +438,15 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
         options.logger?.info('autofetch.done', counts)
       }
       return deliveryKey ? { media, deliveryKey } : { media }
-    }
+    },
+    claim(key) {
+      return claimAutofetchDelivery(options.storage, key, now())
+    },
+    complete(key, outcomes) {
+      const accepted = completeAutofetchDelivery(options.storage, key, outcomes, now())
+      if (accepted) release(key)
+      return accepted
+    },
+    abandon: end
   }
 }
