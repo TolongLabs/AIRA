@@ -47,6 +47,8 @@ function stack(
     slowRefusal?: boolean
     headerStall?: boolean
     mixedValidators?: boolean
+    changedDate?: boolean
+    changedEtag?: string
     thumbnail?: string
     cover?: string
   } = {}
@@ -127,15 +129,29 @@ function stack(
       if (!range) return new Response(null, { status: 403 })
       const start = Number(range[1])
       const end = Number(range[2])
+      const second = Math.floor(largeMp4.length / 4)
       const odd = options.mixedValidators && Math.round((start / largeMp4.length) * 4) % 2 === 1
-      const etag = odd ? null : options.etag === undefined ? '"v1"' : options.etag
+      const etag = odd
+        ? null
+        : options.changedEtag && start === second
+          ? options.changedEtag
+          : options.etag === undefined
+            ? '"v1"'
+            : options.etag
       const headers: Record<string, string> = {
         'content-type': 'video/mp4',
         'content-range': `bytes ${start}-${end}/${largeMp4.length}`,
         ...(etag ? { etag } : {}),
-        ...(options.lastModified || odd ? { 'last-modified': odd ? '"v1"' : options.lastModified! } : {})
+        ...(options.lastModified || odd
+          ? {
+              'last-modified': odd
+                ? '"v1"'
+                : options.changedDate && start === second
+                  ? 'Mon, 23 Nov 2026 00:00:00 GMT'
+                  : options.lastModified!
+            }
+          : {})
       }
-      const second = Math.floor(largeMp4.length / 4)
       if (options.headerStall && start === second && !interrupted.has(start)) {
         // The first request for the part sends no headers until the idle timer aborts it.
         interrupted.add(start)
@@ -395,8 +411,22 @@ describe('approved mirror readers', () => {
   })
 
   it.each(['""', 'W/""', '" "'])('compares Last-Modified across parts when the ETag is %s', async (etag) => {
-    const { watch } = await watchTikTok({ ranges: 'valid', etag, lastModified: 'Sun, 22 Nov 2026 00:00:00 GMT' })
-    expect(watch).toHaveBeenCalledOnce()
+    const same = await watchTikTok({ ranges: 'valid', etag, lastModified: 'Sun, 22 Nov 2026 00:00:00 GMT' })
+    expect(same.watch).toHaveBeenCalledOnce()
+    const changed = await watchTikTok({
+      ranges: 'valid',
+      etag,
+      lastModified: 'Sun, 22 Nov 2026 00:00:00 GMT',
+      changedDate: true
+    })
+    expect(changed.watch).not.toHaveBeenCalled()
+  })
+
+  it('compares an unquoted ETag across parts when no date is sent', async () => {
+    const same = await watchTikTok({ ranges: 'valid', etag: 'v1' })
+    expect(same.watch).toHaveBeenCalledOnce()
+    const changed = await watchTikTok({ ranges: 'valid', etag: 'v1', changedEtag: 'v2' })
+    expect(changed.watch).not.toHaveBeenCalled()
   })
 
   it('retries a part whose request stalls before its headers', async () => {
