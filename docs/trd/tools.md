@@ -365,10 +365,10 @@ has up to five matches with title, domain, link and price when present. It carri
 Intake, `read_post` and chat autofetch use the same post resolver and reader dispatch. A reader may return
 partial data. Previews, cards and quoted or earlier-thread media can describe a post to the reader. Group
 delivery requires separate native attachment evidence. Enable a new operation only after verifying the
-specific post identity, fields, retrieval permission and intended use. Xiaohongshu/Rednote and Douyin
-start off by default until `social.mirrors.rednote` or `social.mirrors.douyin` and `APIFY_API_TOKEN`
-(or `APIFY_API_KEY`) are configured. Evaluate reading, intake and
-redistribution independently. A public embed or a public browser
+specific post identity, fields, retrieval permission and intended use. Xiaohongshu/Rednote, Douyin and
+LinkedIn start off by default until `social.mirrors.rednote`, `social.mirrors.douyin` or
+`social.mirrors.linkedin` and `APIFY_API_TOKEN` (or `APIFY_API_KEY`) are configured. Evaluate reading,
+intake and redistribution independently. A public embed or a public browser
 page does not establish permission for automated reads, model processing or redistribution. Douyin
 documents OAuth-protected account capabilities. Record the approved fields and uses before enabling a provider.
 [Douyin capabilities](https://partner.open-douyin.com/docs/resource/zh-CN/dop/ability/common-solution).
@@ -418,6 +418,17 @@ and inherited per-chat read and fetch settings. The native video duration can om
 Measure a reported 300-second video before delivery, applying the shared 300-second limit. Enable photos
 and video for delivery after three successful application checks per host. There is no extractor fallback.
 
+LinkedIn uses an opt-in Apify mirror (`social.mirrors.linkedin`: `off`, `read`, or `read_and_group`,
+default `off`) backed by `APIFY_API_TOKEN` (or `APIFY_API_KEY`) in `.env` and actor
+`apimaestro~linkedin-post-detail`. Without both the mirror switch and token no reader runs and LinkedIn
+stays out of the active capability lists. Recognise `/posts/{slug}-activity-{id}` and
+`/feed/update/urn:li:(activity|ugcPost|share):{id}` on `linkedin.com` and `www.linkedin.com`, plus
+`lnkd.in/{code}` and `lnkd.in/p/{code}` share links resolved through the guarded share resolver. Reserve
+subdomains of `linkedin.com` and `lnkd.in` from unknown-host selection. The reader verifies a matching
+post ID or URN, takes ordered gallery images or native video with duration from `media[]`, and accepts
+only HTTPS media on `*.licdn.com` (excluding `/profile-displayphoto-` avatars). Lookups get a 20,000 ms
+budget.
+
 Douyin uses an opt-in Apify mirror (`social.mirrors.douyin`: `off`, `read`, or `read_and_group`, default
 `off`) backed by `APIFY_API_TOKEN` (or `APIFY_API_KEY`) in `.env` and actor
 `natanielsantos~douyin-scraper`. Without both the mirror switch and token no reader runs and Douyin stays
@@ -462,22 +473,23 @@ A share token remains provisional until the guarded resolver verifies a direct p
 is used for viewer lookup and for deduplication of eligible group fetches. URL recognition and resolution grant
 no media capability.
 
-TikTok, Reddit, Rednote and Douyin can opt into a fixed mirror using `social.mirrors.tiktok`,
-`social.mirrors.reddit`, `social.mirrors.rednote` or `social.mirrors.douyin`.
+TikTok, Reddit, Rednote, Douyin and LinkedIn can opt into a fixed mirror using `social.mirrors.tiktok`,
+`social.mirrors.reddit`, `social.mirrors.rednote`, `social.mirrors.douyin` or `social.mirrors.linkedin`.
 When `social.mirrors.tiktok` is enabled and `APIFY_API_TOKEN` (or `APIFY_API_KEY`) is set,
 `tiktok.apify` (`gentle_cloud~tiktok-videos-watermark-free-scraper`) backs up `tiktok.tikwm` before
 falling back to `yt-dlp`; its watermark-free MP4 on `https://api.apify.com/v2/key-value-stores/...`
 downloads with the bearer token locked strictly to that origin and path prefix.
 Each defaults to `off`. Use `read` after approving the mirror for post lookup and model processing.
-Use `read_and_group` after also approving group redistribution. Set `social.mirrors.redditGroupChatIds`
+Use `read_and_group` after also approving autofetch delivery in opted-in groups and DMs. Set `social.mirrors.redditGroupChatIds`
 to limit Reddit attachments to listed internal chat IDs in the deployment config. An omitted list keeps the
 instance-wide scope. An empty list admits no Reddit group fetches. The site capability list reports whether
 the server offers Reddit group media in any group. TikWM receives the resolved canonical video URL and Arctic Shift receives the native
 Reddit post ID. Neither receives the member’s original share token or chat data.
 
-The reader requires a matching post identity and a supported first-party or mirror media origin. For a group
-attachment, video needs verified post ownership. If the source supplies no duration, probe the bounded MP4
-before delivery. The group redistribution grant excludes DMs. A single native Reddit photo must come
+The reader requires a matching post identity and a supported first-party or mirror media origin. For a
+fetched attachment, video needs verified post ownership. If the source supplies no duration, probe the
+bounded MP4 before delivery. When `features.autofetch` is on for a chat (group or DM), mirror
+`read_and_group` grants apply equally to both groups and DMs. A single native Reddit photo must come
 from the image post's own original `i.redd.it` URL, with any destination override agreeing. A preview, a
 crosspost, a gallery and an external image link do not qualify under this rule. TikWM uses the
 watermarked rendition and can take up to 10,000 ms for lookup by default, within the shared lookup deadline.
@@ -496,7 +508,8 @@ without one, including when only Last-Modified is sent, the part starts over. A 
 timer fired still stops the batch. An invalid, refused or redirected part stops the batch at once. The watch
 deadline includes the lookup, downloads, compression, and model call. A failed mirror lookup grants no group attachment.
 Facebook photo paths use the HTML post reader before falling back to the extractor. Supported platforms are X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram, Bilibili,
-Facebook, Lemon8, Rednote and Douyin.
+Facebook, Lemon8, Rednote, Douyin and LinkedIn. Bluesky and Threads fetch both photos and video.
+`social.ytDlpTimeoutMs` defaults to 9,000 ms so Bilibili extractions complete on slower networks.
 
 The model receives an untrusted result with a readable or partial status, a platform display name and a post.
 A partial result gives its missing fields and a fixed sentence describing what was visible. A failed read uses
