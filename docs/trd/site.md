@@ -81,8 +81,8 @@ lists as nested platform switches under their respective main toggles. Each row 
 operations, effective value and source. A chat override can be cleared with Use inherited. The main switch
 disables all nested controls while off, preserving their settings. If Social posts is off while Media
 watching is on, the YouTube row explains that its saved value still applies to intake. Writes and clears use validated
-`PUT /api/settings` and create the usual `setting_change` record. Show the YouTube group exclusion, group-only
-eligibility, loading, empty and unavailable states. The catalog describes installation-wide support. Effective values and
+`PUT /api/settings` and create the usual `setting_change` record. Show the YouTube exclusion, loading, empty and unavailable states.
+Both active DMs and groups can opt in to media delivery and configure its nested switches. The catalog describes installation-wide support. Effective values and
 inheritance still come from `GET /api/chats` and writes use the existing settings endpoint.
 
 | Route                   | Answer                                                                                                                                                                                                                                                    |
