@@ -78,6 +78,11 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe('rednote URL parsing and mirror reader', () => {
+  it('upgrades legacy short links to HTTPS before resolution', () => {
+    expect(parseSocialPostUrl(SHORT_XHSLINK_O.replace('https:', 'http:'))).toEqual(parseSocialPostUrl(SHORT_XHSLINK_O))
+    expect(parseSocialPostUrl('http://xhslink.com.invalid/o/abc')).toBeNull()
+  })
+
   it('parses direct China and international note URLs to one canonical key and rejects nearby non-posts', () => {
     for (const url of [DIRECT_XHS_EXPLORE, DIRECT_XHS_APEX_ITEM, DIRECT_REDNOTE_EXPLORE, DIRECT_REDNOTE_APEX_ITEM]) {
       const parsed = parseSocialPostUrl(url)

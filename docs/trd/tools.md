@@ -421,7 +421,7 @@ and video for delivery after three successful application checks per host. There
 LinkedIn uses an opt-in Apify mirror (`social.mirrors.linkedin`: `off`, `read`, or `read_and_group`,
 default `off`) backed by `APIFY_API_TOKEN` (or `APIFY_API_KEY`) in `.env` and actor
 `apimaestro~linkedin-post-detail`. Without both the mirror switch and token no reader runs and LinkedIn
-stays out of the active capability lists. Recognise `/posts/{slug}-activity-{id}` and
+stays out of the active capability lists. Recognise `/posts/{slug}-(activity|ugcPost)-{id}` and
 `/feed/update/urn:li:(activity|ugcPost|share):{id}` on `linkedin.com` and `www.linkedin.com`, plus
 `lnkd.in/{code}` and `lnkd.in/p/{code}` share links resolved through the guarded share resolver. Reserve
 subdomains of `linkedin.com` and `lnkd.in` from unknown-host selection. The reader verifies a matching
@@ -451,7 +451,8 @@ the active capability lists. Recognise `/explore/{id}` and `/discovery/item/{id}
 digits on the apex or `www` hosts of `xiaohongshu.com` and `rednote.com`, normalizing to
 `https://www.xiaohongshu.com/explore/{id}` (`rednote:{id}`). Recognise alphanumeric short codes at
 `xhslink.com/{code}`, `xhslink.com/o/{code}` and `xhslink.cn/o/{code}`, resolving them through the
-guarded share resolver (up to 2 manual HTTPS hops within those domains, 8,000 ms budget) so invalid
+guarded share resolver. Upgrade legacy HTTP links on the exact short hosts locally before any request.
+Use HTTPS for the resolution (up to 2 manual HTTPS hops within those domains, 8,000 ms budget) so invalid
 shares stop before calling Apify and direct and share links converge on one lookup key. Reserve all
 subdomains of those four domains from unknown-host selection. Apify receives only the resolved 24-hex
 `note_id`, never the original share token or chat data. The reader requires a matching `note_id`, takes
