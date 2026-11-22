@@ -164,7 +164,6 @@ describe('linkedin Apify mirror', () => {
       'https://www.linkedin.com/company/example',
       'https://www.linkedin.com/posts/alice-activity-12345-abcd',
       'https://www.linkedin.com/posts/alice-activity-12345678901234567890-abcd',
-      `https://www.linkedin.com/posts/alice-ugcPost-${UGC_ID}-abcd`,
       'https://www.linkedin.com/feed/update/urn:li:comment:1234567890123456789',
       'https://lnkd.in/',
       'https://lnkd.in/p',
@@ -196,7 +195,11 @@ describe('linkedin Apify mirror', () => {
     const prefixedShare = parseSocialPostUrl(SHORT_POST_LINK)!
     const resolvedUgc = await resolveShareLink(
       prefixedShare,
-      async () => new Response(null, { status: 301, headers: { location: CANONICAL_UGC } })
+      async () =>
+        new Response(null, {
+          status: 301,
+          headers: { location: `https://www.linkedin.com/posts/example-ugcPost-${UGC_ID}-abcd` }
+        })
     )
     expect(resolvedUgc).toMatchObject({
       platform: 'linkedin',

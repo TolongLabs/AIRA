@@ -94,12 +94,13 @@ describe('excluded source hosts', () => {
   )
 
   it('prevents non-post LinkedIn hosts and paths from matching another platform', () => {
-    for (const url of [MIRROR_URL, UGC_POST_URL, SHORT_WWW_URL, 'https://de.linkedin.com./in/example']) {
+    for (const url of [MIRROR_URL, SHORT_WWW_URL, 'https://de.linkedin.com./in/example']) {
       expect(recognitionOnlyName(url)).toBeNull()
       expect(parseSocialPostUrl(url)).toBeNull()
     }
     const targets = findSocialPostTargets(`${MIRROR_URL} ${X_URL}`)
     expect(targets.map((target) => target.platform)).toEqual(['x'])
+    expect(parseSocialPostUrl(UGC_POST_URL)).toMatchObject({ platform: 'linkedin' })
     expect(parseSocialPostUrl(POST_URL)).toMatchObject({ platform: 'linkedin' })
     expect(parseSocialPostUrl(FEED_URL)).toMatchObject({ platform: 'linkedin' })
     expect(parseSocialPostUrl(SHORT_URL)).toMatchObject({ platform: 'linkedin', needsRedirect: true })

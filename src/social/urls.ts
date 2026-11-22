@@ -427,15 +427,17 @@ function parseDouyin(url: URL, host: string): SocialPostTarget | null {
 
 // LinkedIn is read on its own hosts only. Direct posts on apex or www normalize to their canonical URN feed address.
 // Short links on lnkd.in (`/{code}` or `/p/{code}`) resolve through the guarded share resolver.
-const LINKEDIN_POST_PATH = /^\/posts\/[^/]+[-_]activity-(\d{19})(?:-[a-z0-9_-]+)?\/?$/i
+const LINKEDIN_POST_PATH = /^\/posts\/[^/]+[-_](activity|ugcPost)-(\d{19})(?:-[a-z0-9_-]+)?\/?$/i
 const LINKEDIN_FEED_PATH = /^\/feed\/update\/urn:li:(activity|ugcPost|share):(\d+)\/?$/i
 const LNKD_IN_PATH = /^\/(?!p\/?$)(?:(p)\/)?([\w-]+)\/?$/
 
 function parseLinkedIn(url: URL, host: string): SocialPostTarget | null {
   if (host === 'www.linkedin.com' || host === 'linkedin.com') {
-    const postId = url.pathname.match(LINKEDIN_POST_PATH)?.[1]
-    if (postId) {
-      return target('linkedin', postId, `https://www.linkedin.com/feed/update/urn:li:activity:${postId}/`)
+    const post = url.pathname.match(LINKEDIN_POST_PATH)
+    if (post) {
+      const kind = post[1]?.toLowerCase() === 'ugcpost' ? 'ugcPost' : 'activity'
+      const id = post[2] as string
+      return target('linkedin', id, `https://www.linkedin.com/feed/update/urn:li:${kind}:${id}/`)
     }
     const feed = url.pathname.match(LINKEDIN_FEED_PATH)
     if (feed) {
@@ -545,7 +547,8 @@ function parseUrl(value: string, officialOnly: boolean): SocialPostTarget | null
 
 /** A post link on any host. A link on an unknown host has the platform's own address as its target. */
 export function parseSocialPostUrl(value: string): SocialPostTarget | null {
-  return parseUrl(value, false)
+  const secureShare = value.trim().replace(/^http:\/\/(?=xhslink\.(?:com|cn)\/)/i, 'https://')
+  return parseUrl(secureShare, false)
 }
 
 /** A post link on a platform's own domain only. Used for the address a redirect names. */
