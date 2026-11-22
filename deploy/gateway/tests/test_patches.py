@@ -517,5 +517,61 @@ class AutofetchPatchTest(unittest.TestCase):
         self.assertIn("already applied", out)
 
 
+    def test_dm_offer_runs_only_for_authorized_events_and_preserves_the_reply(self):
+        # The installed adapter builds the event inside its parser's try/except.
+        fixture = """from types import SimpleNamespace as MessageEvent
+class Adapter:
+    def parse(self, data, source, body):
+        try:
+            msg_type = 'text'
+            cached_urls = media_types = []
+            metadata = {}
+            reply_to_message_id = reply_to_text = reply_to_author_id = None
+            reply_to_is_own_message = False
+            return MessageEvent(
+                text=body,
+                message_type=msg_type,
+                source=source,
+                raw_message=data,
+                message_id=data.get("messageId"),
+                media_urls=cached_urls,
+                media_types=media_types,
+                metadata=metadata,
+                reply_to_message_id=reply_to_message_id,
+                reply_to_text=reply_to_text,
+                reply_to_author_id=reply_to_author_id,
+                reply_to_is_own_message=reply_to_is_own_message,
+            )
+        except Exception as e:
+            return None
+"""
+        self.adapter.write_text(fixture, encoding="utf-8")
+        patch = next(p for p in patches.patches() if p["name"] == "autofetch-dm")
+        with redirect_stdout(io.StringIO()) as out:
+            applied = patches.apply_patch(patch, self.tree, check_only=False, python=sys.executable)
+        self.assertTrue(applied, out.getvalue())
+        scope = {}
+        exec(compile(self.adapter.read_text(), "adapter", "exec"), scope)
+        adapter = scope["Adapter"]()
+        source = mock.Mock(user_id="synthetic-user", chat_type="dm", chat_id="synthetic-chat")
+        data = {"isGroup": False, "body": "post"}
+        helper = mock.Mock()
+        scope["_aira_autofetch"] = lambda: helper
+        adapter._is_sender_authorized = mock.Mock(return_value=True)
+        self.assertEqual(adapter.parse(data, source, "normal reply").text, "normal reply")
+        helper.offer.assert_called_once_with(adapter, data, accepted=True)
+        adapter._is_sender_authorized.assert_called_once_with(source.user_id, source.chat_type, source.chat_id)
+        helper.reset_mock()
+        for permitted, is_group in [(False, False), (None, False), (True, True)]:
+            source.chat_type = "group" if is_group else "dm"
+            adapter._is_sender_authorized.return_value = permitted
+            self.assertEqual(adapter.parse({**data, "isGroup": is_group}, source, "reply").text, "reply")
+        helper.offer.assert_not_called()
+        source.chat_type = "dm"
+        for broken in (None, mock.Mock(offer=lambda adapter, data: None), mock.Mock(offer=mock.Mock(side_effect=RuntimeError))):
+            scope["_aira_autofetch"] = lambda: broken
+            self.assertEqual(adapter.parse(data, source, "reply").text, "reply")
+
+
 if __name__ == "__main__":
     unittest.main()

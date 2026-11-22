@@ -18,7 +18,12 @@ const WRONG_TOKEN = 'xxxx-site-token-0123456789abcdefghijklmn' // same length (4
 
 async function startWithSite(answers: Answer[] = [{ text: 'Hello from test!' }]) {
   const model = queueModel(answers)
-  const started = await startApp(model, { env: { SITE_TOKEN: TOKEN } })
+  const started = await startApp(model, {
+    env: { SITE_TOKEN: TOKEN },
+    config: (config) => {
+      config.social.ytDlpPath = '/missing/aira-test-extractor'
+    }
+  })
   const address = await started.app.listenSite(0, '127.0.0.1')
   if (!address) throw new Error('expected site server to listen')
   const siteUrl = `http://127.0.0.1:${address.port}`
@@ -92,7 +97,6 @@ describe('site API read routes', () => {
     expect(body.features.flatMap((feature) => feature.tools).some((tool) => tool.name === 'help')).toBe(false)
     expect(body.socialCapabilities['features.social']).toContainEqual(expect.objectContaining({ id: 'x', name: 'X' }))
     expect(body.socialCapabilities['features.autofetch']?.map(({ id }) => id).sort()).toEqual([
-      'bilibili',
       'bluesky',
       'facebook',
       'instagram',

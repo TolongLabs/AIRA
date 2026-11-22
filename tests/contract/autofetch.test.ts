@@ -14,6 +14,7 @@ import {
   type AutofetchOptions,
   createAutofetch
 } from '../../src/media/autofetch.js'
+import { probeVideoDuration } from '../../src/media/video-compression.js'
 import { claimAutofetchDelivery } from '../../src/records/autofetch.js'
 import { createLogger } from '../../src/records/logger.js'
 import { createRedactor } from '../../src/records/redact.js'
@@ -1048,4 +1049,61 @@ describe('autofetch video duration and compression', () => {
       'compression_failed'
     ])
   })
+})
+
+describe('mirror group-only in DMs', () => {
+  it('never looks up or downloads mirror group media in an opted-in DM, even when the scope names that DM', async () => {
+    const env = setup({
+      type: 'dm',
+      posts: {
+        'tiktok:1234567890': {
+          video: { url: 'https://v16m.tiktokcdn.com/clip.mp4', bytes: null, headers: null, hasAudio: true },
+          durationSec: 42
+        },
+        'reddit:abc123': { photoUrls: ['https://img.example/a.jpg'] }
+      }
+    })
+    const scoped = createAutofetch({
+      ...env.options,
+      mirrors: { tiktok: 'read_and_group', reddit: 'read_and_group', redditGroupChatIds: [env.chat.chatId] }
+    })
+    const batch = await scoped.fetch({
+      chat: env.waId,
+      text: 'https://www.tiktok.com/@example/video/1234567890 https://www.reddit.com/r/example/comments/abc123/a_post/'
+    })
+    expect(batch.media).toEqual([])
+    expect(env.lookups).toEqual([])
+    expect(env.downloads).toEqual([])
+    expect(
+      env.storage.read((db) => db.prepare('SELECT platform, outcome, reason FROM social_lookup ORDER BY ordinal').all())
+    ).toEqual([
+      { platform: 'tiktok', outcome: 'skipped', reason: 'platform_excluded' },
+      { platform: 'reddit', outcome: 'skipped', reason: 'platform_excluded' }
+    ])
+  })
+})
+
+it('refuses invalid or oversized input before starting a duration probe', async () => {
+  const dir = tmpDir('aira-probe-command-')
+  const calls = join(dir, 'calls')
+  const executable = join(dir, 'ffprobe')
+  writeFileSync(
+    executable,
+    `#!/bin/sh\nprintf x >> "$AIRA_PROBE_CALLS"\nprintf '{"format":{"duration":"1"},"streams":[{"codec_type":"video","width":2,"height":2}]}'\n`,
+    { mode: 0o755 }
+  )
+  vi.stubEnv('PATH', dir + ':' + process.env.PATH)
+  vi.stubEnv('AIRA_PROBE_CALLS', calls)
+  try {
+    const signal = new AbortController().signal
+    const mp4 = testMediaBytes('mp4', 'probe')
+    const oversized = Buffer.alloc(48_000_001)
+    mp4.copy(oversized)
+    expect(await probeVideoDuration(mp4, signal)).toBe(1)
+    expect(await probeVideoDuration(oversized, signal)).toBeUndefined()
+    expect(await probeVideoDuration(Buffer.from('non-MP4'), signal)).toBeUndefined()
+    expect(readFileSync(calls, 'utf8')).toBe('x')
+  } finally {
+    vi.unstubAllEnvs()
+  }
 })
