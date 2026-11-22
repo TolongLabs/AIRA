@@ -707,6 +707,8 @@ Every key the audits found: its kind, its default, and the TRD module that owns 
 | `tools.timeBudgetMs`                                                                 | config.yml   | set in config                             | [System Architecture](trd/system.md)    |
 | `search.provider`                                                                    | config.yml   | set in config                             | [System Architecture](trd/system.md)    |
 | `social.*`                                                                           | config.yml   | set in config                             | [System Architecture](trd/system.md)    |
+| `social.mirrors.tiktok`, `social.mirrors.reddit`                                     | config.yml   | off; TikTok also has Apify fallback       | [Tools And Commands](trd/tools.md)      |
+| `social.mirrors.rednote`, `social.mirrors.douyin`, `social.mirrors.linkedin`         | config.yml   | off; Apify mirrors                        | [Tools And Commands](trd/tools.md)      |
 | `owner.timeoutMs`                                                                    | config.yml   | unset; port falls back 10000              | [Tools And Commands](trd/tools.md)      |
 | `owner.marketsConfig`                                                                | config.yml   | empty; watch tools stay off               | [Tools And Commands](trd/tools.md)      |
 | `owner.claudeProjectsDir`                                                            | config.yml   | empty; session tools stay off             | [Tools And Commands](trd/tools.md)      |
@@ -808,6 +810,7 @@ Every key the audits found: its kind, its default, and the TRD module that owns 
 | `EXA_API_KEY`                                                                        | env          | unset; search off                         | [System Architecture](trd/system.md)    |
 | `MEDIA_WATCHER_API_KEY`                                                              | env          | unset; media watcher off                  | [Models](trd/models.md)                 |
 | `YOUTUBE_API_KEY`                                                                    | env          | unset; replies not configured             | undocumented                            |
+| `APIFY_API_TOKEN` (`APIFY_API_KEY` alias)                                            | env          | unset; Apify mirrors/fallback off         | [Tools And Commands](trd/tools.md)      |
 | `PATH`                                                                               | env          | empty string when unset                   | undocumented                            |
 | `process.env.*`                                                                      | env          | under 6 chars skipped for masking         | [Records](trd/records.md)               |
 | `SITE_TOKEN`                                                                         | env          | none; API needs 32 chars                  | [Owner Site](trd/site.md)               |

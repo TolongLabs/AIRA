@@ -543,7 +543,7 @@ by the link-intake work order):
 | ---------------------------- | -------- | ----------------------------------------------------- |
 | `social.timeoutMs`           | 12000    | Hard deadline per lookup                              |
 | `social.httpReaderTimeoutMs` | 2500     | Limit per HTTP reader, clipped to the lookup deadline |
-| `social.ytDlpTimeoutMs`      | 4500     | Limit per extractor, clipped to the lookup deadline   |
+| `social.ytDlpTimeoutMs`      | 9000     | Limit per extractor, clipped to the lookup deadline   |
 | `social.cacheTtlMs`          | 900000   | Successful lookup cache lifetime; 0 disables caching  |
 | `social.maxCacheEntries`     | 256      | Maximum entries per LRU cache                         |
 | `social.maxTextChars`        | 1500     | Post text limit                                       |
