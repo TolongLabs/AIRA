@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { createTurnSources, SOURCE_ID, searchLookup, sourceKey } from '../../src/turn/sources.js'
 
 describe('sourceKey', () => {
+  it('keeps separate registrations for different YouTube start-time fragments', () => {
+    expect(sourceKey('https://youtu.be/demo#t=30')).not.toBe(sourceKey('https://youtu.be/demo#t=900'))
+  })
+
   it('names one page by its lower-case host, without the fragment or tracking parameters', () => {
     expect(sourceKey('https://Example.COM/a?utm_source=x&id=7&fbclid=abc&si=q#top')).toBe('https://example.com/a?id=7')
     expect(sourceKey('https://example.com/a?si=1')).toBe('https://example.com/a')

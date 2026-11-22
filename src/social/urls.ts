@@ -386,7 +386,7 @@ function parseFor(platform: SocialPlatform, url: URL, host: string, unknown: boo
 // docs/trd/tools.md#social-post-reader.
 const LINKEDIN_POST_PATH = /^\/posts\/(?:[\w.%-]+?-)?activity-\d+(?:-[\w-]+)?\/?$/i
 const LINKEDIN_UPDATE_PATH = /^\/feed\/update\/urn(?::|%3A)li(?::|%3A)activity(?::|%3A)\d+\/?$/i
-const LINKEDIN_SHORT_PATH = /^\/[\w-]+\/?$/
+const LINKEDIN_SHORT_PATH = /^\/(?:p\/)?[\w-]+\/?$/
 
 /** A LinkedIn host: linkedin.com with any subdomain, mobile and regional included, or the lnkd.in domain. */
 function isLinkedInHost(hostname: string): boolean {

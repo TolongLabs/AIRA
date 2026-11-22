@@ -1,4 +1,4 @@
-import { linkUrls } from '../social/urls.js'
+import { linkUrls, readPolicyTarget } from '../social/urls.js'
 
 // The URLs one turn has seen (docs/trd/tools.md#turn-sources). read_page and read_post open only these, and a page
 // or post read ends the turn's state changes. Built fresh at step 2 of each turn, and gone with it.
@@ -40,7 +40,8 @@ export function sourceKey(url: string): string | undefined {
     return undefined
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined
-  parsed.hash = ''
+  const timed = parsed.hash.startsWith('#t=') ? readPolicyTarget(url) : undefined
+  parsed.hash = timed?.platform === 'youtube' && timed.startSec ? 't=' + timed.startSec : ''
   for (const key of [...parsed.searchParams.keys()]) {
     if (isTrackingParam(key)) parsed.searchParams.delete(key)
   }

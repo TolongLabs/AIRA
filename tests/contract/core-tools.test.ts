@@ -15,7 +15,6 @@ import { SocialPostViewer } from '../../src/social/viewer.js'
 import { closeTurn, openTurn, receiveInbound } from '../../src/storage/turns.js'
 import { createCommandRouter } from '../../src/tools/commands.js'
 import { CORE_TOOL_NAMES, type CoreToolOptions, registerCoreTools } from '../../src/tools/core/index.js'
-import { INTAKE_REFUSAL } from '../../src/tools/core/web.js'
 import {
   createFetchPagePort,
   isForbiddenUrl,
@@ -599,7 +598,7 @@ describe('core tools', () => {
     const ctx = makeCtx()
     ctx.sources.addText('https://x.com/someone/status/7', 'message')
     ctx.intakeUrls = ['https://x.com/i/status/7']
-    ctx.intakeWatchedUrls = []
+    ctx.watchedEvidence = new Map()
     const read = await registry.call('read_page', { url: 'https://x.com/someone/status/7' }, ctx, {
       callId: 'c-rp-text-only',
       source: 'model'
@@ -608,7 +607,7 @@ describe('core tools', () => {
     expect(seenPages).toHaveLength(1)
   })
 
-  it('read_page: refuses a URL read at intake as "already read at intake"; works when intake did not read it', async () => {
+  it('read_page: returns the watched evidence for an alias without a second read', async () => {
     const seenPages: string[] = []
     const { storage, registry, makeCtx } = setup({
       page: {
@@ -623,18 +622,18 @@ describe('core tools', () => {
     })
     const ctx = makeCtx()
     ctx.sources.addText('https://twitter.com/user/status/1 https://example.com/article', 'message')
-    ctx.intakeWatchedUrls = ['https://x.com/i/status/1']
+    ctx.watchedEvidence = new Map([['https://x.com/i/status/1', { text: 'A blue train.' }]])
 
-    const refused = await registry.call('read_page', { url: 'https://twitter.com/user/status/1' }, ctx, {
+    const reused = await registry.call('read_page', { url: 'https://twitter.com/user/status/1' }, ctx, {
       callId: 'c-rp-refused',
       source: 'model'
     })
-    expect(refused).toEqual({ ok: false, kind: 'refused', reason: INTAKE_REFUSAL, code: 'already_read' })
+    expect(reused).toMatchObject({ ok: true, data: { text: 'A blue train.' } })
     expect(seenPages).toEqual([])
-    expect(registry.takeSources(ctx.turnId)).toEqual([])
+    expect(registry.takeSources(ctx.turnId)).toHaveLength(1)
     expect(
       storage.read((db) => db.prepare('SELECT outcome FROM tool_call WHERE turn_id = ?').pluck().get(ctx.turnId))
-    ).toBe('refused')
+    ).toBe('ok')
 
     const allowed = await registry.call('read_page', { url: 'https://example.com/article' }, ctx, {
       callId: 'c-rp-ok',
@@ -686,7 +685,7 @@ describe('core tools', () => {
     ])
   })
 
-  it('read_post: refuses a YouTube short link whose canonical URL was read at intake', async () => {
+  it('read_post: reuses evidence for both YouTube aliases of a watched URL', async () => {
     const seenPosts: string[] = []
     const { registry, makeCtx } = setup({
       post: {
@@ -711,30 +710,30 @@ describe('core tools', () => {
       }
     })
     const ctx = makeCtx()
-    ctx.sources.addText('https://youtu.be/dQw4w9WgXcQ?t=15 https://www.youtube.com/shorts/dQw4w9WgXcQ', 'message')
-    ctx.sources.addText('https://youtu.be/otherVideo99', 'message')
-    ctx.intakeWatchedUrls = ['https://www.youtube.com/watch?v=dQw4w9WgXcQ']
+    ctx.sources.addText('https://youtu.be/dQw4w9WgXcQ?t=0 https://www.youtube.com/shorts/dQw4w9WgXcQ', 'message')
+    ctx.sources.addText('https://youtu.be/dQw4w9WgXcQ?t=900', 'message')
+    ctx.watchedEvidence = new Map([['https://www.youtube.com/watch?v=dQw4w9WgXcQ', { text: 'A blue train.' }]])
 
-    const shortRefused = await registry.call('read_post', { url: 'https://youtu.be/dQw4w9WgXcQ?t=15' }, ctx, {
+    const shortRead = await registry.call('read_post', { url: 'https://youtu.be/dQw4w9WgXcQ?t=0' }, ctx, {
       callId: 'c-rpost-yt-short',
       source: 'model'
     })
-    expect(shortRefused).toEqual({ ok: false, kind: 'refused', reason: INTAKE_REFUSAL, code: 'already_read' })
+    expect(shortRead).toMatchObject({ ok: true, data: { text: 'A blue train.' } })
 
-    const shortsRefused = await registry.call('read_post', { url: 'https://www.youtube.com/shorts/dQw4w9WgXcQ' }, ctx, {
+    const shortsRead = await registry.call('read_post', { url: 'https://www.youtube.com/shorts/dQw4w9WgXcQ' }, ctx, {
       callId: 'c-rpost-yt-shorts',
       source: 'model'
     })
-    expect(shortsRefused).toEqual({ ok: false, kind: 'refused', reason: INTAKE_REFUSAL, code: 'already_read' })
+    expect(shortsRead).toMatchObject({ ok: true, data: { text: 'A blue train.' } })
     expect(seenPosts).toEqual([])
-    expect(registry.takeSources(ctx.turnId)).toEqual([])
+    expect(registry.takeSources(ctx.turnId)).toHaveLength(2)
 
-    const otherOk = await registry.call('read_post', { url: 'https://youtu.be/otherVideo99' }, ctx, {
+    const otherOk = await registry.call('read_post', { url: 'https://youtu.be/dQw4w9WgXcQ?t=900' }, ctx, {
       callId: 'c-rpost-other',
       source: 'model'
     })
     expect(otherOk).toMatchObject({ ok: true })
-    expect(seenPosts).toEqual(['https://youtu.be/otherVideo99'])
+    expect(seenPosts).toEqual(['https://youtu.be/dQw4w9WgXcQ?t=900'])
   })
 
   it('reminders: set, list, cancel, isolation and failure cases', async () => {

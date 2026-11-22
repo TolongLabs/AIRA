@@ -934,7 +934,7 @@ describe('intake footer kinds and URLs in pipeline', () => {
     expect(delivery.content).toBe('Here is the page')
     expect(runner.inputs[0]?.context.intakeKinds).toEqual([])
     expect(runner.inputs[0]?.context.intakeUrls).toEqual([])
-    expect(runner.inputs[0]?.context.intakeWatchedUrls).toEqual([])
+    expect(runner.inputs[0]?.context.watchedEvidence?.size).toBe(0)
     expect(runner.inputs[0]?.context.sources.find({ url: 'https://www.youtube.com/watch?v=yt404' })).toMatchObject({
       url: 'https://www.youtube.com/watch?v=yt404',
       lookup: 'intake'
@@ -978,7 +978,7 @@ describe('intake footer kinds and URLs in pipeline', () => {
     expect(delivery.content).toBe('Here is what i saw\n\n_🛠️ looked at an image_')
     expect(runner.inputs[0]?.context.intakeKinds).toEqual(['media_image'])
     expect(runner.inputs[0]?.context.intakeUrls).toEqual([])
-    expect(runner.inputs[0]?.context.intakeWatchedUrls).toEqual([])
+    expect(runner.inputs[0]?.context.watchedEvidence?.size).toBe(0)
     expect(runner.inputs[0]?.context.sources.find({ url: 'https://www.youtube.com/watch?v=ytOff' })).toMatchObject({
       url: 'https://www.youtube.com/watch?v=ytOff',
       lookup: 'intake'
@@ -1078,7 +1078,7 @@ describe('intake footer kinds and URLs in pipeline', () => {
     expect(runner.inputs[2]?.context.intakeKinds).toEqual(['media_post'])
     expect(runner.inputs[2]?.context.intakeUrls).toEqual(['https://x.com/i/status/99'])
     // Text alone does not close the link: read_post still returns the replies and the media.
-    expect(runner.inputs[2]?.context.intakeWatchedUrls).toEqual([])
+    expect(runner.inputs[2]?.context.watchedEvidence?.size).toBe(0)
     expect(r3.content).toBe('Here is what i saw\n\n_🛠️ read a post_\n_🔗 x.com_')
 
     mode = 'unreadable'
@@ -1091,8 +1091,13 @@ describe('intake footer kinds and URLs in pipeline', () => {
     expect(r4.content).toBe('Here is what i saw')
   })
 
-  it('closes a watched share link under both its own address and the post it resolved to', async () => {
-    const runner = scriptedRunner(() => 'here is what i saw')
+  it('answers a quoted share from the watched evidence after a repeated read_post', async () => {
+    const share = 'https://www.threads.com/share/BShare001'
+    const runner = scriptedRunner(async (input) => {
+      const tool = input.tools.find((candidate) => candidate.schema.name === 'read_post')
+      const result = await tool?.call({ url: share }, 'repeat-read', input.signal)
+      return result?.ok && result.content.includes('A table.') ? 'I saw a table.' : 'I could not open the post.'
+    })
     const post = {
       ...makePost('threads', 'https://www.threads.com/@user/post/DPost0001'),
       target: {
@@ -1115,11 +1120,27 @@ describe('intake footer kinds and URLs in pipeline', () => {
       }
     }
     const config = testConfig()
-    const core = await startTestCore({ runner, config, deps: { media, cleaner: createReplyCleaner(config) } })
+    let registry: ReturnType<typeof createToolRegistry>
+    const core = await startTestCore({
+      runner,
+      config,
+      deps: { media, cleaner: createReplyCleaner(config), tools: { offered: (context) => registry.offered(context) } }
+    })
+    registry = createToolRegistry({
+      storage: core.storage,
+      config,
+      redactor: createRedactor(),
+      logger: createLogger({ level: 'error', module: 'pipeline-test', sink: () => {} })
+    })
+    registerCoreTools(registry, { filesDir: tmpDir('aira-files-') })
     core.activate(CHAT)
-    await core.gateway.send(msg('m-1', 'sum up https://www.threads.com/share/BShare001'))
+    const reply = await core.gateway.send({ ...msg('m-1', 'what is this?'), quote: { text: share, id: 'shared' } })
+    expect(reply.content).toContain('I saw a table.')
     expect(runner.inputs[0]?.context.intakeUrls).toEqual(['https://www.threads.com/@user/post/DPost0001'])
-    expect(runner.inputs[0]?.context.intakeWatchedUrls).toEqual([
+    expect(runner.inputs[0]?.context.watchedEvidence?.get('https://www.threads.com/share/BShare001')?.text).toContain(
+      'A table.'
+    )
+    expect(Array.from(runner.inputs[0]?.context.watchedEvidence?.keys() ?? [])).toEqual([
       'https://www.threads.com/@user/post/DPost0001',
       'https://www.threads.com/share/BShare001'
     ])

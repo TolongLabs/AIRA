@@ -2,7 +2,13 @@ import { z } from 'zod'
 import type { Config } from '../../config/schema.js'
 import { SocialPostError } from '../../social/port.js'
 import { modelPostResult } from '../../social/result.js'
-import { PLATFORM_NAME, parseSocialPostUrl, recognitionOnlyName, type SocialPostTarget } from '../../social/urls.js'
+import {
+  PLATFORM_NAME,
+  parseSocialPostUrl,
+  readPolicyTarget,
+  recognitionOnlyName,
+  type SocialPostTarget
+} from '../../social/urls.js'
 import type { Storage } from '../../storage/database.js'
 import { putFile } from '../../storage/files.js'
 import { SOURCE_ID, type SourceEntry } from '../../turn/sources.js'
@@ -12,23 +18,21 @@ import { switchedOffPost } from '../read-policy.js'
 import { createSearchDepth, webSearchSchema } from '../search-depth.js'
 import type { FailureCode, ToolContext, ToolDefinition, ToolFailure } from '../types.js'
 
-/** Recorded reason for a refused link already watched at intake. The model reads its outcome sentence. */
-export const INTAKE_REFUSAL =
-  'This link was already opened and watched; its content is in your context. Answer from that.'
-
 /** Recorded reason for a social link intake could not open. The model reads its outcome sentence. */
 const INTAKE_FAILED_REASON = 'intake could not open this link'
 
-function alreadyReadAtIntake(url: string, context: Pick<TurnContext, 'intakeWatchedUrls'>): boolean {
-  const trimmed = url.trim()
-  const canonical = parseSocialPostUrl(trimmed)?.canonicalUrl
-  return (
-    context.intakeWatchedUrls?.some(
-      (watched) =>
-        watched === trimmed ||
-        (canonical !== undefined && (watched === canonical || parseSocialPostUrl(watched)?.canonicalUrl === canonical))
-    ) ?? false
-  )
+function watchedAtIntake(url: string, context: Pick<TurnContext, 'watchedEvidence'>) {
+  const evidence = context.watchedEvidence
+  if (!evidence?.size) return undefined
+  const exact = evidence.get(url)
+  if (exact !== undefined) return exact
+  const target = readPolicyTarget(url)
+  if (!target) return undefined
+  for (const [alias, reading] of evidence) {
+    const watched = readPolicyTarget(alias)
+    if (watched?.lookupKey === target.lookupKey && (watched.startSec ?? 0) === (target.startSec ?? 0)) return reading
+  }
+  return undefined
 }
 
 /** A social address intake tried and could not open. read_post and read_page refuse it for the rest of the turn. */
@@ -155,9 +159,12 @@ export function readPageTool(ports: ToolPorts): ToolDefinition<z.infer<typeof re
       }
       const off = switchedOffPost(target.url, context.settings)
       if (off) return platformDisabledRefusal(off)
-      if (alreadyReadAtIntake(target.url, context)) {
-        return { ok: false, kind: 'refused', reason: INTAKE_REFUSAL, code: 'already_read' }
-      }
+      const evidence = watchedAtIntake(target.url, context)
+      if (evidence)
+        return {
+          ok: true,
+          data: { title: evidence.result?.platform ?? 'Post', source: target.id, url: target.url, text: evidence.text }
+        }
       if (failedAtIntake(target.url, context)) {
         return { ok: false, kind: 'refused', reason: INTAKE_FAILED_REASON, code: 'already_tried' }
       }
@@ -194,9 +201,12 @@ export function readPostTool(ports: ToolPorts): ToolDefinition<z.infer<typeof re
         context.observeSocialLookup?.({ target: off, started: at, ended: at, skip: 'platform_disabled' })
         return platformDisabledRefusal(off)
       }
-      if (alreadyReadAtIntake(target.url, context)) {
-        return { ok: false, kind: 'refused', reason: INTAKE_REFUSAL, code: 'already_read' }
-      }
+      const evidence = watchedAtIntake(target.url, context)
+      if (evidence)
+        return {
+          ok: true,
+          data: { ...evidence.result, untrusted: true, source: target.id, url: target.url, text: evidence.text }
+        }
       if (failedAtIntake(target.url, context)) {
         return { ok: false, kind: 'refused', reason: INTAKE_FAILED_REASON, code: 'already_tried' }
       }

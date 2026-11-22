@@ -524,19 +524,24 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
             return [link.mediaKind ? `media_${link.mediaKind}` : 'media_post']
           })
         ]
-        // A link is closed to read_post and read_page only when intake watched its video or image (owner, 17 Nov).
-        // Text alone, or a failed watch, leaves the tools open: they also return the replies and the media.
         context.intakeUrls = readLinks.map((link) => link.post.canonicalUrl).filter((url) => url.length > 0)
-        // A share or alias link the reader resolved is closed under both its own address and the post's.
-        context.intakeWatchedUrls = [
-          ...new Set(
-            readLinks
-              .filter((link) => link.reading !== undefined)
-              .flatMap((link) => [link.post.canonicalUrl, link.post.target.canonicalUrl, link.post.target.originalUrl])
-              .filter((url): url is string => typeof url === 'string' && url.length > 0)
-          )
-        ]
-        // Every social address intake opened, watched or not. read_post and read_page refuse one that failed.
+        context.watchedEvidence = new Map()
+        for (const link of readLinks) {
+          if (!link.reading) continue
+          const evidence = {
+            text: mediaPromptText({ readings: [], links: [link], unreadable: [] }, ''),
+            result: link.result
+          }
+          const target = link.post.target
+          // The bare canonical URL drops the selected YouTube offset or invalid Bilibili part.
+          const aliases =
+            target.startSec || target.invalidPart
+              ? [target.originalUrl]
+              : [link.post.canonicalUrl, target.canonicalUrl, target.originalUrl]
+          for (const url of aliases) {
+            if (url) context.watchedEvidence.set(url, evidence)
+          }
+        }
         context.intakeTriedSocialUrls = combined.tried ?? []
         for (const link of combined.links ?? []) {
           for (const url of [link.post.canonicalUrl, link.post.target.canonicalUrl]) {
