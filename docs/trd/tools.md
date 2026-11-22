@@ -401,6 +401,14 @@ policy and cannot select a delivery attachment. The fetch catalog lists extracto
 only when the extractor is installed. Live streams and playlists supply no delivery attachment.
 For file limits, duration and receipt handling see [Autofetch](system.md#autofetch).
 
+Xiaohongshu (Rednote) has recognition only on both deployments. The China and international note pages
+redirected to login on both hosts, and the extractor returned no matching note. Recognise `/explore/{id}`
+and `/discovery/item/{id}` for 24 hexadecimal digits on the apex or www hosts of `xiaohongshu.com` and
+`rednote.com`. Recognise observed alphanumeric short codes at `xhslink.com/{code}`, `xhslink.com/o/{code}`
+and `xhslink.cn/o/{code}`. A short link has no verified note identity. Name the platform in read refusals and
+leave the link out of read, intake, fetch and the capability catalog. Profiles and unrelated pages have
+no post classification. Keep the query and short code out of logs.
+
 LinkedIn has recognition only (T0 on both deployments). Recognise official post slugs with an activity ID,
 feed update activity URNs, and single-token lnkd.in shares. A short link identifies the service only.
 Keep these links out of intake and fetch selection. The read tools name LinkedIn and refuse a recognised URL
