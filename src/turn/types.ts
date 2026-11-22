@@ -5,6 +5,7 @@ import type { ModelFailureKind, ModelMessage, ModelUsage, PromptBlock, ToolSchem
 import type { TurnRecordFields } from '../records/turn-record.js'
 import type { Chat } from '../settings/chats.js'
 import type { Resolved } from '../settings/settings.js'
+import type { ModelPostResult } from '../social/result.js'
 import type { Db } from '../storage/database.js'
 import type { DeliveryKind } from './deliver.js'
 import type { TurnSources } from './sources.js'
@@ -35,8 +36,8 @@ export interface TurnContext {
   intakeKinds?: string[]
   /** Canonical URLs of links read at intake, so web tools do not open them again. */
   intakeUrls?: string[]
-  /** Links whose video or image intake watched; read_post and read_page refuse only these. */
-  intakeWatchedUrls?: string[]
+  /** Bounded post and visual evidence from this turn, keyed by the watched URL and its aliases. */
+  watchedEvidence?: Map<string, { text: string; result?: ModelPostResult }>
   /** Social addresses intake opened this turn. A failed one closes read_post and read_page to it. */
   intakeTriedSocialUrls?: { url: string; failed: boolean }[]
   /** Text of the message(s) this turn answers, supplied by code. */
