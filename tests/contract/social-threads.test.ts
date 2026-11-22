@@ -434,3 +434,17 @@ function replyContext(overrides: Partial<ReplyFetchContext> = {}): ReplyFetchCon
     ...overrides
   }
 }
+
+it('attaches only the typed carousel video for duration probing', () => {
+  const parsed = parseThreadsPage(PAGE, target, 1500)!
+  expect(parsed.post.attachments?.filter((item) => item.kind === 'video')).toEqual([
+    {
+      kind: 'video',
+      owner: target.lookupKey,
+      durationSec: null,
+      video: expect.objectContaining({
+        url: 'https://instagram.fkul4-3.fna.fbcdn.net/o1/v/fixture-clip.mp4'
+      })
+    }
+  ])
+})

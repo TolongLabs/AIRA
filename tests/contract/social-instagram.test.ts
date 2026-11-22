@@ -292,3 +292,24 @@ describe('SocialPostViewer on Instagram and Facebook', () => {
     })
   })
 })
+
+it('attaches the typed carousel clip with its own duration alongside the two photos', () => {
+  const media = {
+    ...carousel,
+    video_duration: 400,
+    carousel_media: carousel.carousel_media.map((item) =>
+      item.media_type === 2 ? { ...item, video_duration: 11.5 } : item
+    )
+  }
+  const parsed = parseInstagramPage(pageWith(media), post, 1500)!
+  expect(parsed.attachments).toEqual([
+    { kind: 'image', owner: post.lookupKey, url: 'https://cdn.example/one.jpg' },
+    { kind: 'image', owner: post.lookupKey, url: 'https://cdn.example/three.jpg' },
+    {
+      kind: 'video',
+      owner: post.lookupKey,
+      video: expect.objectContaining({ url: 'https://cdn.example/clip.mp4' }),
+      durationSec: 11.5
+    }
+  ])
+})

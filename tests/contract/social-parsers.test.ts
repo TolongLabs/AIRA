@@ -458,3 +458,58 @@ describe('social post parsers', () => {
     })
   })
 })
+
+describe('native video ownership', () => {
+  it.each([
+    ['Facebook', 'https://www.facebook.com/reel/1234567890', '1234567890'],
+    ['BiliBili', 'https://www.bilibili.com/video/BV1xx411c7mD?p=2', 'BV1xx411c7mD_p2']
+  ])('requires the selected %s post, part and format', (extractor, address, id) => {
+    const target = parseSocialPostUrl(address)!
+    const videoUrl = 'https://video.example/clip.mp4'
+    const envelope = {
+      _type: 'video',
+      extractor_key: extractor,
+      id,
+      webpage_url: address,
+      duration: 63,
+      formats: [{ url: videoUrl, ext: 'mp4', protocol: 'https', vcodec: 'avc1', acodec: 'mp4a' }]
+    }
+    const attachments = (overrides: Record<string, unknown>) =>
+      parseYtDlpMetadata({ ...envelope, ...overrides }, target, 300).attachments ?? []
+    expect(attachments({})).toEqual([
+      { kind: 'video', owner: target.lookupKey, video: expect.objectContaining({ url: videoUrl }), durationSec: 63 }
+    ])
+    for (const invalid of [
+      { extractor_key: 'Generic' },
+      { id: 'different' },
+      { webpage_url: 'https://example.test/other' },
+      { is_live: true },
+      { _type: 'playlist' },
+      { playlist_index: 1 },
+      { entries: [] }
+    ])
+      expect(attachments(invalid)).toEqual([])
+    if (extractor === 'BiliBili') {
+      const first = parseSocialPostUrl(address.replace('p=2', 'p=1'))!
+      expect(first.lookupKey).not.toBe(target.lookupKey)
+      expect(target.extractorUrl).toBe(address)
+      expect(attachments({ webpage_url: first.canonicalUrl })).toEqual([])
+      expect(attachments({ id: id.replace('_p2', '_p1') })).toEqual([])
+      const bare = parseSocialPostUrl(address.split('?')[0]!)!
+      expect(parseYtDlpMetadata({ ...envelope, webpage_url: bare.canonicalUrl }, bare, 300).attachments ?? []).toEqual(
+        []
+      )
+    }
+  })
+
+  it('requires the Bluesky record and view to name the same blob', () => {
+    const fixture = structuredClone(blueskyVideoFixture)
+    const view = fixture.thread.post
+    const target = parseSocialPostUrl('https://bsky.app/profile/example.test/post/3mk4lzkrnk22d')!
+    const parse = () => parseBlueskyThread(fixture, target, 300, view.author.did)
+    view.embed.cid = view.record.embed.video.ref.$link
+    expect(parse()?.nativeVideo).toBe(true)
+    view.embed.cid = 'different'
+    expect(parse()?.nativeVideo).toBe(false)
+  })
+})

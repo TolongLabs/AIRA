@@ -1,4 +1,14 @@
-import { array, capped, imageUrl, nativePhotos, nonNegativeInteger, object, photoList, string } from './parsers.js'
+import {
+  array,
+  capped,
+  imageUrl,
+  nativePhotos,
+  nonNegativeInteger,
+  object,
+  photoList,
+  positiveFiniteNumber,
+  string
+} from './parsers.js'
 import type { SocialPost } from './types.js'
 import { parseOfficialSocialPostUrl, type SocialPostTarget } from './urls.js'
 
@@ -62,12 +72,19 @@ function hasAudio(...media: JsonObject[]): boolean | null {
   return typeof flag === 'boolean' ? flag : null
 }
 
+/** The asset a post's own video is: the post itself, or a carousel item, when it is typed as a video. */
+function nativeVideoAsset(media: JsonObject, items: JsonObject[]): JsonObject | undefined {
+  const assets = items.length > 0 ? items : [media]
+  return assets.find((asset) => asset.media_type === 2 && firstVideoUrl(asset) !== null)
+}
+
 /** Fills the author, date, text, photos and video a Meta post carries. Never the author's profile picture. */
 export function fillMetaPost(post: SocialPost, media: JsonObject, maxTextChars: number): void {
   const user = object(media.user)
   const items = array(media.carousel_media).map(object)
   const videoItems = items.filter((item) => item.media_type === 2 || firstVideoUrl(item))
-  const videoSource = firstVideoUrl(media) ? media : videoItems.find((item) => firstVideoUrl(item))
+  const native = nativeVideoAsset(media, items)
+  const videoSource = native ?? (firstVideoUrl(media) ? media : videoItems.find((item) => firstVideoUrl(item)))
   const takenAt = nonNegativeInteger(media.taken_at)
 
   post.authorHandle = string(user.username)
@@ -84,13 +101,24 @@ export function fillMetaPost(post: SocialPost, media: JsonObject, maxTextChars: 
   }
   post.imageUrl = items[0] ? firstCandidate(items[0]) : firstCandidate(media)
   post.photoUrls = metaPhotoUrls(media)
-  if (media.code === post.target.id) post.attachments = nativePhotos(post.target.lookupKey, post.photoUrls)
   if (videoSource) {
     post.video = {
       url: firstVideoUrl(videoSource) as string,
       bytes: null,
       headers: null,
       hasAudio: hasAudio(videoSource, media)
+    }
+  }
+  if (media.code === post.target.id) {
+    post.attachments = nativePhotos(post.target.lookupKey, post.photoUrls)
+    // Native only when the parent names this target and the video is its typed asset; duration is that asset's.
+    if (native && post.video) {
+      post.attachments.push({
+        kind: 'video',
+        owner: post.target.lookupKey,
+        video: post.video,
+        durationSec: positiveFiniteNumber(native.video_duration)
+      })
     }
   }
 }

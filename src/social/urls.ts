@@ -194,7 +194,12 @@ function parseBilibili(url: URL, host: string, unknown: boolean): SocialPostTarg
   if (video) {
     const id = video[1] ?? ''
     const normalizedId = /^av/i.test(id) ? id.toLowerCase() : `BV${id.slice(2)}`
-    return target('bilibili', normalizedId, `https://www.bilibili.com/video/${normalizedId}`)
+    const part = url.searchParams.getAll('p')
+    if (part.length > 1 || (part.length === 1 && !/^[1-9]\d*$/.test(part[0]!))) return null
+    const canonical = `https://www.bilibili.com/video/${normalizedId}`
+    if (!part.length) return target('bilibili', normalizedId, canonical)
+    const selected = target('bilibili', normalizedId, `${canonical}?p=${part[0]}`)
+    return { ...selected, lookupKey: `${selected.lookupKey}:p${part[0]}` }
   }
   if (unknown || !hostMatches(host, 'b23.tv')) return null
   const code = url.pathname.match(/^\/([\w-]+)\/?$/)?.[1]
