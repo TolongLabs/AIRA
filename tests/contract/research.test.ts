@@ -67,6 +67,32 @@ describe('research boundaries', () => {
     expect(call.mock.calls[1]?.[0].messages[0].content).toContain('untrusted="true"')
     expect(call.mock.calls[1]?.[0].messages[0].content).not.toContain('x'.repeat(4001))
   })
+
+  it('skips a recognised LinkedIn result before selecting a page to read', async () => {
+    const linkedinUrl = 'https://www.linkedin.com/posts/synthetic-update-activity-1234567890123456789'
+    const call = vi
+      .fn()
+      .mockResolvedValueOnce({ text: JSON.stringify({ queries: ['one', 'two', 'three'] }) })
+      .mockResolvedValueOnce({ text: JSON.stringify(doc) })
+    const search = vi.fn().mockResolvedValue([
+      { title: 'LinkedIn post', url: linkedinUrl, snippet: '' },
+      { title: 'A source', url: 'https://example.com/', snippet: '' }
+    ])
+    const read = vi.fn().mockResolvedValue({ title: 'A source', text: 'x'.repeat(5000) })
+    const result = await runResearch({
+      topic: 'A question?',
+      client: { call } as ModelClient,
+      model: 'fake',
+      search: { search },
+      page: { read, download: vi.fn() },
+      limits: { maxSearches: 2, maxPages: 2, deadlineMs: 120000 },
+      now: () => new Date(at)
+    })
+    expect(read).not.toHaveBeenCalledWith(linkedinUrl, expect.any(AbortSignal))
+    expect(read).toHaveBeenCalledWith('https://example.com/', expect.any(AbortSignal))
+    expect(result.sources).toHaveLength(1)
+    expect(result.sources[0]?.url).toBe('https://example.com/')
+  })
   it('stops at the spend cap without another model call, and keeps read evidence', async () => {
     let canSpend = true
     const call = vi.fn().mockResolvedValue({ text: JSON.stringify({ queries: ['one', 'two', 'three'] }) })

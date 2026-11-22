@@ -127,6 +127,27 @@ describe('search depth', () => {
     expect(read).toHaveBeenCalledWith(lineup.url, expect.any(AbortSignal))
   })
 
+  it('skips a recognised LinkedIn candidate and reads the next eligible page', async () => {
+    const linkedin = {
+      title: 'Example models lineup',
+      url: 'https://www.linkedin.com/posts/synthetic-update-activity-1234567890123456789',
+      snippet: 'Example news.'
+    }
+    const eligible = { title: 'Example models', url: 'https://lineup.example/b', snippet: 'Example news.' }
+    const read = vi.fn(async () => ({ title: '', text: '- Example One\n- Example Two\n- Example Three' }))
+    const { brief } = await createSearchDepth(
+      { search: { search: vi.fn(async () => [linkedin, eligible]) }, searchPage: { read } },
+      {
+        maxSearches: 1,
+        maxPages: 2,
+        maxProviderCalls: 3
+      }
+    ).deep({ query: 'example models', fields: [{ kind: 'list', subject: 'Example models' }] }, context())
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(read).toHaveBeenCalledWith(eligible.url, expect.any(AbortSignal))
+    expect(brief.passages.map((passage) => passage.url)).toEqual([eligible.url])
+  })
+
   it('fails the call when the provider fails the first search, without a retry', async () => {
     const search = vi.fn(async () => {
       throw new Error('http status 401')
