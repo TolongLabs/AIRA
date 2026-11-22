@@ -429,6 +429,9 @@ post ID or URN, takes ordered gallery images or native video with duration from 
 only HTTPS media on `*.licdn.com` (excluding `/profile-displayphoto-` avatars). Lookups get a 20,000 ms
 budget.
 
+On the official Douyin Jingxuan feed, a single 19-digit `modal_id` identifies the selected video.
+The category and tracking query fields do not change that identity.
+
 Douyin uses an opt-in Apify mirror (`social.mirrors.douyin`: `off`, `read`, or `read_and_group`, default
 `off`) backed by `APIFY_API_TOKEN` (or `APIFY_API_KEY`) in `.env` and actor
 `natanielsantos~douyin-scraper`. Without both the mirror switch and token no reader runs and Douyin stays
@@ -467,7 +470,9 @@ search results must respect host exclusions before retrieving or passing content
 Official direct paths include Reddit comment permalinks, TikTok photos, Threads posts with or without an account,
 Facebook stories and photos, Instagram TV, YouTube live and embeds, and X web-status links. Official short
 links from Reddit, TikTok, Bilibili, Facebook and Instagram use a shared guarded resolver. It allows up to two
-manual redirects within the platform and 1,500 ms total. Successful resolutions use a bounded TTL cache.
+manual redirects within the platform and 1,500 ms total. Successful resolutions use a bounded TTL cache. The viewer reuses the resolved post key for shares and direct links.
+Reddit media CDN addresses do not name posts. A failed intake blocks equivalent post and timestamp spellings
+in the same turn using the same identity as a successful reading.
 Threads keeps its existing one-hop guarded page lookup. The final address must parse as a post on the same platform.
 TikTok and Reddit desktop, mobile and app share links for the same post converge on its canonical lookup key.
 A share token remains provisional until the guarded resolver verifies a direct post URL. The resolved identity

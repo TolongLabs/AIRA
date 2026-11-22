@@ -53,7 +53,11 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 describe('douyin Apify mirror and tiktok Apify fallback', () => {
   it('parses Douyin direct, iesdouyin, and v.douyin short links and reserves subdomains', () => {
-    for (const url of [DIRECT_DOUYIN, SHARE_IESDOUYIN]) {
+    for (const url of [
+      DIRECT_DOUYIN,
+      SHARE_IESDOUYIN,
+      `https://www.douyin.com/jingxuan/acg?modal_id=${VIDEO_ID}&from=feed`
+    ]) {
       const parsed = parseSocialPostUrl(url)
       expect(parsed).toMatchObject({
         platform: 'douyin',
@@ -74,6 +78,12 @@ describe('douyin Apify mirror and tiktok Apify fallback', () => {
     expect(recognitionOnlyName(DIRECT_DOUYIN)).toBeNull()
     expect(parseSocialPostUrl('https://www.douyin.com/user/MS4wLjAB')).toBeNull()
     expect(parseSocialPostUrl('https://www.douyin.com/video/12345')).toBeNull()
+    for (const invalid of [
+      `https://www.douyin.com/jingxuan/acg?modal_id=${VIDEO_ID}&modal_id=${VIDEO_ID}`,
+      `https://www.douyin.com/user/example?modal_id=${VIDEO_ID}`,
+      'https://www.douyin.com/jingxuan/acg?modal_id=123'
+    ])
+      expect(parseSocialPostUrl(invalid)).toBeNull()
     expect(parseSocialPostUrl('https://v.douyin.com/')).toBeNull()
 
     for (const host of ['m.douyin.com', 'open.douyin.com', 'm.iesdouyin.com']) {
@@ -124,7 +134,17 @@ describe('douyin Apify mirror and tiktok Apify fallback', () => {
       },
       { fetcher, lookup: publicLookup }
     )
-    const result = await viewer.lookup(parseSocialPostUrl(DIRECT_DOUYIN)!)
+    const target = parseSocialPostUrl(DIRECT_DOUYIN)!
+    const firstTrace = vi.fn()
+    const secondTrace = vi.fn()
+    const [result, second] = await Promise.all([
+      viewer.lookup(target, undefined, firstTrace),
+      viewer.lookup(target, undefined, secondTrace)
+    ])
+    expect(second).toEqual(result)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    expect(firstTrace.mock.calls).toHaveLength(1)
+    expect(secondTrace.mock.calls).toEqual(firstTrace.mock.calls)
     expect(result.status).toBe('found')
     if (result.status !== 'found') throw new Error('expected found')
     expect(result.post.text).toBe('Sample Douyin caption #topic')

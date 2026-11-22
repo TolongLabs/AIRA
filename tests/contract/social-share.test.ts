@@ -212,6 +212,7 @@ describe('SocialPostViewer on share links', () => {
         attempts: [expect.objectContaining({ readerId: 'yt_dlp', ok: true })]
       })
     )
+    expect(await viewer.lookup(direct)).toMatchObject({ status: 'found', post: { target: direct } })
     expect(runExtractor).toHaveBeenCalledOnce()
     expect(runExtractor).toHaveBeenCalledWith(
       'yt-dlp',

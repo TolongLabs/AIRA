@@ -171,7 +171,8 @@ function parseTikTok(url: URL, host: string, unknown: boolean): SocialPostTarget
 }
 
 function parseReddit(url: URL, host: string, unknown: boolean): SocialPostTarget | null {
-  if (!unknown && hostMatches(host, 'redd.it')) {
+  if (hostMatches(host, 'redd.it')) {
+    if (host !== 'redd.it' && host !== 'www.redd.it') return null
     const id = url.pathname.match(/^\/([a-z0-9]+)\/?$/i)?.[1]
     return id ? target('reddit', id, `https://www.reddit.com/comments/${id}/`) : null
   }
@@ -411,7 +412,9 @@ const DOUYIN_SHORT_PATH = /^\/([a-z0-9]+)\/?$/i
 
 function parseDouyin(url: URL, host: string): SocialPostTarget | null {
   if (host === 'www.douyin.com') {
-    const id = url.pathname.match(DOUYIN_VIDEO_PATH)?.[1]
+    const modalIds = url.searchParams.getAll('modal_id')
+    const modalId = modalIds.length === 1 && /^\/jingxuan(?:\/[\w-]+)?\/?$/.test(url.pathname) ? modalIds[0] : undefined
+    const id = url.pathname.match(DOUYIN_VIDEO_PATH)?.[1] ?? (modalId && /^\d{19}$/.test(modalId) ? modalId : undefined)
     return id ? target('douyin', id, `https://www.douyin.com/video/${id}`) : null
   }
   if (host === 'www.iesdouyin.com') {

@@ -58,6 +58,7 @@ import { resolveSettings } from './settings/settings.js'
 import { enabledMirrorAsset, isDouyinRedirectMediaUrl } from './social/mirror-readers.js'
 import { createSocialPostPort } from './social/port.js'
 import { ReplyReader } from './social/replies/service.js'
+import { sharePendingDownloads } from './social/shared-download.js'
 import { findLinkTarget } from './social/urls.js'
 import { SocialPostViewer } from './social/viewer.js'
 import { isYtDlpAvailable } from './social/yt-dlp.js'
@@ -408,12 +409,14 @@ export async function createApp(options: AppOptions): Promise<App> {
     const hostDataDir = config.gateway.hostDataDir === '' ? paths.root : config.gateway.hostDataDir
     // Social downloads keep user agent and referrer on the asset origin and carry no cookies.
     const compressVideo = createVideoCompressor()
-    const socialAssetDownload = createFetchPagePort({
-      sameOriginCookieless: true,
-      ...(apifyToken ? { apifyToken } : {})
-    }).download
+    const socialAssetDownload = sharePendingDownloads(
+      createFetchPagePort({
+        sameOriginCookieless: true,
+        ...(apifyToken ? { apifyToken } : {})
+      }).download
+    )
     // Other social media files may redirect to a CDN on another origin; they still carry no cookies.
-    const socialMediaDownload = createFetchPagePort({ cookieless: true }).download
+    const socialMediaDownload = sharePendingDownloads(createFetchPagePort({ cookieless: true }).download)
     const autofetch = createAutofetch({
       mirrors: socialMirrors,
       compressVideo,

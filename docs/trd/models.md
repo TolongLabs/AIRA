@@ -240,7 +240,10 @@ media folders.
    reported one. A gateway attachment names only a kind and a path, so an attached video's length is never checked.
    Remote link downloads carry a duration, and audio longer than 600 seconds is refused. A
    voice note's duration is not in the gateway's note, so the size limit is the only length limit that applies to it.
-5. **The read.** All files of a turn are read at once, each with its own timeout: `media.timeoutMs`, and at most
+5. **The read.** Concurrent consumers of an identical social lookup or asset download share the pending work.
+   Each keeps its own deadline. The last consumer to cancel stops the transfer. Only downloads with the same
+   network policy, URL, headers, byte limit and range can share bytes.
+   All files of a turn are read at once, each with its own timeout: `media.timeoutMs`, and at most
    two thirds of the time left in the turn deadline, so the main model keeps at least a third. For an attachment this
    budget includes loading the file, watcher calls and retry waits. A transient watcher failure retries the same bytes
    after 250 ms, doubling the delay to a 4-second maximum. Each attempt must start before the original budget expires

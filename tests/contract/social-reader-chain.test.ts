@@ -833,6 +833,8 @@ describe('intake failures close the link to read_post and read_page', () => {
     const sources = createTurnSources()
     for (const entry of intake.tried ?? []) sources.add(entry.url, 'intake')
     sources.add(resolvedAlias, 'message')
+    const httpAlias = resolvedAlias.replace('https:', 'http:')
+    sources.add(httpAlias, 'message')
     const context = {
       sources,
       signal: new AbortController().signal,
@@ -841,7 +843,7 @@ describe('intake failures close the link to read_post and read_page', () => {
     const postTool = readPostTool({ post: postPort, filesDir: '/tmp' })
     const pageTool = readPageTool({ page: pagePort, filesDir: '/tmp' })
 
-    for (const candidate of [shareOriginal, shareCanonical, resolvedCanonical, resolvedAlias]) {
+    for (const candidate of [shareOriginal, shareCanonical, resolvedCanonical, resolvedAlias, httpAlias]) {
       expect(failedOf(await postTool.handler({ url: candidate }, context))).toMatchObject({
         kind: 'refused',
         code: 'already_tried'
