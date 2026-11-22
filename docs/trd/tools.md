@@ -365,9 +365,10 @@ has up to five matches with title, domain, link and price when present. It carri
 Intake, `read_post` and chat autofetch use the same post resolver and reader dispatch. A reader may return
 partial data. Previews, cards and quoted or earlier-thread media can describe a post to the reader. Group
 delivery requires separate native attachment evidence. Enable a new operation only after verifying the
-specific post identity, fields, retrieval permission and intended use. Xiaohongshu/rednote and Douyin
-start with all operations disabled. Evaluate reading, intake and redistribution independently.
-AIRA has no approved dev2 integration for either platform. A public embed or a public browser
+specific post identity, fields, retrieval permission and intended use. Douyin starts with all operations
+disabled and has no approved dev2 integration. Xiaohongshu/Rednote starts off by default until
+`social.mirrors.rednote` and `APIFY_API_TOKEN` are configured. Evaluate reading, intake and
+redistribution independently. A public embed or a public browser
 page does not establish permission for automated reads, model processing or redistribution. Douyin
 documents OAuth-protected account capabilities. Record the approved fields and uses before enabling a provider.
 [Douyin capabilities](https://partner.open-douyin.com/docs/resource/zh-CN/dop/ability/common-solution).
@@ -425,13 +426,22 @@ Reserve both provider domains and their subdomains from unknown-host post select
 and autofetch leave the slot available for another eligible link. Douyin has no read or fetch switch.
 Both hosts received a page without the post record, and the extractor returned no matching ID.
 
-Xiaohongshu (Rednote) has recognition only on both deployments. The China and international note pages
-redirected to login on both hosts, and the extractor returned no matching note. Recognise `/explore/{id}`
-and `/discovery/item/{id}` for 24 hexadecimal digits on the apex or www hosts of `xiaohongshu.com` and
-`rednote.com`. Recognise observed alphanumeric short codes at `xhslink.com/{code}`, `xhslink.com/o/{code}`
-and `xhslink.cn/o/{code}`. A short link has no verified note identity. Name the platform in read refusals and
-leave the link out of read, intake, fetch and the capability catalog. Profiles and unrelated pages have
-no post classification. Keep the query and short code out of logs.
+Xiaohongshu (Rednote) uses an opt-in Apify mirror (`social.mirrors.rednote`: `off`, `read`, or
+`read_and_group`, default `off`) backed by `APIFY_API_TOKEN` in `.env` and actor
+`socialdatax~socialdatax-xhs-data-api`. Both China and international note pages redirect logged-out
+requests to login, so without both the mirror switch and token no reader runs and Rednote stays out of
+the active capability lists. Recognise `/explore/{id}` and `/discovery/item/{id}` for 24 hexadecimal
+digits on the apex or `www` hosts of `xiaohongshu.com` and `rednote.com`, normalizing to
+`https://www.xiaohongshu.com/explore/{id}` (`rednote:{id}`). Recognise alphanumeric short codes at
+`xhslink.com/{code}`, `xhslink.com/o/{code}` and `xhslink.cn/o/{code}`, resolving them through the
+guarded share resolver (up to 2 manual HTTPS hops within those domains, 8,000 ms budget) so invalid
+shares stop before calling Apify and direct and share links converge on one lookup key. Reserve all
+subdomains of those four domains from unknown-host selection. Apify receives only the resolved 24-hex
+`note_id`, never the original share token or chat data. The reader requires a matching `note_id`, takes
+ordered gallery photos from `image_items` for image notes and the playable `video_video_url` with
+`video_duration_ms` for video notes (keeping `cover_image_url` as preview only), and accepts only HTTPS
+media on `*.xhscdn.com` (excluding `sns-avatar-*` hosts from post media). Lookups get a 20,000 ms
+budget to cover share resolution and the Apify run. Keep the query and short code out of logs.
 
 Excluded source hosts and their short links receive a generic refusal. Page reads, post reads, redirects and
 search results must respect host exclusions before retrieving or passing content to the model.
@@ -446,7 +456,8 @@ A share token remains provisional until the guarded resolver verifies a direct p
 is used for viewer lookup and for deduplication of eligible group fetches. URL recognition and resolution grant
 no media capability.
 
-TikTok and Reddit can opt into a fixed mirror using `social.mirrors.tiktok` or `social.mirrors.reddit`.
+TikTok, Reddit and Rednote can opt into a fixed mirror using `social.mirrors.tiktok`,
+`social.mirrors.reddit` or `social.mirrors.rednote`.
 Each defaults to `off`. Use `read` after approving the mirror for post lookup and model processing.
 Use `read_and_group` after also approving group redistribution. Set `social.mirrors.redditGroupChatIds`
 to limit Reddit attachments to listed internal chat IDs in the deployment config. An omitted list keeps the
@@ -474,9 +485,8 @@ resumes from its last byte, up to twice. A resume sends the part's strong, quote
 without one, including when only Last-Modified is sent, the part starts over. A refusal that arrives after the idle
 timer fired still stops the batch. An invalid, refused or redirected part stops the batch at once. The watch
 deadline includes the lookup, downloads, compression, and model call. A failed mirror lookup grants no group attachment.
-Facebook photo paths use the HTML post reader before falling back to the extractor. Supported platforms
-are X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram, Bilibili and
-Facebook.
+Facebook photo paths use the HTML post reader before falling back to the extractor. Supported platforms are X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram, Bilibili,
+Facebook, Lemon8 and Rednote.
 
 The model receives an untrusted result with a readable or partial status, a platform display name and a post.
 A partial result gives its missing fields and a fixed sentence describing what was visible. A failed read uses
