@@ -183,3 +183,6 @@ A deploy checks the owner-facing site listener, a built page, the core chat sche
 The synthetic gateway check must exercise the intended turn branch. A previous deployment counts as restored only
 when its health checks pass. Preserve host-specific configuration, write credentials atomically with private file
 permissions and require a fresh verified snapshot before a version change.
+
+The built updater includes `offline-snapshot.py` beside its JavaScript entry point. When the core is unavailable,
+the host runs this helper against the container’s data mount and verifies the backup with SQLite.
