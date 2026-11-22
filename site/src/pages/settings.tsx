@@ -35,6 +35,8 @@ type Tab = 'models' | 'markets' | 'avatar' | 'voice' | 'home' | 'files'
 /* No blurbs. Each one restated its own tab label in a cuter voice — "Chats:
    who she talks to, and how" — which is a line of text between the reader and
    the thing they clicked to reach. The sections say what they are. */
+type WatchlistReceipt = { scope_key: string; inherits_default: boolean; watchlist: string[] }
+
 const TABS: { key: Tab; label: string; icon: typeof Bot }[] = [
   { key: 'models', label: 'Models', icon: Cpu },
   { key: 'markets', label: 'Markets', icon: TrendingUp },
@@ -80,17 +82,13 @@ function ChatWatchlists({ chats, regions }: { chats: Chat[]; regions: { value: s
     return runSerialized(key, async () => {
       setBusy((was) => ({ ...was, [key]: true }))
       try {
-        const r = await post<{
-          inherits_default?: boolean
-          watchlist?: string[]
-        }>('/api/settings/watchlist_inherit', {
+        const r = await post<WatchlistReceipt>('/api/settings/watchlist_inherit', {
           scope_key: scopeKey,
           inherit: want
         })
-        const hasInherit = r && typeof r.inherits_default === 'boolean'
-        const hasWatch = r && Array.isArray(r.watchlist)
-        const nextInherit = hasInherit ? !!r.inherits_default : want
-        const nextRows = hasWatch ? (r.watchlist ?? []).map(String) : (rowsRef.current[key] ?? [])
+        if (r.scope_key !== scopeKey || r.inherits_default !== want) throw new Error('Unexpected watchlist update')
+        const nextInherit = r.inherits_default
+        const nextRows = r.watchlist
         rowsRef.current = { ...rowsRef.current, [key]: nextRows }
         setInherit((was) => ({ ...was, [key]: nextInherit }))
         setRows((was) => ({ ...was, [key]: nextRows }))
@@ -112,16 +110,16 @@ function ChatWatchlists({ chats, regions }: { chats: Chat[]; regions: { value: s
       const next = update(prev)
       setBusy((was) => ({ ...was, [key]: true }))
       try {
-        const r = await post<{ inherits_default?: boolean }>('/api/settings/watchlist', {
+        const r = await post<WatchlistReceipt>('/api/settings/watchlist', {
           scope_key: scopeKey,
           symbols: next.join(' ')
         })
-        const hasInherit = r && typeof r.inherits_default === 'boolean'
-        const nextOwn = hasInherit ? !r.inherits_default : next.length > 0
-        rowsRef.current = { ...rowsRef.current, [key]: next }
-        setRows((was) => ({ ...was, [key]: next }))
-        setOwn((was) => ({ ...was, [key]: nextOwn }))
-        toast(r && r.inherits_default ? 'back to the default list ✓' : 'saved ✓')
+        if (r.scope_key !== scopeKey) throw new Error('Unexpected watchlist update')
+        rowsRef.current = { ...rowsRef.current, [key]: r.watchlist }
+        setRows((was) => ({ ...was, [key]: r.watchlist }))
+        setInherit((was) => ({ ...was, [key]: r.inherits_default }))
+        setOwn((was) => ({ ...was, [key]: !r.inherits_default && r.watchlist.length > 0 }))
+        toast('saved ✓')
       } catch (e) {
         toast((e as Error).message, false)
       } finally {
@@ -1183,7 +1181,7 @@ function HomeTab({ settings, onChanged }: { settings: Settings; onChanged: () =>
 
 /* ── files ────────────────────────────────────────────────────────────── */
 
-function FilesTab({ settings, onChanged }: { settings: Settings; onChanged: () => void }) {
+function FilesTab({ settings, onChanged, active }: { settings: Settings; onChanged: () => void; active: boolean }) {
   const [kind, setKind] = useState<'soul' | 'rules' | 'agents'>('soul')
   const [name, setName] = useState('')
   const [text, setText] = useState('')
@@ -1196,7 +1194,9 @@ function FilesTab({ settings, onChanged }: { settings: Settings; onChanged: () =
      not exist there. */
   const [pending, setPending] = useState<{ kind: string; name: string } | null>(null)
   const pendingName = pending && pending.kind === kind ? pending.name : null
-  const current = useRef<{ kind: string; name: string } | null>(null)
+  const [ready, setReady] = useState<{ kind: string; name: string } | null>(null)
+  const [loadError, setLoadError] = useState('')
+  const [readAttempt, setReadAttempt] = useState(0)
   const lastKind = useRef(kind)
 
   const names = useMemo(() => {
@@ -1226,41 +1226,44 @@ function FilesTab({ settings, onChanged }: { settings: Settings; onChanged: () =
   }, [kind, names, settings, pendingName, name])
 
   useEffect(() => {
+    setLoadError('')
     if (pendingName && name === pendingName) {
-      // Brand-new file, nothing on disk to load yet. Point the save target at
-      // it and leave the text alone — fetching it would only paint a 404 over
-      // a file about to be created.
-      current.current = { kind, name }
+      setReady({ kind, name })
       return
     }
+    setReady(null)
+    setText('')
+    setLoaded('')
     if (names.length && !name) return
-    // The save target is the file being looked at, set before the fetch, not
-    // when it succeeds: a failed load must not leave Save aimed at the file
-    // that was open before.
-    current.current = { kind, name: names.length ? name : '' }
+    const target = { kind, name: names.length ? name : '' }
     let live = true
     const url =
       `/api/settings/file?kind=${encodeURIComponent(kind)}` + (names.length ? `&name=${encodeURIComponent(name)}` : '')
-    get<{ text?: string }>(url)
-      .then((f) => {
+    get<{ kind: string; name: string; text: string }>(url)
+      .then((file) => {
         if (!live) return
-        setText(f.text ?? '')
-        setLoaded(f.text ?? '')
+        if (file.kind !== target.kind || file.name !== target.name || typeof file.text !== 'string')
+          throw new Error('Invalid profile file response')
+        setText(file.text)
+        setLoaded(file.text)
+        setReady(target)
       })
-      // A failed load keeps the editor as it is: the text on screen is still
-      // the operator's, and Save still aims at this file for a retry.
-      .catch((e: Error) => live && toast(e.message, false))
+      .catch((error: Error) => {
+        if (live) setLoadError(error.message)
+      })
     return () => {
       live = false
     }
-  }, [kind, name, names.length, pendingName])
+  }, [kind, name, names.length, pendingName, readAttempt])
 
+  const editable = ready?.kind === kind && ready.name === name && !busy
   const dirty = text !== loaded
 
   /* Switching file, kind or tab with unsaved text used to throw the text away
      without a word — only a full page unload was guarded. Block the switch
      and keep the text instead: Save or Revert first, then move. */
   function keepUnsaved(what: string) {
+    if (busy) return false
     if (!dirty) return true
     toast(`Unsaved changes kept — Save or Revert before opening ${what}`, false)
     return false
@@ -1278,15 +1281,21 @@ function FilesTab({ settings, onChanged }: { settings: Settings; onChanged: () =
   }
 
   async function save() {
-    const target = current.current
-    if (!target) return
+    const target = ready
+    if (!editable || !target) return
     setBusy(true)
     try {
-      await post('/api/settings/file', {
+      const receipt = await post<{ kind: string; name: string; bytes: number }>('/api/settings/file', {
         kind: target.kind,
         ...(target.name ? { name: target.name } : {}),
         text
       })
+      if (
+        receipt.kind !== target.kind ||
+        receipt.name !== target.name ||
+        receipt.bytes !== new TextEncoder().encode(text).length
+      )
+        throw new Error('Invalid file save acknowledgement. Reload to check the saved text.')
       setLoaded(text)
       // The name is claimed by the save, not by the dialog. Pending clears in
       // the select effect once the reloaded list contains the new file —
@@ -1321,7 +1330,7 @@ function FilesTab({ settings, onChanged }: { settings: Settings; onChanged: () =
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+      if (active && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault()
         if (dirty) void save()
       }
@@ -1417,19 +1426,27 @@ function FilesTab({ settings, onChanged }: { settings: Settings; onChanged: () =
           )}
         </div>
 
+        {loadError && (
+          <div role="alert">
+            {loadError} <Button onClick={() => setReadAttempt((n) => n + 1)}>Retry load</Button>
+          </div>
+        )}
         <Textarea
+          disabled={!editable}
           value={text}
           spellCheck={false}
           onChange={(e) => setText(e.target.value)}
           className="mt-4 h-[42vh] max-h-[560px] min-h-56 font-mono text-[0.8rem] leading-relaxed"
         />
 
-        <GenerateButton
-          kind={kind === 'agents' ? 'note' : kind}
-          context={text}
-          onAccept={setText}
-          label="Write this file for me"
-        />
+        {editable && (
+          <GenerateButton
+            kind={kind === 'agents' ? 'note' : kind}
+            context={text}
+            onAccept={setText}
+            label="Write this file for me"
+          />
+        )}
       </Card>
 
       {/* Fixed to the viewport: impossible to scroll away from or miss. */}
@@ -1542,7 +1559,7 @@ export default function SettingsPage() {
                   switch is what threw unsaved file text away. Switches of file
                   and kind are guarded inside FilesTab instead. */}
               <div hidden={tab !== 'files'}>
-                <FilesTab settings={settings.data} onChanged={settings.reload} />
+                <FilesTab active={tab === 'files'} settings={settings.data} onChanged={settings.reload} />
               </div>
             </>
           )}

@@ -10,7 +10,7 @@ import {
   updateEnvContent,
   writeInstallEnv
 } from '../../scripts/deploy-host.js'
-import { probeTurn, syntheticTurnBody } from '../../scripts/deploy-turn-probe.js'
+import { probeTurn, syntheticTurnBody, verifyRunnerReachability } from '../../scripts/deploy-turn-probe.js'
 import {
   acquireDeployLock,
   createRealOps,
@@ -414,4 +414,19 @@ describe('config sync (D7)', () => {
     expect(env).toContain('AIRA_VERSION=sha-abc1234')
     expect((await stat(join(installDir, '.env'))).mode & 0o777).toBe(0o600)
   })
+})
+
+it('checks the selected subscription runner before using a fixture model', async () => {
+  let calls = 0
+  const request = async (input: Parameters<typeof fetch>[0]) => {
+    calls++
+    expect(String(input)).toBe('http://localhost:9882/health')
+    return Response.json({ ok: false })
+  }
+  await verifyRunnerReachability('api', 'http://localhost:9882', request)
+  expect(calls).toBe(0)
+  await expect(verifyRunnerReachability('subscription', 'http://localhost:9882', request)).rejects.toThrow(
+    'health check'
+  )
+  expect(calls).toBe(1)
 })

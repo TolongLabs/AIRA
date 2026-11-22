@@ -54,7 +54,7 @@ export async function changeOwnerJob(storage: Storage, input: unknown, call: Ret
   if (input.action === 'create') {
     const dest = typeof input.deliver === 'string' && /^whatsapp:([^,:]+)$/.exec(input.deliver)?.[1]
     const chat = dest ? getChatByWaId(storage, dest) : undefined
-    if (!chat || chat.status !== 'active') return reply(400, 'Choose one active WhatsApp chat for this routine')
+    if (chat?.status !== 'active') return reply(400, 'Choose one active WhatsApp chat for this routine')
     if (!prompt.trim()) return reply(400, 'missing_prompt')
     const tag = 'site_' + randomUUID().replaceAll('-', '')
     storage.tx((db) => db.prepare('INSERT INTO site_job(tag,chat_id) VALUES (?,?)').run(tag, chat.chatId))

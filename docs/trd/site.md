@@ -4,26 +4,26 @@ The existing owner site, revamped as the chatbot's console, with a character stu
 
 ## At a Glance
 
-| Item            | Value                                                             |
-| --------------- | ----------------------------------------------------------------- |
-| Front End       | The existing React app, kept, in `site/`                          |
-| Design Contract | The site's own `DESIGN.md`. It wins over code for anything visual |
-| Reach           | Private network only (loopback or Tailscale)                      |
-| Chatbot Data    | Read and written through the core's API                           |
-| Owner-Tool Data | Read and written through the site's existing API, unchanged       |
+| Item            | Value                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------- |
+| Front End       | The existing React app, kept, in `site/`                                                    |
+| Design Contract | The site's own `DESIGN.md`. It wins over code for anything visual                           |
+| Reach           | Private network only (loopback or Tailscale)                                                |
+| Chatbot Data    | Read and written through the core's API                                                     |
+| Owner-Tool Data | Host service through the same-origin owner API, with core-managed market and routine writes |
 
 ## Scope Of The Revamp
 
-| Page                   | Change                                                                                                                                                                           |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Chats                  | Rebuilt on the settings hierarchy, with resolved settings and source levels                                                                                                      |
-| Studio                 | Planned, not built. No studio page or character write route exists yet (FR-41)                                                                                                   |
-| Settings               | Kept as it is. Posts to the legacy API; no global or chat-type level editor                                                                                                      |
-| Dashboard              | Kept as it is. Reads the legacy `/api/dashboard`, not turn records                                                                                                               |
-| Library, Graph         | Kept as they are. Read the legacy API, not the core's `/api/memory`                                                                                                              |
-| Reminders              | Kept as it is. The Cron page reads the legacy `/api/cron` job list, preserves custom schedules unless edited, validates intervals, and keeps core-managed `aira:` jobs read-only |
-| Feedback               | No page in this change; maintainers use the protected API or CLI                                                                                                                 |
-| Markets, Notices, Send | Kept as they are. Only the shared shell changes with the rest of the site                                                                                                        |
+| Page                   | Change                                                                                                                                                            |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chats                  | Rebuilt on the settings hierarchy, with resolved settings and source levels                                                                                       |
+| Studio                 | Planned, not built. No studio page or character write route exists yet (FR-41)                                                                                    |
+| Settings               | Edits host profiles, voice and models. Market writes use the core handler                                                                                         |
+| Dashboard              | Reads the host dashboard and checks resulting service states after actions                                                                                        |
+| Library, Graph         | Read the host graph and library. Local media requests carry the owner header                                                                                      |
+| Reminders              | The Cron page reads the legacy `/api/cron` job list, preserves custom schedules unless edited, validates intervals, and keeps core-managed `aira:` jobs read-only |
+| Feedback               | No page in this change; maintainers use the protected API or CLI                                                                                                  |
+| Markets, Notices, Send | Market edits check for stale data. Notices verify the saved route. Send reconciles uncertain delivery                                                             |
 
 ![Which client and API each site page uses](../diagrams/site-pages.svg)
 
@@ -203,12 +203,14 @@ bearer token.
 ## Owner Page Edits
 
 The Settings editor keeps its selected file and unsaved buffer until Save or Revert. A failed read disables
-writes to that target. Models, Voice and Files change the host owner service. The core uses its own deployed
+writes to that target until Retry load succeeds. Save checks the returned kind, name and UTF-8 byte count. Models, Voice and Files change the host owner service. The core uses its own deployed
 configuration and the chat's character binding. The Ollama probe checks the entered origin from the host,
 authenticates the owner's token and reads only the model list. It never saves the entered endpoint.
 
 Market list replacements carry the field values seen by the editor. A conflicting write returns 409.
-The core writes the same markets file read by the owner tools. Digest changes preserve the other recipients
+Per-chat watchlist edits check the returned scope and render the stored tickers and inheritance flag.
+A successful market edit returns a `markets` object with the persisted watchlist and alerts arrays.
+The client rejects an incomplete acknowledgement. The core writes the same markets file read by the owner tools. Digest changes preserve the other recipients
 and hours. Notice routes store the gateway's prefixed WhatsApp target. Core lookups accept both that form
 and older bare targets. A refused write retains its draft. Service actions check the resulting unit state.
 A lost upload acknowledgement requires checking recent sends before retrying.

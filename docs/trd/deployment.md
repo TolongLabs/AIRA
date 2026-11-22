@@ -59,6 +59,11 @@ The container's user has the same uid, so the core writes the data folder and th
   with 400 unless `tools.url` is a loopback http URL, `tools.token` is 16 to 128 hex characters, and `timeoutMs` is
   between 1000 and 600000. A timed-out or disconnected run is stopped with SIGTERM, then SIGKILL after 2 s. See
   [Models](models.md#run-request) for the run itself.
+- For subscription installs, the release probe requests the configured runner's `GET /health` from inside the
+  container and requires `{"ok":true}` within five seconds. API-only installs skip this request.
+  The container and the host have separate loopback interfaces. A subscription install must provide a route from
+  the core to the runner and a return route from the runner to the configured tool server. The runner health
+  check covers only the first direction. The GitHub Actions runner used to deploy is a separate process.
 
 ![The host units, what triggers them and what they run](../diagrams/host-units.svg)
 
