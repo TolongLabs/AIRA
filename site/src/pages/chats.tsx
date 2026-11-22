@@ -81,7 +81,21 @@ const FEATURES: { key: string; label: string; hint: string }[] = [
   }
 ]
 
-function SocialPlatforms({ catalog, feature }: { catalog: Load<CoreToolCatalog>; feature: SocialCapabilityKey }) {
+function SocialPlatforms({
+  catalog,
+  feature,
+  chat,
+  disabled,
+  save,
+  clear
+}: {
+  catalog: Load<CoreToolCatalog>
+  feature: SocialCapabilityKey
+  chat: CoreChat
+  disabled: boolean
+  save: (key: string, value: boolean) => void
+  clear: (key: string) => void
+}) {
   const platforms = catalog.data?.socialCapabilities?.[feature]
   return (
     <div className="mt-2 text-[0.8rem] text-faint">
@@ -97,9 +111,35 @@ function SocialPlatforms({ catalog, feature }: { catalog: Load<CoreToolCatalog>;
           </Button>
         </div>
       ) : platforms.length ? (
-        <p className="m-0">
-          {platforms.map(({ name, operations }) => `${name} (${operations.join(', ')})`).join(' · ')}
-        </p>
+        <fieldset
+          disabled={disabled}
+          aria-label={feature === 'features.social' ? 'Social post platforms' : 'Post media platforms'}
+          className="m-0 mt-3 min-w-0 border-0 border-l border-line-2 py-0 pr-0 pl-3 text-ink sm:pl-5"
+        >
+          {platforms.map(({ id, name, operations }) => {
+            const key = `${feature === 'features.social' ? 'social' : 'autofetch'}.platforms.${id}`
+            const level = chat.settings[key]?.level ?? 'default'
+            return (
+              <div
+                key={id}
+                className="flex flex-wrap items-center justify-between gap-2 border-b border-line-2 py-2 last:border-b-0"
+              >
+                <Toggle
+                  checked={valueOf(chat, key, true)}
+                  disabled={disabled}
+                  onChange={(on) => save(key, on)}
+                  label={name}
+                  hint={`${operations.join(', ')} · ${sourceText(level, chat.type)}`}
+                />
+                {level === 'chat' && (
+                  <Button size="sm" variant="ghost" disabled={disabled} onClick={() => clear(key)}>
+                    Use inherited
+                  </Button>
+                )}
+              </div>
+            )
+          })}
+        </fieldset>
       ) : (
         <p className="m-0">No enabled platforms.</p>
       )}
@@ -998,7 +1038,14 @@ function ChatRow({
                               </p>
                             )}
                             {socialKey && !inapplicable && (
-                              <SocialPlatforms catalog={toolCatalog} feature={socialKey} />
+                              <SocialPlatforms
+                                catalog={toolCatalog}
+                                feature={socialKey}
+                                chat={chat}
+                                disabled={busy || !valueOf(chat, f.key, false)}
+                                save={save}
+                                clear={clear}
+                              />
                             )}
                           </div>
                           <FeatureTools tools={toolFeatures.find((feature) => feature.key === f.key)?.tools ?? []} />
