@@ -524,7 +524,9 @@ export function Segmented<T extends string>({
             key={o}
             type="button"
             aria-pressed={on}
-            onClick={() => onChange(o)}
+            onClick={() => {
+              if (!on) onChange(o)
+            }}
             className={cn(
               'min-h-9 cursor-pointer rounded-[7px] border-0 px-3 text-[0.85rem] font-medium capitalize transition-colors',
               on ? 'bg-accent-soft text-accent' : 'bg-transparent text-muted hover:text-ink'

@@ -77,7 +77,8 @@ The owner `GET /api/tools` response retains `features` and adds `socialCapabilit
 `features.social` and `features.autofetch`. Each list contains enabled platform IDs, display names and
 their operation labels, derived from server dispatch and attachment eligibility. Chat settings show both
 lists as nested platform switches under their respective main toggles. Each row shows the platform name,
-operations, effective value and source. A chat override can be cleared with Use inherited. The main switch
+operations, effective value and source. An editable chat override can be cleared with Use inherited.
+Read-only rows preserve the saved override. The main switch
 disables all nested controls while off, preserving their settings. If Social posts is off while Media
 watching is on, the YouTube row explains that its saved value still applies to intake. Writes and clears use validated
 `PUT /api/settings` and create the usual `setting_change` record. Show the YouTube exclusion, loading, empty and unavailable states.
@@ -87,13 +88,13 @@ inheritance still come from `GET /api/chats` and writes use the existing setting
 | Route                   | Answer                                                                                                                                                                                                                                                    |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /api/health`       | `status` (`ready` or `starting`), `version`, `activeTurns`, and per model role whether it is configured and whether its breaker is open                                                                                                                   |
-| `GET /api/chats`        | `chats`: each chat's id, WhatsApp id, type, label (falling back to `channel_directory.json` by `waId`, or `identity.display_name` for DMs, when empty), status, and every setting key with its value and the level it came from                           |
+| `GET /api/chats`        | `chats`: each chat's id, WhatsApp id, type, storedLabel (editable), label (falling back to `channel_directory.json` by `waId`, or `identity.display_name` for DMs, when empty), status, and every setting key with its value and the level it came from   |
 | `GET /api/settings`     | With `level` and `scope`: the raw values set at that one level. A bad level or scope gets 400                                                                                                                                                             |
 | `GET /api/turns`        | The newest turn rows, newest first, at most `limit` (default 50, at most 200), optionally for one `chat` and `before` a time. A `limit` outside 1 to 200 gets 400 `invalid_limit`; a `before` that is not an ISO-8601 timestamp gets 400 `invalid_before` |
 | `GET /api/turns/:id`    | One turn row with its model calls, tool calls and failure rows. The id is URL-decoded; a malformed escape gets 400 `invalid_turn_id`                                                                                                                      |
 | `GET /api/report`       | The figures of `bun run report`, always over the last 7 days, read from the newest verified snapshot. With no snapshot it gets 404 `no_snapshot`                                                                                                          |
 | `GET /api/memory`       | With `chat` (required, else 400): that chat's memory items: id, kind, subject, key, value, status, updated time                                                                                                                                           |
-| `GET /api/characters`   | `characters`: each loaded pack's id, display name, source (`repository` or `data`) and languages. `faults`: each pack that did not load, with its id and reason                                                                                           |
+| `GET /api/characters`   | `characters`: each loaded pack's id, display name, aliases when configured, source (`repository` or `data`) and languages. `faults`: each pack that did not load, with its id and reason                                                                  |
 | `GET /api/tools`        | `features`: tools grouped by feature `key`, each with `name`, `mode` (`implicit`, `explicit` or `both`) and slash-prefixed `commands`, read from the registry                                                                                             |
 | `GET /api/feedback/:id` | One report by `report_id`: state, issued and received times, checked answers, and the existing turn records named by `turn_ids`. It never returns `ref`; unknown ids get 404. Answers are untrusted text and never enter a model prompt                   |
 
@@ -142,6 +143,7 @@ still never hold one.
   type, or set here.
 - Setting a value writes one row at the chosen level. Clearing it deletes the row and restores inheritance.
 - Feature switches are listed as a group with their inherited state.
+- The Replies switch requires a loaded effective character to activate a chat. An active chat can always be switched off.
 - A change that binds a chat to a pack that is not loaded is refused with 400 `unknown_character`.
 
 ## Character Studio

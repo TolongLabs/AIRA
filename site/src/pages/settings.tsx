@@ -186,7 +186,7 @@ function ChatWatchlists({ chats, regions }: { chats: Chat[]; regions: { value: s
                 </label>
                 {own[key] && (
                   <Button size="sm" variant="ghost" className="mt-2" onClick={() => void save(c, [])}>
-                    clear this chat\u2019s list
+                    clear this chat’s list
                   </Button>
                 )}
               </div>

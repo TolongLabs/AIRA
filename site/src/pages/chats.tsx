@@ -36,7 +36,7 @@ function useCore<T>(fetcher: () => Promise<T>): Load<T> {
     setState((s) => ({ ...s, loading: true }))
     fetcher().then(
       (data) => live && setState({ data, loading: false }),
-      (error: unknown) => live && setState({ error: reasonText(error), loading: false })
+      (error: unknown) => live && setState((previous) => ({ ...previous, error: reasonText(error), loading: false }))
     )
     return () => {
       live = false
@@ -65,6 +65,9 @@ const FEATURES: { key: string; label: string; hint: string }[] = [
     label: 'Deeper thinking',
     hint: 'Off: /think is removed and the turn runs at normal effort.'
   },
+  { key: 'features.feedback', label: 'Feedback', hint: 'Allow feedback reports from this chat.' },
+  { key: 'features.identify', label: 'Image identification', hint: 'Allow the identification tool in this chat.' },
+  { key: 'features.research', label: 'Research', hint: 'Allow research jobs from this chat.' },
   { key: 'features.reports', label: 'Reports', hint: 'Off: /doc is not offered.' },
   { key: 'features.proactive', label: 'Messages first', hint: 'Off: replies only when written to.' },
   { key: 'features.voice', label: 'Voice notes', hint: 'Off: replies are text.' },
@@ -214,7 +217,7 @@ function SettingRow({
   label: string
   hint?: string
   children: ReactNode
-  onClear: (key: string) => void
+  onClear?: (key: string) => void
 }) {
   const level = chat.settings[name]?.level ?? 'unset'
   return (
@@ -224,7 +227,7 @@ function SettingRow({
         <span className={cn('text-[0.75rem]', level === 'chat' ? 'text-accent' : 'text-faint')}>
           {sourceText(level, chat.type)}
         </span>
-        {level === 'chat' && (
+        {level === 'chat' && onClear && (
           <Button size="sm" variant="ghost" className="ml-auto" onClick={() => onClear(name)}>
             Use inherited
           </Button>
@@ -664,16 +667,16 @@ function ChatLabelField({
   busy: boolean
   onSave: (label: string) => Promise<boolean>
 }) {
-  const [draft, setDraft] = useState(chat.label)
+  const [draft, setDraft] = useState(chat.storedLabel)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    setDraft(chat.label)
+    setDraft(chat.storedLabel)
     setError(null)
-  }, [chat.label])
+  }, [chat.storedLabel])
 
   const trimmed = draft.trim()
-  const dirty = trimmed !== chat.label
+  const dirty = trimmed !== chat.storedLabel
 
   async function commit() {
     if (trimmed.length > 120) {
@@ -694,7 +697,7 @@ function ChatLabelField({
         <Input
           value={draft}
           disabled={busy}
-          placeholder="Add a label"
+          placeholder={chat.label || 'Add a label'}
           aria-label={`Label for ${chat.label || chat.waId}`}
           aria-invalid={error ? true : undefined}
           autoComplete="off"
@@ -822,7 +825,7 @@ function ChatRow({
           <div className="border-b border-line-2 px-4 py-4">
             <Toggle
               checked={chat.status === 'active'}
-              disabled={busy}
+              disabled={busy || (chat.status !== 'active' && !pack)}
               onChange={(on) =>
                 run(
                   () => core.setStatus(chat.chatId, on ? 'active' : 'pending'),
@@ -830,7 +833,11 @@ function ChatRow({
                 )
               }
               label="Replies in this chat"
-              hint="Off: messages are kept, and no reply is sent."
+              hint={
+                pack
+                  ? 'Off: messages are kept, and no reply is sent.'
+                  : 'Replies require a loaded character. Choose one in the Character tab.'
+              }
             />
           </div>
           <ChatLabelField
@@ -1172,7 +1179,7 @@ function ChatRow({
               )}
               {tab === 'access' && (
                 <>
-                  <SettingRow chat={chat} name="allowedSenders" label="Who may write" onClear={clear}>
+                  <SettingRow chat={chat} name="allowedSenders" label="Who may write">
                     <p className="m-0 text-[0.95rem]">
                       {(() => {
                         const v = valueOf<'all' | string[]>(chat, 'allowedSenders', 'all')
@@ -1180,14 +1187,14 @@ function ChatRow({
                       })()}
                     </p>
                   </SettingRow>
-                  <SettingRow chat={chat} name="muted" label="Muted" onClear={clear}>
+                  <SettingRow chat={chat} name="muted" label="Muted">
                     <p className="m-0 text-[0.95rem]">
                       {valueOf<unknown>(chat, 'muted', false) === false
                         ? 'Not muted.'
                         : 'Muted by a member with /mute.'}
                     </p>
                   </SettingRow>
-                  <SettingRow chat={chat} name="model" label="Model" onClear={clear}>
+                  <SettingRow chat={chat} name="model" label="Model">
                     <p className="m-0 text-[0.95rem]">
                       {valueOf<unknown>(chat, 'model', 'inherit') === 'inherit'
                         ? 'The deployment’s main model.'
@@ -1605,15 +1612,18 @@ export default function ChatsPage() {
       hero={
         all.length
           ? [{ n: all.length }, { t: all.length === 1 ? ' chat. ' : ' chats. ' }, { n: on.length }, { t: ' on.' }]
-          : [{ t: 'No chats yet' }]
+          : [{ t: chats.error ? 'Chat list unavailable' : chats.loading ? 'Loading chats…' : 'No chats yet' }]
       }
     >
       <Section title="Chats">
+        {chats.error && chats.data && (
+          <p role="alert">Could not refresh the chat list. Showing the last loaded values.</p>
+        )}
         {chats.loading && !chats.data ? (
           <div className="flex items-center gap-2 text-muted">
             <Spinner /> loading…
           </div>
-        ) : chats.error ? (
+        ) : chats.error && !chats.data ? (
           <Empty>{chats.error}</Empty>
         ) : !all.length ? (
           <Empty>A chat appears here after its first message. It starts off until it is switched on here.</Empty>

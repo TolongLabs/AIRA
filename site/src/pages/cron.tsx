@@ -63,7 +63,7 @@ function runsLabel(repeat?: string): string {
   return total ? `${total[1]} runs, then it stops` : r
 }
 
-function parseSched(raw?: string | null): Sched {
+function parseSched(raw?: string | null): Sched | null {
   const s = String(raw ?? '').trim()
   const hm = (m: string, h: string) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
   let m = s.match(/^(\d{1,2}) (\d{1,2}) \* \* \*$/)
@@ -88,7 +88,7 @@ function parseSched(raw?: string | null): Sched {
   if (m) return { ...DEFAULT_SCHED, mode: 'hours', n: +m[1] }
   m = s.match(/^\*\/(\d+) \* \* \* \*$/)
   if (m) return { ...DEFAULT_SCHED, mode: 'minutes', n: +m[1] }
-  return DEFAULT_SCHED
+  return null
 }
 
 function toCron(s: Sched): string {
@@ -217,7 +217,8 @@ function JobEditor({
   onCancel: () => void
 }) {
   const [name, setName] = useState(job?.name ?? '')
-  const [sched, setSched] = useState<Sched>(parseSched(job?.schedule))
+  const [sched, setSched] = useState<Sched | null>(() => (job ? parseSched(job.schedule) : DEFAULT_SCHED))
+  const [scheduleEdited, setScheduleEdited] = useState(false)
   const [prompt, setPrompt] = useState(job?.prompt ?? job?.prompt_preview ?? '')
   const [deliver, setDeliver] = useState(job?.deliver ?? '')
   const [busy, setBusy] = useState(false)
@@ -235,8 +236,7 @@ function JobEditor({
           job_id: job.job_id
         }
         if (name.trim() !== (job.name ?? '')) body.name = name.trim()
-        const cron = toCron(sched)
-        if (cron !== (job.schedule ?? '')) body.schedule = cron
+        if (scheduleEdited && sched && toCron(sched) !== job.schedule) body.schedule = toCron(sched)
         if (prompt !== (job.prompt ?? job.prompt_preview ?? '')) body.prompt = prompt
         if (deliver !== (job.deliver ?? '')) body.deliver = deliver
         await post('/api/cron', body)
@@ -244,7 +244,7 @@ function JobEditor({
         await post('/api/cron', {
           action: 'create',
           name: name.trim(),
-          schedule: toCron(sched),
+          schedule: toCron(sched ?? DEFAULT_SCHED),
           prompt,
           ...(deliver ? { deliver } : {})
         })
@@ -271,7 +271,29 @@ function JobEditor({
           />
         </Field>
 
-        <SchedulePicker value={sched} onChange={setSched} />
+        {sched ? (
+          <SchedulePicker
+            value={sched}
+            onChange={(next) => {
+              setSched(next)
+              setScheduleEdited(true)
+            }}
+          />
+        ) : (
+          <Field label="Current schedule">
+            <code>{job?.schedule}</code>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setSched(DEFAULT_SCHED)
+                setScheduleEdited(true)
+              }}
+            >
+              Replace schedule
+            </Button>
+          </Field>
+        )}
 
         <div>
           <Field label="what she does when it fires">

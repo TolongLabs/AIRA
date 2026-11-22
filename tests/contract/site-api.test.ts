@@ -372,6 +372,8 @@ describe('site API read routes', () => {
     const body = (await res.json()) as { chats: { chatId: string; label: string }[] }
     const byId = new Map(body.chats.map((c) => [c.chatId, c.label]))
 
+    expect(body.chats.find((c) => c.chatId === groupFromDir.chatId)).toMatchObject({ storedLabel: '' })
+    expect(body.chats.find((c) => c.chatId === groupExplicit.chatId)).toMatchObject({ storedLabel: 'Pinned Group' })
     expect(byId.get(groupFromDir.chatId)).toBe('Weekend Crew')
     expect(byId.get(groupExplicit.chatId)).toBe('Pinned Group')
     expect(byId.get(groupBlankDir.chatId)).toBe('')
@@ -683,6 +685,10 @@ describe('site API settings write', () => {
       'invalid_setting'
     ])
     expect(await refused({ level: 'global', scope: '', key: 'language', value: 42 })).toEqual([400, 'invalid_setting'])
+    expect(await refused({ level: 'type', scope: 'channel', key: 'language', value: null })).toEqual([
+      400,
+      'invalid_setting'
+    ])
     expect(await refused({ level: 'type', scope: 'channel', key: 'language', value: 'ms' })).toEqual([
       400,
       'invalid_setting'
