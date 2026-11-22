@@ -161,12 +161,14 @@ describe('platform switches through PUT /api/settings', () => {
   })
 })
 
-function makeReadPostEnv() {
+function makeReadPostEnv(level: 'chat' | 'type' | 'global' = 'chat', platform = 'x') {
   const storage = tmpStorage()
   const chat = ensureChat(storage, { waId: 'fake-platform-read', type: 'group' })
   setChatStatus(storage, { chatId: chat.chatId, status: 'active', actor: 'test' })
   setSetting(storage, { level: 'chat', scope: chat.chatId, key: 'features.social', value: true, actor: 'test' })
-  setSetting(storage, { level: 'chat', scope: chat.chatId, key: 'social.platforms.x', value: false, actor: 'test' })
+  const scope = { global: '', type: chat.type, chat: chat.chatId }[level]
+  setSetting(storage, { level, scope, key: 'social.platforms.' + platform, value: false, actor: 'test' })
+  const readPage = vi.fn(async () => ({ title: 'Page', text: 'Page content' }))
 
   const read = vi.fn(async (url: string) => ({
     untrusted: true as const,
@@ -191,7 +193,11 @@ function makeReadPostEnv() {
   })
   registerCoreTools(
     registry,
-    { filesDir: tmpDir('aira-platform-files-'), post: { read } as unknown as PostPort },
+    {
+      filesDir: tmpDir('aira-platform-files-'),
+      post: { read } as unknown as PostPort,
+      page: { read: readPage, download: vi.fn() }
+    },
     { feedback: { formUrl: '', referenceEntryId: '', refTtlHours: 168 } }
   )
 
@@ -215,10 +221,34 @@ function makeReadPostEnv() {
     deadline: Date.now() + 10_000,
     sources
   }
-  return { storage, chat, registry, context, read, disabledUrl, validUrl }
+  return { storage, chat, registry, context, read, readPage, disabledUrl, validUrl }
 }
 
 describe('read_post with a disabled platform', () => {
+  it.each([
+    ['http://x.com/demo/status/1234567890123456789', 'global', 'x', 'X'],
+    ['https://x.com:443/demo/status/1234567890123456789', 'type', 'x', 'X'],
+    ['https://www.threads.com./share/BShare12x', 'chat', 'threads', 'Threads']
+  ] as const)('refuses seen URLs and source IDs on %s with a %s override', async (url, level, platform, name) => {
+    const { registry, context, read, readPage } = makeReadPostEnv(level, platform)
+    const ref = context.sources!.add(url, 'message')!
+    for (const tool of ['read_page', 'read_post']) {
+      for (const input of [{ url }, { source: ref.id }]) {
+        const result = await registry.call(tool, input, context, {
+          source: 'model',
+          callId: tool + ('url' in input ? '-url' : '-source')
+        })
+        expect(result).toMatchObject({
+          ok: false,
+          kind: 'refused',
+          reason: name + ' reads are switched off for this chat'
+        })
+      }
+    }
+    expect(read).not.toHaveBeenCalled()
+    expect(readPage).not.toHaveBeenCalled()
+  })
+
   it('refuses the disabled link before any network and still reads a later valid link', async () => {
     const { storage, registry, context, read, disabledUrl, validUrl } = makeReadPostEnv()
 
