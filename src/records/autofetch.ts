@@ -33,6 +33,7 @@ const REASONS = new Set([
   'cache_hit',
   'repeat',
   'platform_excluded',
+  'platform_disabled',
   'no_verified_attachment'
 ])
 const receiptLifetimeMs = 10 * 60_000
@@ -65,7 +66,7 @@ export function recordSocialLookup(
     ended: Date
     lookup?: SocialPostLookup
     trace?: SocialLookupTrace
-    skip?: 'repeat' | 'platform_excluded'
+    skip?: 'repeat' | 'platform_excluded' | 'platform_disabled'
     eligible?: number
     downloaded?: number
     videoDurationBand?: 'le_60' | 'le_120' | 'le_180' | 'gt_180' | 'unknown'

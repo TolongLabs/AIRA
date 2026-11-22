@@ -3,7 +3,7 @@ import type { Logger } from '../records/logger.js'
 import { mirrorVideoRangeBytes } from '../social/mirror-readers.js'
 import { type ModelPostResult, modelPostResult, toPostPortResult } from '../social/result.js'
 import type { SocialLookupObserver, SocialLookupTrace, SocialPost, SocialPostLookup } from '../social/types.js'
-import { PLATFORM_NAME } from '../social/urls.js'
+import { linkUrls, PLATFORM_NAME } from '../social/urls.js'
 import type { PagePort } from '../tools/ports.js'
 import type { ModelCallRecord } from '../turn/types.js'
 import type { MediaUnreadable } from './files.js'
@@ -27,6 +27,8 @@ export const DEFAULT_MAX_LINK_VIDEO_SECONDS = 600
 
 /** The most photos watched from one link (docs/trd/models.md#post-links). */
 export const MAX_LINK_PHOTOS = 4
+/** Most skipped links recorded per intake read, as autofetch bounds its skip rows. */
+const MAX_SKIP_RECORDS = 8
 
 export type LinkPlatform = SocialPost['platform']
 export type LinkTarget = SocialPost['target']
@@ -34,6 +36,8 @@ export type LinkTarget = SocialPost['target']
 export interface LinkAllow {
   media: boolean
   social: boolean
+  /** The chat's read switch for a platform (`social.platforms.<id>`). Absent: every platform is on. */
+  platformOn?: (platform: LinkPlatform) => boolean
 }
 
 export interface LinkPostViewer {
@@ -105,25 +109,29 @@ function isPlatformAllowed(platform: LinkPlatform, allow: LinkAllow): boolean {
   return platform === 'youtube' ? allow.media : allow.social
 }
 
+/** The first allowed link whose platform switch is on, and the disabled ones passed before it, each target once. */
+interface PickedTarget {
+  target?: LinkTarget
+  disabled: LinkTarget[]
+}
+
 function pickTarget(
   texts: readonly string[],
   findTarget: (text: string) => LinkTarget | null | undefined,
   allow: LinkAllow
-): LinkTarget | undefined {
+): PickedTarget {
+  const disabled: LinkTarget[] = []
   for (const text of texts) {
-    let cursor = 0
-    while (cursor < text.length) {
-      const candidate = cursor === 0 ? text : text.slice(cursor)
-      const target = findTarget(candidate)
-      if (!target) break
-      if (isPlatformAllowed(target.platform, allow)) return target
-      // A disabled-platform URL (e.g. YouTube when features.media is off) must not shadow a later allowed URL.
-      const urlMatch = /https?:\/\/\S+/i.exec(candidate)
-      if (!urlMatch) break
-      cursor += urlMatch.index + urlMatch[0].length
+    for (const url of linkUrls(text)) {
+      const target = findTarget(url)
+      if (!target || !isPlatformAllowed(target.platform, allow)) continue
+      if (allow.platformOn?.(target.platform) ?? true) return { target, disabled }
+      if (disabled.length < MAX_SKIP_RECORDS && !disabled.some((entry) => entry.lookupKey === target.lookupKey)) {
+        disabled.push(target)
+      }
     }
   }
-  return undefined
+  return { disabled }
 }
 
 function normalizeImageMime(contentType: string): string {
@@ -262,7 +270,12 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
 
   return {
     async read(texts, timeoutMs, allow, onMatch, observe) {
-      const target = pickTarget(texts, options.findTarget, allow)
+      const { target, disabled } = pickTarget(texts, options.findTarget, allow)
+      // A link whose platform switch is off is plain text. Its skip is recorded before the selected lookup's ordinal.
+      const skipAt = now()
+      for (const [ordinal, entry] of disabled.entries()) {
+        observe?.({ target: entry, started: skipAt, ended: skipAt, skip: 'platform_disabled', ordinal })
+      }
       if (!target) return { readings: [], unreadable: [], calls: [] }
 
       onMatch?.()
@@ -278,7 +291,7 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
         const lookup = await lookupWithTimeout(options.viewer, target, controller.signal, (value) => {
           trace = value
         })
-        observe?.({ target, started, ended: now(), lookup, trace })
+        observe?.({ target, started, ended: now(), lookup, trace, ordinal: disabled.length })
         if (lookup.status === 'none') return { readings: [], unreadable: [], calls: [] }
         if (lookup.status === 'failed') {
           options.logger?.warn('media.link_failed', { platform: lookup.platform, reason: lookup.reason })

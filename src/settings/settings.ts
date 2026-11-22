@@ -1,5 +1,11 @@
 import { isoNow, type Storage } from '../storage/database.js'
-import { definitionFor, SETTING_KEYS, type SettingDefinition } from './keys.js'
+import {
+  definitionFor,
+  type PlatformOperation,
+  platformSwitchKey,
+  SETTING_KEYS,
+  type SettingDefinition
+} from './keys.js'
 
 // Settings hierarchy and resolution (docs/trd/data.md#settings-hierarchy).
 
@@ -102,6 +108,15 @@ export function resolveSetting(
   }
 
   return defaultFor(def)
+}
+
+/** True unless the chat's switch for this platform and operation is off. A missing settings map or value counts as on. */
+export function platformSwitchOn(
+  settings: Record<string, Resolved> | undefined,
+  operation: PlatformOperation,
+  platform: string
+): boolean {
+  return settings?.[platformSwitchKey(operation, platform)]?.value !== false
 }
 
 function validateScope(level: SettingLevel, scope: string): void {

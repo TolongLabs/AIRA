@@ -62,8 +62,13 @@ export interface SocialLookupObservation {
   target: SocialPostTarget
   started: Date
   ended: Date
-  lookup: SocialPostLookup
+  /** Absent when a platform switch skipped the lookup before any reader ran. */
+  lookup?: SocialPostLookup
   trace?: SocialLookupTrace
+  /** Set when the chat's platform switch skipped the lookup. Such a lookup has no attempts. */
+  skip?: 'platform_disabled'
+  /** Unique per parent record. Skipped lookups before the selected one take the lower ordinals. Defaults to 0. */
+  ordinal?: number
 }
 
 export type SocialLookupObserver = (observation: SocialLookupObservation) => void
