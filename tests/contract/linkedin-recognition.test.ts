@@ -17,6 +17,7 @@ import { tmpDir, tmpStorage } from '../support/tmp.js'
 const pack = loadPack('characters/example', 'repository')
 
 const POST_URL = 'https://www.linkedin.com/posts/synthetic-update-activity-1234567890123456789'
+const UGC_POST_URL = 'https://www.linkedin.com/posts/example-update-ugcPost-1234567890123456789-abCd/'
 const FEED_URL = 'https://www.linkedin.com/feed/update/urn:li:activity:1234567890123456789'
 const SHORT_URL = 'https://lnkd.in/synthetic01'
 const SHORT_WWW_URL = 'https://www.lnkd.in/synthetic01'
@@ -170,7 +171,7 @@ describe('linkedin recognition', () => {
     )
   })
 
-  it.each([SHORT_WWW_URL, SHORT_POST_URL])(
+  it.each([SHORT_WWW_URL, SHORT_POST_URL, UGC_POST_URL])(
     'refuses a seen %s share by name without calling its reader',
     async (share) => {
       const storage = tmpStorage()
