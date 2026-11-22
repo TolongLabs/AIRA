@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { ModelClient } from '../models/types.js'
 import { type ReportDocument, reportDocumentSchema } from '../render/types.js'
+import { recognitionOnlyName } from '../social/urls.js'
 import { isForbiddenUrl, type PagePort, type SearchPort } from '../tools/ports.js'
 
 const MAX_QUERIES = 6
@@ -163,7 +164,7 @@ export async function runResearch(input: ResearchInput): Promise<ReportDocument>
         const results = await bounded(() => input.search.search(query, abort.signal))
         const seen = new Set<string>()
         for (const result of results.slice(0, 5)) {
-          if (isForbiddenUrl(result.url)) continue
+          if (isForbiddenUrl(result.url) || recognitionOnlyName(result.url) !== null) continue
           const url = new URL(result.url)
           url.hash = ''
           const key = url.href

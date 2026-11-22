@@ -17,7 +17,15 @@ export type ToolFailureKind = 'timeout' | 'refused' | 'invalid' | 'unavailable' 
  * its kind sentence. `schema` marks invalid arguments whose issue text the model needs.
  */
 export type FailureCode =
-  'already_read' | 'already_tried' | 'after_read' | 'read_failed' | 'schema' | 'tool_limit' | 'not_now' | 'unseen_link'
+  | 'already_read'
+  | 'already_tried'
+  | 'after_read'
+  | 'read_failed'
+  | 'schema'
+  | 'tool_limit'
+  | 'not_now'
+  | 'unseen_link'
+  | 'linkedin_recognition_only'
 
 /** What a state change was: built by code from the committed result, never from the model's words. */
 export interface ReceiptDraft {

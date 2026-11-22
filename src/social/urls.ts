@@ -344,31 +344,45 @@ function parseFor(platform: SocialPlatform, url: URL, host: string, unknown: boo
   }
 }
 
-// LinkedIn is recognised, never read. Its links are no post target, so intake, autofetch and read_post skip them.
-// Only the official HTTPS host and lnkd.in count. Profiles and articles are not posts. See
+// LinkedIn is recognised, never read. Its links name no post target for intake, autofetch, search or a read, and no
+// other platform's path rules apply on its hosts. Official hosts are linkedin.com with any subdomain, and lnkd.in
+// with or without www. Profiles, articles and URN types other than activity are not posts. See
 // docs/trd/tools.md#social-post-reader.
-const LINKEDIN_HOSTS = ['linkedin.com', 'www.linkedin.com']
-const LINKEDIN_SHORT_HOST = 'lnkd.in'
-const LINKEDIN_POST_PATH = /^\/posts\/[\w%-]+?-activity-\d+(?:-[\w-]+)?\/?$/
+const LINKEDIN_POST_PATH = /^\/posts\/(?:[\w.%-]+?-)?activity-\d+(?:-[\w-]+)?\/?$/i
 const LINKEDIN_UPDATE_PATH = /^\/feed\/update\/urn(?::|%3A)li(?::|%3A)activity(?::|%3A)\d+\/?$/i
 const LINKEDIN_SHORT_PATH = /^\/[\w-]+\/?$/
-/** Recognition-only URL shapes are kept outside the reader and fetch registry. */
-function isLinkedInLink(url: URL): boolean {
-  if (url.protocol !== 'https:' || url.username || url.password || url.port) return false
-  const host = url.hostname
-  return host === LINKEDIN_SHORT_HOST
-    ? LINKEDIN_SHORT_PATH.test(url.pathname)
-    : LINKEDIN_HOSTS.includes(host) &&
-        (LINKEDIN_POST_PATH.test(url.pathname) || LINKEDIN_UPDATE_PATH.test(url.pathname))
+
+/** A LinkedIn host: linkedin.com with any subdomain, mobile and regional included, or the lnkd.in domain. */
+function isLinkedInHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.+$/, '')
+  return hostMatches(host, 'linkedin.com') || hostMatches(host, 'lnkd.in')
+}
+
+/**
+ * A recognition-only LinkedIn link: https or http, default ports only, no credentials. Only the exact short hosts
+ * count, and a short link has one path token. Runs before any network call.
+ */
+function isLinkedInLink(value: string): boolean {
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    return false
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return false
+  // URL drops a default port, so a port left here is nonstandard. The raw check also catches dropped credentials.
+  if (url.port || url.username || url.password || /^[^:/?#]+:\/\/[^/?#]*@/.test(value.trim())) return false
+  const host = url.hostname.toLowerCase().replace(/\.+$/, '')
+  if (host === 'lnkd.in' || host === 'www.lnkd.in') return LINKEDIN_SHORT_PATH.test(url.pathname)
+  return (
+    hostMatches(host, 'linkedin.com') &&
+    (LINKEDIN_POST_PATH.test(url.pathname) || LINKEDIN_UPDATE_PATH.test(url.pathname))
+  )
 }
 
 /** Display name for a recognised post link with no approved read operation. */
 export function recognitionOnlyName(value: string): string | null {
-  try {
-    return isLinkedInLink(new URL(value)) ? 'LinkedIn' : null
-  } catch {
-    return null
-  }
+  return isLinkedInLink(value) ? 'LinkedIn' : null
 }
 
 function parseUrl(value: string, officialOnly: boolean): SocialPostTarget | null {
@@ -392,7 +406,7 @@ function parseUrl(value: string, officialOnly: boolean): SocialPostTarget | null
   }
 
   const host = url.hostname.toLowerCase()
-  if (isLinkedInLink(url)) return null
+  if (isLinkedInHost(host)) return null
   const platform = platformForHost(host)
   let parsed: SocialPostTarget | null = null
   if (platform) parsed = parseFor(platform, url, host, false)

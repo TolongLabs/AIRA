@@ -79,7 +79,14 @@ function resolveRead(
     return { ok: false, kind: 'refused', reason: 'address not seen in this turn', code: 'unseen_link' }
   }
   const name = recognitionOnlyName(seen.url)
-  if (name) return { ok: false, kind: 'refused', reason: `${name} links are recognised but never read` }
+  if (name) {
+    return {
+      ok: false,
+      kind: 'refused',
+      reason: `${name} links are recognised but never read`,
+      code: 'linkedin_recognition_only'
+    }
+  }
   return { ok: true, ...seen }
 }
 
