@@ -36,6 +36,7 @@ function stack(
   mirrors: SocialMirrorSettings,
   options: {
     wrongId?: boolean
+    missingDuration?: boolean
     foreignAsset?: boolean
     redditRefusal?: number
     redditPhoto?: 'native' | 'preview' | 'crosspost'
@@ -72,7 +73,7 @@ function stack(
           id: options.wrongId ? '999' : '1234567890',
           title: 'A short video',
           author: { unique_id: 'example' },
-          duration: 12,
+          duration: options.missingDuration ? null : 12,
           ...(options.ranges ? { wm_size: largeMp4.length } : {}),
           ...(options.cover ? { cover: options.cover } : {}),
           wmplay: options.foreignAsset ? 'https://unrelated.example/test.mp4' : (options.wmplay ?? tikTokAsset)
@@ -117,7 +118,7 @@ function stack(
                   secure_media: {
                     reddit_video: {
                       fallback_url: options.foreignAsset ? 'https://v.redd.it/other/DASH_720.mp4' : redditAsset,
-                      duration: 12
+                      duration: options.missingDuration ? null : 12
                     }
                   }
                 })
@@ -603,4 +604,28 @@ describe('approved mirror readers', () => {
       downloadTimeout.mockRestore()
     }
   })
+})
+
+it.each([
+  ['tiktok', nativeTikTok],
+  ['reddit', nativeReddit]
+] as const)(
+  'carries a verified %s video to duration probing when its mirror omits the length',
+  async (platform, url) => {
+    const target = parseOfficialSocialPostUrl(url)!
+    const { viewer } = stack({ [platform]: 'read_and_group' }, { missingDuration: true })
+    const lookup = await viewer.lookup(target)
+    expect(lookup).toMatchObject({
+      status: 'found',
+      post: { attachments: [{ kind: 'video', owner: target.lookupKey, durationSec: null }] }
+    })
+  }
+)
+it('lists extractor-dependent video delivery only with the extractor present', () => {
+  const operations = (available: boolean, id: string) =>
+    socialCapabilities(available)['features.autofetch'].find((row) => row.id === id)?.operations
+  expect(operations(false, 'bilibili')).toBeUndefined()
+  expect(operations(false, 'facebook')).toEqual(['photos'])
+  expect(operations(true, 'bilibili')).toEqual(['video'])
+  expect(operations(true, 'facebook')).toEqual(['photos', 'video'])
 })

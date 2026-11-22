@@ -513,3 +513,24 @@ describe('native video ownership', () => {
     expect(parse()?.nativeVideo).toBe(false)
   })
 })
+
+it.each(['p=0', 'p=abc', 'p=', 'p=1&p=2', 'p=2&p=2'])(
+  'keeps Bilibili policy active and refuses an ambiguous native part for %s',
+  (query) => {
+    const base = 'https://www.bilibili.com/video/BV1xx411c7mD'
+    const target = parseSocialPostUrl(base + '?' + query)
+    expect(target?.platform).toBe('bilibili')
+    expect(target?.lookupKey).not.toBe(parseSocialPostUrl(base)!.lookupKey)
+    expect(target?.lookupKey).not.toBe(parseSocialPostUrl(base + '?p=2')!.lookupKey)
+    const envelope = {
+      _type: 'video',
+      extractor_key: 'BiliBili',
+      id: 'BV1xx411c7mD',
+      webpage_url: base,
+      formats: [
+        { url: 'https://video.example/clip.mp4', ext: 'mp4', protocol: 'https', vcodec: 'avc1', acodec: 'mp4a' }
+      ]
+    }
+    expect(parseYtDlpMetadata(envelope, target!, 300).attachments ?? []).toEqual([])
+  }
+)
