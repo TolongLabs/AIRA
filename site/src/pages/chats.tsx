@@ -3,13 +3,13 @@ import { ChevronRight, X } from 'lucide-react'
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { Shell } from '@/components/shell'
 import { Badge, Button, Card, Empty, Field, Input, Picker, Section, Segmented, Spinner, Toggle } from '@/components/ui'
+import { CHAT_FEATURE_DEFINITIONS, ChatSettingsViewModel } from '@/lib/chat-view-model'
 import {
   type CoreCharacter,
   type CoreChat,
   type CoreToolCatalog,
   type CoreToolFeature,
   type FooterKindInfo,
-  type Resolved,
   type SocialCapabilityKey,
   type SourceLevel,
   core,
@@ -54,51 +54,22 @@ const SECTIONS = [
 ] as const
 type SectionKey = (typeof SECTIONS)[number]['key']
 
-const FEATURES: { key: string; label: string; hint: string }[] = [
-  { key: 'features.reminders', label: 'Reminders', hint: 'Off: /remind and set-reminder tools are not offered.' },
-  { key: 'features.search', label: 'Web search', hint: 'Off: no search or page reading.' },
-  { key: 'features.social', label: 'Social posts', hint: 'Off: links to posts are not read.' },
-  { key: 'features.photos', label: 'Photos', hint: 'Off: no photo is sent.' },
-  { key: 'features.media', label: 'Media watching', hint: 'Off: pictures, audio and video are not read.' },
-  {
-    key: 'features.think',
-    label: 'Deeper thinking',
-    hint: 'Off: /think is removed and the turn runs at normal effort.'
-  },
-  { key: 'features.feedback', label: 'Feedback', hint: 'Allow feedback reports from this chat.' },
-  { key: 'features.identify', label: 'Image identification', hint: 'Allow the identification tool in this chat.' },
-  { key: 'features.research', label: 'Research', hint: 'Allow research jobs from this chat.' },
-  { key: 'features.reports', label: 'Reports', hint: 'Off: /doc is not offered.' },
-  { key: 'features.proactive', label: 'Messages first', hint: 'Off: replies only when written to.' },
-  { key: 'features.voice', label: 'Voice notes', hint: 'Off: replies are text.' },
-  {
-    key: 'features.autofetch',
-    label: 'Post media',
-    hint: "Send a linked post's own photos or video to this chat."
-  },
-  { key: 'features.lessons', label: 'Lessons', hint: 'Off: songs, words and the library are not offered.' },
-  {
-    key: 'features.owner',
-    label: 'Owner tools',
-    hint: "Markets and Claude Code sessions. For the owner's own chats."
-  }
-]
-
 function SocialPlatforms({
   catalog,
   feature,
-  chat,
+  vm,
   disabled,
   save,
   clear
 }: {
   catalog: Load<CoreToolCatalog>
   feature: SocialCapabilityKey
-  chat: CoreChat
+  vm: ChatSettingsViewModel
   disabled: boolean
   save: (key: string, value: boolean) => void
   clear: (key: string) => void
 }) {
+  const { chat } = vm
   const platforms = catalog.data?.socialCapabilities?.[feature]
   return (
     <div className="mt-2 text-[0.8rem] text-faint">
@@ -123,7 +94,11 @@ function SocialPlatforms({
             const key = `${feature === 'features.social' ? 'social' : 'autofetch'}.platforms.${id}`
             const level = chat.settings[key]?.level ?? 'default'
             const hint = [operations.join(', '), sourceText(level, chat.type)]
-            if (id === 'youtube' && !valueOf(chat, 'features.social', false) && valueOf(chat, 'features.media', true)) {
+            if (
+              id === 'youtube' &&
+              !vm.settingValue('features.social', false) &&
+              vm.settingValue('features.media', true)
+            ) {
               hint.push('Media watching still uses this setting for YouTube links.')
             }
             return (
@@ -132,13 +107,13 @@ function SocialPlatforms({
                 className="flex flex-wrap items-center justify-between gap-2 border-b border-line-2 py-2 last:border-b-0"
               >
                 <Toggle
-                  checked={valueOf(chat, key, true)}
+                  checked={vm.settingValue(key, true)}
                   disabled={disabled}
                   onChange={(on) => save(key, on)}
                   label={name}
                   hint={hint.join(' · ')}
                 />
-                {level === 'chat' && (
+                {vm.canClearSetting(key) && (
                   <Button size="sm" variant="ghost" disabled={disabled} onClick={() => clear(key)}>
                     Use inherited
                   </Button>
@@ -205,29 +180,29 @@ function sourceText(level: SourceLevel, type: CoreChat['type']): string {
 
 /** One setting: its control, where its value comes from, and a way back to the inherited value. */
 function SettingRow({
-  chat,
+  vm,
   name,
   label,
   hint,
   children,
   onClear
 }: {
-  chat: CoreChat
+  vm: ChatSettingsViewModel
   name: string
   label: string
   hint?: string
   children: ReactNode
   onClear?: (key: string) => void
 }) {
-  const level = chat.settings[name]?.level ?? 'unset'
+  const level = vm.chat.settings[name]?.level ?? 'unset'
   return (
     <div className="flex flex-col gap-2 border-b border-line-2 py-4 last:border-b-0">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="font-mono text-[0.68rem] font-medium tracking-[0.14em] text-muted uppercase">{label}</span>
         <span className={cn('text-[0.75rem]', level === 'chat' ? 'text-accent' : 'text-faint')}>
-          {sourceText(level, chat.type)}
+          {sourceText(level, vm.chat.type)}
         </span>
-        {level === 'chat' && onClear && (
+        {vm.canClearSetting(name) && onClear && (
           <Button size="sm" variant="ghost" className="ml-auto" onClick={() => onClear(name)}>
             Use inherited
           </Button>
@@ -239,13 +214,8 @@ function SettingRow({
   )
 }
 
-function valueOf<T>(chat: CoreChat, key: string, fallback: T): T {
-  const resolved: Resolved | undefined = chat.settings[key]
-  return resolved && resolved.value !== undefined ? (resolved.value as T) : fallback
-}
-
-function QuietHours({ chat, onSave }: { chat: CoreChat; onSave: (value: unknown) => void }) {
-  const current = valueOf<{ start: string; end: string; timeZone: string } | undefined>(chat, 'quietHours', undefined)
+function QuietHours({ vm, onSave }: { vm: ChatSettingsViewModel; onSave: (value: unknown) => void }) {
+  const current = vm.settingValue<{ start: string; end: string; timeZone: string } | undefined>('quietHours', undefined)
   const [start, setStart] = useState(current?.start ?? '23:00')
   const [end, setEnd] = useState(current?.end ?? '07:00')
   const [zone, setZone] = useState(current?.timeZone ?? 'Asia/Kuala_Lumpur')
@@ -277,8 +247,8 @@ function QuietHours({ chat, onSave }: { chat: CoreChat; onSave: (value: unknown)
   )
 }
 
-function LanguageField({ chat, onSave }: { chat: CoreChat; onSave: (value: unknown) => void }) {
-  const [text, setText] = useState(valueOf(chat, 'language', 'auto'))
+function LanguageField({ vm, onSave }: { vm: ChatSettingsViewModel; onSave: (value: unknown) => void }) {
+  const [text, setText] = useState(vm.settingValue('language', 'auto'))
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Input
@@ -397,42 +367,28 @@ function matchesName(text: string, names: readonly string[]): boolean {
   })
 }
 
-function characterNames(pack: CoreCharacter | undefined): string[] {
-  if (!pack) return []
-  const seen = new Set<string>()
-  const out: string[] = []
-  for (const candidate of [pack.displayName, ...(pack.aliases ?? [])]) {
-    const key = candidate.toLowerCase()
-    if (candidate.trim() === '' || seen.has(key)) continue
-    seen.add(key)
-    out.push(candidate)
-  }
-  return out
-}
-
 function NameCallField({
-  chat,
-  pack,
-  characterId,
+  vm,
   busy,
   onSave,
   onClear
 }: {
-  chat: CoreChat
-  pack: CoreCharacter | undefined
-  characterId: string | undefined
+  vm: ChatSettingsViewModel
   busy: boolean
   onSave: (key: string, value: unknown) => Promise<boolean>
   onClear: (key: string) => Promise<boolean>
 }) {
-  const enabled = valueOf(chat, 'nameCall', false)
+  const { chat } = vm
+  const pack = vm.boundPack
+  const characterId = vm.effectiveCharacterId
+  const enabled = vm.settingValue('nameCall', false)
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [sample, setSample] = useState('')
 
   const namesEntry = chat.settings['nameCall.names']
   const namesLevel = namesEntry?.level ?? 'unset'
-  const overridden = namesLevel === 'chat'
+  const overridden = vm.canClearSetting('nameCall.names')
   const customNames =
     overridden && Array.isArray(namesEntry?.value)
       ? namesEntry.value.filter((item): item is string => typeof item === 'string')
@@ -440,7 +396,7 @@ function NameCallField({
   const inheritedNames =
     (namesLevel === 'type' || namesLevel === 'global') && Array.isArray(namesEntry?.value)
       ? namesEntry.value.filter((item): item is string => typeof item === 'string')
-      : characterNames(pack)
+      : vm.wakeNames()
   const activeNames = overridden ? customNames : inheritedNames
   const inheritedSource =
     namesLevel === 'type' || namesLevel === 'global'
@@ -622,8 +578,8 @@ function NameCallField({
   )
 }
 
-function FooterEmojiField({ chat, onSave }: { chat: CoreChat; onSave: (value: unknown) => void }) {
-  const current = valueOf<string | undefined>(chat, 'footerEmoji', undefined)
+function FooterEmojiField({ vm, onSave }: { vm: ChatSettingsViewModel; onSave: (value: unknown) => void }) {
+  const current = vm.settingValue<string | undefined>('footerEmoji', undefined)
   const [text, setText] = useState(current ?? '')
   return (
     <div className="flex flex-col gap-2">
@@ -659,24 +615,24 @@ function FooterEmojiField({ chat, onSave }: { chat: CoreChat; onSave: (value: un
 }
 
 function ChatLabelField({
-  chat,
+  vm,
   busy,
   onSave
 }: {
-  chat: CoreChat
+  vm: ChatSettingsViewModel
   busy: boolean
   onSave: (label: string) => Promise<boolean>
 }) {
-  const [draft, setDraft] = useState(chat.storedLabel)
+  const [draft, setDraft] = useState(vm.storedLabel)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    setDraft(chat.storedLabel)
+    setDraft(vm.storedLabel)
     setError(null)
-  }, [chat.storedLabel])
+  }, [vm.storedLabel])
 
   const trimmed = draft.trim()
-  const dirty = trimmed !== chat.storedLabel
+  const dirty = vm.isLabelDirty(draft)
 
   async function commit() {
     if (trimmed.length > 120) {
@@ -697,8 +653,8 @@ function ChatLabelField({
         <Input
           value={draft}
           disabled={busy}
-          placeholder={chat.label || 'Add a label'}
-          aria-label={`Label for ${chat.label || chat.waId}`}
+          placeholder={vm.labelPlaceholder}
+          aria-label={`Label for ${vm.displayLabel}`}
           aria-invalid={error ? true : undefined}
           autoComplete="off"
           spellCheck={false}
@@ -730,6 +686,7 @@ function ChatLabelField({
 function ChatRow({
   chat,
   characters,
+  charactersError,
   toolCatalog,
   onChanged,
   open,
@@ -739,18 +696,20 @@ function ChatRow({
   chat: CoreChat
   toolCatalog: Load<CoreToolCatalog>
   characters: CoreCharacter[]
+  charactersError?: string
   onChanged: () => void
   /** Kept by the page, so a chat that moves between On and Off stays open. */
   open: boolean
   onToggle: () => void
   focusRequest?: { chatId: string; tab: SectionKey; seq: number } | null
 }) {
+  const vm = useMemo(() => new ChatSettingsViewModel(chat, characters), [chat, characters])
   const toolFeatures = toolCatalog.data?.features ?? []
   const [tab, setTab] = useState<SectionKey>('character')
   const [busy, setBusy] = useState(false)
   const name = chat.label || midTrunc(chat.waId, 28)
-  const character = valueOf<string | undefined>(chat, 'character', undefined)
-  const pack = characters.find((c) => c.id === character)
+  const character = vm.effectiveCharacterId
+  const pack = vm.boundPack
 
   useEffect(() => {
     if (focusRequest && focusRequest.chatId === chat.chatId) {
@@ -780,7 +739,7 @@ function ChatRow({
 
   const facts = [
     pack?.displayName ?? (character ? `${character} (not loaded)` : 'no character'),
-    valueOf(chat, 'language', 'auto')
+    vm.settingValue('language', 'auto')
   ]
 
   return (
@@ -825,7 +784,7 @@ function ChatRow({
           <div className="border-b border-line-2 px-4 py-4">
             <Toggle
               checked={chat.status === 'active'}
-              disabled={busy || (chat.status !== 'active' && !pack)}
+              disabled={!vm.canToggleReplies(busy)}
               onChange={(on) =>
                 run(
                   () => core.setStatus(chat.chatId, on ? 'active' : 'pending'),
@@ -841,7 +800,7 @@ function ChatRow({
             />
           </div>
           <ChatLabelField
-            chat={chat}
+            vm={vm}
             busy={busy}
             onSave={(label) =>
               run(
@@ -883,7 +842,7 @@ function ChatRow({
             <div role="tabpanel" className="min-w-0 flex-1 px-4 sm:px-6">
               {tab === 'character' && (
                 <>
-                  <SettingRow chat={chat} name="character" label="Character" onClear={clear}>
+                  <SettingRow vm={vm} name="character" label="Character" onClear={clear}>
                     {characters.length ? (
                       <Picker
                         ariaLabel="character"
@@ -896,20 +855,22 @@ function ChatRow({
                         onChange={(id) => save('character', id)}
                         disabled={busy}
                       />
+                    ) : charactersError ? (
+                      <Empty>Character list unavailable: {charactersError}</Empty>
                     ) : (
                       <Empty>No character pack is loaded.</Empty>
                     )}
                   </SettingRow>
                   <SettingRow
-                    chat={chat}
+                    vm={vm}
                     name="language"
                     label="Language"
                     hint="auto answers in the language written to. Or a code such as ms, en or zh."
                     onClear={clear}
                   >
                     <LanguageField
-                      key={String(valueOf(chat, 'language', 'auto'))}
-                      chat={chat}
+                      key={String(vm.settingValue('language', 'auto'))}
+                      vm={vm}
                       onSave={(v) => save('language', v)}
                     />
                   </SettingRow>
@@ -917,63 +878,59 @@ function ChatRow({
               )}
               {tab === 'reply' && (
                 <>
-                  <SettingRow chat={chat} name="replyLength" label="Reply length" onClear={clear}>
+                  <SettingRow vm={vm} name="replyLength" label="Reply length" onClear={clear}>
                     <Segmented
                       options={['short', 'default', 'long'] as const}
-                      value={valueOf(chat, 'replyLength', 'default')}
-                      onChange={(v) => save('replyLength', v)}
+                      value={vm.settingValue('replyLength', 'default')}
+                      onChange={(v) => {
+                        if (!busy) void save('replyLength', v)
+                      }}
                       labels={{ short: 'Short', default: 'Default', long: 'Long' }}
+                      className={cn(busy && 'pointer-events-none opacity-55')}
                     />
                   </SettingRow>
-                  <SettingRow chat={chat} name="expressions" label="Expressions" onClear={clear}>
+                  <SettingRow vm={vm} name="expressions" label="Expressions" onClear={clear}>
                     <Toggle
-                      checked={valueOf(chat, 'expressions', true)}
+                      checked={vm.settingValue('expressions', true)}
                       disabled={busy}
                       onChange={(v) => save('expressions', v)}
                       label="Send a sticker with replies"
                       hint="Off: text only."
                     />
                   </SettingRow>
-                  <SettingRow chat={chat} name="features.toolFooter" label="Tool footer" onClear={clear}>
+                  <SettingRow vm={vm} name="features.toolFooter" label="Tool footer" onClear={clear}>
                     <Toggle
-                      checked={valueOf(chat, 'features.toolFooter', true)}
+                      checked={vm.settingValue('features.toolFooter', true)}
                       disabled={busy}
                       onChange={(v) => save('features.toolFooter', v)}
                       label="Say which tools a reply used, and its sources"
                       hint="A small line at the end of a reply that searched, read or saved something."
                     />
                   </SettingRow>
-                  {valueOf(chat, 'features.toolFooter', true) && (
-                    <SettingRow chat={chat} name="footerEmoji" label="Footer emoji" onClear={clear}>
-                      <FooterEmojiField chat={chat} onSave={(v) => save('footerEmoji', v)} />
+                  {vm.settingValue('features.toolFooter', true) && (
+                    <SettingRow vm={vm} name="footerEmoji" label="Footer emoji" onClear={clear}>
+                      <FooterEmojiField vm={vm} onSave={(v) => save('footerEmoji', v)} />
                     </SettingRow>
                   )}
                   {chat.type === 'group' && (
                     <>
-                      <SettingRow chat={chat} name="freeResponse" label="Free response" onClear={clear}>
+                      <SettingRow vm={vm} name="freeResponse" label="Free response" onClear={clear}>
                         <Toggle
-                          checked={valueOf(chat, 'freeResponse', false)}
+                          checked={vm.settingValue('freeResponse', false)}
                           disabled={busy}
                           onChange={(v) => save('freeResponse', v)}
                           label="Answer any message in this group"
                           hint="Off: answers a mention or a reply only."
                         />
                       </SettingRow>
-                      <SettingRow chat={chat} name="nameCall" label="Name call" onClear={clear}>
-                        <NameCallField
-                          chat={chat}
-                          pack={pack}
-                          characterId={character}
-                          busy={busy}
-                          onSave={save}
-                          onClear={clear}
-                        />
+                      <SettingRow vm={vm} name="nameCall" label="Name call" onClear={clear}>
+                        <NameCallField vm={vm} busy={busy} onSave={save} onClear={clear} />
                       </SettingRow>
                     </>
                   )}
-                  <SettingRow chat={chat} name="features.context" label="Live context" onClear={clear}>
+                  <SettingRow vm={vm} name="features.context" label="Live context" onClear={clear}>
                     <Toggle
-                      checked={valueOf(chat, 'features.context', true)}
+                      checked={vm.settingValue('features.context', true)}
                       disabled={busy}
                       onChange={(v) => save('features.context', v)}
                       label="Replay earlier messages as context"
@@ -981,19 +938,19 @@ function ChatRow({
                     />
                   </SettingRow>
                   <SettingRow
-                    chat={chat}
+                    vm={vm}
                     name="context.maxMessages"
                     label="Context size"
                     hint={
-                      valueOf(chat, 'features.context', true)
+                      vm.settingValue('features.context', true)
                         ? 'Recent chat-log messages replayed per turn (0 to 100).'
                         : 'Applies when Live context is on (0 to 100).'
                     }
                     onClear={clear}
                   >
                     <NumberSettingField
-                      key={`${chat.settings['context.maxMessages']?.level ?? 'unset'}:${valueOf(chat, 'context.maxMessages', 40)}`}
-                      value={valueOf(chat, 'context.maxMessages', 40)}
+                      key={`${chat.settings['context.maxMessages']?.level ?? 'unset'}:${vm.settingValue('context.maxMessages', 40)}`}
+                      value={vm.settingValue('context.maxMessages', 40)}
                       min={0}
                       max={100}
                       unit="messages"
@@ -1002,9 +959,9 @@ function ChatRow({
                       onSave={(v) => save('context.maxMessages', v)}
                     />
                   </SettingRow>
-                  <SettingRow chat={chat} name="features.memory" label="Memory" onClear={clear}>
+                  <SettingRow vm={vm} name="features.memory" label="Memory" onClear={clear}>
                     <Toggle
-                      checked={valueOf(chat, 'features.memory', true)}
+                      checked={vm.settingValue('features.memory', true)}
                       disabled={busy}
                       onChange={(v) => save('features.memory', v)}
                       label="Learn and recall facts in this chat"
@@ -1012,15 +969,15 @@ function ChatRow({
                     />
                   </SettingRow>
                   <SettingRow
-                    chat={chat}
+                    vm={vm}
                     name="memory.pageMessages"
                     label="Memory page"
                     hint="Messages that close a memory episode (5 to 50)."
                     onClear={clear}
                   >
                     <NumberSettingField
-                      key={`${chat.settings['memory.pageMessages']?.level ?? 'unset'}:${valueOf(chat, 'memory.pageMessages', 25)}`}
-                      value={valueOf(chat, 'memory.pageMessages', 25)}
+                      key={`${chat.settings['memory.pageMessages']?.level ?? 'unset'}:${vm.settingValue('memory.pageMessages', 25)}`}
+                      value={vm.settingValue('memory.pageMessages', 25)}
                       min={5}
                       max={50}
                       unit="messages"
@@ -1029,23 +986,23 @@ function ChatRow({
                       onSave={(v) => save('memory.pageMessages', v)}
                     />
                   </SettingRow>
-                  <SettingRow chat={chat} name="reactions" label="Reactions" onClear={clear}>
+                  <SettingRow vm={vm} name="reactions" label="Reactions" onClear={clear}>
                     <Toggle
-                      checked={valueOf(chat, 'reactions', false)}
+                      checked={vm.settingValue('reactions', false)}
                       disabled={busy}
                       onChange={(v) => save('reactions', v)}
                       label="React to members' messages with an emoji"
                     />
                   </SettingRow>
-                  {valueOf(chat, 'reactions', false) &&
+                  {vm.settingValue('reactions', false) &&
                     (() => {
-                      const chance = valueOf(chat, 'reactions.chance', 33)
+                      const chance = vm.settingValue('reactions.chance', 33)
                       const preset = REACTION_CHANCES.includes(String(chance) as ReactionChancePreset)
                         ? (String(chance) as ReactionChancePreset)
                         : null
                       return (
                         <SettingRow
-                          chat={chat}
+                          vm={vm}
                           name="reactions.chance"
                           label="Chance"
                           hint={
@@ -1071,7 +1028,7 @@ function ChatRow({
                       )
                     })()}
                   <SettingRow
-                    chat={chat}
+                    vm={vm}
                     name="commands.maxPerMessage"
                     label="Commands per message"
                     hint="How many slash commands one message may run."
@@ -1079,12 +1036,15 @@ function ChatRow({
                   >
                     <Segmented
                       options={['1', '2', '3', '4', '5'] as const}
-                      value={String(valueOf(chat, 'commands.maxPerMessage', 1)) as '1' | '2' | '3' | '4' | '5'}
-                      onChange={(v) => save('commands.maxPerMessage', Number(v))}
+                      value={String(vm.settingValue('commands.maxPerMessage', 1)) as '1' | '2' | '3' | '4' | '5'}
+                      onChange={(v) => {
+                        if (!busy) void save('commands.maxPerMessage', Number(v))
+                      }}
+                      className={cn(busy && 'pointer-events-none opacity-55')}
                     />
                   </SettingRow>
                   <SettingRow
-                    chat={chat}
+                    vm={vm}
                     name="tools.maxPerMessage"
                     label="Tools per message"
                     hint="Tool calls one reply may make"
@@ -1093,24 +1053,28 @@ function ChatRow({
                     <Segmented
                       options={['1', '2', '3', '4', '5', '6', '7', '8'] as const}
                       value={
-                        String(valueOf(chat, 'tools.maxPerMessage', 3)) as '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8'
+                        String(vm.settingValue('tools.maxPerMessage', 3)) as
+                          '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8'
                       }
-                      onChange={(v) => save('tools.maxPerMessage', Number(v))}
+                      onChange={(v) => {
+                        if (!busy) void save('tools.maxPerMessage', Number(v))
+                      }}
+                      className={cn(busy && 'pointer-events-none opacity-55')}
                     />
                   </SettingRow>
                 </>
               )}
               {tab === 'features' &&
-                FEATURES.map((f) => {
+                CHAT_FEATURE_DEFINITIONS.map((f) => {
                   const postMedia = f.key === 'features.autofetch'
                   const socialKey = postMedia || f.key === 'features.social' ? (f.key as SocialCapabilityKey) : null
                   return (
                     <Fragment key={f.key}>
-                      <SettingRow chat={chat} name={f.key} label={f.label} onClear={clear}>
+                      <SettingRow vm={vm} name={f.key} label={f.label} onClear={clear}>
                         <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1">
                           <div className="min-w-0 flex-1 basis-48">
                             <Toggle
-                              checked={valueOf(chat, f.key, false)}
+                              checked={vm.settingValue(f.key, false)}
                               disabled={busy}
                               onChange={(v) => save(f.key, v)}
                               label={f.label}
@@ -1121,7 +1085,7 @@ function ChatRow({
                                 YouTube delivery is limited to verified Shorts.
                                 {chat.status !== 'active'
                                   ? ' This chat is off.'
-                                  : valueOf(chat, 'muted', false)
+                                  : vm.settingValue('muted', false)
                                     ? ' This chat is muted.'
                                     : ''}
                               </p>
@@ -1130,8 +1094,8 @@ function ChatRow({
                               <SocialPlatforms
                                 catalog={toolCatalog}
                                 feature={socialKey}
-                                chat={chat}
-                                disabled={busy || !valueOf(chat, f.key, false)}
+                                vm={vm}
+                                disabled={busy || !vm.settingValue(f.key, false)}
                                 save={save}
                                 clear={clear}
                               />
@@ -1142,7 +1106,7 @@ function ChatRow({
                       </SettingRow>
                       {f.key === 'features.reports' && (
                         <SettingRow
-                          chat={chat}
+                          vm={vm}
                           name="report.defaultFormat"
                           label="Default document format"
                           hint="Format for /doc when a message names none."
@@ -1151,7 +1115,7 @@ function ChatRow({
                           <Segmented
                             options={['pdf', 'markdown'] as const}
                             labels={{ pdf: 'PDF', markdown: 'Markdown' }}
-                            value={valueOf<'pdf' | 'markdown'>(chat, 'report.defaultFormat', 'pdf')}
+                            value={vm.settingValue<'pdf' | 'markdown'>('report.defaultFormat', 'pdf')}
                             onChange={(v) => {
                               if (!busy) void save('report.defaultFormat', v)
                             }}
@@ -1164,7 +1128,7 @@ function ChatRow({
                 })}
               {tab === 'quiet' && (
                 <SettingRow
-                  chat={chat}
+                  vm={vm}
                   name="quietHours"
                   label="Quiet hours"
                   hint="No scheduled or first message is sent in this window. Replies still go out."
@@ -1172,31 +1136,31 @@ function ChatRow({
                 >
                   <QuietHours
                     key={JSON.stringify(chat.settings['quietHours']?.value ?? null)}
-                    chat={chat}
+                    vm={vm}
                     onSave={(v) => save('quietHours', v)}
                   />
                 </SettingRow>
               )}
               {tab === 'access' && (
                 <>
-                  <SettingRow chat={chat} name="allowedSenders" label="Who may write">
+                  <SettingRow vm={vm} name="allowedSenders" label="Who may write">
                     <p className="m-0 text-[0.95rem]">
                       {(() => {
-                        const v = valueOf<'all' | string[]>(chat, 'allowedSenders', 'all')
+                        const v = vm.settingValue<'all' | string[]>('allowedSenders', 'all')
                         return v === 'all' ? 'Everyone in this chat.' : `${v.length} listed senders.`
                       })()}
                     </p>
                   </SettingRow>
-                  <SettingRow chat={chat} name="muted" label="Muted">
+                  <SettingRow vm={vm} name="muted" label="Muted">
                     <p className="m-0 text-[0.95rem]">
-                      {valueOf<unknown>(chat, 'muted', false) === false
+                      {vm.settingValue<unknown>('muted', false) === false
                         ? 'Not muted.'
                         : 'Muted by a member with /mute.'}
                     </p>
                   </SettingRow>
-                  <SettingRow chat={chat} name="model" label="Model">
+                  <SettingRow vm={vm} name="model" label="Model">
                     <p className="m-0 text-[0.95rem]">
-                      {valueOf<unknown>(chat, 'model', 'inherit') === 'inherit'
+                      {vm.settingValue<unknown>('model', 'inherit') === 'inherit'
                         ? 'The deployment’s main model.'
                         : 'A model set for this chat.'}
                     </p>
@@ -1224,6 +1188,7 @@ function Group({
   chats: CoreChat[]
   toolCatalog: Load<CoreToolCatalog>
   characters: CoreCharacter[]
+  charactersError?: string
   onChanged: () => void
   openId: string | null
   setOpenId: (id: string | null) => void
@@ -1381,8 +1346,8 @@ function PackFooterPanel({
   }, [packIcon])
 
   const boundChats = useMemo(
-    () => chats.filter((c) => valueOf<string | undefined>(c, 'character', undefined) === pack.id),
-    [chats, pack.id]
+    () => chats.filter((c) => new ChatSettingsViewModel(c, [pack]).effectiveCharacterId === pack.id),
+    [chats, pack]
   )
 
   const overrideCount = (packIcon !== undefined ? 1 : 0) + Object.keys(pack.toolFooter?.labels ?? {}).length
@@ -1599,6 +1564,7 @@ export default function ChatsPage() {
   const shared = {
     toolCatalog: tools,
     characters,
+    charactersError: packs.error,
     onChanged: chats.reload,
     openId,
     setOpenId,

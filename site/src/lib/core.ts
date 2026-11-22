@@ -110,6 +110,7 @@ export function reasonText(error: unknown): string {
   const words: Record<string, string> = {
     invalid_setting: 'That value is not allowed for this setting.',
     unknown_character: 'That character is not loaded.',
+    missing_character: 'Choose a loaded character before turning replies on.',
     invalid_character_id: 'That character id is not valid.',
     invalid_chat_id: 'That chat id is not valid.',
     pack_read_only: 'Built-in repository packs cannot be edited here.',
@@ -118,6 +119,7 @@ export function reasonText(error: unknown): string {
     unknown_footer_kind: 'That footer kind is not known by this core.',
     invalid_body: 'The request body was not valid.',
     not_found: 'That item no longer exists.',
+    internal: 'The core hit an internal error while saving. Reload to check the current value.',
     origin_refused: 'This page is not on the core’s own address.',
     host_refused: 'Open the site by its IP address, not a name.'
   }
