@@ -66,14 +66,14 @@ bun run test
 
 ## Documentation
 
-| Document                              | Covers                                                   |
-| ------------------------------------- | -------------------------------------------------------- |
-| [Product Requirements](docs/PRD.md)   | Requirements, user workflows and non-functional targets  |
-| [Technical Requirements](docs/TRD.md) | Canonical index of contracts, decisions and cross-module |
-| [Decisions](docs/DECISIONS.md)        | Lasting architectural and product choices                |
-| [Conventions](docs/CONVENTIONS.md)    | Repository rules, code style and commit rules            |
-| [Runbook](docs/RUNBOOK.md)            | Operations skeleton pointing to TRD modules              |
-| [TRD Modules](docs/trd/system.md)     | Subsystem contracts under `docs/trd/`                    |
+| Document                                                  | Covers                                                   |
+| --------------------------------------------------------- | -------------------------------------------------------- |
+| [Product Requirements](docs/PRD.md)                       | Requirements, user workflows and non-functional targets  |
+| [Technical Requirements](docs/TRD.md)                     | Canonical index of contracts, decisions and cross-module |
+| [Architecture decision records](docs/decisions/README.md) | Lasting architectural and product choices                |
+| [Conventions](docs/CONVENTIONS.md)                        | Repository rules, code style and commit rules            |
+| [Runbook](docs/RUNBOOK.md)                                | Operations skeleton pointing to TRD modules              |
+| [TRD Modules](docs/trd/system.md)                         | Subsystem contracts under `docs/trd/`                    |
 
 ## Licence
 

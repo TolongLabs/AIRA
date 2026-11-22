@@ -269,57 +269,7 @@ and declares them in `<hostDataDir>/gateway/chats.json`, which the gateway reads
 
 ### Autofetch
 
-Exclude all YouTube URLs, including Shorts, before allocating a lookup slot. Select only typed native
-attachments owned by the resolved post, video first and photos in post order. The source response must
-prove both identity and type. Keep verified photos when a video is ineligible. Reject live streams and playlists. For a bounded video, use the native attachment's duration when
-known. Skip it before downloading if it exceeds 300 seconds. Otherwise, when the duration is missing,
-download within the input cap and probe the MP4 with ffprobe before compression or delivery.
-Duration probes share a bounded worker limit and respect caller cancellation and the local processing deadline. A duration
-of exactly 300 seconds qualifies. Record `too_long` for longer videos and `unknown_duration` when the
-probe cannot establish a finite positive duration. Preserve the duration band and all eligible sibling photos.
-The watching switch governs intake independently.
-
-An active, unmuted group or DM may opt into `features.autofetch`. It defaults off. In groups, the existing
-mention-gate drop path offers a link to the core. In DMs, the gateway offers an authorized, accepted inbound message once
-and continues its normal reply path. The same gateway delivery path sends the attachments in a separate batch
-for that message. The normal reply does not send the fetched files again. Fetching never invokes the model.
-
-| Step | Who               | What                                                                                                                                                                                                                                 |
-| ---- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1    | `brain.autofetch` | Skips the bot's own message, a chat without `autofetch: true` in `chats.json`, and text with no `http` link. Otherwise it posts `{ "chat": "<whatsapp chat id>", "text": "<message text>" }` to the core, one job per chat at a time |
-| 2    | The core          | Answers only an active group or DM with `features.autofetch` on that is not muted. It takes up to 3 supported post links from the text, skipping excluded platforms and repeated targets in the ten-minute selection window          |
-| 3    | The core          | Reads each post through the [social reader](models.md#social-post-and-reply-readers) and takes its own media: its video, then its photos, at most 10 files a post. Never its one picture: a thumbnail, link card or avatar           |
-| 4    | The core          | Writes each file under a unique, delivery-specific name in `cache/autofetch/` and returns ordered `media` and a `deliveryKey` when files are ready                                                                                   |
-| 5    | `brain.autofetch` | Claims the batch once through core, then calls `send_video` or `send_image_file` for each slot and reports adapter outcomes                                                                                                          |
-
-- **Limits.** Three links per message and ten files per post. Images up to 8 MB and MP4 up to 16 MB
-  require matching media signatures. Downloads keep HTTPS redirects on the asset origin and send no cookies.
-  Each file has up to 25 s to download within the 60 s core job deadline (including before compression), and
-  a large TikWM MP4 comes in byte ranges. The gateway waits up to 90 s for the core.
-- **Repeats.** Core reserves a keyed digest of the chat and target for ten minutes, including failed reads.
-  Resolved aliases must also win the canonical target reservation. Reservations survive restart.
-- **Records.** A recognized target can create a `job_run` even when selection skips it. Outcomes include
-  `ready`, `nothing`, `failed` and `interrupted`. A returned batch has an ordered slot list and a
-  short-lived opaque key. The gateway calls `POST /v1/aira/autofetch/claim` with the key and, after adapter
-  calls, `POST /v1/aira/autofetch/complete` with the key and an ordered boolean outcome per slot.
-  A missing completion leaves delivery unknown. Each file has one slot and one adapter outcome.
-  A completed or expired batch cannot be claimed again. Restart invalidates outstanding keys and clears leftovers.
-- **Failure is silent.** Nobody asked the bot anything, so a post that cannot be read, a file over its limit or a
-  refused download sends nothing to the chat.
-- **Mirror delivery.** A mirror's `read_and_group` grant applies equally to opted-in groups and DMs. Direct chats can
-  also fetch independently verified native attachments from platforms with direct delivery support. When configured,
-  `social.mirrors.redditGroupChatIds` limits Reddit attachment lookup to listed internal chat IDs that also pass the
-  active-chat and autofetch gates. An out-of-scope share is recorded as `platform_excluded` without contacting Reddit,
-  the mirror or the media host.
-- **Lifetime.** Files belong exclusively to one delivery. Accepted completion removes all files, including failed
-  slots. At the ten-minute key expiry the core removes outstanding files even while idle. On startup it clears
-  leftover delivery files, including the previous hash-named cache. A failed handoff also removes its files.
-  Keep bytes out of `files/`, snapshots, archives and off-host copies.
-- **Compression.** A verified MP4 over the 16 MB limit gets one attempt using the existing bounded compressor.
-  Keep the 48 MB input cap. Skip and record a failure if output exceeds the delivery limit or compression fails.
-- **Request shape.** The body is JSON of at most 64 KiB. A bad body gets 400 and a core that is not ready 503. Every
-  other answer is 200, with an empty `media` list when nothing is sent.
-- **Code lives in** `src/media/autofetch.ts`, `src/gateway/server.ts` and `deploy/gateway/brain/autofetch.py`.
+See [Media Pipelines](media-pipelines.md#autofetch).
 
 ### Gateway Helper Modules
 

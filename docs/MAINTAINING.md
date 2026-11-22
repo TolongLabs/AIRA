@@ -5,8 +5,8 @@ How to keep AIRA running, task by task. For new developers and the owner.
 - `docs/TRD.md` and its modules own every behavior, limit and default. This guide never restates them.
   Each task links the module that owns its contract.
 - `docs/RUNBOOK.md` covers host operations: install, configure, deploy, backups, cutover and rollback.
-- `docs/DECISIONS.md` records why each lasting choice was made. Check it before reversing one.
-- To change a contract, change the owning TRD module, add a `docs/DECISIONS.md` row, and change
+- The [decision records](decisions/README.md) explain each lasting choice. Check them before reversing one.
+- To change a contract, change the owning TRD module, add an indexed decision record, and change
   the code and its tests in the same pull request.
 
 ## Gateway
@@ -256,7 +256,7 @@ When a slash word or its help line is wrong.
 2. Keep names unique: the registry rejects duplicates at start-up.
 3. Update the plain-words `HELP_TEXT` entry so `/help` stays consistent.
 
-Planned rename: `make_report` becomes `/doc` (`docs/DECISIONS.md`, 2026-11-17).
+Planned rename: `make_report` becomes `/doc` ([ADR-0067](decisions/0067-replace-make-report-with-doc.md)).
 **Not built yet:** the command is still `report` (`src/tools/core/report.ts:21`).
 
 Files: `src/tools/core/report.ts`, `src/tools/registry.ts`, `src/tools/core/describe.ts`.
