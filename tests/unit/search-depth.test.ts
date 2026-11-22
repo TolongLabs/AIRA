@@ -72,6 +72,14 @@ describe('search depth', () => {
       subject: 'Drink sizes'
     })
     expect(sizes.brief.passages).toEqual([])
+    for (const snippet of [
+      'Short (8 fl. oz. / 236 ml)\nTall (12 fl. oz. / 355 ml)\nGrande (16 fl. oz. / 473 ml)',
+      'Short (8 Fl. Oz.)\nTall (12 Fl. Oz.)\nGrande (16 Fl. Oz.)'
+    ]) {
+      expect((await depth(snippet, { kind: 'list', subject: 'Drink sizes' })).brief.passages).toEqual([])
+    }
+    const tabbed = await depth('1.\tEspresso\n\n2.\tLatte\n\n3.\tMocha', { kind: 'list', subject: 'Coffee' })
+    expect(tabbed.brief.passages).toHaveLength(1)
     const prose = `- Home\n${'The park is open daily and well kept. '.repeat(20)}The Merlion has a total height of 8.6 metres.`
     const height = await depth(prose, { kind: 'other', subject: 'Merlion height' })
     expect(height.brief.passages.map((passage) => passage.text)).toEqual([

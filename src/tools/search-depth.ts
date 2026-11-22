@@ -132,7 +132,7 @@ const LIST_LINE = /^\s*(?:[-*•]|\d+[.)])\s/
  */
 function sentencesOf(paragraph: string): string[] {
   return paragraph.split('\n').flatMap((line) =>
-    LIST_LINE.test(line)
+    LIST_LINE.test(line) || SIZE_LABEL.test(line.trim().replace(/[.!?:]+$/, ''))
       ? [line]
       : line
           .replace(/([.!?]+)\s+(?=[\p{Lu}\p{Lt}\p{Lo}"“‘'([])/gu, '$1\n')
@@ -142,7 +142,7 @@ function sentencesOf(paragraph: string): string[] {
 }
 
 function candidatePassages(text: string): string[] {
-  const hasList = /(?:^|\n)\s*(?:[-*•]|\d+[.)]) /.test(text)
+  const hasList = /(?:^|\n)\s*(?:[-*•]|\d+[.)])\s/.test(text)
   const blocks = hasList ? text.split(/\n(?=#{1,2}\s)/) : text.split(/\n\s*\n/)
   return blocks.flatMap((paragraph) => {
     const units = sentencesOf(paragraph)
