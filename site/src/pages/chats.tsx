@@ -655,6 +655,75 @@ function FooterEmojiField({ chat, onSave }: { chat: CoreChat; onSave: (value: un
   )
 }
 
+function ChatLabelField({
+  chat,
+  busy,
+  onSave
+}: {
+  chat: CoreChat
+  busy: boolean
+  onSave: (label: string) => Promise<boolean>
+}) {
+  const [draft, setDraft] = useState(chat.label)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setDraft(chat.label)
+    setError(null)
+  }, [chat.label])
+
+  const trimmed = draft.trim()
+  const dirty = trimmed !== chat.label
+
+  async function commit() {
+    if (trimmed.length > 120) {
+      setError('At most 120 characters.')
+      return
+    }
+    setError(null)
+    await onSave(trimmed)
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5 border-b border-line-2 px-4 py-4">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="font-mono text-[0.68rem] font-medium tracking-[0.14em] text-muted uppercase">Label</span>
+        <span className="text-[0.75rem] text-faint">Shown on the dashboard for this chat</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          value={draft}
+          disabled={busy}
+          placeholder="Add a label"
+          aria-label={`Label for ${chat.label || chat.waId}`}
+          aria-invalid={error ? true : undefined}
+          autoComplete="off"
+          spellCheck={false}
+          className="min-w-0 flex-1 basis-52 sm:max-w-xs"
+          onChange={(e) => {
+            setDraft(e.target.value)
+            if (error) setError(null)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              if (dirty && !busy) void commit()
+            }
+          }}
+        />
+        <Button size="sm" disabled={busy || !dirty} onClick={() => void commit()}>
+          Save
+        </Button>
+      </div>
+      {error && (
+        <p role="alert" className="m-0 text-[0.8rem] text-down">
+          {error}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function ChatRow({
   chat,
   characters,
@@ -764,6 +833,16 @@ function ChatRow({
               hint="Off: messages are kept, and no reply is sent."
             />
           </div>
+          <ChatLabelField
+            chat={chat}
+            busy={busy}
+            onSave={(label) =>
+              run(
+                () => core.setLabel(chat.chatId, label),
+                label === '' ? 'Cleared label for this chat.' : 'Saved label for this chat.'
+              )
+            }
+          />
           <div className="flex flex-col sm:flex-row">
             <div
               role="tablist"

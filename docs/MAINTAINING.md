@@ -613,14 +613,12 @@ Contract: [Owner Site](trd/site.md).
 
 ### Change Site Server Settings
 
-When the token, port, address or allowed origins must change.
+When the port, address or allowed origins must change.
 
-1. Set `SITE_TOKEN` to at least 32 characters in the install's `.env`, and restart the core
-   (or deploy, which restarts it). The browser re-asks once on the next 401 and stores the new value.
-2. Set `site.port` in the host's `config.yml`; the listener uses it. Set `AIRA_SITE_BIND` and
+1. Set `site.port` in the host's `config.yml`; the listener uses it. Set `AIRA_SITE_BIND` and
    `AIRA_SITE_PORT` in the install's `.env`; that is what compose publishes. The container port
    in the mapping is fixed, so it must equal `site.port`.
-3. Add the origin to `site.allowedOrigins` in the host's `config.yml`. A write with no `Origin`
+2. Add the origin to `site.allowedOrigins` in the host's `config.yml`. A write with no `Origin`
    header is unaffected; a write from any other origin gets 403.
 
 Files: `src/app.ts`, `src/index.ts`, `src/api/writes.ts`, `src/api/server.ts`,
@@ -813,7 +811,6 @@ Every key the audits found: its kind, its default, and the TRD module that owns 
 | `APIFY_API_TOKEN` (`APIFY_API_KEY` alias)                                            | env          | unset; Apify mirrors/fallback off         | [Tools And Commands](trd/tools.md)      |
 | `PATH`                                                                               | env          | empty string when unset                   | undocumented                            |
 | `process.env.*`                                                                      | env          | under 6 chars skipped for masking         | [Records](trd/records.md)               |
-| `SITE_TOKEN`                                                                         | env          | none; API needs 32 chars                  | [Owner Site](trd/site.md)               |
 | `AIRA_SITE_BIND`                                                                     | env          | `127.0.0.1`                               | [Deployment](trd/deployment.md)         |
 | `AIRA_SITE_PORT`                                                                     | env          | 9890                                      | [Deployment](trd/deployment.md)         |
 | `AIRA_PORT`                                                                          | env          | 9881                                      | [Deployment](trd/deployment.md)         |

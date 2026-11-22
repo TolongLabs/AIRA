@@ -1,9 +1,10 @@
+import { readFileSync } from 'node:fs'
 import type { PackSet } from '../character/loader.js'
 import { readFeedback } from '../feedback/view.js'
 import { DEFAULT_TOOL_LABELS, plainLabel } from '../format/footer.js'
 import { listChatItems } from '../memory/store.js'
 import { buildReport, newestSnapshotFile } from '../records/report.js'
-import { listChats } from '../settings/chats.js'
+import { displayNameFor, listChats } from '../settings/chats.js'
 import { resolveSettings } from '../settings/settings.js'
 import { type SocialMirrorSettings, socialCapabilities } from '../social/readers.js'
 import type { Storage } from '../storage/database.js'
@@ -22,6 +23,8 @@ export interface RoleHealth {
 export interface SiteApiDeps {
   /** Runs after a write that changed something, such as rewriting the gateway's chat flags. */
   onWrite?: () => void
+  /** Optional read-only gateway channel directory JSON for fallback chat names. */
+  channelDirectoryPath?: string
   registry: ToolRegistry
   extractorAvailable?: boolean
   socialMirrors?: SocialMirrorSettings
@@ -46,6 +49,7 @@ export interface RouteResult {
   body: unknown
 }
 
+const DEFAULT_CHANNEL_DIRECTORY_PATH = '/gateway/channel_directory.json'
 const DEFAULT_TURNS_LIMIT = 50
 const MAX_TURNS_LIMIT = 200
 const REPORT_WINDOW_MS = 7 * 86_400_000
@@ -59,6 +63,30 @@ function error(status: number, code: string): RouteResult {
   return { status, body: { error: code } }
 }
 
+function readChannelDirectory(path: string): Map<string, string> {
+  if (path === '') return new Map()
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf8')) as {
+      platforms?: { whatsapp?: unknown }
+    }
+    const entries = parsed?.platforms?.whatsapp
+    if (!Array.isArray(entries)) return new Map()
+    const names = new Map<string, string>()
+    for (const entry of entries) {
+      if (typeof entry !== 'object' || entry === null) continue
+      const id = (entry as { id?: unknown }).id
+      const name = (entry as { name?: unknown }).name
+      if (typeof id === 'string' && id !== '' && typeof name === 'string') {
+        const trimmed = name.trim()
+        if (trimmed !== '') names.set(id, trimmed)
+      }
+    }
+    return names
+  } catch {
+    return new Map()
+  }
+}
+
 function handleHealth(deps: SiteApiDeps): RouteResult {
   return ok({
     status: deps.ready() ? 'ready' : 'starting',
@@ -69,10 +97,22 @@ function handleHealth(deps: SiteApiDeps): RouteResult {
 }
 
 function handleChats(deps: SiteApiDeps): RouteResult {
-  const chats = listChats(deps.storage).map((chat) => ({
-    ...chat,
-    settings: resolveSettings(deps.storage, chat)
-  }))
+  const rawChats = listChats(deps.storage)
+  const directory = rawChats.some((chat) => chat.label === '')
+    ? readChannelDirectory(deps.channelDirectoryPath ?? DEFAULT_CHANNEL_DIRECTORY_PATH)
+    : new Map<string, string>()
+  const chats = rawChats.map((chat) => {
+    const label =
+      chat.label ||
+      directory.get(chat.waId) ||
+      (chat.type === 'dm' ? displayNameFor(deps.storage, chat.waId) : undefined) ||
+      ''
+    return {
+      ...chat,
+      label,
+      settings: resolveSettings(deps.storage, chat)
+    }
+  })
   return ok({ chats })
 }
 

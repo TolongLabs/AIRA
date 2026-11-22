@@ -1,64 +1,67 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { request as httpRequest } from 'node:http'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { hostAllowed, originAllowed } from '../../src/api/writes.js'
+import { type App, createApp } from '../../src/app.js'
 import { buildFooter } from '../../src/format/footer.js'
 import { applyOperation } from '../../src/memory/store.js'
 import { ModelError } from '../../src/models/types.js'
-import { ensureChat } from '../../src/settings/chats.js'
+import { createLogger } from '../../src/records/logger.js'
+import {
+  ensureChat,
+  ensureSubject,
+  getChatByWaId,
+  linkIdentity,
+  setChatLabel,
+  setChatStatus,
+  setDisplayName
+} from '../../src/settings/chats.js'
 import { setSetting } from '../../src/settings/settings.js'
 import { type Answer, CHAT, msg, queueModel, startApp } from '../support/app.js'
-import { addPack } from '../support/core.js'
+import { addPack, testConfig } from '../support/core.js'
 import { tmpDir } from '../support/tmp.js'
 
-const TOKEN = 'test-site-token-0123456789abcdefghijklmn' // 40 invented characters
-const WRONG_TOKEN = 'xxxx-site-token-0123456789abcdefghijklmn' // same length (40)
+const createdApps: App[] = []
+afterEach(async () => {
+  for (const app of createdApps.splice(0)) await app.close()
+})
 
 async function startWithSite(answers: Answer[] = [{ text: 'Hello from test!' }]) {
   const model = queueModel(answers)
   const started = await startApp(model, {
-    env: { SITE_TOKEN: TOKEN },
     config: (config) => {
       config.social.ytDlpPath = '/missing/aira-test-extractor'
     }
   })
   const address = await started.app.listenSite(0, '127.0.0.1')
-  if (!address) throw new Error('expected site server to listen')
   const siteUrl = `http://127.0.0.1:${address.port}`
   return { ...started, model, siteUrl }
 }
 
-function apiFetch(siteUrl: string, path: string, options: { token?: string; method?: string } = {}) {
-  const headers: Record<string, string> = {}
-  if (options.token !== undefined) headers['authorization'] = `Bearer ${options.token}`
-  return fetch(`${siteUrl}${path}`, { method: options.method ?? 'GET', headers })
+function apiFetch(siteUrl: string, path: string, options: { method?: string } = {}) {
+  return fetch(`${siteUrl}${path}`, { method: options.method ?? 'GET' })
 }
 
 describe('site API read routes', () => {
-  it('returns 401 on every route when the token is missing or wrong', async () => {
+  it('serves /api/* routes without a Bearer token when SITE_TOKEN is absent', async () => {
     const { siteUrl } = await startWithSite()
-    const paths = [
-      '/api/health',
-      '/api/chats',
-      '/api/settings?level=global&scope=',
-      '/api/turns',
-      '/api/turns/turn-missing',
-      '/api/feedback/report-missing',
-      '/api/report',
-      '/api/memory?chat=c_test',
-      '/api/characters',
-      '/api/tools'
+    const expectations: [string, number][] = [
+      ['/api/health', 200],
+      ['/api/chats', 200],
+      ['/api/settings?level=global&scope=', 200],
+      ['/api/turns', 200],
+      ['/api/turns/turn-missing', 404],
+      ['/api/feedback/report-missing', 404],
+      ['/api/report', 404],
+      ['/api/memory?chat=c_test', 200],
+      ['/api/characters', 200],
+      ['/api/tools', 200]
     ]
-    for (const path of paths) {
-      const noToken = await apiFetch(siteUrl, path)
-      expect(noToken.status).toBe(401)
-      expect(await noToken.json()).toEqual({ error: 'unauthorized' })
-
-      const wrongToken = await apiFetch(siteUrl, path, { token: WRONG_TOKEN })
-      expect(wrongToken.status).toBe(401)
-      expect(await wrongToken.json()).toEqual({ error: 'unauthorized' })
+    for (const [path, status] of expectations) {
+      const res = await apiFetch(siteUrl, path)
+      expect(res.status, path).toBe(status)
     }
   })
 
@@ -78,7 +81,7 @@ describe('site API read routes', () => {
         handler: () => ({ ok: true, data: {} })
       })
     }
-    const res = await apiFetch(siteUrl, '/api/tools', { token: TOKEN })
+    const res = await apiFetch(siteUrl, '/api/tools')
     expect(res.status).toBe(200)
     const body = (await res.json()) as {
       features: { key: string; tools: { name: string; mode: string; commands: string[] }[] }[]
@@ -114,7 +117,7 @@ describe('site API read routes', () => {
 
   it('reports ready status and role configuration on /api/health', async () => {
     const { siteUrl } = await startWithSite()
-    const res = await apiFetch(siteUrl, '/api/health', { token: TOKEN })
+    const res = await apiFetch(siteUrl, '/api/health')
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({
       status: 'ready',
@@ -137,7 +140,7 @@ describe('site API read routes', () => {
     const delivery = await gateway.send(msg('m-1', 'hello there'))
     expect(delivery.content).toBe('Hello from test!')
 
-    const chatsRes = await apiFetch(siteUrl, '/api/chats', { token: TOKEN })
+    const chatsRes = await apiFetch(siteUrl, '/api/chats')
     expect(chatsRes.status).toBe(200)
     const chatsBody = (await chatsRes.json()) as {
       chats: {
@@ -157,7 +160,7 @@ describe('site API read routes', () => {
     })
     expect(chatsBody.chats[0]?.settings['character']).toEqual({ value: 'example', level: 'global' })
 
-    const turnsRes = await apiFetch(siteUrl, '/api/turns', { token: TOKEN })
+    const turnsRes = await apiFetch(siteUrl, '/api/turns')
     expect(turnsRes.status).toBe(200)
     const turnsBody = (await turnsRes.json()) as { turns: { turn_id: string; chat_id: string; state: string }[] }
     expect(turnsBody.turns).toHaveLength(1)
@@ -166,7 +169,7 @@ describe('site API read routes', () => {
     expect(turnsBody.turns[0]?.chat_id).toBe(chatId)
     expect(turnsBody.turns[0]?.state).toBe('delivered')
 
-    const turnRes = await apiFetch(siteUrl, `/api/turns/${turnId}`, { token: TOKEN })
+    const turnRes = await apiFetch(siteUrl, `/api/turns/${turnId}`)
     expect(turnRes.status).toBe(200)
     const turnBody = (await turnRes.json()) as {
       turn: { turn_id: string }
@@ -180,11 +183,11 @@ describe('site API read routes', () => {
 
     // Trigger a failed turn so failure rows are populated and checked for redaction.
     await gateway.send(msg('m-2', 'trigger failure'))
-    const turnsAfterRes = await apiFetch(siteUrl, '/api/turns', { token: TOKEN })
+    const turnsAfterRes = await apiFetch(siteUrl, '/api/turns')
     const turnsAfter = (await turnsAfterRes.json()) as { turns: { turn_id: string }[] }
     expect(turnsAfter.turns).toHaveLength(2)
     const failedTurnId = turnsAfter.turns[0]?.turn_id
-    const failedRes = await apiFetch(siteUrl, `/api/turns/${failedTurnId}`, { token: TOKEN })
+    const failedRes = await apiFetch(siteUrl, `/api/turns/${failedTurnId}`)
     expect(failedRes.status).toBe(200)
     const failedBody = (await failedRes.json()) as { failures: Record<string, unknown>[] }
     expect(failedBody.failures.length).toBeGreaterThanOrEqual(1)
@@ -207,7 +210,7 @@ describe('site API read routes', () => {
       actor: 'test'
     })
 
-    const res = await apiFetch(siteUrl, '/api/settings?level=global&scope=', { token: TOKEN })
+    const res = await apiFetch(siteUrl, '/api/settings?level=global&scope=')
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({
       level: 'global',
@@ -215,7 +218,7 @@ describe('site API read routes', () => {
       values: { character: 'example', language: 'en' }
     })
 
-    const bad = await apiFetch(siteUrl, '/api/settings?level=bogus&scope=', { token: TOKEN })
+    const bad = await apiFetch(siteUrl, '/api/settings?level=bogus&scope=')
     expect(bad.status).toBe(400)
   })
 
@@ -228,11 +231,11 @@ describe('site API read routes', () => {
       applyOperation(db, other.chatId, { op: 'add', key: 'likes.coffee', value: 'espresso', quote: 'q2' }, {})
     })
 
-    const missing = await apiFetch(siteUrl, '/api/memory', { token: TOKEN })
+    const missing = await apiFetch(siteUrl, '/api/memory')
     expect(missing.status).toBe(400)
     expect(await missing.json()).toEqual({ error: 'chat_required' })
 
-    const res = await apiFetch(siteUrl, `/api/memory?chat=${chatId}`, { token: TOKEN })
+    const res = await apiFetch(siteUrl, `/api/memory?chat=${chatId}`)
     expect(res.status).toBe(200)
     const body = (await res.json()) as { items: { key: string; value: string; status: string }[] }
     expect(body.items).toHaveLength(1)
@@ -241,12 +244,12 @@ describe('site API read routes', () => {
 
   it('returns 404 no_snapshot on /api/report when no snapshot exists', async () => {
     const { siteUrl } = await startWithSite()
-    const res = await apiFetch(siteUrl, '/api/report', { token: TOKEN })
+    const res = await apiFetch(siteUrl, '/api/report')
     expect(res.status).toBe(404)
     expect(await res.json()).toEqual({ error: 'no_snapshot' })
   })
 
-  it('shows feedback answers beside their chat turns only through the protected API', async () => {
+  it('shows feedback answers beside their chat turns without leaking ref', async () => {
     const { app, siteUrl, gateway, chatId } = await startWithSite()
     await gateway.send(msg('feedback-context', 'A message for context'))
     const turnId = app.storage.read((db) => db.prepare('SELECT turn_id FROM turn LIMIT 1').pluck().get()) as string
@@ -271,8 +274,7 @@ describe('site API read routes', () => {
           JSON.stringify({ whatWentWrong: 'Test feedback', expected: '', kind: 'Other', when: '', severity: '' })
         )
     )
-    expect((await apiFetch(siteUrl, '/api/feedback/fb_api_test')).status).toBe(401)
-    const response = await apiFetch(siteUrl, '/api/feedback/fb_api_test', { token: TOKEN })
+    const response = await apiFetch(siteUrl, '/api/feedback/fb_api_test')
     expect(response.status).toBe(200)
     const body = (await response.json()) as {
       report: { answers: { whatWentWrong: string } }
@@ -281,33 +283,192 @@ describe('site API read routes', () => {
     expect(body.report.answers.whatWentWrong).toBe('Test feedback')
     expect(body.turns[0]?.turn.turn_id).toBe(turnId)
     expect(JSON.stringify(body)).not.toContain('ABCDE23456')
-    expect((await apiFetch(siteUrl, '/api/feedback/missing', { token: TOKEN })).status).toBe(404)
+    expect((await apiFetch(siteUrl, '/api/feedback/missing')).status).toBe(404)
   })
 
   it('returns 405 on non-GET for known routes and 404 on unknown routes', async () => {
     const { siteUrl } = await startWithSite()
 
-    const postChats = await apiFetch(siteUrl, '/api/chats', { token: TOKEN, method: 'POST' })
+    const postChats = await apiFetch(siteUrl, '/api/chats', { method: 'POST' })
     expect(postChats.status).toBe(405)
     expect(await postChats.json()).toEqual({ error: 'method_not_allowed' })
 
-    const unknown = await apiFetch(siteUrl, '/api/nope', { token: TOKEN })
+    const unknown = await apiFetch(siteUrl, '/api/nope')
     expect(unknown.status).toBe(404)
     expect(await unknown.json()).toEqual({ error: 'not_found' })
   })
 
-  it('does not build or listen the site server when SITE_TOKEN is absent', async () => {
+  it('always builds and listens the site server when SITE_TOKEN is absent without site_api.no_token', async () => {
     const { app, logs } = await startApp(queueModel([{ text: 'hi' }]), { env: {} })
-    expect(app.siteServer).toBeUndefined()
-    expect(await app.listenSite(0, '127.0.0.1')).toBeUndefined()
-    expect(logs.some((entry) => entry['event'] === 'site_api.no_token')).toBe(true)
+    expect(app.siteServer).toBeDefined()
+    const address = await app.listenSite(0, '127.0.0.1')
+    expect(address.port).toBeGreaterThan(0)
+    expect(logs.some((entry) => entry['event'] === 'site_api.no_token')).toBe(false)
+    const health = await fetch(`http://127.0.0.1:${address.port}/api/health`)
+    expect(health.status).toBe(200)
+  })
+
+  it('resolves missing chat labels from channel_directory.json and identity.display_name', async () => {
+    const dataDir = tmpDir('aira-dir-data-')
+    const dirFile = join(tmpDir('aira-dir-'), 'channel_directory.json')
+    writeFileSync(
+      dirFile,
+      JSON.stringify({
+        platforms: {
+          whatsapp: [
+            { id: '0000000@g.us', name: '  Weekend Crew  ' },
+            { id: '00000000@s.whatsapp.net', name: 'Directory Alice' },
+            { id: '000000000@g.us', name: '   ' }
+          ]
+        }
+      })
+    )
+    const config = testConfig((cfg) => {
+      cfg.storage.path = dataDir
+      cfg.storage.minFreeMb = 2
+      cfg.storage.criticalFreeMb = 1
+      cfg.gateway.hostDataDir = '/host/aira-data'
+      cfg.llm.main = {
+        ...cfg.llm.main,
+        provider: 'openai-compatible',
+        model: 'main-model',
+        baseUrl: 'https://main.invalid/v1'
+      }
+      cfg.social.ytDlpPath = '/missing/aira-test-extractor'
+    })
+    const app = await createApp({
+      config,
+      env: {},
+      channelDirectoryPath: dirFile,
+      clients: { main: queueModel([{ text: 'ok' }]) },
+      logger: createLogger({ level: 'error', module: 'core', sink: () => {} })
+    })
+    createdApps.push(app)
+    const address = await app.listenSite(0, '127.0.0.1')
+    const siteUrl = `http://127.0.0.1:${address.port}`
+
+    const groupFromDir = ensureChat(app.storage, { waId: '0000000@g.us', type: 'group' })
+    const groupExplicit = ensureChat(app.storage, { waId: '0000000000@g.us', type: 'group' })
+    setChatLabel(app.storage, { chatId: groupExplicit.chatId, label: 'Pinned Group', actor: 'site' })
+    const groupBlankDir = ensureChat(app.storage, { waId: '000000000@g.us', type: 'group' })
+    ensureSubject(app.storage, '000000000@g.us')
+    setDisplayName(app.storage, '000000000@g.us', 'Should Not Apply To Group')
+
+    const dmFromDir = ensureChat(app.storage, { waId: '00000000@s.whatsapp.net', type: 'dm' })
+    ensureSubject(app.storage, '00000000@s.whatsapp.net')
+    setDisplayName(app.storage, '00000000@s.whatsapp.net', 'Identity Alice')
+
+    const dmFromIdentity = ensureChat(app.storage, { waId: '00000000000@s.whatsapp.net', type: 'dm' })
+    ensureSubject(app.storage, '00000000000@s.whatsapp.net')
+    setDisplayName(app.storage, '00000000000@s.whatsapp.net', 'Bob Identity')
+
+    const dmLinked = ensureChat(app.storage, { waId: '000000000000@s.whatsapp.net', type: 'dm' })
+    const linkedSubject = ensureSubject(app.storage, '0000000000000@lid')
+    setDisplayName(app.storage, '0000000000000@lid', 'Carol Linked')
+    linkIdentity(app.storage, { waId: '000000000000@s.whatsapp.net', subjectId: linkedSubject, actor: 'site' })
+
+    const res = await apiFetch(siteUrl, '/api/chats')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { chats: { chatId: string; label: string }[] }
+    const byId = new Map(body.chats.map((c) => [c.chatId, c.label]))
+
+    expect(byId.get(groupFromDir.chatId)).toBe('Weekend Crew')
+    expect(byId.get(groupExplicit.chatId)).toBe('Pinned Group')
+    expect(byId.get(groupBlankDir.chatId)).toBe('')
+    expect(byId.get(dmFromDir.chatId)).toBe('Directory Alice')
+    expect(byId.get(dmFromIdentity.chatId)).toBe('Bob Identity')
+    expect(byId.get(dmLinked.chatId)).toBe('Carol Linked')
+
+    // Missing or unreadable channel directory degrades cleanly without throwing.
+    writeFileSync(dirFile, '{not valid json')
+    const resFallback = await apiFetch(siteUrl, '/api/chats')
+    expect(resFallback.status).toBe(200)
+    const bodyFallback = (await resFallback.json()) as { chats: { chatId: string; label: string }[] }
+    const fallbackById = new Map(bodyFallback.chats.map((c) => [c.chatId, c.label]))
+    expect(fallbackById.get(groupFromDir.chatId)).toBe('')
+    expect(fallbackById.get(dmFromDir.chatId)).toBe('Identity Alice')
+    expect(fallbackById.get(dmFromIdentity.chatId)).toBe('Bob Identity')
+  })
+
+  it('auto-saves DM label from gateway senderName once and leaves groups and labeled DMs unchanged', async () => {
+    const { app, gateway, siteUrl } = await startWithSite([{ text: 'Hi!' }, { text: 'Hello!' }, { text: 'Hey!' }])
+    const dmWaId = '00000000000000@s.whatsapp.net'
+    const dm = ensureChat(app.storage, { waId: dmWaId, type: 'dm' })
+    setChatStatus(app.storage, { chatId: dm.chatId, status: 'active', actor: 'test' })
+
+    await gateway.send({
+      chat: { waId: dmWaId, kind: 'dm' },
+      sender: dmWaId,
+      mid: 'dm-msg-1',
+      text: 'hello',
+      name: 'Alice DM'
+    })
+    expect(getChatByWaId(app.storage, dmWaId)?.label).toBe('Alice DM')
+
+    // Subsequent turns or different senderName must not overwrite an existing DM label.
+    await gateway.send({
+      chat: { waId: dmWaId, kind: 'dm' },
+      sender: dmWaId,
+      mid: 'dm-msg-2',
+      text: 'again',
+      name: 'Other Name'
+    })
+    expect(getChatByWaId(app.storage, dmWaId)?.label).toBe('Alice DM')
+
+    // Group messages with senderName do not auto-label the group chat.
+    await gateway.send({
+      chat: { waId: CHAT, kind: 'group' },
+      sender: '000000000000000@s.whatsapp.net',
+      mid: 'grp-msg-1',
+      text: 'group hi',
+      name: 'Group Sender'
+    })
+    expect(getChatByWaId(app.storage, CHAT)?.label).toBe('')
+
+    const labelChanges = app.storage.read((db) =>
+      db
+        .prepare(
+          "SELECT target, actor, level, scope, key, old_value, new_value FROM setting_change WHERE key = 'label'"
+        )
+        .all()
+    )
+    expect(labelChanges).toEqual([
+      {
+        target: 'chat',
+        actor: 'gateway',
+        level: 'chat',
+        scope: dm.chatId,
+        key: 'label',
+        old_value: null,
+        new_value: null
+      }
+    ])
+    expect(JSON.stringify(labelChanges)).not.toContain('Alice DM')
+
+    const chatsRes = await apiFetch(siteUrl, '/api/chats')
+    const chatsBody = (await chatsRes.json()) as { chats: { chatId: string; label: string }[] }
+    expect(chatsBody.chats.find((c) => c.chatId === dm.chatId)?.label).toBe('Alice DM')
   })
 })
 
 function writeStatus(siteUrl: string, chatId: string, body: unknown, headers: Record<string, string> = {}) {
   return fetch(`${siteUrl}/api/chats/${encodeURIComponent(chatId)}/status`, {
     method: 'PUT',
-    headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json', ...headers },
+    headers: { 'content-type': 'application/json', ...headers },
+    body: typeof body === 'string' ? body : JSON.stringify(body)
+  })
+}
+
+function writeLabel(
+  siteUrl: string,
+  chatId: string,
+  body: unknown,
+  method = 'PUT',
+  headers: Record<string, string> = {}
+) {
+  return fetch(`${siteUrl}/api/chats/${chatId}/label`, {
+    method,
+    headers: { 'content-type': 'application/json', ...headers },
     body: typeof body === 'string' ? body : JSON.stringify(body)
   })
 }
@@ -325,7 +486,7 @@ describe('site API write routes', () => {
       db.prepare("SELECT actor, new_value FROM setting_change WHERE scope = ? AND key = 'status'").all(chat.chatId)
     )
     expect(rows).toEqual([{ actor: 'site', new_value: '"active"' }])
-    const listed = (await (await apiFetch(siteUrl, '/api/chats', { token: TOKEN })).json()) as {
+    const listed = (await (await apiFetch(siteUrl, '/api/chats')).json()) as {
       chats: { chatId: string; status: string }[]
     }
     expect(listed.chats.find((entry) => entry.chatId === chat.chatId)?.status).toBe('active')
@@ -333,15 +494,9 @@ describe('site API write routes', () => {
     expect(await off.json()).toMatchObject({ status: 'pending', changed: true })
   })
 
-  it('refuses a missing token, a body that is not JSON, a bad body, an unknown chat and a foreign origin', async () => {
+  it('refuses a body that is not JSON, a bad body, an unknown chat and a foreign origin without a Bearer token', async () => {
     const { app, siteUrl } = await startWithSite()
     const chat = ensureChat(app.storage, { waId: 'test-chat-w2', type: 'dm' })
-    const noToken = await fetch(`${siteUrl}/api/chats/${chat.chatId}/status`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: '{"status":"active"}'
-    })
-    expect(noToken.status).toBe(401)
     expect((await writeStatus(siteUrl, chat.chatId, 'status=active', { 'content-type': 'text/plain' })).status).toBe(
       415
     )
@@ -372,7 +527,6 @@ describe('site API write routes', () => {
           path: `/api/chats/${chat.chatId}/status`,
           headers: {
             host: `attacker.example:${port}`,
-            authorization: `Bearer ${TOKEN}`,
             'content-type': 'application/json'
           }
         },
@@ -394,12 +548,101 @@ describe('site API write routes', () => {
     expect(originAllowed('https://site.example', ['https://site.example/'])).toBe(true)
     expect(originAllowed('https://other.example', ['https://site.example'])).toBe(false)
   })
+
+  it('validates, persists and logs PUT /api/chats/:chatId/label without leaking label text', async () => {
+    const { app, siteUrl, logs } = await startWithSite()
+    const chat = ensureChat(app.storage, { waId: 'test-chat-label-1', type: 'group' })
+    const secretLabel = 'Secret Family Chat'
+
+    const saved = await writeLabel(siteUrl, encodeURIComponent(chat.chatId), { label: `  ${secretLabel}  ` })
+    expect(saved.status).toBe(200)
+    expect(await saved.json()).toEqual({ chatId: chat.chatId, label: secretLabel, changed: true })
+
+    // Repeating with the same trimmed label writes no extra row and returns changed: false.
+    const repeat = await writeLabel(siteUrl, encodeURIComponent(chat.chatId), { label: secretLabel })
+    expect(repeat.status).toBe(200)
+    expect(await repeat.json()).toEqual({ chatId: chat.chatId, label: secretLabel, changed: false })
+
+    // GET /api/chats reflects the persisted label.
+    const listed = (await (await apiFetch(siteUrl, '/api/chats')).json()) as {
+      chats: { chatId: string; label: string }[]
+    }
+    expect(listed.chats.find((entry) => entry.chatId === chat.chatId)?.label).toBe(secretLabel)
+
+    // Trimming happens before the 120-character limit; clearing to '' works.
+    const max120 = 'a'.repeat(120)
+    const maxRes = await writeLabel(siteUrl, encodeURIComponent(chat.chatId), { label: `  ${max120}  ` })
+    expect(maxRes.status).toBe(200)
+    expect(await maxRes.json()).toEqual({ chatId: chat.chatId, label: max120, changed: true })
+
+    const cleared = await writeLabel(siteUrl, encodeURIComponent(chat.chatId), { label: '   ' })
+    expect(cleared.status).toBe(200)
+    expect(await cleared.json()).toEqual({ chatId: chat.chatId, label: '', changed: true })
+
+    // setting_change logs key='label' with actor='site' and NULL values, never storing label text.
+    const changes = app.storage.read((db) =>
+      db
+        .prepare(
+          "SELECT target, actor, level, scope, key, old_value, new_value FROM setting_change WHERE scope = ? AND key = 'label' ORDER BY id"
+        )
+        .all(chat.chatId)
+    )
+    expect(changes).toHaveLength(3)
+    for (const row of changes) {
+      expect(row).toEqual({
+        target: 'chat',
+        actor: 'site',
+        level: 'chat',
+        scope: chat.chatId,
+        key: 'label',
+        old_value: null,
+        new_value: null
+      })
+    }
+    expect(JSON.stringify(changes)).not.toContain(secretLabel)
+    expect(JSON.stringify(logs)).not.toContain(secretLabel)
+
+    // Validation, missing chat, bad path escape, wrong method, and Origin/Host checks.
+    expect((await writeLabel(siteUrl, 'c_missing', { label: 'Nope' })).status).toBe(404)
+    expect((await writeLabel(siteUrl, '%ZZ', { label: 'Nope' })).status).toBe(400)
+    expect((await writeLabel(siteUrl, encodeURIComponent(chat.chatId), { label: 'Nope' }, 'POST')).status).toBe(405)
+    for (const badBody of [{}, { label: 42 }, { label: 'ok', extra: 1 }, { label: 'a'.repeat(121) }]) {
+      const bad = await writeLabel(siteUrl, encodeURIComponent(chat.chatId), badBody)
+      expect(bad.status, JSON.stringify(badBody)).toBe(400)
+      expect(await bad.json()).toEqual({ error: 'invalid_body' })
+    }
+    const foreign = await writeLabel(siteUrl, encodeURIComponent(chat.chatId), { label: 'X' }, 'PUT', {
+      origin: 'https://evil.example'
+    })
+    expect(foreign.status).toBe(403)
+    expect(await foreign.json()).toEqual({ error: 'origin_refused' })
+
+    const { port } = new URL(siteUrl)
+    const badHost = await new Promise<number>((resolve, reject) => {
+      const req = httpRequest(
+        {
+          host: '127.0.0.1',
+          port,
+          method: 'PUT',
+          path: `/api/chats/${chat.chatId}/label`,
+          headers: { host: `attacker.example:${port}`, 'content-type': 'application/json' }
+        },
+        (res) => {
+          res.resume()
+          resolve(res.statusCode ?? 0)
+        }
+      )
+      req.on('error', reject)
+      req.end('{"label":"X"}')
+    })
+    expect(badHost).toBe(403)
+  })
 })
 
 function writeSetting(siteUrl: string, body: unknown) {
   return fetch(`${siteUrl}/api/settings`, {
     method: 'PUT',
-    headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body)
   })
 }
@@ -493,13 +736,12 @@ describe('serving the site', () => {
     writeFileSync(join(siteDir, 'index.html'), '<!doctype html><title>AIRA</title>')
     writeFileSync(join(siteDir, 'assets', 'app-1a2b.js'), 'console.log(1)')
     writeFileSync(join(siteDir, 'secret.env'), 'NOT_SERVED=1')
-    const started = await startApp(queueModel([{ text: 'hi' }]), { env: { SITE_TOKEN: TOKEN }, siteDir })
+    const started = await startApp(queueModel([{ text: 'hi' }]), { siteDir })
     const address = await started.app.listenSite(0, '127.0.0.1')
-    if (!address) throw new Error('expected site server to listen')
     return { ...started, siteUrl: `http://127.0.0.1:${address.port}` }
   }
 
-  it('serves the build under /app/ without a token, and redirects / there', async () => {
+  it('serves the build under /app/, redirects / there, and keeps /api/ open without a token', async () => {
     const { siteUrl } = await startServing()
     const page = await fetch(`${siteUrl}/app/`)
     expect(page.status).toBe(200)
@@ -519,7 +761,7 @@ describe('serving the site', () => {
       expect((await fetch(`${siteUrl}${path}`)).status).toBe(404)
     }
     expect((await fetch(`${siteUrl}/app/`, { method: 'POST' })).status).toBe(405)
-    expect((await fetch(`${siteUrl}/api/health`)).status).toBe(401)
+    expect((await fetch(`${siteUrl}/api/health`)).status).toBe(200)
   })
 
   it("accepts a browser write from the API's own origin", async () => {
@@ -533,7 +775,7 @@ describe('serving the site', () => {
 function writeFooter(siteUrl: string, id: string, body: unknown, method = 'PUT') {
   return fetch(`${siteUrl}/api/characters/${id}/footer`, {
     method,
-    headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body)
   })
 }
@@ -549,7 +791,7 @@ function addCleanDataPack(dataDir: string, id: string, comment?: string): string
 describe('site API characters', () => {
   it('lists the loaded packs with their names and sources, and the packs that did not load', async () => {
     const { siteUrl } = await startWithSite()
-    const res = await apiFetch(siteUrl, '/api/characters', { token: TOKEN })
+    const res = await apiFetch(siteUrl, '/api/characters')
     expect(res.status).toBe(200)
     const body = (await res.json()) as {
       characters: { id: string; displayName: string; source: string; languages: string[]; toolFooter: unknown }[]
@@ -567,7 +809,7 @@ describe('site API characters', () => {
   it('site-api: GET /api/characters lists toolFooter per pack and footerKinds with defaults', async () => {
     const { dataDir, siteUrl } = await startWithSite()
     addCleanDataPack(dataDir, 'custom')
-    const res = await apiFetch(siteUrl, '/api/characters', { token: TOKEN })
+    const res = await apiFetch(siteUrl, '/api/characters')
     expect(res.status).toBe(200)
     const body = (await res.json()) as {
       characters: {

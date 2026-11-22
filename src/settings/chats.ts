@@ -198,6 +198,26 @@ export function displayNames(storage: Storage, subjectIds: string[]): Map<string
   return new Map(rows.map((row) => [row.subject_id, row.display_name]))
 }
 
+/** The display name of a WhatsApp id, if the core has seen one (directly or on a linked identity). */
+export function displayNameFor(storage: Storage, waId: string): string | undefined {
+  return storage.read((db) => {
+    const direct = db
+      .prepare("SELECT display_name FROM identity WHERE wa_id = ? AND display_name IS NOT NULL AND display_name <> ''")
+      .pluck()
+      .get(waId) as string | undefined
+    if (direct !== undefined) return direct
+    return db
+      .prepare(
+        `SELECT i2.display_name FROM identity i1
+         JOIN identity i2 ON i2.subject_id = i1.subject_id
+         WHERE i1.wa_id = ? AND i2.display_name IS NOT NULL AND i2.display_name <> ''
+         LIMIT 1`
+      )
+      .pluck()
+      .get(waId) as string | undefined
+  })
+}
+
 /** The display name of a WhatsApp id written as a bare number in a mention, if the core has seen it. */
 export function displayNameOfNumber(storage: Storage, number: string): string | undefined {
   return storage.read(

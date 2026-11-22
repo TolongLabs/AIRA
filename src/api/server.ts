@@ -1,4 +1,3 @@
-import { timingSafeEqual } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { extname, resolve, sep } from 'node:path'
@@ -9,7 +8,6 @@ import { dispatchWrite, hostAllowed, isWriteRoute, originAllowed } from './write
 // The core's private HTTP API for the owner site (docs/trd/site.md#serving-the-api).
 
 export interface SiteApiServerOptions extends SiteApiDeps {
-  token: string
   logger: Logger
   /** `site.allowedOrigins` */
   allowedOrigins: readonly string[]
@@ -75,26 +73,20 @@ function json(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(body))
 }
 
-function tokenMatches(authorization: string | undefined, expected: Buffer): boolean {
-  if (authorization === undefined || !authorization.startsWith('Bearer ')) return false
-  const provided = Buffer.from(authorization.slice(7), 'utf8')
-  if (provided.length !== expected.length) return false
-  return timingSafeEqual(provided, expected)
+function writeRouteName(pathname: string): string {
+  if (pathname === '/api/settings') return 'setting'
+  if (pathname.startsWith('/api/characters/')) return 'character_footer'
+  if (pathname.endsWith('/label')) return 'chat_label'
+  return 'chat_status'
 }
 
 export function createSiteApiServer(options: SiteApiServerOptions): Server {
   const log = options.logger.child({ module: 'site_api' })
-  const expectedToken = Buffer.from(options.token, 'utf8')
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const path = (request.url ?? '/').split('?')[0] ?? '/'
     if (!path.startsWith('/api/')) {
       await serveSite(path, request.method, response)
-      return
-    }
-
-    if (!tokenMatches(request.headers.authorization, expectedToken)) {
-      json(response, 401, { error: 'unauthorized' })
       return
     }
 
@@ -121,7 +113,7 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
         return
       }
       const result = dispatchWrite(options, request.method ?? '', url.pathname, read.body)
-      if (result.status === 200) log.info('site_api.write', { route: 'chat_status' })
+      if (result.status === 200) log.info('site_api.write', { route: writeRouteName(url.pathname) })
       json(response, result.status, result.body)
       return
     }
