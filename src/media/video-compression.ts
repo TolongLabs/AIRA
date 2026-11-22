@@ -56,6 +56,25 @@ async function probe(path: string, signal: AbortSignal) {
   }
 }
 
+/** Seconds the MP4 plays, or undefined when ffprobe cannot establish a finite positive length. */
+export type ProbeVideoDuration = (data: Buffer, signal: AbortSignal) => Promise<number | undefined>
+
+/** Probes an MP4 held in memory through a temporary file, which is removed before the call returns. */
+export const probeVideoDuration: ProbeVideoDuration = async (data, signal) => {
+  let root: string | undefined
+  try {
+    root = await mkdtemp(join(tmpdir(), 'aira-probe-'))
+    const input = join(root, 'input.mp4')
+    await writeFile(input, data, { signal })
+    const { duration, pixels } = await probe(input, signal)
+    return pixels > 0 && Number.isFinite(duration) && duration > 0 ? duration : undefined
+  } catch {
+    return undefined
+  } finally {
+    if (root) await rm(root, { recursive: true, force: true }).catch(() => undefined)
+  }
+}
+
 /** One bounded, local transcode at a time across intake and group autofetch. */
 export function createVideoCompressor(): CompressVideo {
   let busy = false

@@ -1,6 +1,10 @@
+import { execFile } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import type { AddressInfo } from 'node:net'
+import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
+import { promisify } from 'node:util'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildChatFlags } from '../../src/gateway/chat-flags.js'
 import { createGatewayServer } from '../../src/gateway/server.js'
@@ -283,7 +287,7 @@ describe('autofetch', () => {
     expect(env.lookups).toEqual(['x:1'])
   })
 
-  it('records duration bands on both sides of the proposed cutoff without rounding', async () => {
+  it('records duration bands on both sides of the cutoff without rounding', async () => {
     const env = setup()
     env.viewer.lookup.mockImplementation(async (target) => {
       const seconds = target.id === '1' ? 180 : target.id === '2' ? 180.1 : undefined
@@ -866,5 +870,182 @@ describe('delivery file lifetime', () => {
     const restarted = env.restart()
     expect(readdirSync(env.options.cacheDir)).toEqual([])
     expect(restarted.claim(batch.deliveryKey!)).toBe(false)
+  })
+})
+
+describe('autofetch video duration and compression', () => {
+  const runFfmpeg = promisify(execFile)
+  async function makeClip(seconds: number): Promise<Buffer> {
+    const dir = await mkdtemp(join(tmpdir(), 'aira-clip-'))
+    try {
+      const out = join(dir, 'clip.mp4')
+      await runFfmpeg('ffmpeg', [
+        '-nostdin',
+        '-v',
+        'error',
+        '-f',
+        'lavfi',
+        '-i',
+        'color=size=16x16:rate=1:duration=' + seconds,
+        '-c:v',
+        'mpeg4',
+        out
+      ])
+      return await readFile(out)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  }
+
+  function videoPost(target: SocialPostTarget, duration: number | undefined, url: string): SocialPost {
+    return parseFxTwitterResponse(
+      {
+        tweet: {
+          id: target.id,
+          media: { videos: [{ type: 'video', format: 'video/mp4', url, duration }] }
+        }
+      },
+      target,
+      1000
+    )
+  }
+
+  it('sends a 180s native video and skips 180.1s before downloading', async () => {
+    const env = setup()
+    env.viewer.lookup.mockImplementation(async (target: SocialPostTarget) => ({
+      status: 'found',
+      post: videoPost(target, target.id === '180' ? 180 : 180.1, `https://video.example/clip-${target.id}.mp4`)
+    }))
+    const media = await env.autofetch.fetch({
+      chat: env.waId,
+      text: 'https://x.com/demo/status/180 https://x.com/demo/status/181'
+    })
+
+    expect(media).toHaveLength(1)
+    expect(media[0]?.kind).toBe('video')
+    expect(env.downloads).toEqual(['https://video.example/clip-180.mp4'])
+    expect(
+      env.storage.read((db) =>
+        db.prepare('SELECT video_duration_band FROM social_lookup ORDER BY ordinal').pluck().all()
+      )
+    ).toEqual(['le_180', 'gt_180'])
+    expect(
+      env.storage.read((db) => db.prepare('SELECT reason FROM social_lookup ORDER BY ordinal').pluck().all())
+    ).toEqual([null, 'too_long'])
+  })
+
+  it('sends an unknown-duration video once a real probe succeeds', async () => {
+    const clip = await makeClip(1)
+    const env = setup()
+    env.viewer.lookup.mockImplementation(async (target: SocialPostTarget) => ({
+      status: 'found',
+      post: videoPost(target, undefined, 'https://video.example/unknown.mp4')
+    }))
+    env.download.mockImplementation(async (url: string, _signal: AbortSignal, _maxBytes: number) => {
+      env.downloads.push(url)
+      return { data: clip, contentType: 'video/mp4' }
+    })
+    const media = await env.autofetch.fetch({ chat: env.waId, text: 'https://x.com/demo/status/7' })
+
+    expect(env.downloads).toEqual(['https://video.example/unknown.mp4'])
+    expect(media).toHaveLength(1)
+    expect(media[0]?.kind).toBe('video')
+    expect(env.storage.read((db) => db.prepare('SELECT video_duration_band FROM social_lookup').pluck().all())).toEqual(
+      ['le_60']
+    )
+    expect(env.storage.read((db) => db.prepare('SELECT reason FROM social_lookup').pluck().all())).toEqual([null])
+  })
+
+  it('rejects unprobeable bytes as unknown_duration', async () => {
+    const env = setup()
+    env.viewer.lookup.mockImplementation(async (target: SocialPostTarget) => ({
+      status: 'found',
+      post: videoPost(target, undefined, 'https://video.example/broken.mp4')
+    }))
+    const media = await env.autofetch.fetch({ chat: env.waId, text: 'https://x.com/demo/status/8' })
+
+    expect(env.downloads).toEqual(['https://video.example/broken.mp4'])
+    expect(media).toEqual([])
+    expect(env.storage.read((db) => db.prepare('SELECT video_duration_band FROM social_lookup').pluck().all())).toEqual(
+      ['unknown']
+    )
+    expect(env.storage.read((db) => db.prepare('SELECT reason FROM social_lookup').pluck().all())).toEqual([
+      'unknown_duration'
+    ])
+  })
+
+  it('measures a long unknown-duration video after download and keeps its sibling photos', async () => {
+    const clip = await makeClip(185)
+    const env = setup()
+    const photoA = 'https://img.example/kept-a.jpg'
+    const photoB = 'https://img.example/kept-b.jpg'
+    const videoUrl = 'https://video.example/long-unknown.mp4'
+    env.viewer.lookup.mockImplementation(async (target: SocialPostTarget) => ({
+      status: 'found',
+      post: parseFxTwitterResponse(
+        {
+          tweet: {
+            id: target.id,
+            media: {
+              photos: [
+                { type: 'photo', url: photoA },
+                { type: 'photo', url: photoB }
+              ],
+              videos: [{ type: 'video', format: 'video/mp4', url: videoUrl }]
+            }
+          }
+        },
+        target,
+        1000
+      )
+    }))
+    env.download.mockImplementation(async (url: string, _signal: AbortSignal, _maxBytes: number) => {
+      env.downloads.push(url)
+      if (url === videoUrl) return { data: clip, contentType: 'video/mp4' }
+      return { data: testMediaBytes('jpg', url), contentType: 'image/jpeg' }
+    })
+    const media = await env.autofetch.fetch({ chat: env.waId, text: 'https://x.com/demo/status/9' })
+
+    expect(media.map((item) => item.kind)).toEqual(['image', 'image'])
+    expect(env.downloads).toContain(videoUrl)
+    expect(env.storage.read((db) => db.prepare('SELECT video_duration_band FROM social_lookup').pluck().all())).toEqual(
+      ['gt_180']
+    )
+    expect(env.storage.read((db) => db.prepare('SELECT reason FROM social_lookup').pluck().all())).toEqual(['too_long'])
+  }, 120_000)
+
+  it('attempts compression only once for an oversized video and keeps sibling photos on failure', async () => {
+    const videoUrl = 'https://video.example/oversized.mp4'
+    const photoA = 'https://img.example/kept-a.jpg'
+    const photoB = 'https://img.example/kept-b.jpg'
+    const compressVideo = vi.fn<NonNullable<AutofetchOptions['compressVideo']>>(async () => undefined)
+    const env = setup({
+      posts: {
+        'x:1': {
+          photoCount: 2,
+          photoUrls: [photoA, photoB],
+          video: { url: videoUrl, bytes: null, headers: null, hasAudio: true }
+        }
+      },
+      compressVideo
+    })
+    const head = testMediaBytes('mp4', videoUrl)
+    const big = Buffer.concat([head, Buffer.alloc(16_000_001 - head.length)])
+    env.download.mockImplementation(async (url: string, _signal: AbortSignal, _maxBytes: number) => {
+      env.downloads.push(url)
+      if (url === videoUrl) return { data: big, contentType: 'video/mp4' }
+      return { data: testMediaBytes('jpg', url), contentType: 'image/jpeg' }
+    })
+    const media = await env.autofetch.fetch({ chat: env.waId, text: 'https://x.com/example/status/1' })
+
+    expect(env.download.mock.calls[0]?.[2]).toBe(48_000_000)
+    expect(compressVideo).toHaveBeenCalledTimes(1)
+    expect(media.map((item) => item.kind)).toEqual(['image', 'image'])
+    expect(env.storage.read((db) => db.prepare('SELECT video_duration_band FROM social_lookup').pluck().all())).toEqual(
+      ['le_60']
+    )
+    expect(env.storage.read((db) => db.prepare('SELECT reason FROM social_lookup').pluck().all())).toEqual([
+      'compression_failed'
+    ])
   })
 })
