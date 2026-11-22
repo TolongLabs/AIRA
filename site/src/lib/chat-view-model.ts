@@ -89,17 +89,17 @@ export class ChatSettingsViewModel {
   }
 
   wakeNames(): string[] {
-    const candidates: string[] = []
-    const pack = this.boundPack
-    if (pack) {
-      candidates.push(pack.displayName, ...(pack.aliases ?? []))
-    }
     const custom = this.chat.settings['nameCall.names']?.value
-    if (Array.isArray(custom)) {
-      for (const item of custom) {
-        if (typeof item === 'string') candidates.push(item)
-      }
-    }
+    const customList = Array.isArray(custom)
+      ? this.dedupeNames(custom.filter((item): item is string => typeof item === 'string'))
+      : []
+    if (customList.length > 0) return customList
+    const pack = this.boundPack
+    if (!pack) return []
+    return this.dedupeNames([pack.displayName, ...(pack.aliases ?? [])])
+  }
+
+  private dedupeNames(candidates: readonly string[]): string[] {
     const seen = new Set<string>()
     const out: string[] = []
     for (const candidate of candidates) {

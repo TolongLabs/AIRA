@@ -882,11 +882,9 @@ function ChatRow({
                     <Segmented
                       options={['short', 'default', 'long'] as const}
                       value={vm.settingValue('replyLength', 'default')}
-                      onChange={(v) => {
-                        if (!busy) void save('replyLength', v)
-                      }}
+                      disabled={busy}
+                      onChange={(v) => void save('replyLength', v)}
                       labels={{ short: 'Short', default: 'Default', long: 'Long' }}
-                      className={cn(busy && 'pointer-events-none opacity-55')}
                     />
                   </SettingRow>
                   <SettingRow vm={vm} name="expressions" label="Expressions" onClear={clear}>
@@ -1016,13 +1014,9 @@ function ChatRow({
                             options={REACTION_CHANCES}
                             labels={REACTION_CHANCE_LABELS}
                             value={preset}
-                            onChange={(v) => {
-                              if (!busy) void save('reactions.chance', Number(v))
-                            }}
-                            className={cn(
-                              'max-w-full [&_button]:min-h-[44px]',
-                              busy && 'pointer-events-none opacity-55'
-                            )}
+                            disabled={busy}
+                            onChange={(v) => void save('reactions.chance', Number(v))}
+                            className="max-w-full [&_button]:min-h-[44px]"
                           />
                         </SettingRow>
                       )
@@ -1037,10 +1031,8 @@ function ChatRow({
                     <Segmented
                       options={['1', '2', '3', '4', '5'] as const}
                       value={String(vm.settingValue('commands.maxPerMessage', 1)) as '1' | '2' | '3' | '4' | '5'}
-                      onChange={(v) => {
-                        if (!busy) void save('commands.maxPerMessage', Number(v))
-                      }}
-                      className={cn(busy && 'pointer-events-none opacity-55')}
+                      disabled={busy}
+                      onChange={(v) => void save('commands.maxPerMessage', Number(v))}
                     />
                   </SettingRow>
                   <SettingRow
@@ -1056,10 +1048,8 @@ function ChatRow({
                         String(vm.settingValue('tools.maxPerMessage', 3)) as
                           '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8'
                       }
-                      onChange={(v) => {
-                        if (!busy) void save('tools.maxPerMessage', Number(v))
-                      }}
-                      className={cn(busy && 'pointer-events-none opacity-55')}
+                      disabled={busy}
+                      onChange={(v) => void save('tools.maxPerMessage', Number(v))}
                     />
                   </SettingRow>
                 </>
@@ -1116,10 +1106,8 @@ function ChatRow({
                             options={['pdf', 'markdown'] as const}
                             labels={{ pdf: 'PDF', markdown: 'Markdown' }}
                             value={vm.settingValue<'pdf' | 'markdown'>('report.defaultFormat', 'pdf')}
-                            onChange={(v) => {
-                              if (!busy) void save('report.defaultFormat', v)
-                            }}
-                            className={cn(busy && 'pointer-events-none opacity-55')}
+                            disabled={busy}
+                            onChange={(v) => void save('report.defaultFormat', v)}
                           />
                         </SettingRow>
                       )}

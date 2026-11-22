@@ -50,9 +50,9 @@ describe('ChatSettingsViewModel labels', () => {
   })
 
   it('falls back to waId for displayLabel and Add a label for placeholder when unlabeled', () => {
-    const vm = new ChatSettingsViewModel(makeChat({ waId: '60123456789@s.whatsapp.net' }), [])
+    const vm = new ChatSettingsViewModel(makeChat({ waId: '0000000000@s.whatsapp.net' }), [])
 
-    expect(vm.displayLabel).toBe('60123456789@s.whatsapp.net')
+    expect(vm.displayLabel).toBe('0000000000@s.whatsapp.net')
     expect(vm.labelPlaceholder).toBe('Add a label')
   })
 
@@ -172,18 +172,18 @@ describe('ChatSettingsViewModel wakeNames', () => {
     expect(vm.wakeNames()).toEqual(['Aira', 'Example', 'Ai'])
   })
 
-  it('combines boundPack names with chat nameCall.names without duplicates', () => {
+  it('replaces boundPack names when non-empty nameCall.names are set, matching gateway resolveNames', () => {
     const vm = new ChatSettingsViewModel(
       makeChat({
         settings: {
           character: { value: 'aira', level: 'chat' },
-          'nameCall.names': { value: ['Taiga', 'aira', ' taiga ', 'Ah Boy'], level: 'chat' }
+          'nameCall.names': { value: ['Taiga', ' taiga ', 'Ah Boy'], level: 'chat' }
         }
       }),
       [makeCharacter({ displayName: 'Aira', aliases: ['Example'] })]
     )
 
-    expect(vm.wakeNames()).toEqual(['Aira', 'Example', 'Taiga', 'Ah Boy'])
+    expect(vm.wakeNames()).toEqual(['Taiga', 'Ah Boy'])
   })
 
   it('returns empty when no boundPack or nameCall names exist', () => {
@@ -202,9 +202,7 @@ describe('CHAT_FEATURE_DEFINITIONS and reasonText', () => {
   })
 
   it('maps missing_character and internal reason codes to plain-word messages', () => {
-    expect(reasonText(new CoreError(409, 'missing_character'))).toBe(
-      'Choose a loaded character before turning replies on.'
-    )
+    expect(reasonText(new CoreError(400, 'missing_character'))).toBe('An active chat requires a loaded character.')
     expect(reasonText(new CoreError(500, 'internal'))).toBe(
       'The core hit an internal error while saving. Reload to check the current value.'
     )

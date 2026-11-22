@@ -217,7 +217,7 @@ export class CronJobPolicy {
   static isCoreManaged(job: Partial<Pick<CronJobLike, 'job_id' | 'name' | 'prompt' | 'prompt_preview'>>): boolean {
     if (job.name?.startsWith('aira:')) return true
     if (job.job_id?.startsWith('aira:')) return true
-    return (job.prompt ?? job.prompt_preview ?? '').trimStart().startsWith('[aira:')
+    return (job.prompt ?? job.prompt_preview ?? '').trimStart().startsWith('[AIRA-SCHEDULED v1')
   }
 
   static buildUpdateBody(job: CronJobLike, draft: CronJobUpdateDraft): Record<string, unknown> {
