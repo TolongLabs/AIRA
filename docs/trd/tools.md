@@ -401,6 +401,14 @@ policy and cannot select a delivery attachment. The fetch catalog lists extracto
 only when the extractor is installed. Live streams and playlists supply no delivery attachment.
 For file limits, duration and receipt handling see [Autofetch](system.md#autofetch).
 
+Douyin has recognition only on both deployments. Recognise the verified video routes
+`www.douyin.com/video/{id}` and `www.iesdouyin.com/share/video/{id}` with a 19-digit post ID.
+A single alphanumeric share code on `v.douyin.com` names the platform without resolving the destination.
+Both read tools refuse these URLs and source references before dispatch with `douyin_recognition_only`.
+Reserve both provider domains and their subdomains from unknown-host post selection. Intake, deep search
+and autofetch leave the slot available for another eligible link. Douyin has no read or fetch switch.
+Both hosts received a page without the post record, and the extractor returned no matching ID.
+
 Xiaohongshu (Rednote) has recognition only on both deployments. The China and international note pages
 redirected to login on both hosts, and the extractor returned no matching note. Recognise `/explore/{id}`
 and `/discovery/item/{id}` for 24 hexadecimal digits on the apex or www hosts of `xiaohongshu.com` and
