@@ -25,7 +25,6 @@ export type FailureCode =
   | 'tool_limit'
   | 'not_now'
   | 'unseen_link'
-  | 'rednote_recognition_only'
   | 'douyin_recognition_only'
 
 /** What a state change was: built by code from the committed result, never from the model's words. */

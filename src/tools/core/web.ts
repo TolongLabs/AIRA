@@ -80,7 +80,6 @@ const readSchema = z.strictObject({
 })
 
 const RECOGNITION_CODE: Record<NonNullable<ReturnType<typeof recognitionOnlyName>>, FailureCode> = {
-  Rednote: 'rednote_recognition_only',
   Douyin: 'douyin_recognition_only'
 }
 

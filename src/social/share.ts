@@ -3,6 +3,8 @@ import { parseOfficialSocialPostUrl, platformOwnsHost, type SocialPlatform, type
 // A share or short link names its post only through its redirects (docs/trd/tools.md#social-post-reader).
 
 export const SHARE_TIMEOUT_MS = 1500
+/** Measured 22 Nov 2026: xhslink.com/cn hop 0 took 5.2 to 6.9 s from dev2. */
+export const REDNOTE_SHARE_TIMEOUT_MS = 8000
 export const MAX_SHARE_REDIRECTS = 2
 const REDIRECTS = new Set([301, 302, 303, 307, 308])
 
@@ -65,7 +67,8 @@ export async function resolveShareLink(
   // budget, so an injected fetch that ignores its signal cannot hold the resolver. A late answer is dropped: it starts
   // no hop and populates no cache. Response bodies are released without a wait, so no cleanup extends the budget.
   const budget = new AbortController()
-  const timer = setTimeout(() => budget.abort(), SHARE_TIMEOUT_MS)
+  const timeoutMs = share.platform === 'rednote' ? REDNOTE_SHARE_TIMEOUT_MS : SHARE_TIMEOUT_MS
+  const timer = setTimeout(() => budget.abort(), timeoutMs)
   const onCallerAbort = () => budget.abort()
   signal?.addEventListener('abort', onCallerAbort, { once: true })
   let url = share.canonicalUrl
