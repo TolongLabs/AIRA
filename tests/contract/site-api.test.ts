@@ -92,6 +92,7 @@ describe('site API read routes', () => {
     expect(body.features.flatMap((feature) => feature.tools).some((tool) => tool.name === 'help')).toBe(false)
     expect(body.socialCapabilities['features.social']).toContainEqual(expect.objectContaining({ id: 'x', name: 'X' }))
     expect(body.socialCapabilities['features.autofetch']?.map(({ id }) => id).sort()).toEqual([
+      'bilibili',
       'bluesky',
       'facebook',
       'instagram',

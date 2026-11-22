@@ -443,7 +443,7 @@ describe('autofetch', () => {
   it('records the known duration band of a video its group mode does not send', async () => {
     const env = setup({
       posts: {
-        'facebook:12345678901234567': {
+        'threads:DFixtur3abc': {
           durationSec: 45,
           videoCount: 1,
           video: { url: 'https://video.example/clip.mp4', bytes: null, headers: null, hasAudio: null }
@@ -452,7 +452,7 @@ describe('autofetch', () => {
     })
     await env.autofetch.fetch({
       chat: env.waId,
-      text: 'https://www.facebook.com/example_page/videos/12345678901234567/'
+      text: 'https://www.threads.com/@example/post/DFixtur3abc'
     })
     expect(env.storage.read((db) => db.prepare('SELECT video_duration_band FROM social_lookup').pluck().all())).toEqual(
       ['le_60']
@@ -538,7 +538,7 @@ describe('autofetch', () => {
     ])
   })
 
-  it('does not send a Facebook video while its group capability is disabled', async () => {
+  it('fetches the verified Facebook video through the canonical post URL', async () => {
     const link = 'https://fbmirror.test/example_page/videos/12345678901234567'
     const failed = setup()
     expect(await failed.autofetch.fetch({ chat: failed.waId, text: link })).toEqual([])
@@ -557,8 +557,8 @@ describe('autofetch', () => {
       }
     })
     const media = await found.autofetch.fetch({ chat: found.waId, text: link })
-    expect(media).toEqual([])
-    expect(found.downloads).toEqual([])
+    expect(media.map((item) => item.kind)).toEqual(['video'])
+    expect(found.downloads).toEqual(['https://video.example/clip.mp4'])
   })
 
   it('reports a link on an unknown host by platform and hostname only, to the logger it was given', async () => {
