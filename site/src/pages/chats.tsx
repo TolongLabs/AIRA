@@ -71,7 +71,7 @@ const FEATURES: { key: string; label: string; hint: string }[] = [
   {
     key: 'features.autofetch',
     label: 'Post media',
-    hint: "Groups only. On: a post link gets the post's photos or video back, unasked."
+    hint: "Send a linked post's own photos or video to this chat."
   },
   { key: 'features.lessons', label: 'Lessons', hint: 'Off: songs, words and the library are not offered.' },
   {
@@ -1016,9 +1016,8 @@ function ChatRow({
               )}
               {tab === 'features' &&
                 FEATURES.map((f) => {
-                  const groupMedia = f.key === 'features.autofetch'
-                  const socialKey = groupMedia || f.key === 'features.social' ? (f.key as SocialCapabilityKey) : null
-                  const inapplicable = groupMedia && chat.type === 'dm'
+                  const postMedia = f.key === 'features.autofetch'
+                  const socialKey = postMedia || f.key === 'features.social' ? (f.key as SocialCapabilityKey) : null
                   return (
                     <Fragment key={f.key}>
                       <SettingRow chat={chat} name={f.key} label={f.label} onClear={clear}>
@@ -1026,22 +1025,22 @@ function ChatRow({
                           <div className="min-w-0 flex-1 basis-48">
                             <Toggle
                               checked={valueOf(chat, f.key, false)}
-                              disabled={busy || inapplicable}
+                              disabled={busy}
                               onChange={(v) => save(f.key, v)}
                               label={f.label}
-                              hint={inapplicable ? 'Available in groups only.' : f.hint}
+                              hint={f.hint}
                             />
-                            {groupMedia && !inapplicable && (
+                            {postMedia && (
                               <p className="mt-2 mb-0 text-[0.8rem] text-faint">
                                 YouTube, including Shorts, is excluded.
                                 {chat.status !== 'active'
-                                  ? ' This group is off.'
+                                  ? ' This chat is off.'
                                   : valueOf(chat, 'muted', false)
-                                    ? ' This group is muted.'
+                                    ? ' This chat is muted.'
                                     : ''}
                               </p>
                             )}
-                            {socialKey && !inapplicable && (
+                            {socialKey && (
                               <SocialPlatforms
                                 catalog={toolCatalog}
                                 feature={socialKey}
