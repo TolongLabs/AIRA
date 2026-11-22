@@ -16,22 +16,23 @@ built. [Traceability](trd/traceability.md) records what the code at this commit 
 
 ## Modules
 
-| Module                                  | Covers                                                                                                      | File                        |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------- |
-| [System Architecture](trd/system.md)    | Processes, the gateway contract, the tech stack, repository layout, one turn end to end                     | `docs/trd/system.md`        |
-| [Prompt Engine](trd/prompt-engine.md)   | Character packs, prompt blocks, mood detection, reply shape, WhatsApp formatting, stickers                  | `docs/trd/prompt-engine.md` |
-| [Tools and Commands](trd/tools.md)      | The tool registry, implicit and explicit calls, text commands, feedback sync, external tool servers         | `docs/trd/tools.md`         |
-| [Memory](trd/memory.md)                 | Typed items, the write path, the judge, scoping, recall, forgetting, migration                              | `docs/trd/memory.md`        |
-| [Models](trd/models.md)                 | The two transports, turn runners, routing, fallback, spend                                                  | `docs/trd/models.md`        |
-| [Reliability](trd/reliability.md)       | Turn admission, failure kinds, retries, deadlines, mute and quiet enforcement                               | `docs/trd/reliability.md`   |
-| [Records](trd/records.md)               | Turn records, failure records, logs, redaction, retention                                                   | `docs/trd/records.md`       |
-| [Data and Settings](trd/data.md)        | The SQLite file and tables, the settings hierarchy, configuration files                                     | `docs/trd/data.md`          |
-| [Persistence](trd/storage.md)           | Stores, write promises, restart safety, the disk guard, snapshots, the off-host copy, analytics, migrations | `docs/trd/storage.md`       |
-| [Test Harness](trd/harness.md)          | Test layers, recordings, the conversation and memory simulators, benchmarks, gates                          | `docs/trd/harness.md`       |
-| [Research and Reports](trd/research.md) | `/research` jobs, the findings mold, the PDF offer, the report renderer                                     | `docs/trd/research.md`      |
-| [Owner Site](trd/site.md)               | The revamped site, its API, the character studio, the design contract                                       | `docs/trd/site.md`          |
-| [Deployment](trd/deployment.md)         | CI, the release image, the pull deploy, the shadow period, the one-night cutover                            | `docs/trd/deployment.md`    |
-| [Traceability](trd/traceability.md)     | Status, code and test paths, and one-line gap per requirement                                               | `docs/trd/traceability.md`  |
+| Module                                    | Covers                                                                                                      | File                          |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| [System Architecture](trd/system.md)      | Processes, the gateway contract, the tech stack, repository layout, one turn end to end                     | `docs/trd/system.md`          |
+| [Prompt Engine](trd/prompt-engine.md)     | Character packs, prompt blocks, mood detection, reply shape, WhatsApp formatting, stickers                  | `docs/trd/prompt-engine.md`   |
+| [Tools and Commands](trd/tools.md)        | The tool registry, implicit and explicit calls, text commands, feedback sync, external tool servers         | `docs/trd/tools.md`           |
+| [Memory](trd/memory.md)                   | Typed items, the write path, the judge, scoping, recall, forgetting, migration                              | `docs/trd/memory.md`          |
+| [Media Pipelines](trd/media-pipelines.md) | File and link intake, post recognition and readers, watching, autofetch and delivery                        | `docs/trd/media-pipelines.md` |
+| [Models](trd/models.md)                   | The two transports, turn runners, routing, fallback, spend                                                  | `docs/trd/models.md`          |
+| [Reliability](trd/reliability.md)         | Turn admission, failure kinds, retries, deadlines, mute and quiet enforcement                               | `docs/trd/reliability.md`     |
+| [Records](trd/records.md)                 | Turn records, failure records, logs, redaction, retention                                                   | `docs/trd/records.md`         |
+| [Data and Settings](trd/data.md)          | The SQLite file and tables, the settings hierarchy, configuration files                                     | `docs/trd/data.md`            |
+| [Persistence](trd/storage.md)             | Stores, write promises, restart safety, the disk guard, snapshots, the off-host copy, analytics, migrations | `docs/trd/storage.md`         |
+| [Test Harness](trd/harness.md)            | Test layers, recordings, the conversation and memory simulators, benchmarks, gates                          | `docs/trd/harness.md`         |
+| [Research and Reports](trd/research.md)   | `/research` jobs, the findings mold, the PDF offer, the report renderer                                     | `docs/trd/research.md`        |
+| [Owner Site](trd/site.md)                 | The revamped site, its API, the character studio, the design contract                                       | `docs/trd/site.md`            |
+| [Deployment](trd/deployment.md)           | CI, the release image, the pull deploy, the shadow period, the one-night cutover                            | `docs/trd/deployment.md`      |
+| [Traceability](trd/traceability.md)       | Status, code and test paths, and one-line gap per requirement                                               | `docs/trd/traceability.md`    |
 
 ## Decisions
 
@@ -104,5 +105,5 @@ The system prompt stays under a fixed token ceiling. A test enforces it for ever
 ## Changing a Contract
 
 1. Change the module that owns the fact, and this index if a rule or decision changes.
-2. Add a line to `docs/DECISIONS.md` with the date and the reason.
+2. Add a dated [architecture decision record](decisions/README.md) and link it from the index.
 3. Change the code and its tests in the same pull request.

@@ -35,7 +35,7 @@ bun run test
 When a change alters a technical contract, follow the three steps in [`docs/TRD.md`](docs/TRD.md):
 
 1. Change the module that owns the fact, and `docs/TRD.md` if a rule or decision changes.
-2. Add a row to [`docs/DECISIONS.md`](docs/DECISIONS.md) with the date and the reason.
+2. Add a dated [architecture decision record](docs/decisions/README.md) and link it from the index.
 3. Change the code and its tests in the same pull request.
 
 ## Privacy Rules

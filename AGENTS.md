@@ -32,4 +32,4 @@ directly. Edit this file, never `CLAUDE.md` or `GEMINI.md`, which are symlinks t
 - @docs/PRD.md — the product requirements: what AIRA must do, for whom, and how far each requirement stands.
 - @docs/TRD.md — the technical design: architecture, contracts, cost control, and testing.
 - @docs/CONVENTIONS.md — the project conventions for code, naming, tooling, and layout.
-- @docs/DECISIONS.md — architecture and design decisions, with context and rationale.
+- @docs/decisions/README.md — architecture and design decisions, with context and rationale.

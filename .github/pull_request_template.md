@@ -32,5 +32,5 @@ Closes #
 
 - [ ] Tests added or updated
 - [ ] Owning `docs/trd/` module updated if a contract changed
-- [ ] `docs/DECISIONS.md` updated if a decision changed
+- [ ] Architecture decision record added under `docs/decisions/` if a decision changed
 - [ ] No private data in the diff
