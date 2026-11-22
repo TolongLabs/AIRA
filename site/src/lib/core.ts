@@ -110,7 +110,7 @@ export function reasonText(error: unknown): string {
   const words: Record<string, string> = {
     invalid_setting: 'That value is not allowed for this setting.',
     unknown_character: 'That character is not loaded.',
-    missing_character: 'Choose a loaded character before turning replies on.',
+    missing_character: 'An active chat requires a loaded character.',
     invalid_character_id: 'That character id is not valid.',
     invalid_chat_id: 'That chat id is not valid.',
     pack_read_only: 'Built-in repository packs cannot be edited here.',

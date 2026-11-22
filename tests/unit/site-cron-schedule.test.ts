@@ -137,8 +137,20 @@ describe('CronJobPolicy', () => {
   it('detects core-managed jobs from name, job_id, or prompt', () => {
     expect(CronJobPolicy.isCoreManaged({ job_id: 'j1', name: 'aira:rem_1:20261117T080000Z' })).toBe(true)
     expect(CronJobPolicy.isCoreManaged({ job_id: 'aira:abc', name: 'water plants' })).toBe(true)
-    expect(CronJobPolicy.isCoreManaged({ job_id: 'j2', name: 'check in', prompt: '  [aira:rem] hello' })).toBe(true)
-    expect(CronJobPolicy.isCoreManaged({ job_id: 'j3', name: 'check in', prompt_preview: '[aira:core] hi' })).toBe(true)
+    expect(
+      CronJobPolicy.isCoreManaged({
+        job_id: 'j2',
+        name: 'check in',
+        prompt: '  [AIRA-SCHEDULED v1 kind=reminder] hello'
+      })
+    ).toBe(true)
+    expect(
+      CronJobPolicy.isCoreManaged({
+        job_id: 'j3',
+        name: 'check in',
+        prompt_preview: '[AIRA-SCHEDULED v1 kind=reminder] hi'
+      })
+    ).toBe(true)
 
     expect(
       CronJobPolicy.isCoreManaged({

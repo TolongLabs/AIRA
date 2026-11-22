@@ -502,7 +502,8 @@ export function Segmented<T extends string>({
   value,
   onChange,
   className,
-  labels
+  labels,
+  disabled = false
 }: {
   options: readonly T[]
   value?: T | null
@@ -514,21 +515,32 @@ export function Segmented<T extends string>({
      most of the reason bare selects survived in a codebase whose own spec
      says segmented groups replace them. */
   labels?: Partial<Record<T, string>>
+  disabled?: boolean
 }) {
   return (
-    <div className={cn('inline-flex flex-wrap gap-1 rounded-card border border-line p-1', className)} role="group">
+    <div
+      className={cn(
+        'inline-flex flex-wrap gap-1 rounded-card border border-line p-1',
+        disabled && 'opacity-55',
+        className
+      )}
+      role="group"
+      aria-disabled={disabled || undefined}
+    >
       {options.map((o) => {
         const on = o === value
         return (
           <button
             key={o}
             type="button"
+            disabled={disabled}
             aria-pressed={on}
             onClick={() => {
-              if (!on) onChange(o)
+              if (!disabled && !on) onChange(o)
             }}
             className={cn(
-              'min-h-9 cursor-pointer rounded-[7px] border-0 px-3 text-[0.85rem] font-medium capitalize transition-colors',
+              'min-h-9 rounded-[7px] border-0 px-3 text-[0.85rem] font-medium capitalize transition-colors',
+              disabled ? 'cursor-not-allowed' : 'cursor-pointer',
               on ? 'bg-accent-soft text-accent' : 'bg-transparent text-muted hover:text-ink'
             )}
           >

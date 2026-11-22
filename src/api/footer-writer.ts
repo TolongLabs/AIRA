@@ -1,10 +1,11 @@
-import { readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { isMap, parseDocument } from 'yaml'
 import { z } from 'zod'
-import { loadPack } from '../character/loader.js'
+import { loadPack, PackError } from '../character/loader.js'
 import { cardSchema, footerLabelSchema, PACK_ID } from '../character/schema.js'
 import { isoNow } from '../storage/database.js'
+import { writeFileAtomic } from '../storage/files.js'
 import { footerKindsFor, type RouteResult, type SiteApiDeps } from './routes.js'
 
 const SITE_ACTOR = 'site'
@@ -53,17 +54,37 @@ export class CharacterFooterWriter {
       return { status: 200, body: { id, toolFooter: current.card.toolFooter ?? {}, changed: false } }
     }
 
-    const tmpPath = join(dir, 'card.yml.tmp')
-    const rowIds = this.commitChanges(id, cardPath, tmpPath, current.doc.toString(), current.oldBytes, changes)
-
+    const nextText = current.doc.toString()
+    const at = isoNow(this.deps.now)
+    let fileWritten = false
     try {
-      loadPack(dir, 'data')
-    } catch {
-      this.rollbackAfterReloadFailure(cardPath, tmpPath, current.oldBytes, rowIds)
-      return {
-        status: wasFaulted ? 409 : 400,
-        body: { error: wasFaulted ? 'pack_unparseable' : 'invalid_footer' }
+      this.deps.storage.tx((db) => {
+        writeFileAtomic(cardPath, nextText)
+        fileWritten = true
+        const insert = db.prepare(
+          `INSERT INTO setting_change (target, actor, level, scope, key, old_value, new_value, changed_at)
+           VALUES ('pack', ?, NULL, ?, ?, ?, ?, ?)`
+        )
+        for (const change of changes) {
+          insert.run(SITE_ACTOR, id, change.key, change.oldValue, change.newValue, at)
+        }
+        loadPack(dir, 'data')
+      })
+    } catch (error) {
+      if (fileWritten) {
+        try {
+          writeFileAtomic(cardPath, current.oldBytes)
+        } catch {
+          // Never mask the original write, commit, or reload error.
+        }
       }
+      if (error instanceof PackError) {
+        return {
+          status: wasFaulted ? 409 : 400,
+          body: { error: wasFaulted ? 'pack_unparseable' : 'invalid_footer' }
+        }
+      }
+      throw error
     }
 
     return { status: 200, body: { id, toolFooter: patched.card.toolFooter ?? {}, changed: true } }
@@ -168,66 +189,5 @@ export class CharacterFooterWriter {
       }
     }
     return changes
-  }
-
-  private commitChanges(
-    id: string,
-    cardPath: string,
-    tmpPath: string,
-    nextText: string,
-    oldBytes: Buffer,
-    changes: readonly FooterChange[]
-  ): number[] {
-    const at = isoNow(this.deps.now)
-    return this.deps.storage.tx((db) => {
-      const rowIds: number[] = []
-      this.writeCardAtomic(cardPath, tmpPath, nextText)
-      try {
-        const insert = db.prepare(
-          `INSERT INTO setting_change (target, actor, level, scope, key, old_value, new_value, changed_at)
-           VALUES ('pack', ?, NULL, ?, ?, ?, ?, ?)`
-        )
-        for (const change of changes) {
-          const info = insert.run(SITE_ACTOR, id, change.key, change.oldValue, change.newValue, at)
-          rowIds.push(Number(info.lastInsertRowid))
-        }
-        return rowIds
-      } catch (error) {
-        // File replacement is outside SQLite's rollback scope, so restore oldBytes before rethrowing.
-        this.writeCardAtomic(cardPath, tmpPath, oldBytes)
-        throw error
-      }
-    })
-  }
-
-  private rollbackAfterReloadFailure(
-    cardPath: string,
-    tmpPath: string,
-    oldBytes: Buffer,
-    rowIds: readonly number[]
-  ): void {
-    this.writeCardAtomic(cardPath, tmpPath, oldBytes)
-    this.deps.storage.tx((db) => {
-      const remove = db.prepare('DELETE FROM setting_change WHERE id = ?')
-      for (const rowId of rowIds) remove.run(rowId)
-    })
-  }
-
-  private writeCardAtomic(cardPath: string, tmpPath: string, content: string | Buffer): void {
-    try {
-      if (typeof content === 'string') {
-        writeFileSync(tmpPath, content, 'utf8')
-      } else {
-        writeFileSync(tmpPath, content)
-      }
-      renameSync(tmpPath, cardPath)
-    } catch (error) {
-      try {
-        unlinkSync(tmpPath)
-      } catch {
-        // ignore cleanup failure
-      }
-      throw error
-    }
   }
 }
