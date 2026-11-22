@@ -78,7 +78,8 @@ const readSchema = z.strictObject({
 // Each recognised-only platform's refusal code. LinkedIn keeps its established code.
 const RECOGNITION_CODE: Record<NonNullable<ReturnType<typeof recognitionOnlyName>>, FailureCode> = {
   LinkedIn: 'linkedin_recognition_only',
-  Rednote: 'rednote_recognition_only'
+  Rednote: 'rednote_recognition_only',
+  Douyin: 'douyin_recognition_only'
 }
 
 /** The address a read opens, or the refusal when the turn never saw it. Runs before any network call. */
