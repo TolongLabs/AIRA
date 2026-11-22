@@ -404,7 +404,7 @@ The reader requires a matching post identity and a supported first-party or mirr
 attachment, video needs known duration and verified post ownership. A single native Reddit photo must come
 from the image post's own original `i.redd.it` URL, with any destination override agreeing. A preview, a
 crosspost, a gallery and an external image link do not qualify under this rule. TikWM uses the
-watermarked rendition and can take up to 5,500 ms for lookup by default, within the shared lookup deadline.
+watermarked rendition and can take up to 10,000 ms for lookup by default, within the shared lookup deadline.
 Arctic Shift is an archive. Its Reddit fallback MP4 may be video-only. The Reddit reader checks the first-party feed
 before the mirror and stops further attempts on Reddit's own refusal or rate limit; the archive's 403 or 429
 does not. A feed that gives only an image post's thumbnail still lets the mirror supply the original photo. The normal watch and group byte,
@@ -453,7 +453,7 @@ by the link-intake work order):
 
 | Key                          | Default  | Effect                                                |
 | ---------------------------- | -------- | ----------------------------------------------------- |
-| `social.timeoutMs`           | 6000     | Hard deadline per lookup                              |
+| `social.timeoutMs`           | 12000    | Hard deadline per lookup                              |
 | `social.httpReaderTimeoutMs` | 2500     | Limit per HTTP reader, clipped to the lookup deadline |
 | `social.ytDlpTimeoutMs`      | 4500     | Limit per extractor, clipped to the lookup deadline   |
 | `social.cacheTtlMs`          | 900000   | Successful lookup cache lifetime; 0 disables caching  |

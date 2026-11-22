@@ -27,7 +27,8 @@ import {
 
 export const DEFAULT_HTTP_READER_TIMEOUT_MS = 2500
 export const DEFAULT_YTDLP_TIMEOUT_MS = 4500
-const TIKWM_TIMEOUT_MS = 5500
+/** Measured 22 Nov 2026: TikWM answered in 5.7 to 7.5 s from two networks. */
+const TIKWM_TIMEOUT_MS = 10_000
 
 const BLUESKY_PDS_TIMEOUT_MS = 1500
 const MAX_BLUESKY_PDS_CACHE_ENTRIES = 256
