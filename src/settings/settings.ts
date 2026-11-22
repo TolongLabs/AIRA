@@ -181,6 +181,7 @@ export function unsetSetting(
   input: { level: SettingLevel; scope: string; key: string; actor: string },
   now: Clock = wallClock
 ): boolean {
+  validateScope(input.level, input.scope)
   return storage.tx((db) => {
     const oldValue = db
       .prepare('SELECT value FROM setting WHERE level = ? AND scope = ? AND key = ?')

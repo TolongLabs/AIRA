@@ -109,6 +109,7 @@ function handleChats(deps: SiteApiDeps): RouteResult {
       ''
     return {
       ...chat,
+      storedLabel: chat.label,
       label,
       settings: resolveSettings(deps.storage, chat)
     }
@@ -283,6 +284,7 @@ function handleCharacters(deps: SiteApiDeps): RouteResult {
     .map((pack) => ({
       id: pack.id,
       displayName: pack.card.displayName,
+      ...(pack.card.aliases ? { aliases: pack.card.aliases } : {}),
       source: pack.source,
       languages: pack.card.languages,
       toolFooter: pack.card.toolFooter ?? {}
