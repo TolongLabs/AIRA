@@ -914,7 +914,9 @@ describe('media download headers', () => {
       'https://video.example/clip.mp4',
       expect.any(AbortSignal),
       DEFAULT_MEDIA_LIMITS.maxBytes,
-      { 'User-Agent': 'UA/1' }
+      { 'User-Agent': 'UA/1' },
+      undefined,
+      'x'
     )
   })
 })
