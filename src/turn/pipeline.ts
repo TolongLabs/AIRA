@@ -32,7 +32,7 @@ import {
   getChatByWaId,
   setDisplayName
 } from '../settings/chats.js'
-import { type Resolved, resolveSettings } from '../settings/settings.js'
+import { platformSwitchOn, type Resolved, resolveSettings } from '../settings/settings.js'
 import { type Db, isoNow, type Storage } from '../storage/database.js'
 import { advanceTurn, closeTurn, closeTurnAsFailed, openTurn, receiveInbound } from '../storage/turns.js'
 import type { Alerter } from './alerts.js'
@@ -489,7 +489,11 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
           const linkRead = await deps.media.readLink(
             linkTexts,
             context.deadline,
-            { media: mediaOn, social: socialOn },
+            {
+              media: mediaOn,
+              social: socialOn,
+              platformOn: (platform) => platformSwitchOn(settings, 'social', platform)
+            },
             enterMediaStage,
             (observation) => {
               try {

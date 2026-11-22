@@ -724,3 +724,26 @@ it('caches the bounded compressed MP4 and keeps gateway delivery pending', async
     outcomes: null
   })
 })
+
+it('skips a disabled platform before lookup and preserves its repeat eligibility', async () => {
+  const env = setup({
+    posts: {
+      'x:1': { photoUrls: ['https://img.example/x.jpg'] },
+      'bluesky:a:abc123': { photoUrls: ['https://img.example/b.jpg'] }
+    }
+  })
+  const settings = { level: 'chat' as const, scope: env.chat.chatId, key: 'autofetch.platforms.x', actor: 'test' }
+  setSetting(env.storage, { ...settings, value: false })
+  const xUrl = 'https://x.com/demo/status/1'
+  await env.autofetch.fetch({ chat: env.waId, text: xUrl + ' https://bsky.app/profile/a/post/abc123' })
+  expect(env.lookups).toEqual(['bluesky:a:abc123'])
+  expect(env.downloads).toEqual(['https://img.example/b.jpg'])
+  expect(
+    env.storage.read((db) =>
+      db.prepare('SELECT platform,outcome,reason,attempts FROM social_lookup ORDER BY ordinal').all()
+    )[0]
+  ).toEqual({ platform: 'x', outcome: 'skipped', reason: 'platform_disabled', attempts: '[]' })
+  setSetting(env.storage, { ...settings, value: true })
+  await env.autofetch.fetch({ chat: env.waId, text: xUrl })
+  expect(env.lookups.at(-1)).toBe('x:1')
+})

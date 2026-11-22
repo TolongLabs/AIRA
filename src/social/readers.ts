@@ -255,6 +255,15 @@ export function socialCapabilities(extractorAvailable: boolean, mirrors?: Social
   }
 }
 
+/** Platforms a chat switch can name: every read and fetch the adapters allow, with mirrors and the extractor on. */
+export function switchablePlatforms(): { read: SocialPlatform[]; fetch: SocialPlatform[] } {
+  const possible = socialCapabilities(true, { tiktok: 'read_and_group', reddit: 'read_and_group' })
+  return {
+    read: possible['features.social'].map((entry) => entry.id),
+    fetch: possible['features.autofetch'].map((entry) => entry.id)
+  }
+}
+
 /** The readers of one platform in their order, built per lookup. */
 export function readersFor(target: SocialPostTarget, env: ReaderEnv): SocialReader[] {
   const readers = adapters[target.platform].readers(target, env)

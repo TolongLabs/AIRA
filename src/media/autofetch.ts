@@ -4,11 +4,16 @@ import { recordAutofetchHandoff, recordSocialLookup } from '../records/autofetch
 import type { Logger } from '../records/logger.js'
 import { endJobRun, startJobRun } from '../records/turn-record.js'
 import { getChatByWaId } from '../settings/chats.js'
-import { resolveSettings } from '../settings/settings.js'
+import { platformSwitchOn, resolveSettings } from '../settings/settings.js'
 import { mirrorVideoRangeBytes } from '../social/mirror-readers.js'
 import { groupOperations, type SocialMirrorSettings } from '../social/readers.js'
 import type { SocialLookupTrace, SocialPost, SocialPostLookup } from '../social/types.js'
-import { findSocialPostTargets, parseOfficialSocialPostUrl, type SocialPostTarget } from '../social/urls.js'
+import {
+  findSocialPostTargets,
+  parseOfficialSocialPostUrl,
+  type SocialPlatform,
+  type SocialPostTarget
+} from '../social/urls.js'
 import type { Db, Storage } from '../storage/database.js'
 import { writeFileAtomic } from '../storage/files.js'
 import type { PagePort } from '../tools/ports.js'
@@ -182,16 +187,21 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
     ).run()
   })
 
-  /** True when the chat may get autofetch: an active group with the switch on, not muted. */
-  function allowedChat(waId: string): string | undefined {
+  /** True when the chat may get autofetch: an active group with the switch on, not muted. Also its platform switches. */
+  function allowedChat(
+    waId: string
+  ): { chatId: string; platformOn: (platform: SocialPlatform) => boolean } | undefined {
     const chat = getChatByWaId(options.storage, waId)
     if (chat?.status !== 'active' || chat.type !== 'group') return undefined
     const settings = resolveSettings(options.storage, chat)
     if (settings['features.autofetch']?.value !== true || settings['muted']?.value) return undefined
-    return chat.chatId
+    return {
+      chatId: chat.chatId,
+      platformOn: (platform) => platformSwitchOn(settings, 'autofetch', platform)
+    }
   }
 
-  type Skip = 'repeat' | 'platform_excluded'
+  type Skip = 'repeat' | 'platform_excluded' | 'platform_disabled'
 
   function reserveRepeat(db: Db, chatId: string, lookupKey: string, at: Date): boolean {
     const digest = createHmac('sha256', chatId).update(lookupKey).digest('hex')
@@ -206,7 +216,7 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
     )
   }
 
-  function freshTargets(chatId: string, text: string) {
+  function freshTargets(chatId: string, text: string, platformOn: (platform: SocialPlatform) => boolean) {
     const targets = findSocialPostTargets(text, (entry) => options.logger?.info('social.unknown_host', entry))
     if (targets.length === 0) return { picked: [], selected: 0 }
     return options.storage.tx((db) => {
@@ -218,6 +228,7 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
       for (const target of targets) {
         let skip: Skip | undefined
         if (groupOperations(target.platform, options.mirrors, chatId).length === 0) skip = 'platform_excluded'
+        else if (!platformOn(target.platform)) skip = 'platform_disabled'
         else if (selected >= AUTOFETCH_MAX_LINKS) continue
         else if (!reserveRepeat(db, chatId, target.lookupKey, at)) skip = 'repeat'
         if (skip) {
@@ -278,9 +289,10 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
 
   return {
     async fetch(input) {
-      const chatId = allowedChat(input.chat)
-      if (!chatId) return { media: [] }
-      const { picked, selected } = freshTargets(chatId, input.text)
+      const allowed = allowedChat(input.chat)
+      if (!allowed) return { media: [] }
+      const chatId = allowed.chatId
+      const { picked, selected } = freshTargets(chatId, input.text, allowed.platformOn)
       if (picked.length === 0) return { media: [] }
 
       const runId = options.storage.tx((db) => startJobRun(db, { kind: 'autofetch', chatId }, now))

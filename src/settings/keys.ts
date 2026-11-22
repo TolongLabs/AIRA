@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { footerEmojiSchema } from '../character/schema.js'
 import { reportFormatSchema } from '../render/types.js'
+import { switchablePlatforms } from '../social/readers.js'
 
 // Registry of setting keys and their schemas (docs/trd/data.md#setting-keys).
 
@@ -29,6 +30,26 @@ const MCP_DEFINITION: SettingDefinition = {
   schema: z.boolean(),
   default: false
 }
+
+export type PlatformOperation = 'social' | 'autofetch'
+
+/** A platform's switch key: `social.platforms.<id>` for reads, `autofetch.platforms.<id>` for fetches. */
+export function platformSwitchKey(operation: PlatformOperation, platform: string): string {
+  return `${operation}.platforms.${platform}`
+}
+
+function platformSwitches(
+  operation: PlatformOperation,
+  platforms: readonly string[]
+): Record<string, SettingDefinition> {
+  const definitions: Record<string, SettingDefinition> = {}
+  for (const platform of platforms) {
+    definitions[platformSwitchKey(operation, platform)] = { schema: z.boolean(), default: true }
+  }
+  return definitions
+}
+
+const platforms = switchablePlatforms()
 
 export const SETTING_KEYS: Record<string, SettingDefinition> = {
   character: {
@@ -123,7 +144,9 @@ export const SETTING_KEYS: Record<string, SettingDefinition> = {
   'features.autofetch': { schema: z.boolean(), default: false },
   footerEmoji: {
     schema: footerEmojiSchema
-  }
+  },
+  ...platformSwitches('social', platforms.read),
+  ...platformSwitches('autofetch', platforms.fetch)
 }
 
 /** Returns the definition for a static setting key or a dynamic mcp.<id> key, or undefined if unknown. */
