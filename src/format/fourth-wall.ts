@@ -6,6 +6,44 @@ export interface FourthWallPattern {
   pattern: RegExp
 }
 
+const RATE_LIMIT_SOURCES = [
+  'api',
+  'model',
+  'llm',
+  'ai',
+  'provider',
+  'upstream',
+  'gateway',
+  'openai',
+  'anthropic',
+  'gemini(?:\\s+(?:pro|flash|ultra))?',
+  'claude(?:\\s+(?:opus|sonnet|haiku))?',
+  'vertex(?:\\s+ai)?',
+  'chatgpt',
+  'gpt(?:-\\d[\\w.-]*)?',
+  'reader',
+  'scraper',
+  'parser',
+  'system',
+  'tool'
+].join('|')
+
+const RATE_LIMIT_VERB =
+  '(?:(?:is|was|are|were|got|has\\s+been|seems)\\s+(?:currently\\s+|temporarily\\s+)?|(?:hit|hits|hitting|reached|exceeded)\\s+(?:a\\s+|the\\s+|its\\s+)?)'
+
+const RATE_LIMIT_PATTERN = new RegExp(
+  [
+    `\\b(?:${RATE_LIMIT_SOURCES})(?:['’]s)?\\s+rate[- ]limit(?:s|ed|ing|er)?\\b`,
+    `\\b(?:${RATE_LIMIT_SOURCES})\\s+${RATE_LIMIT_VERB}rate[- ]limit(?:s|ed|ing)?\\b`,
+    `\\brate[- ]limit(?:s|ed|ing)?(?:\\s+(?:exceeded|reached|hit|error))?\\s+(?:from|on|for|by|of|at)\\s+(?:the\\s+|my\\s+|our\\s+|an?\\s+|this\\s+|its\\s+)?(?:${RATE_LIMIT_SOURCES})\\b`,
+    '\\brate_limit(?:_error|_exceeded)?\\b',
+    '\\b429\\b(?:\\s*[:,-]?\\s*(?:too\\s+many\\s+requests|error|status))?\\W+rate[- ]limit(?:s|ed|ing)?\\b',
+    '\\brate[- ]limit(?:s|ed|ing)?\\b(?:\\W+(?:error|status|code|exceeded))?\\W+429\\b',
+    '\\b(?:http|status|error)\\s+429\\b'
+  ].join('|'),
+  'iu'
+)
+
 export const FOURTH_WALL_PATTERNS: readonly FourthWallPattern[] = [
   { name: 'my_tools', pattern: /\bmy (?:tools?|reader|scraper|parser|api|system|prompt|instructions)\b/iu },
   {
@@ -16,7 +54,7 @@ export const FOURTH_WALL_PATTERNS: readonly FourthWallPattern[] = [
   { name: 'http_status', pattern: /\bhttp \d{3}\b/iu },
   { name: 'status_code', pattern: /\bstatus code\b/iu },
   { name: 'error_code', pattern: /\berror code\b/iu },
-  { name: 'rate_limit', pattern: /\brate limit/iu },
+  { name: 'rate_limit', pattern: RATE_LIMIT_PATTERN },
   { name: 'system_prompt', pattern: /\bsystem prompt\b/iu },
   { name: 'tool_call', pattern: /\btool call/iu },
   { name: 'function_call', pattern: /\bfunction call/iu },

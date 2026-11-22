@@ -12,7 +12,7 @@ const BREAKS: [pattern: string, reply: string][] = [
   ['http_status', 'It came back with HTTP 403.'],
   ['status_code', 'The status code was wrong.'],
   ['error_code', 'That gave an error code.'],
-  ['rate_limit', 'I hit a rate limit.'],
+  ['rate_limit', 'I hit an API rate limit.'],
   ['system_prompt', 'I cannot share the system prompt.'],
   ['tool_call', 'I made a tool call for that.'],
   ['function_call', 'The function call failed.'],
@@ -44,6 +44,34 @@ describe('fourth-wall check', () => {
   it('leaves in-role replies alone', () => {
     expect(fourthWallBreak("I could not find that one, sorry. Let's try another way.", ['read_post'])).toBeUndefined()
     expect(fourthWallBreak('Your reminder is set for 6pm.', ['reminder_set'])).toBeUndefined()
+  })
+
+  it.each([
+    'A rate limit caps how many requests a service allows per minute.',
+    'I hit a rate limit.',
+    'That site looks busy or rate-limited right now, try again in a bit.',
+    'Looks like the link hit a rate limit on X.',
+    'Reddit might be rate limiting guests at the moment.',
+    'You probably hit a rate limit from refreshing too fast.',
+    'Maybe that page has a rate limit on their API right now.'
+  ])('allows ordinary or in-character rate-limit mention: "%s"', (reply) => {
+    expect(fourthWallBreak(reply, ['read_post'])).toBeUndefined()
+  })
+
+  it.each([
+    ['rate_limit', 'I hit an API rate limit.'],
+    ['rate_limit', 'Sorry, I hit the model rate limit.'],
+    ['rate_limit', 'Hit the OpenAI rate limit on that one.'],
+    ['rate_limit', "Anthropic's rate limit kicked in."],
+    ['rate_limit', 'Gemini rate limit exceeded, try again.'],
+    ['rate_limit', 'The provider is rate-limited right now.'],
+    ['rate_limit', 'Got rate-limited by the API.'],
+    ['rate_limit', 'Rate limit reached on the model.'],
+    ['rate_limit', 'Hit a 429 rate limit.'],
+    ['rate_limit', 'Got a rate_limit_error from upstream.'],
+    ['http_status', 'It came back with HTTP 429.']
+  ] as const)('flags provider/API leak (%s) in "%s"', (expected, reply) => {
+    expect(fourthWallBreak(reply, [])).toBe(expected)
   })
 
   it('never flags a plain outcome sentence, for any failure kind or code', () => {

@@ -583,6 +583,71 @@ describe('autofetch', () => {
     })
   })
 
+  it('downloads an X video and photo past 10 s within the 25 s asset timeout budget', async () => {
+    vi.useFakeTimers()
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => {
+      const controller = new AbortController()
+      setTimeout(() => controller.abort(new DOMException('timed out', 'TimeoutError')), ms)
+      return controller.signal
+    })
+    try {
+      const videoUrl = 'https://video.example/slow-x.mp4'
+      const photoUrl = 'https://img.example/slow-x.jpg'
+      const env = setup()
+      env.viewer.lookup.mockImplementation(async (target) => ({
+        status: 'found',
+        post: parseFxTwitterResponse(
+          {
+            tweet: {
+              id: target.id,
+              media: {
+                photos: [{ type: 'photo', url: photoUrl }],
+                videos: [{ type: 'video', format: 'video/mp4', url: videoUrl, duration: 15 }]
+              }
+            }
+          },
+          target,
+          1000
+        )
+      }))
+      env.download.mockImplementation(
+        (url: string, signal: AbortSignal) =>
+          new Promise((resolve, reject) => {
+            env.downloads.push(url)
+            const timer = setTimeout(() => {
+              resolve(
+                url === videoUrl
+                  ? { data: testMediaBytes('mp4', url), contentType: 'video/mp4' }
+                  : { data: testMediaBytes('jpg', url), contentType: 'image/jpeg' }
+              )
+            }, 11_000)
+            signal.addEventListener(
+              'abort',
+              () => {
+                clearTimeout(timer)
+                reject(signal.reason ?? new DOMException('aborted', 'AbortError'))
+              },
+              { once: true }
+            )
+          })
+      )
+
+      const fetching = env.autofetch.fetch({ chat: env.waId, text: 'https://x.com/someone/status/777' })
+      await vi.advanceTimersByTimeAsync(0)
+      await vi.advanceTimersByTimeAsync(11_000)
+      const media = await fetching
+
+      expect(timeoutSpy).toHaveBeenCalledWith(25_000)
+      expect(media.map((item) => item.kind)).toEqual(['video', 'image'])
+      expect(
+        env.storage.read((db) => db.prepare('SELECT eligible_files, downloaded_files FROM social_lookup').get())
+      ).toEqual({ eligible_files: 2, downloaded_files: 2 })
+    } finally {
+      timeoutSpy.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
   it('downloads a large verified TikTok mirror video in byte ranges with the mirror time limit', async () => {
     const tiktok = 'https://www.tiktok.com/@example/video/1234567890'
     const video = {

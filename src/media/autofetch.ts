@@ -42,7 +42,7 @@ export const AUTOFETCH_MAX_IMAGE_BYTES = 8_000_000
 export const AUTOFETCH_MAX_VIDEO_BYTES = 16_000_000
 export const AUTOFETCH_REPEAT_MS = 10 * 60_000
 const AUTOFETCH_TIMEOUT_MS = 60_000
-const AUTOFETCH_ASSET_TIMEOUT_MS = 10_000
+const AUTOFETCH_ASSET_TIMEOUT_MS = 25_000
 /** A verified mirror video gets this long to download, as its CDN can be slow. */
 const MIRROR_VIDEO_TIMEOUT_MS = 25_000
 
