@@ -317,7 +317,10 @@ describe('rednote URL parsing and mirror reader', () => {
 
     const groupCaps = socialCapabilities(true, { rednote: 'read_and_group', apifyToken: 'tok' })
     expect(groupCaps['features.autofetch'].find((e) => e.id === 'rednote')?.operations).toEqual(['photos', 'video'])
-    expect(groupOperations('rednote', { rednote: 'read_and_group', apifyToken: 'tok' }, 'c_1', false)).toEqual([])
+    expect(groupOperations('rednote', { rednote: 'read_and_group', apifyToken: 'tok' }, 'c_1', false)).toEqual([
+      'photos',
+      'video'
+    ])
 
     const mediaUrl = 'https://sns-video-al.xhscdn.com/stream/1/110/258/sample_258.mp4'
     const avatarUrl = 'https://sns-avatar-qc.xhscdn.com/avatar/user.jpg'

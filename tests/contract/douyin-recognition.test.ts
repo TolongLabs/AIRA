@@ -224,7 +224,7 @@ describe('douyin Apify mirror and tiktok Apify fallback', () => {
     const onCaps = socialCapabilities(true, { douyin: 'read_and_group', apifyToken: 'tok' })
     expect(onCaps['features.social'].find((e) => e.id === 'douyin')?.operations).toEqual(['text', 'preview', 'video'])
     expect(onCaps['features.autofetch'].find((e) => e.id === 'douyin')?.operations).toEqual(['video'])
-    expect(groupOperations('douyin', { douyin: 'read_and_group', apifyToken: 'tok' }, 'c_1', false)).toEqual([])
+    expect(groupOperations('douyin', { douyin: 'read_and_group', apifyToken: 'tok' }, 'c_1', false)).toEqual(['video'])
 
     const douyinCdn = 'https://v5-che.douyinvod.com/sample.mp4'
     const apifyKv = `https://api.apify.com/v2/key-value-stores/store123/records/video_${TIKTOK_ID}`

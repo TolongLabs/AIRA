@@ -264,7 +264,7 @@ export const configSchema = z.strictObject({
       timeoutMs: ms.default(12000),
       // Limits per HTTP reader and per extractor, each clipped to the lookup's deadline (docs/trd/tools.md).
       httpReaderTimeoutMs: ms.default(2500),
-      ytDlpTimeoutMs: ms.default(4500),
+      ytDlpTimeoutMs: ms.default(9000),
       cacheTtlMs: z.number().int().min(0).default(900000),
       maxCacheEntries: z.number().int().min(1).default(256),
       maxTextChars: z.number().int().min(1).default(1500),
