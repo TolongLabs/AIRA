@@ -1,4 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
+import { open } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { Attachment } from '../../src/gateway/request.js'
@@ -16,6 +17,11 @@ import { ModelError } from '../../src/models/types.js'
 import { estimateTokens } from '../../src/prompt/builder.js'
 import type { SocialPost } from '../../src/social/types.js'
 import { tmpDir } from '../support/tmp.js'
+
+vi.mock(import('node:fs/promises'), async (original) => {
+  const fs = await original()
+  return { ...fs, open: vi.fn(fs.open) }
+})
 
 // The media of one turn (docs/trd/models.md#media-watching): which files are read, the reading of each, and the
 // text for block 4. Host paths are invented; the container side is a temporary folder.
@@ -133,6 +139,19 @@ describe('createTurnMedia', () => {
     expect(result.unreadable).toEqual([{ kind: 'image', reason: 'unreadable' }])
   })
 
+  it('returns while opening a gateway file is stalled and leaves the watcher idle', async () => {
+    const watch = vi.fn(answering('a bicycle').watch)
+    const { media } = setup({ watch }, { timeoutMs: 25 })
+    await vi.mocked(open).withImplementation(
+      () => new Promise<never>(() => {}),
+      async () => {
+        const result = await media.read([file('a.jpg')], deadline(), { pictures: true })
+        expect(result).toEqual({ calls: [], readings: [], unreadable: [{ kind: 'image', reason: 'unreadable' }] })
+        expect(watch).not.toHaveBeenCalled()
+      }
+    )
+  })
+
   it('makes no call for a file it refuses, and records a call that failed with its failure kind', async () => {
     let calls = 0
     const watcher: MediaWatcher = {
@@ -181,32 +200,38 @@ describe('createTurnMedia', () => {
   })
 
   it('times a read out within the turn deadline: two thirds of the time left at most', async () => {
-    const seen: number[] = []
-    const watcher: MediaWatcher = {
-      watch(_file, signal) {
-        return new Promise((_resolve, reject) => {
-          const started = Date.now()
-          signal.addEventListener('abort', () => {
-            seen.push(Date.now() - started)
-            reject(new ModelError('transient', 'aborted'))
-          })
-        })
-      }
-    }
-    const { media } = setup(watcher, { timeoutMs: 30_000 })
-    // 150 ms are left: the read may use 100 ms, however long media.timeoutMs is.
-    const result = await media.read([file('a.jpg')], Date.now() + 150)
-    expect(result.unreadable).toEqual([
+    const started = Promise.withResolvers<AbortSignal>()
+    const { media } = setup(
       {
-        kind: 'image',
-        reason: 'unreadable',
-        error: expect.objectContaining({ kind: 'transient', message: 'aborted' })
-      }
-    ])
-    expect(result.calls).toHaveLength(1)
-    expect(result.calls[0]).toMatchObject({ failureKind: 'transient' })
-    expect(seen[0]).toBeGreaterThanOrEqual(90)
-    expect(seen[0]).toBeLessThan(140)
+        watch(_file, signal) {
+          started.resolve(signal)
+          return new Promise(() => {})
+        }
+      },
+      { timeoutMs: 30_000 }
+    )
+
+    vi.useFakeTimers()
+    try {
+      const reading = media.read([file('a.jpg')], Date.now() + 150)
+      const signal = await started.promise
+      await vi.advanceTimersByTimeAsync(99)
+      expect(signal.aborted).toBe(false)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(signal.aborted).toBe(true)
+      const result = await reading
+      expect(result.unreadable).toEqual([
+        {
+          kind: 'image',
+          reason: 'unreadable',
+          error: expect.objectContaining({ kind: 'transient', message: 'aborted' })
+        }
+      ])
+      expect(result.calls).toHaveLength(1)
+      expect(result.calls[0]).toMatchObject({ failureKind: 'transient' })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('marks every file unreadable with the reason off when there is no media model', async () => {
@@ -317,6 +342,25 @@ describe('mediaPromptText', () => {
         '</media-unreadable>'
       ].join('\n')
     )
+  })
+
+  it('uses the pack line for a failed YouTube watch unless an attachment also failed', () => {
+    const linkFailure = { kind: 'YouTube video', reason: 'unreadable' } as const
+    const linkOnly = mediaPromptText({ readings: [], unreadable: [linkFailure] }, LINE)
+    expect(linkOnly).toContain(LINE)
+    expect(linkOnly).not.toContain('resend attached files')
+
+    const mixed = mediaPromptText(
+      {
+        readings: [],
+        unreadable: [linkFailure, { kind: 'video', reason: 'unreadable' }]
+      },
+      LINE
+    )
+    expect(mixed).toContain('(The YouTube video could not be opened.)')
+    expect(mixed).toContain('(The video could not be opened.)')
+    expect(mixed).toContain('Do not ask the sender to resend attached files.')
+    expect(mixed).not.toContain(LINE)
   })
 
   it('shows readings and notes together', () => {

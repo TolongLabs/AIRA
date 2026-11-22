@@ -87,6 +87,7 @@ const KIND_NAME: Record<Attachment['kind'], string> = {
   document: 'document',
   file: 'file'
 }
+const ATTACHMENT_KIND_NAMES = new Set(Object.values(KIND_NAME))
 
 interface OneRead {
   reading?: { kind: MediaKind; reading: MediaReading }
@@ -107,7 +108,7 @@ export function createTurnMedia(options: TurnMediaOptions): TurnMedia {
     // Measure elapsed time independently of the turn's injected wall clock.
     const expiresAt = performance.now() + effectiveTimeout(deadline)
     const remainingMs = () => Math.ceil(expiresAt - performance.now())
-    const loaded = await loadGatewayFile(attachment, options.gatewayDirs, options.limits.maxBytes)
+    const loaded = await loadGatewayFile(attachment, options.gatewayDirs, options.limits.maxBytes, remainingMs())
     const picked = isPicture(attachment, loaded) ? { picture: attachment } : {}
     if (!options.watcher) return { unreadable: { kind, reason: 'off' }, ...picked }
     if (!loaded.ok) return { unreadable: { kind, reason: loaded.reason } }
@@ -329,7 +330,7 @@ export function mediaPromptText(
         const displayKind = item.kind.endsWith(' link') ? `${item.kind.slice(0, -5)} post` : item.kind
         return `(The ${displayKind} could not be opened.)`
       }),
-      result.unreadable.some((item) => !item.kind.endsWith(' link'))
+      result.unreadable.some((item) => ATTACHMENT_KIND_NAMES.has(item.kind))
         ? 'Briefly acknowledge what you could not read in your own voice. Do not ask the sender to resend attached files.'
         : `Tell the sender so in your own voice, in the sense of: "${unreadableLine}"`,
       '</media-unreadable>'

@@ -1,5 +1,7 @@
+import { constants } from 'node:fs'
 import { open, realpath } from 'node:fs/promises'
 import { posix } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import type { Attachment } from '../gateway/request.js'
 import { type MediaFile, type MediaKind, mediaKindOf } from './limits.js'
 
@@ -81,7 +83,28 @@ export type LoadedFile = { ok: true; file: MediaFile; kind: MediaKind } | { ok: 
 export async function loadGatewayFile(
   attachment: Attachment,
   dirs: readonly GatewayDir[],
-  maxBytes: number
+  maxBytes: number,
+  timeoutMs?: number
+): Promise<LoadedFile> {
+  if (timeoutMs === undefined) return readGatewayFile(attachment, dirs, maxBytes)
+  const timedOut = { ok: false, reason: 'unreadable' } as const
+  if (timeoutMs <= 0) return timedOut
+  const controller = new AbortController()
+  try {
+    return await Promise.race([
+      readGatewayFile(attachment, dirs, maxBytes, controller.signal),
+      delay(timeoutMs, timedOut, { signal: controller.signal })
+    ])
+  } finally {
+    controller.abort()
+  }
+}
+
+async function readGatewayFile(
+  attachment: Attachment,
+  dirs: readonly GatewayDir[],
+  maxBytes: number,
+  signal?: AbortSignal
 ): Promise<LoadedFile> {
   const mapped = mapGatewayPath(attachment.path, dirs)
   if (!mapped.ok) return { ok: false, reason: 'refused' }
@@ -99,12 +122,14 @@ export async function loadGatewayFile(
   if (!real.startsWith(root === '/' ? '/' : `${root}/`)) return { ok: false, reason: 'refused' }
 
   try {
-    const handle = await open(real, 'r')
+    signal?.throwIfAborted()
+    const handle = await open(real, constants.O_RDONLY | constants.O_NONBLOCK)
     try {
+      signal?.throwIfAborted()
       const info = await handle.stat()
       if (!info.isFile()) return { ok: false, reason: 'refused' }
       if (info.size > maxBytes) return { ok: false, reason: 'too large' }
-      return { ok: true, kind, file: { data: await handle.readFile(), contentType } }
+      return { ok: true, kind, file: { data: await handle.readFile({ signal }), contentType } }
     } finally {
       await handle.close()
     }
