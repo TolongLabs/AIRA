@@ -14,6 +14,7 @@ import {
   type AutofetchOptions,
   createAutofetch
 } from '../../src/media/autofetch.js'
+import { createLinkReader } from '../../src/media/link-intake.js'
 import { probeVideoDuration } from '../../src/media/video-compression.js'
 import { claimAutofetchDelivery } from '../../src/records/autofetch.js'
 import { createLogger } from '../../src/records/logger.js'
@@ -24,10 +25,11 @@ import { setSetting } from '../../src/settings/settings.js'
 import { parseFxTwitterResponse } from '../../src/social/parsers.js'
 import { groupOperations, socialCapabilities } from '../../src/social/readers.js'
 import type { SocialPost, SocialPostLookup } from '../../src/social/types.js'
-import { parseOfficialSocialPostUrl, type SocialPostTarget } from '../../src/social/urls.js'
+import { findLinkTarget, parseOfficialSocialPostUrl, type SocialPostTarget } from '../../src/social/urls.js'
 import { SocialPostViewer } from '../../src/social/viewer.js'
 import type { Storage } from '../../src/storage/database.js'
 import type { TurnService } from '../../src/turn/pipeline.js'
+import { socialUrlPairs } from '../support/social-url-pairs.js'
 import { tmpDir, tmpStorage } from '../support/tmp.js'
 
 const GROUP = '12345678901@g.us'
@@ -154,6 +156,58 @@ function testMediaBytes(kind: 'jpg' | 'png' | 'mp4', url: string): Buffer {
 }
 
 describe('autofetch', () => {
+  it.each(Object.entries(socialUrlPairs))(
+    'routes %s messages into watching and permitted DM deliveries',
+    async (platform, [alias, canonical]) => {
+      const target = parseOfficialSocialPostUrl('https://' + canonical)!
+      const video = { url: 'https://media.example/fixture.mp4', bytes: null, headers: null, hasAudio: true }
+      const env = setup({
+        type: 'dm',
+        mirrors: {
+          apifyToken: 'fixture',
+          reddit: 'read_and_group',
+          tiktok: 'read_and_group',
+          rednote: 'read_and_group',
+          douyin: 'read_and_group',
+          linkedin: 'read_and_group'
+        },
+        posts: { [target.lookupKey]: { video, videoCount: 1, durationSec: 42 } }
+      })
+      const watch = vi.fn(async () => ({
+        reading: { description: 'A fixture clip.' },
+        model: 'fixture',
+        costUsd: 0,
+        usage: { inputTokens: 1, outputTokens: 1, cachedTokens: 0 }
+      }))
+      const reader = createLinkReader({
+        viewer: env.viewer,
+        findTarget: (text) => findLinkTarget([text]),
+        download: env.download,
+        watcher: { watch, watchUrl: watch },
+        model: 'fixture',
+        limits: { maxBytes: 1024, maxVideoSeconds: 300, maxAudioSeconds: 600 }
+      })
+      // A fully qualified domain name and sentence punctuation exercise the same message entry points as WhatsApp.
+      const dotted = new URL('https://' + alias)
+      dotted.hostname += '.'
+      const text = '看「' + dotted.href + '」。'
+      const result = await reader.read([text], 1000, { media: true, social: true })
+      expect(result.links?.[0]?.post).toMatchObject({ platform, id: target.id, canonicalUrl: target.canonicalUrl })
+      expect(result.links?.[0]?.reading?.description).toContain('fixture clip')
+      expect(watch).toHaveBeenCalled()
+      const media = await env.autofetch.fetch({ chat: env.waId, text })
+      if (platform === 'youtube') {
+        expect(media).toEqual([])
+        expect(env.lookups).toEqual([target.lookupKey])
+      } else {
+        expect(media.map((item) => item.kind)).toEqual(['video'])
+        expect(env.lookups).toEqual([target.lookupKey, target.lookupKey])
+        expect(await env.autofetch.fetch({ chat: env.waId, text: 'https://' + canonical })).toEqual([])
+        expect(env.lookups).toHaveLength(2)
+      }
+    }
+  )
+
   it('sends every photo of a post in order, as files in the cache the gateway reads by host path', async () => {
     const env = setup({
       posts: {
