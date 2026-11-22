@@ -385,7 +385,9 @@ Facebook's unknown-host shapes require a long numeric id or a `pfbid` post id.
 LinkedIn has recognition only (T0 on both deployments). Recognise official post slugs with an activity ID,
 feed update activity URNs, and single-token lnkd.in shares. A short link identifies the service only.
 Keep these links out of intake and fetch selection. The read tools name LinkedIn and refuse a recognised URL
-before any network call. Profiles and articles are outside this post contract. The platform has no active
+before any network call. This includes HTTP links, official regional and mobile hosts, and a host with a trailing dot.
+The model sees a named refusal through the tool registry. Search and research skip recognised posts before
+selecting pages for a read. Profiles and articles are outside this post contract. The platform has no active
 read or fetch operation in the capability catalog.
 
 Official direct paths include Reddit comment permalinks, TikTok photos, Threads posts with or without an account,
