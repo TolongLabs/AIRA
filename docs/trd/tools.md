@@ -428,9 +428,9 @@ out of the active capability lists. Recognise `www.douyin.com/video/{id}` and
 within `douyin.com` and `iesdouyin.com`) before calling Apify. Reserve both domains and their subdomains
 from unknown-host post selection. Apify receives only the canonical video URL, never the original share
 token or chat data. The reader requires a matching `id`, maps `videoMeta.duration` (ms) to seconds,
-resolves `videoMeta.playUrl` via one guarded redirect to a verified Douyin media CDN host
-(`*.douyinvod.com`, `*.zjcdn.com`, `*.amemv.com`, or `*.bytecdn.cn`), and takes previews only from
-`*.douyinpic.com`. Lookups get a 20,000 ms budget.
+accepts `videoMeta.playUrl` on a verified Douyin media host (`*.douyinvod.com`, `*.zjcdn.com`,
+`*.amemv.com`, or `*.bytecdn.cn`) downloaded cookieless across Douyin's CDN redirects, and takes previews
+only from `*.douyinpic.com`. Lookups get a 20,000 ms budget.
 
 Xiaohongshu (Rednote) uses an opt-in Apify mirror (`social.mirrors.rednote`: `off`, `read`, or
 `read_and_group`, default `off`) backed by `APIFY_API_TOKEN` (or `APIFY_API_KEY`) in `.env` and actor

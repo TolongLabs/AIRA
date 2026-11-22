@@ -55,7 +55,7 @@ import { createResearchOffers, type ReportRenderer } from './research/offer.js'
 import { createResearchWorker, type ResearchWorker } from './research/worker.js'
 import { listChats } from './settings/chats.js'
 import { resolveSettings } from './settings/settings.js'
-import { enabledMirrorAsset } from './social/mirror-readers.js'
+import { enabledMirrorAsset, isDouyinRedirectMediaUrl } from './social/mirror-readers.js'
 import { createSocialPostPort } from './social/port.js'
 import { ReplyReader } from './social/replies/service.js'
 import { findLinkTarget } from './social/urls.js'
@@ -392,9 +392,12 @@ export async function createApp(options: AppOptions): Promise<App> {
         ? createExaPagePort({ apiKey: exaKey, fallback: plainPage, maxChars: config.search.pageMaxChars })
         : plainPage
     const socialLog = logger.child({ module: 'social' })
-    const apifyToken = env['APIFY_API_TOKEN']?.trim() || undefined
+    const apifyToken = env['APIFY_API_TOKEN']?.trim() || env['APIFY_API_KEY']?.trim() || undefined
     if (config.social.mirrors.rednote !== 'off' && !apifyToken) {
       logger.warn('social.mirror_off', { platform: 'rednote', reason: 'no_key' })
+    }
+    if (config.social.mirrors.douyin !== 'off' && !apifyToken) {
+      logger.warn('social.mirror_off', { platform: 'douyin', reason: 'no_key' })
     }
     const socialMirrors = { ...config.social.mirrors, ...(apifyToken ? { apifyToken } : {}) }
     const viewer = new SocialPostViewer({ ...config.social, mirrors: socialMirrors }, { logger })
@@ -406,7 +409,10 @@ export async function createApp(options: AppOptions): Promise<App> {
     const hostDataDir = config.gateway.hostDataDir === '' ? paths.root : config.gateway.hostDataDir
     // Social downloads keep user agent and referrer on the asset origin and carry no cookies.
     const compressVideo = createVideoCompressor()
-    const socialAssetDownload = createFetchPagePort({ sameOriginCookieless: true }).download
+    const socialAssetDownload = createFetchPagePort({
+      sameOriginCookieless: true,
+      ...(apifyToken ? { apifyToken } : {})
+    }).download
     // Other social media files may redirect to a CDN on another origin; they still carry no cookies.
     const socialMediaDownload = createFetchPagePort({ cookieless: true }).download
     const autofetch = createAutofetch({
@@ -414,7 +420,10 @@ export async function createApp(options: AppOptions): Promise<App> {
       compressVideo,
       storage,
       viewer,
-      download: socialAssetDownload,
+      download: (url, signal, maxBytes, headers, rangeBytes) =>
+        isDouyinRedirectMediaUrl(url)
+          ? socialMediaDownload(url, signal, maxBytes, headers)
+          : socialAssetDownload(url, signal, maxBytes, headers, rangeBytes),
       cacheDir: join(paths.cache, 'autofetch'),
       hostCacheDir: join(hostDataDir, 'cache', 'autofetch'),
       logger: logger.child({ module: 'autofetch' }),
@@ -624,7 +633,7 @@ export async function createApp(options: AppOptions): Promise<App> {
           findTarget: (text) => findLinkTarget([text], (entry) => socialLog.info('social.unknown_host', entry)),
           ...(mediaWatcher ? { watcher: mediaWatcher } : {}),
           download: (url, signal, maxBytes, headers, rangeBytes, source) =>
-            enabledMirrorAsset(url, source, socialMirrors)
+            enabledMirrorAsset(url, source, socialMirrors) && !isDouyinRedirectMediaUrl(url)
               ? socialAssetDownload(url, signal, maxBytes, headers, rangeBytes)
               : socialMediaDownload(url, signal, maxBytes, headers),
           model: mediaModel ?? '',

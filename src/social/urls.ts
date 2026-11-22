@@ -13,6 +13,7 @@ export type SocialPlatform =
   | 'facebook'
   | 'lemon8'
   | 'rednote'
+  | 'douyin'
 
 /** The name a person sees for each platform: a footer, a note or a model sentence. */
 export const PLATFORM_NAME: Record<SocialPlatform, string> = {
@@ -26,7 +27,8 @@ export const PLATFORM_NAME: Record<SocialPlatform, string> = {
   facebook: 'Facebook',
   bilibili: 'Bilibili',
   lemon8: 'Lemon8',
-  rednote: 'Rednote'
+  rednote: 'Rednote',
+  douyin: 'Douyin'
 }
 
 export interface SocialPostTarget {
@@ -56,7 +58,8 @@ const HOSTS: Record<SocialPlatform, string[]> = {
   threads: ['threads.com', 'threads.net'],
   facebook: ['facebook.com', 'fb.watch'],
   lemon8: ['lemon8-app.com'],
-  rednote: ['xiaohongshu.com', 'rednote.com', 'xhslink.com', 'xhslink.cn']
+  rednote: ['xiaohongshu.com', 'rednote.com', 'xhslink.com', 'xhslink.cn'],
+  douyin: ['douyin.com', 'iesdouyin.com']
 }
 
 // Tried in this order on a host that is no platform's own. YouTube is host-only and never matches there.
@@ -396,6 +399,29 @@ function parseRednote(url: URL, host: string): SocialPostTarget | null {
   return null
 }
 
+// Douyin is read on its own hosts only. A video is `www.douyin.com/video/{19-digit}` or
+// `www.iesdouyin.com/share/video/{19-digit}`, both normalized to `www.douyin.com/video/{id}`.
+// Short links `v.douyin.com/{code}` resolve through the guarded share resolver.
+const DOUYIN_VIDEO_PATH = /^\/video\/(\d{19})\/?$/
+const DOUYIN_SHARE_PATH = /^\/share\/video\/(\d{19})\/?$/
+const DOUYIN_SHORT_PATH = /^\/([a-z0-9]+)\/?$/i
+
+function parseDouyin(url: URL, host: string): SocialPostTarget | null {
+  if (host === 'www.douyin.com') {
+    const id = url.pathname.match(DOUYIN_VIDEO_PATH)?.[1]
+    return id ? target('douyin', id, `https://www.douyin.com/video/${id}`) : null
+  }
+  if (host === 'www.iesdouyin.com') {
+    const id = url.pathname.match(DOUYIN_SHARE_PATH)?.[1]
+    return id ? target('douyin', id, `https://www.douyin.com/video/${id}`) : null
+  }
+  if (host === 'v.douyin.com') {
+    const code = url.pathname.match(DOUYIN_SHORT_PATH)?.[1]
+    return code ? shareTarget('douyin', code, `https://v.douyin.com/${code}`, `douyin:share:${code}`) : null
+  }
+  return null
+}
+
 function parseFor(platform: SocialPlatform, url: URL, host: string, unknown: boolean): SocialPostTarget | null {
   switch (platform) {
     case 'x':
@@ -420,6 +446,8 @@ function parseFor(platform: SocialPlatform, url: URL, host: string, unknown: boo
       return parseLemon8(url, host)
     case 'rednote':
       return parseRednote(url, host)
+    case 'douyin':
+      return parseDouyin(url, host)
   }
 }
 
@@ -439,36 +467,9 @@ function readPolicyUrl(value: string): URL | undefined {
   return url
 }
 
-// Douyin is recognised, never read: both deployments received a page without the post record. Only these exact hosts
-// and paths are recognised: www.douyin.com `/video/{id}`, www.iesdouyin.com `/share/video/{id}` with a 19-digit post
-// ID, and v.douyin.com `/{code}` with one alphanumeric share code. Every subdomain of douyin.com and iesdouyin.com is
-// reserved from unknown-host post selection, so no other path there reaches the unknown-host parsers.
-const DOUYIN_VIDEO_PATH = /^\/video\/\d{19}\/?$/
-const DOUYIN_SHARE_PATH = /^\/share\/video\/\d{19}\/?$/
-const DOUYIN_SHORT_PATH = /^\/[a-z0-9]+\/?$/i
-const DOUYIN_PATHS = new Map<string, RegExp>([
-  ['www.douyin.com', DOUYIN_VIDEO_PATH],
-  ['www.iesdouyin.com', DOUYIN_SHARE_PATH],
-  ['v.douyin.com', DOUYIN_SHORT_PATH]
-])
-
-function isDouyinHost(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/\.+$/, '')
-  return hostMatches(host, 'douyin.com') || hostMatches(host, 'iesdouyin.com')
-}
-
 /** Display name for a recognised post link with no approved read operation. */
-export function recognitionOnlyName(value: string): 'Douyin' | null {
-  const url = readPolicyUrl(value)
-  if (!url) return null
-  const douyin = DOUYIN_PATHS.get(url.hostname)
-  if (!douyin) return null
-  try {
-    const path = decodeURI(url.pathname)
-    return douyin.test(path) ? 'Douyin' : null
-  } catch {
-    return null
-  }
+export function recognitionOnlyName(_value: string): 'Douyin' | null {
+  return null
 }
 
 function parseUrl(value: string, officialOnly: boolean): SocialPostTarget | null {
@@ -492,7 +493,7 @@ function parseUrl(value: string, officialOnly: boolean): SocialPostTarget | null
   }
 
   const host = url.hostname.toLowerCase()
-  if (isExcludedHost(host) || isDouyinHost(host)) return null
+  if (isExcludedHost(host)) return null
   const platform = platformForHost(host)
   let parsed: SocialPostTarget | null = null
   if (platform) parsed = parseFor(platform, url, host, false)

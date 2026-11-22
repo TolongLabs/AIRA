@@ -205,8 +205,11 @@ export class SocialPostViewer {
       this.logLookup(requested.platform, 'failed', [], 'timeout')
       return { status: 'failed', reason: 'timeout' }
     }
-    const lookupTimeoutMs =
-      requested.platform === 'rednote' ? Math.max(this.settings.timeoutMs, 20_000) : this.settings.timeoutMs
+    const needsApifyBudget =
+      requested.platform === 'rednote' ||
+      requested.platform === 'douyin' ||
+      (requested.platform === 'tiktok' && Boolean(this.settings.mirrors?.apifyToken))
+    const lookupTimeoutMs = needsApifyBudget ? Math.max(this.settings.timeoutMs, 20_000) : this.settings.timeoutMs
     const deadlineAt = this.now() + lookupTimeoutMs
     const controller = new AbortController()
     const abort = () => controller.abort()
