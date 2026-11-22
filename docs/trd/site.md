@@ -14,16 +14,16 @@ The existing owner site, revamped as the chatbot's console, with a character stu
 
 ## Scope Of The Revamp
 
-| Page                   | Change                                                                         |
-| ---------------------- | ------------------------------------------------------------------------------ |
-| Chats                  | Rebuilt on the settings hierarchy, with resolved settings and source levels    |
-| Studio                 | Planned, not built. No studio page or character write route exists yet (FR-41) |
-| Settings               | Kept as it is. Posts to the legacy API; no global or chat-type level editor    |
-| Dashboard              | Kept as it is. Reads the legacy `/api/dashboard`, not turn records             |
-| Library, Graph         | Kept as they are. Read the legacy API, not the core's `/api/memory`            |
-| Reminders              | Kept as it is. The Cron page reads the legacy `/api/cron` job list             |
-| Feedback               | No page in this change; maintainers use the protected API or CLI               |
-| Markets, Notices, Send | Kept as they are. Only the shared shell changes with the rest of the site      |
+| Page                   | Change                                                                                                                                                                           |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chats                  | Rebuilt on the settings hierarchy, with resolved settings and source levels                                                                                                      |
+| Studio                 | Planned, not built. No studio page or character write route exists yet (FR-41)                                                                                                   |
+| Settings               | Kept as it is. Posts to the legacy API; no global or chat-type level editor                                                                                                      |
+| Dashboard              | Kept as it is. Reads the legacy `/api/dashboard`, not turn records                                                                                                               |
+| Library, Graph         | Kept as they are. Read the legacy API, not the core's `/api/memory`                                                                                                              |
+| Reminders              | Kept as it is. The Cron page reads the legacy `/api/cron` job list, preserves custom schedules unless edited, validates intervals, and keeps core-managed `aira:` jobs read-only |
+| Feedback               | No page in this change; maintainers use the protected API or CLI                                                                                                                 |
+| Markets, Notices, Send | Kept as they are. Only the shared shell changes with the rest of the site                                                                                                        |
 
 ![Which client and API each site page uses](../diagrams/site-pages.svg)
 
@@ -112,8 +112,11 @@ inheritance still come from `GET /api/chats` and writes use the existing setting
   written. A label or icon that breaks the footer rule ([Prompt Engine](prompt-engine.md#tool-footer)) gets 400
   `invalid_footer`; a kind that is neither a tool name nor an intake kind gets 400 `unknown_footer_kind`. Inside
   the one writer lock the file is written to a temporary file and renamed over the card, and one `setting_change`
-  row per changed key is written with target `pack`. If the saved pack then fails to load, the old file is put
-  back. Packs reload on every turn, so the next turn uses the new labels.
+  row per changed key is written with target `pack`. If writing the `setting_change` audit rows fails after
+  replacing `card.yml`, the previous `card.yml` bytes are restored before the error propagates. If the saved pack
+  then fails to load, the old file is put back and the inserted `setting_change` rows are deleted; reload failure
+  returns 409 `pack_unparseable` if the pack had a pre-existing load fault not caused by the footer edit, or 400
+  `invalid_footer` otherwise. Packs reload on every turn, so the next turn uses the new labels.
 
 - A write needs `Content-Type: application/json` (else 415) and a body of at most 16 KB (else 413 `body_too_large`)
   that the route's schema accepts (else 400). Only `PUT` is accepted on a write path (else 405). An unknown chat
@@ -123,10 +126,13 @@ inheritance still come from `GET /api/chats` and writes use the existing setting
 - A request that carries `Origin` gets 403 `origin_refused` unless that origin is the API's own (`http://` and the
   request's `Host`) or is listed in `site.allowedOrigins`, which is empty by default. A request with no `Origin` is
   accepted when `Host` passes the check.
+- `PUT /api/chats/:id/status` with `status: "active"` requires the chat to have a loaded effective `character`;
+  otherwise it is refused with 400 `missing_character`. Switching to `"pending"` is always accepted.
 - A setting is checked as start-up checks it: a known key, a valid scope for its level, a value its schema accepts
   (else 400 `invalid_setting`), and for `character` a pack that is loaded (else 400 `unknown_character`; the pack
   loader's message never reaches the client). A chat scope that does not exist gets 404. Clearing a value restores
-  inheritance from the level above.
+  inheritance from the level above. `PUT /api/settings` clearing `character` (`value: null`) at `chat` level on an
+  active chat whose inherited `character` is unset or not loaded is refused with 400 `missing_character`.
 - Every applied change writes a `setting_change` row with actor `site`. Setting the status or label a chat already has
   changes nothing and writes no row. Setting a chat's label writes a `setting_change` row with key `label` and `NULL`
   values so label text never enters the log. A status or setting write that changed something also calls `onWrite`,

@@ -411,7 +411,7 @@ The SQLite store, memory and forgetting, the lessons library, backups and the sh
 
 ## Site
 
-The owner site: its front end, write protection, hosting and footer editing. 6 records, in ID order.
+The owner site: its front end, write protection, hosting and footer editing. 7 records, in ID order.
 
 | ID       | Date       | Decision                                                              | Status   |
 | -------- | ---------- | --------------------------------------------------------------------- | -------- |
@@ -421,6 +421,7 @@ The owner site: its front end, write protection, hosting and footer editing. 6 r
 | ADR-0160 | 2026-11-17 | [Edit a Pack's `toolFooter` Through the Site][ADR-0160]               | Accepted |
 | ADR-0161 | 2026-11-22 | [Show Up to Three Tool Footer Labels][ADR-0161]                       | Accepted |
 | ADR-0162 | 2026-11-23 | [Abolish `SITE_TOKEN`][ADR-0162]                                      | Accepted |
+| ADR-0182 | 2026-11-23 | [Enforce Site Binding, Footer, and Cron Guards][ADR-0182]             | Accepted |
 
 [ADR-0157]: 0157-keep-the-react-front-end-and-design-contract.md
 [ADR-0158]: 0158-require-a-literal-host-and-allowed-origin-for-site-writes.md
@@ -428,6 +429,7 @@ The owner site: its front end, write protection, hosting and footer editing. 6 r
 [ADR-0160]: 0160-edit-a-pack-s-toolfooter-through-the-site.md
 [ADR-0161]: 0161-show-up-to-three-tool-footer-labels.md
 [ADR-0162]: 0162-abolish-site-token.md
+[ADR-0182]: 0182-enforce-site-binding-footer-and-cron-guards.md
 
 ## Deployment
 
