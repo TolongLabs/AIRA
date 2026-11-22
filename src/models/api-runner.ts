@@ -216,6 +216,7 @@ class SeamLlm extends BaseLlm {
         try {
           await wait(delay, undefined, { signal })
         } catch {
+          if (state.signal.aborted) throw new ModelError('transient', 'aborted', { cause: error })
           throw error
         }
       }

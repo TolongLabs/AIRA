@@ -284,6 +284,26 @@ describe('the API runner', () => {
     }
   })
 
+  it('cancels a pending recovery without sending another provider request', async () => {
+    const abort = new AbortController()
+    const model = queueModel([new ModelError('malformed', 'empty continuation')])
+    const runner = createApiRunner({
+      model: 'main-model',
+      clientFor: () => model,
+      limits: { maxCallsPerTurn: 1, timeBudgetMs: 15000 },
+      logger: createLogger({ level: 'warn', module: 'test', sink: () => abort.abort() })
+    })
+    const pending = runner.run({
+      system,
+      messages: window,
+      tools: [],
+      context: { ...context, deadline: Date.now() + 5000 },
+      signal: abort.signal
+    })
+    await expect(pending).rejects.toMatchObject({ kind: 'transient' })
+    expect(model.requests).toHaveLength(1)
+  })
+
   it('does not schedule reply recovery past the turn deadline', async () => {
     const model = queueModel([{ text: ' ' }])
     const runner = createApiRunner({

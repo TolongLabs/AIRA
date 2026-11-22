@@ -206,7 +206,9 @@ Process boundaries, the gateway contract, turns, tools, commands, models, reply 
 | ADR-0121 | 2026-11-22 | [Extend Native Attachments to Verified Non-YouTube Video][ADR-0121]                     | Accepted                                                      |
 | ADR-0122 | 2026-11-22 | [Raise the Shared Short-Video Limit to 300 Seconds][ADR-0122]                           | Accepted                                                      |
 | ADR-0180 | 2026-11-23 | [Fetch Only Verified YouTube Shorts][ADR-0180]                                          | Accepted                                                      |
+| ADR-0181 | 2026-11-23 | [Recover Malformed Replies Within the Turn Deadline][ADR-0181]                          | Accepted                                                      |
 
+[ADR-0181]: 0181-recover-malformed-api-replies.md
 [ADR-0180]: 0180-fetch-only-verified-youtube-shorts.md
 [ADR-0001]: 0001-build-the-core-as-a-typescript-service-on-node-24.md
 [ADR-0002]: 0002-keep-hermes-agent-as-the-pinned-whatsapp-transport.md
