@@ -461,7 +461,12 @@ export function createFetchPagePort(
         const header = res.headers.get('etag')?.trim() ?? ''
         const etag = /^(?:W\/)?"[\x21\x23-\x7e\x80-\xff]+"$/.test(header) ? header : null
         const modified = res.headers.get('last-modified')
-        const version = etag ? `etag:${etag}` : modified ? `date:${modified}` : header ? `raw:${header}` : null
+        // A strong ETag names the file alone; anything weaker is checked together with the date.
+        const version = strongValidator(etag)
+          ? `etag:${etag}`
+          : header || modified
+            ? `tag:${header}\0date:${modified ?? ''}`
+            : null
         if (
           res.status !== 206 ||
           mime !== 'video/mp4' ||
