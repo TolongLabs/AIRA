@@ -16,6 +16,7 @@ from brain import autofetch  # noqa: E402
 
 GROUP = "12345678901@g.us"
 OTHER = "123456789012@g.us"
+DM = "fixture-dm"
 
 
 class _Response(io.BytesIO):
@@ -52,7 +53,7 @@ class AutofetchTest(unittest.TestCase):
         self.dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.dir.cleanup)
         (Path(self.dir.name) / "gateway").mkdir()
-        flags = {"version": 1, "chats": {GROUP: {"autofetch": True}, OTHER: {"reactions": True}}}
+        flags = {"version": 1, "chats": {GROUP: {"autofetch": True}, DM: {"autofetch": True}, OTHER: {"reactions": True}}}
         (Path(self.dir.name) / "gateway" / "chats.json").write_text(json.dumps(flags), encoding="utf-8")
         patcher = mock.patch.dict(os.environ, {"AIRA_HOST_DATA_DIR": self.dir.name, "AIRA_CORE_URL": ""})
         patcher.start()
@@ -63,12 +64,17 @@ class AutofetchTest(unittest.TestCase):
         data.update(overrides)
         return data
 
-    def test_offers_only_a_group_message_with_a_link_in_a_chat_with_autofetch_on(self):
+    def test_offers_a_group_or_dm_message_with_a_link_in_a_chat_with_autofetch_on(self):
         self.assertEqual(autofetch.wanted(self.message()), GROUP)
-        self.assertIsNone(autofetch.wanted(self.message(isGroup=False)))
+        self.assertEqual(autofetch.wanted(self.message(isGroup=False, chatId=DM), accepted=True), DM)
+        self.assertIsNone(autofetch.wanted(self.message(isGroup=False, chatId=DM)))
+        self.assertIsNone(autofetch.wanted(self.message(), accepted=True))
         self.assertIsNone(autofetch.wanted(self.message(chatId=OTHER)))
+        self.assertIsNone(autofetch.wanted(self.message(isGroup=False, chatId=OTHER), accepted=True))
         self.assertIsNone(autofetch.wanted(self.message(body="no link here")))
+        self.assertIsNone(autofetch.wanted(self.message(isGroup=False, chatId=DM, body="no link here"), accepted=True))
         self.assertIsNone(autofetch.wanted(self.message(fromMe=True)))
+        self.assertIsNone(autofetch.wanted(self.message(isGroup=False, chatId=DM, fromMe=True), accepted=True))
         self.assertIsNone(autofetch.wanted(self.message(fromOwner="true")))
         self.assertIsNone(autofetch.wanted("not a dict"))
 

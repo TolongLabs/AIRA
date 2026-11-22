@@ -124,6 +124,47 @@ describe('chat flags file', () => {
     expect(writeChatFlags(app.storage, dataDir)).toBe(false)
   })
 
+  it('exports autofetch for an active opt-in DM, and not when off or muted', async () => {
+    const { app, dataDir } = await startApp(queueModel([{ text: 'ok' }]))
+
+    const dm = ensureChat(app.storage, { waId: 'fixture-opt-in-dm', type: 'dm' })
+    setChatStatus(app.storage, { chatId: dm.chatId, status: 'active', actor: 'test' })
+    expect(readFlags(dataDir)).toEqual({ version: 1, chats: {} })
+
+    setSetting(app.storage, {
+      level: 'chat',
+      scope: dm.chatId,
+      key: 'features.autofetch',
+      value: true,
+      actor: 'test'
+    })
+    expect(writeChatFlags(app.storage, dataDir)).toBe(true)
+    expect(readFlags(dataDir).chats['fixture-opt-in-dm']).toEqual({ autofetch: true })
+
+    setSetting(app.storage, {
+      level: 'chat',
+      scope: dm.chatId,
+      key: 'muted',
+      value: { by: 's_test', at: '2026-11-17T00:00:00.000Z' },
+      actor: 'test'
+    })
+    expect(writeChatFlags(app.storage, dataDir)).toBe(true)
+    expect(readFlags(dataDir).chats['fixture-opt-in-dm']).toBeUndefined()
+
+    setSetting(app.storage, { level: 'chat', scope: dm.chatId, key: 'muted', value: false, actor: 'test' })
+    expect(writeChatFlags(app.storage, dataDir)).toBe(true)
+    expect(readFlags(dataDir).chats['fixture-opt-in-dm']).toEqual({ autofetch: true })
+    setSetting(app.storage, {
+      level: 'chat',
+      scope: dm.chatId,
+      key: 'features.autofetch',
+      value: false,
+      actor: 'test'
+    })
+    expect(writeChatFlags(app.storage, dataDir)).toBe(true)
+    expect(readFlags(dataDir).chats['fixture-opt-in-dm']).toBeUndefined()
+  })
+
   it('rewrites chats.json after site API setting and chat status writes', async () => {
     const { app, dataDir, siteUrl } = await startWithSite()
     const dm = ensureChat(app.storage, { waId: '1234567890@s.whatsapp.net', type: 'dm' })
