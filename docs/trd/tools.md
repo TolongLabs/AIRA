@@ -394,6 +394,9 @@ lookup slots available and creates no repeat reservation. The YouTube watch gate
 Video delivery requires a native video attachment bound to the selected post. Enable each non-YouTube
 platform's video operation only after three successful live checks on each host. Keep a platform at its
 verified capability if either host lacks a suitable attachment. Preserve mirror settings and per-chat scope.
+A Bilibili link with an explicit positive part number keeps that part in the canonical URL, extractor URL,
+lookup key and repeat reservation. Match the extractor's BV and part before delivery. An unqualified link cannot
+deliver an ambiguous multipart result. Live streams and playlists supply no delivery attachment.
 For file limits, duration and receipt handling see [Autofetch](system.md#autofetch).
 
 LinkedIn has recognition only (T0 on both deployments). Recognise official post slugs with an activity ID,
