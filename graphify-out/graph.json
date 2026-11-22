@@ -9692,7 +9692,7 @@
       "file_type": "code",
       "norm_label": "expectrefusedlinkedin()",
       "source_file": "tests/contract/linkedin-recognition.test.ts",
-      "source_location": "L63"
+      "source_location": "L64"
     },
     {
       "id": "tests_contract_linkedin_recognition_test_maketoolcontext",
@@ -9704,7 +9704,7 @@
       "file_type": "code",
       "norm_label": "maketoolcontext()",
       "source_file": "tests/contract/linkedin-recognition.test.ts",
-      "source_location": "L51"
+      "source_location": "L52"
     },
     {
       "id": "tests_contract_linkedin_recognition_test_maketurncontext",
@@ -9716,7 +9716,7 @@
       "file_type": "code",
       "norm_label": "maketurncontext()",
       "source_file": "tests/contract/linkedin-recognition.test.ts",
-      "source_location": "L29"
+      "source_location": "L30"
     },
     {
       "id": "tests_contract_mcp_test_makecontext",
@@ -85484,7 +85484,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "tests/contract/linkedin-recognition.test.ts",
-      "source_location": "L31",
+      "source_location": "L32",
       "weight": 1.0
     },
     {
@@ -85496,7 +85496,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "tests/contract/linkedin-recognition.test.ts",
-      "source_location": "L32",
+      "source_location": "L33",
       "weight": 1.0
     },
     {
@@ -85508,7 +85508,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "tests/contract/linkedin-recognition.test.ts",
-      "source_location": "L36",
+      "source_location": "L37",
       "weight": 1.0
     },
     {
@@ -85520,7 +85520,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "tests/contract/linkedin-recognition.test.ts",
-      "source_location": "L37",
+      "source_location": "L38",
       "weight": 1.0
     },
     {
@@ -85532,7 +85532,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "tests/contract/linkedin-recognition.test.ts",
-      "source_location": "L43",
+      "source_location": "L44",
       "weight": 1.0
     },
     {
@@ -85544,7 +85544,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "tests/contract/linkedin-recognition.test.ts",
-      "source_location": "L47",
+      "source_location": "L48",
       "weight": 1.0
     },
     {
@@ -92204,7 +92204,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "tests/contract/linkedin-recognition.test.ts",
-      "source_location": "L29",
+      "source_location": "L30",
       "weight": 1.0
     },
     {
@@ -92216,7 +92216,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "tests/contract/linkedin-recognition.test.ts",
-      "source_location": "L51",
+      "source_location": "L52",
       "weight": 1.0
     },
     {
@@ -92228,7 +92228,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "tests/contract/linkedin-recognition.test.ts",
-      "source_location": "L63",
+      "source_location": "L64",
       "weight": 1.0
     },
     {
@@ -212469,5 +212469,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "26aabc0f456fcff4f89ef2a25a47aae50142e532"
+  "built_at_commit": "470e6c4dc698eadd10399fd304764a7a0e05f177"
 }
