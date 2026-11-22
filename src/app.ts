@@ -94,14 +94,12 @@ export const SECRET_NAMES = [
   'SERPAPI_API_KEY',
   'RUNNER_TOKEN',
   'OPENAI_API_KEY',
-  'SITE_TOKEN',
   'FEEDBACK_SYNC_SECRET',
   'FEEDBACK_SYNC_URL'
 ] as const
 
 /** How often the memory worker looks for a closed episode or a due job. */
 const MEMORY_TICK_MS = 15_000
-const MIN_SITE_TOKEN_LENGTH = 32
 
 export interface AppOptions {
   config: Config
@@ -110,6 +108,8 @@ export interface AppOptions {
   version?: string
   /** The built site, served under /app/ on the site API's port. */
   siteDir?: string
+  /** Optional read-only gateway channel directory JSON for fallback chat names. */
+  channelDirectoryPath?: string
   logger?: Logger
   /** Model clients to use instead of the configured endpoints: recordings, fakes. */
   clients?: { main?: ModelClient; fallback?: ModelClient }
@@ -139,11 +139,11 @@ export interface App {
   research: ResearchWorker
   feedback: FeedbackSync
   server: Server
-  siteServer?: Server
+  siteServer: Server
   alerter: Alerter
   packs: () => PackSet
   listen(port: number, host: string): Promise<AddressInfo>
-  listenSite(port: number, host: string): Promise<AddressInfo | undefined>
+  listenSite(port: number, host: string): Promise<AddressInfo>
   /** Takes one verified snapshot now. */
   snapshot(reason: SnapshotReason): Promise<SnapshotResult>
   /** Writes the default pack's unavailable line for the gateway, if it changed. */
@@ -861,38 +861,32 @@ export async function createApp(options: AppOptions): Promise<App> {
       })
     })
 
-    const siteToken = env['SITE_TOKEN']
-    let siteServer: Server | undefined
-    if (siteToken !== undefined && siteToken.length >= MIN_SITE_TOKEN_LENGTH) {
-      siteServer = createSiteApiServer({
-        extractorAvailable,
-        socialMirrors,
-        token: siteToken,
-        allowedOrigins: config.site.allowedOrigins,
-        registry,
-        packs,
-        ...(options.siteDir ? { siteDir: options.siteDir } : {}),
-        storage,
-        paths,
-        version: options.version ?? '0.0.0',
-        ready: () => ready,
-        activeTurns: () => turns.active(),
-        roles: () => ({
-          main: { configured: Boolean(mainRole) || subscription, breakerOpen: breaker.isOpen('main') },
-          fallback: {
-            configured: Boolean(fallbackRole),
-            breakerOpen: subscription ? (fallbackBreaker?.isOpen('main') ?? false) : breaker.isOpen('fallback')
-          },
-          judge: { configured: Boolean(moodJudge || memoryJudge), breakerOpen: false },
-          media: { configured: Boolean(mediaWatcher), breakerOpen: false }
-        }),
-        logger,
-        now,
-        onWrite: () => void writeChatFlags(storage, paths.root, packs)
-      })
-    } else {
-      logger.warn('site_api.no_token', { reason: siteToken ? 'too_short' : 'unset' })
-    }
+    const siteServer = createSiteApiServer({
+      extractorAvailable,
+      socialMirrors,
+      allowedOrigins: config.site.allowedOrigins,
+      ...(options.channelDirectoryPath !== undefined ? { channelDirectoryPath: options.channelDirectoryPath } : {}),
+      registry,
+      packs,
+      ...(options.siteDir ? { siteDir: options.siteDir } : {}),
+      storage,
+      paths,
+      version: options.version ?? '0.0.0',
+      ready: () => ready,
+      activeTurns: () => turns.active(),
+      roles: () => ({
+        main: { configured: Boolean(mainRole) || subscription, breakerOpen: breaker.isOpen('main') },
+        fallback: {
+          configured: Boolean(fallbackRole),
+          breakerOpen: subscription ? (fallbackBreaker?.isOpen('main') ?? false) : breaker.isOpen('fallback')
+        },
+        judge: { configured: Boolean(moodJudge || memoryJudge), breakerOpen: false },
+        media: { configured: Boolean(mediaWatcher), breakerOpen: false }
+      }),
+      logger,
+      now,
+      onWrite: () => void writeChatFlags(storage, paths.root, packs)
+    })
 
     let closed = false
     return {
@@ -904,7 +898,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       research: worker,
       feedback,
       server,
-      ...(siteServer ? { siteServer } : {}),
+      siteServer,
       alerter,
       packs,
       refreshUnavailableLine,
@@ -924,13 +918,11 @@ export async function createApp(options: AppOptions): Promise<App> {
           server.once('error', reject)
           server.listen(port, host, () => resolve(server.address() as AddressInfo))
         }),
-      listenSite: (port, host) => {
-        if (!siteServer) return Promise.resolve(undefined)
-        return new Promise((resolve, reject) => {
+      listenSite: (port, host) =>
+        new Promise((resolve, reject) => {
           siteServer.once('error', reject)
           siteServer.listen(port, host, () => resolve(siteServer.address() as AddressInfo))
-        })
-      },
+        }),
       async close() {
         if (closed) return
         closed = true
@@ -939,10 +931,8 @@ export async function createApp(options: AppOptions): Promise<App> {
         await turns.drain(config.shutdown.graceMs)
         server.closeAllConnections()
         if (server.listening) await new Promise((resolve) => server.close(resolve))
-        if (siteServer) {
-          siteServer.closeAllConnections()
-          if (siteServer.listening) await new Promise((resolve) => siteServer.close(resolve))
-        }
+        siteServer.closeAllConnections()
+        if (siteServer.listening) await new Promise((resolve) => siteServer.close(resolve))
         for (const stop of closers) await stop()
         storage.close()
       }

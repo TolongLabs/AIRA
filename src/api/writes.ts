@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { loadPack } from '../character/loader.js'
 import { cardSchema, footerLabelSchema, PACK_ID } from '../character/schema.js'
 import { writeUnavailableLine } from '../character/unavailable.js'
-import { setChatStatus } from '../settings/chats.js'
+import { setChatLabel, setChatStatus } from '../settings/chats.js'
 import { definitionFor } from '../settings/keys.js'
 import { SettingError, setSetting, unsetSetting } from '../settings/settings.js'
 import { isoNow } from '../storage/database.js'
@@ -14,8 +14,10 @@ import { footerKindsFor, type RouteResult, type SiteApiDeps } from './routes.js'
 // The site API's write routes (docs/trd/site.md#write-routes). Each write is one transaction with a change record.
 
 const CHAT_STATUS = /^\/api\/chats\/([^/]+)\/status$/
+const CHAT_LABEL = /^\/api\/chats\/([^/]+)\/label$/
 const CHARACTER_FOOTER = /^\/api\/characters\/([^/]+)\/footer$/
 const statusBody = z.strictObject({ status: z.enum(['active', 'pending']) })
+const labelBody = z.strictObject({ label: z.string().trim().max(120) })
 const footerBody = z.strictObject({
   icon: z.union([z.string(), z.null()]).optional(),
   labels: z.record(z.string(), z.union([z.string(), z.null()])).optional()
@@ -33,7 +35,9 @@ const settingBody = z.strictObject({
 export const SITE_ACTOR = 'site'
 
 export function isWriteRoute(pathname: string): boolean {
-  return CHAT_STATUS.test(pathname) || pathname === SETTINGS || CHARACTER_FOOTER.test(pathname)
+  return (
+    CHAT_STATUS.test(pathname) || CHAT_LABEL.test(pathname) || pathname === SETTINGS || CHARACTER_FOOTER.test(pathname)
+  )
 }
 
 /** `Host` must be an IP address or localhost with a port, so a rebound name cannot reach the API. */
@@ -255,6 +259,26 @@ function writeCharacterFooter(deps: SiteApiDeps, id: string, body: unknown): Rou
   return { status: 200, body: { id, toolFooter: nextCard.toolFooter ?? {}, changed: true } }
 }
 
+function parseChatWrite<T>(
+  deps: SiteApiDeps,
+  method: string,
+  rawChatId: string,
+  body: unknown,
+  schema: z.ZodType<T>
+): { ok: true; chatId: string; data: T } | { ok: false; result: RouteResult } {
+  if (method !== 'PUT') return { ok: false, result: { status: 405, body: { error: 'method_not_allowed' } } }
+  let chatId: string
+  try {
+    chatId = decodeURIComponent(rawChatId)
+  } catch {
+    return { ok: false, result: { status: 400, body: { error: 'invalid_chat_id' } } }
+  }
+  const parsed = schema.safeParse(body)
+  if (!parsed.success) return { ok: false, result: { status: 400, body: { error: 'invalid_body' } } }
+  if (!chatExists(deps, chatId)) return { ok: false, result: { status: 404, body: { error: 'not_found' } } }
+  return { ok: true, chatId, data: parsed.data }
+}
+
 export function dispatchWrite(deps: SiteApiDeps, method: string, path: string, body: unknown): RouteResult {
   if (path === SETTINGS) {
     if (method !== 'PUT') return { status: 405, body: { error: 'method_not_allowed' } }
@@ -271,19 +295,23 @@ export function dispatchWrite(deps: SiteApiDeps, method: string, path: string, b
     }
     return writeCharacterFooter(deps, id, body)
   }
+  const labelMatch = CHAT_LABEL.exec(path)
+  if (labelMatch?.[1]) {
+    const parsed = parseChatWrite(deps, method, labelMatch[1], body, labelBody)
+    if (!parsed.ok) return parsed.result
+    const label = parsed.data.label
+    const changed = setChatLabel(deps.storage, { chatId: parsed.chatId, label, actor: SITE_ACTOR }, deps.now)
+    return { status: 200, body: { chatId: parsed.chatId, label, changed } }
+  }
   const match = CHAT_STATUS.exec(path)
   if (!match?.[1]) return { status: 404, body: { error: 'not_found' } }
-  if (method !== 'PUT') return { status: 405, body: { error: 'method_not_allowed' } }
-  let chatId: string
-  try {
-    chatId = decodeURIComponent(match[1])
-  } catch {
-    return { status: 400, body: { error: 'invalid_chat_id' } }
-  }
-  const parsed = statusBody.safeParse(body)
-  if (!parsed.success) return { status: 400, body: { error: 'invalid_body' } }
-  if (!chatExists(deps, chatId)) return { status: 404, body: { error: 'not_found' } }
-  const changed = setChatStatus(deps.storage, { chatId, status: parsed.data.status, actor: SITE_ACTOR }, deps.now)
+  const parsed = parseChatWrite(deps, method, match[1], body, statusBody)
+  if (!parsed.ok) return parsed.result
+  const changed = setChatStatus(
+    deps.storage,
+    { chatId: parsed.chatId, status: parsed.data.status, actor: SITE_ACTOR },
+    deps.now
+  )
   if (changed) deps.onWrite?.()
-  return { status: 200, body: { chatId, status: parsed.data.status, changed } }
+  return { status: 200, body: { chatId: parsed.chatId, status: parsed.data.status, changed } }
 }

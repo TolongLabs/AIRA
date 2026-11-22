@@ -8,7 +8,7 @@ The existing owner site, revamped as the chatbot's console, with a character stu
 | --------------- | ----------------------------------------------------------------- |
 | Front End       | The existing React app, kept, in `site/`                          |
 | Design Contract | The site's own `DESIGN.md`. It wins over code for anything visual |
-| Reach           | Private network only, behind the site token                       |
+| Reach           | Private network only (loopback or Tailscale)                      |
 | Chatbot Data    | Read and written through the core's API                           |
 | Owner-Tool Data | Read and written through the site's existing API, unchanged       |
 
@@ -32,15 +32,16 @@ added to the contract before it is used.
 
 ## Core API
 
-Served by the core on the private network. Every route requires the site token. Every write goes through the same
-validation as start-up and is logged to `setting_change`. This is every route the core serves. The only character write is
-the footer route. No sticker, preview or memory forget route exists.
+Served by the core on the private network, with no bearer token. Every write checks `Host` and `Origin`, goes through
+the same validation as start-up, and is logged to `setting_change`. This is every route the core serves. The only
+character write is the footer route. No sticker, preview or memory forget route exists.
 
 | Method | Path                         | Purpose                                           | Access | Handler             |
 | ------ | ---------------------------- | ------------------------------------------------- | ------ | ------------------- |
 | `GET`  | `/api/health`                | Readiness, version, active turns, per-role status | Read   | `src/api/routes.ts` |
 | `GET`  | `/api/chats`                 | Chats with resolved settings and source levels    | Read   | `src/api/routes.ts` |
 | `PUT`  | `/api/chats/:id/status`      | Switch one chat on (`active`) or off (`pending`)  | Write  | `src/api/writes.ts` |
+| `PUT`  | `/api/chats/:id/label`       | Set or clear a chat's display label               | Write  | `src/api/writes.ts` |
 | `GET`  | `/api/settings`              | Raw values at one level (`level`, `scope`)        | Read   | `src/api/routes.ts` |
 | `PUT`  | `/api/settings`              | Set or clear one key at one level                 | Write  | `src/api/writes.ts` |
 | `GET`  | `/api/characters`            | Loaded packs, plus the packs that failed to load  | Read   | `src/api/routes.ts` |
@@ -54,7 +55,6 @@ the footer route. No sticker, preview or memory forget route exists.
 
 - Requests are JSON with a declared content type. Other content types are refused.
 - The Origin and Host headers are checked on every write.
-- The token is sent in a header, never in a URL.
 - Routes that read another chat's memory do not exist. The chat id is required.
 
 ### Serving The API
@@ -62,15 +62,14 @@ the footer route. No sticker, preview or memory forget route exists.
 - The core serves the API on its own port, `site.port` (default 9890), never on the gateway's port. The compose file
   publishes it on the host's private-network address only, `AIRA_SITE_BIND`. While the new core runs beside the old
   one, that address is loopback.
-- The server is built only when `SITE_TOKEN` holds at least 32 characters. A shorter token or an unset one means no
-  API server at all, and the core logs `site_api.no_token` with reason `too_short` or `unset`. The gateway endpoint
-  is not affected.
-- Every route needs `Authorization: Bearer <SITE_TOKEN>`, compared in constant time. A missing or wrong token gets 401. Only the two write paths accept a non-`GET` method. A wrong method gets 405 `method_not_allowed`, and a path
-  the API does not know gets 404.
+- The core always starts the site API server on `site.port`, with no bearer token. Protection relies on private
+  loopback or Tailscale binding (`AIRA_SITE_BIND`) and the `Host` and `Origin` checks on write routes.
+- Only the write paths accept `PUT`. A wrong method on a known route gets 405 `method_not_allowed`, and a path the API
+  does not know gets 404.
 - Answers are JSON. A bad query gets 400, an unknown id 404, a body over 16 KB 413 `body_too_large`, and a write
   that is not JSON 415. An error body is `{ "error": "<reason code>" }` and never holds message text.
 
-![One site API request, from token check to record](../diagrams/site-api.svg)
+![One site API request, from route check to record](../diagrams/site-api.svg)
 
 ### Read Routes
 
@@ -88,7 +87,7 @@ inheritance still come from `GET /api/chats` and writes use the existing setting
 | Route                   | Answer                                                                                                                                                                                                                                                    |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /api/health`       | `status` (`ready` or `starting`), `version`, `activeTurns`, and per model role whether it is configured and whether its breaker is open                                                                                                                   |
-| `GET /api/chats`        | `chats`: each chat's id, WhatsApp id, type, label, status, and every setting key with its value and the level it came from                                                                                                                                |
+| `GET /api/chats`        | `chats`: each chat's id, WhatsApp id, type, label (falling back to `channel_directory.json` by `waId`, or `identity.display_name` for DMs, when empty), status, and every setting key with its value and the level it came from                           |
 | `GET /api/settings`     | With `level` and `scope`: the raw values set at that one level. A bad level or scope gets 400                                                                                                                                                             |
 | `GET /api/turns`        | The newest turn rows, newest first, at most `limit` (default 50, at most 200), optionally for one `chat` and `before` a time. A `limit` outside 1 to 200 gets 400 `invalid_limit`; a `before` that is not an ISO-8601 timestamp gets 400 `invalid_before` |
 | `GET /api/turns/:id`    | One turn row with its model calls, tool calls and failure rows. The id is URL-decoded; a malformed escape gets 400 `invalid_turn_id`                                                                                                                      |
@@ -103,6 +102,7 @@ inheritance still come from `GET /api/chats` and writes use the existing setting
 | Route                            | Body                                                                        | Answer                                          |
 | -------------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------- |
 | `PUT /api/chats/:id/status`      | `{ "status": "active" }` or `"pending"`                                     | `chatId`, `status`, and `changed` true or false |
+| `PUT /api/chats/:id/label`       | `{ "label": string }` (trimmed, max 120 chars)                              | `chatId`, `label`, and `changed` true or false  |
 | `PUT /api/settings`              | `{ "level", "scope", "key", "value" }`; `value: null` clears the row        | `level`, `scope`, `key`, `value`, `changed`     |
 | `PUT /api/characters/:id/footer` | `{ "icon"?, "labels"?: { "<kind>": string or null } }`; `null` clears a key | `id`, `toolFooter`, `changed`                   |
 
@@ -120,16 +120,17 @@ inheritance still come from `GET /api/chats` and writes use the existing setting
 - `Host` must be an IP address or `localhost`, with a port. Any other name gets 403 `host_refused`, so a page that
   rebinds its own name to the private address cannot reach the API.
 - A request that carries `Origin` gets 403 `origin_refused` unless that origin is the API's own (`http://` and the
-  request's `Host`) or is listed in `site.allowedOrigins`, which is empty by default. A request from a server, with
-  no `Origin`, relies on the token.
+  request's `Host`) or is listed in `site.allowedOrigins`, which is empty by default. A request with no `Origin` is
+  accepted when `Host` passes the check.
 - A setting is checked as start-up checks it: a known key, a valid scope for its level, a value its schema accepts
   (else 400 `invalid_setting`), and for `character` a pack that is loaded (else 400 `unknown_character`; the pack
   loader's message never reaches the client). A chat scope that does not exist gets 404. Clearing a value restores
   inheritance from the level above.
-- Every applied change writes a `setting_change` row with actor `site`. Setting the status a chat already has
-  changes nothing and writes no row. A write that changed something also calls `onWrite`, which rewrites the
-  gateway's `chats.json` flags; a write that changed nothing rewrites nothing. Writing the global `character` key
-  also rewrites the gateway's unavailable line for that pack.
+- Every applied change writes a `setting_change` row with actor `site`. Setting the status or label a chat already has
+  changes nothing and writes no row. Setting a chat's label writes a `setting_change` row with key `label` and `NULL`
+  values so label text never enters the log. A status or setting write that changed something also calls `onWrite`,
+  which rewrites the gateway's `chats.json` flags; a write that changed nothing rewrites nothing. Writing the global
+  `character` key also rewrites the gateway's unavailable line for that pack.
 
 The site is the owner's console on the private network, so it may show a chat's WhatsApp id. Record tables and logs
 still never hold one.
@@ -162,8 +163,8 @@ chatbot pages have no control that sends a message to a chat or restarts a servi
 The site builds with Vite in CI and ships inside the release image. Built output is not committed. The build is
 multi-page, not a single-page app: nine entries (`index`, `markets`, `graph`, `library`, `cron`, `chats`,
 `settings`, `notices`, `send`), one shared shell, and no studio entry. The chatbot client (`site/src/lib/core.ts`)
-exposes six calls (`tools`, `chats`, `characters`, `setStatus`, `setSetting`, `setFooter`) and keeps the site token in local
-storage under its own key (see below), retrying once on 401.
+exposes seven calls (`tools`, `chats`, `characters`, `setStatus`, `setLabel`, `setSetting`, `setFooter`) without a
+bearer token.
 
 ## Serving The Site
 
@@ -172,11 +173,10 @@ storage under its own key (see below), retrying once on 401.
   `GET` and `HEAD` are accepted; anything else gets 404 or 405. Files under `/app/assets/` carry an immutable
   year-long cache header; every other file is `no-cache`. Every answer carries `x-content-type-options: nosniff`
   and `referrer-policy: no-referrer`.
-- The site's files hold no data, so they need no token. Every `/api/` route still does.
-- The browser keeps two independent tokens. The chatbot client keeps the core's token under `aira-site-token`;
-  every owner-tool page keeps the legacy token under `tolongai-token`. The first 401 asks for the token once, it is
-  kept in the browser's local storage, and it is sent as `Authorization: Bearer` on every call. It never goes in a
-  URL.
+- Neither the site's static files nor the core's `/api/` routes require a bearer token.
+- The chatbot client (`site/src/lib/core.ts`) sends no token. Every owner-tool page keeps the legacy token under
+  `tolongai-token`; its first 401 asks for it once, it is kept in the browser's local storage, and it is sent on
+  legacy calls. It never goes in a URL.
 - On load the legacy client migrates an old `mirai-token` or `memento-token` into `tolongai-token`, and the shell
   migrates `mirai-theme` into `tolongai-theme`.
 - A page calls the API on its own origin, so a browser write carries the API's own `Origin` and is accepted.

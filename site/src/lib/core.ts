@@ -1,12 +1,7 @@
 /* The chatbot's own API, served by the core on this origin (docs/trd/site.md#serving-the-site).
  *
- * Every route needs the site token. The first 401 asks for it once, keeps it in
- * local storage under its own key — it is not the old site's token — and the
- * call is tried again. The token goes in the Authorization header, never in a URL. */
-import { requestToken } from './api'
-
-const TOKEN_KEY = 'aira-site-token'
-const ASK = 'This page needs the AIRA site token (SITE_TOKEN in the core’s .env).'
+ * The server binds to a private loopback or Tailscale address and enforces Host
+ * and Origin checks on writes, so calls need no bearer token. */
 
 export type SettingLevel = 'global' | 'type' | 'chat'
 export type SourceLevel = SettingLevel | 'default' | 'unset'
@@ -70,19 +65,9 @@ export class CoreError extends Error {
 }
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const go = () => {
-    const token = localStorage.getItem(TOKEN_KEY)
-    const headers = new Headers(init.headers)
-    headers.set('accept', 'application/json')
-    if (token) headers.set('authorization', `Bearer ${token}`)
-    return fetch(path, { ...init, headers })
-  }
-  let res = await go()
-  if (res.status === 401) {
-    localStorage.removeItem(TOKEN_KEY)
-    await requestToken(TOKEN_KEY, ASK)
-    res = await go()
-  }
+  const headers = new Headers(init.headers)
+  headers.set('accept', 'application/json')
+  const res = await fetch(path, { ...init, headers })
   const body = (await res.json().catch(() => ({}))) as { error?: string }
   if (!res.ok) throw new CoreError(res.status, body.error ?? `http_${res.status}`)
   return body as T
@@ -105,6 +90,8 @@ export const core = {
     ),
   setStatus: (chatId: string, status: CoreChat['status']) =>
     put<{ changed: boolean }>(`/api/chats/${encodeURIComponent(chatId)}/status`, { status }),
+  setLabel: (chatId: string, label: string) =>
+    put<{ changed: boolean }>('/api/chats/' + encodeURIComponent(chatId) + '/label', { label }),
   /** `value: null` clears the row at that level, so the level above applies again. */
   setSetting: (level: SettingLevel, scope: string, key: string, value: unknown) =>
     put<{ changed: boolean }>('/api/settings', { level, scope, key, value }),
@@ -123,6 +110,7 @@ export function reasonText(error: unknown): string {
     invalid_setting: 'That value is not allowed for this setting.',
     unknown_character: 'That character is not loaded.',
     invalid_character_id: 'That character id is not valid.',
+    invalid_chat_id: 'That chat id is not valid.',
     pack_read_only: 'Built-in repository packs cannot be edited here.',
     pack_unparseable: 'The pack’s card.yml could not be parsed or validated.',
     invalid_footer: 'Footer icon must be one emoji; labels must be 1 to 40 chars without _ * ~ ` < > or line breaks.',
@@ -130,8 +118,7 @@ export function reasonText(error: unknown): string {
     invalid_body: 'The request body was not valid.',
     not_found: 'That item no longer exists.',
     origin_refused: 'This page is not on the core’s own address.',
-    host_refused: 'Open the site by its IP address, not a name.',
-    unauthorized: 'The site token was not accepted.'
+    host_refused: 'Open the site by its IP address, not a name.'
   }
   return words[error.code] ?? `The core refused it (${error.code}).`
 }

@@ -30,6 +30,7 @@ import {
   ensureSubject,
   getChat,
   getChatByWaId,
+  setChatLabel,
   setDisplayName
 } from '../settings/chats.js'
 import { platformSwitchOn, type Resolved, resolveSettings } from '../settings/settings.js'
@@ -1138,9 +1139,16 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
   async function handle(incoming: TurnRequest): Promise<TurnReply> {
     let request = incoming
     // Identity comes from code: the scope marker's ids are mapped to internal ids here, once.
-    const chat = ensureChat(storage, { waId: request.marker.chat, type: request.marker.kind }, now)
+    let chat = ensureChat(storage, { waId: request.marker.chat, type: request.marker.kind }, now)
     const senderId = ensureSubject(storage, request.marker.sender, now)
-    if (request.senderName) setDisplayName(storage, request.marker.sender, request.senderName)
+    if (request.senderName) {
+      setDisplayName(storage, request.marker.sender, request.senderName)
+      if (chat.type === 'dm' && !chat.label) {
+        if (setChatLabel(storage, { chatId: chat.chatId, label: request.senderName, actor: 'gateway' }, now)) {
+          chat = { ...chat, label: request.senderName }
+        }
+      }
+    }
     const key = { chatId: chat.chatId, mid: request.marker.mid, senderId }
 
     // A WhatsApp id never reaches the window, the model or a reply: a mention becomes a name.
