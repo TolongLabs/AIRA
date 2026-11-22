@@ -19,10 +19,13 @@ export interface SocialThreadPost {
   photoUrls: string[]
 }
 
-/** A native rendition supported by the same response that established the post identity. */
+/**
+ * A native rendition supported by the same response that established the post identity. A video's `durationSec` is
+ * null when the native duration is unknown; the group path then measures it before delivery.
+ */
 export type PostAttachment =
   | { kind: 'image'; url: string; owner: string }
-  | { kind: 'video'; owner: string; video: PlayableVideo; durationSec: number }
+  | { kind: 'video'; owner: string; video: PlayableVideo; durationSec: number | null }
 
 export interface SocialPost {
   attachments?: PostAttachment[]

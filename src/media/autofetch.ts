@@ -6,7 +6,8 @@ import {
   completeAutofetchDelivery,
   invalidateAutofetchDelivery,
   recordAutofetchHandoff,
-  recordSocialLookup
+  recordSocialLookup,
+  type VideoSkipReason
 } from '../records/autofetch.js'
 import type { Logger } from '../records/logger.js'
 import { endJobRun, startJobRun } from '../records/turn-record.js'
@@ -24,7 +25,14 @@ import {
 import type { Db, Storage } from '../storage/database.js'
 import type { PagePort } from '../tools/ports.js'
 import { openDeliveryFiles } from './autofetch-files.js'
-import { COMPRESSION_MAX_INPUT_BYTES, COMPRESSION_MAX_SECONDS, type CompressVideo, isMp4 } from './video-compression.js'
+import {
+  COMPRESSION_MAX_INPUT_BYTES,
+  COMPRESSION_MAX_SECONDS,
+  type CompressVideo,
+  isMp4,
+  type ProbeVideoDuration,
+  probeVideoDuration
+} from './video-compression.js'
 
 // A group's post links answered with the posts' own media (docs/trd/system.md#autofetch).
 
@@ -98,6 +106,8 @@ export interface AutofetchOptions {
   }
   download: PagePort['download']
   compressVideo?: CompressVideo
+  /** Measures a downloaded MP4 whose native duration is unknown. Defaults to ffprobe. */
+  probeDuration?: ProbeVideoDuration
   mirrors?: SocialMirrorSettings
   /** `<dataDir>/cache/autofetch`, where the core writes. */
   cacheDir: string
@@ -132,6 +142,52 @@ function canonicalTarget(post: SocialPost, target: SocialPostTarget): SocialPost
   return resolved
 }
 
+/** A duration in seconds when the source states a positive finite one, else undefined. */
+function positiveSeconds(seconds: number | null | undefined): number | undefined {
+  return typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0 ? seconds : undefined
+}
+
+type PostMediaItem = ReturnType<typeof postMedia>[number]
+
+type DurationBand = 'le_60' | 'le_120' | 'le_180' | 'gt_180' | 'unknown'
+
+/** What one save reports: the file if kept, the video's skip reason, and a duration measured by ffprobe. */
+interface SaveOutcome {
+  downloaded: boolean
+  file?: { name: string; media: AutofetchMedia }
+  skip?: VideoSkipReason
+  measuredSec?: number
+}
+
+function durationBand(seconds: number | null | undefined): DurationBand {
+  const sec = positiveSeconds(seconds)
+  if (sec === undefined) return 'unknown'
+  if (sec <= 60) return 'le_60'
+  if (sec <= 120) return 'le_120'
+  return sec <= COMPRESSION_MAX_SECONDS ? 'le_180' : 'gt_180'
+}
+
+/**
+ * The band of the post's video, from its own native duration or its measurement. Without a video asset, the post's
+ * own known duration. A video asset never borrows a duration from elsewhere.
+ */
+function videoDurationBand(
+  post: SocialPost,
+  items: readonly PostMediaItem[],
+  saved: readonly SaveOutcome[]
+): DurationBand | undefined {
+  const video = items.findIndex((item) => item.kind === 'video')
+  if (video >= 0) return durationBand(items[video]!.durationSec ?? saved[video]?.measuredSec)
+  if (post.videoCount === 0 && !post.video) return undefined
+  return durationBand(post.durationSec)
+}
+
+/** Why the post's video was not kept, when it was skipped for its duration or its compression. */
+function videoSkipOf(items: readonly PostMediaItem[], saved: readonly SaveOutcome[]): VideoSkipReason | undefined {
+  const video = items.findIndex((item) => item.kind === 'video')
+  return saved[video]?.skip
+}
+
 function postMedia(
   post: SocialPost,
   target: SocialPostTarget,
@@ -141,7 +197,7 @@ function postMedia(
   kind: AutofetchMedia['kind']
   url: string
   headers?: Record<string, string> | null
-  durationSec?: number
+  durationSec?: number | null
   downloadTimeoutMs?: number
   rangeBytes?: number
 }[] {
@@ -151,9 +207,7 @@ function postMedia(
   const attachments = (post.attachments ?? []).filter(
     (item) => item.owner === resolved.lookupKey && operations.includes(item.kind === 'image' ? 'photos' : 'video')
   )
-  const video = attachments.find(
-    (item) => item.kind === 'video' && Number.isFinite(item.durationSec) && item.durationSec > 0
-  )
+  const video = attachments.find((item) => item.kind === 'video')
   const photos = attachments.flatMap((item) => (item.kind === 'image' ? [{ kind: item.kind, url: item.url }] : []))
   return [
     ...(video?.kind === 'video'
@@ -162,7 +216,7 @@ function postMedia(
             kind: video.kind,
             url: video.video.url,
             headers: video.video.headers,
-            durationSec: video.durationSec,
+            durationSec: positiveSeconds(video.durationSec) ?? null,
             ...(video.video.mirror ? { downloadTimeoutMs: MIRROR_VIDEO_TIMEOUT_MS } : {}),
             ...(mirrorVideoRangeBytes(video.video) !== undefined
               ? { rangeBytes: mirrorVideoRangeBytes(video.video) }
@@ -174,21 +228,9 @@ function postMedia(
   ].slice(0, AUTOFETCH_MAX_FILES)
 }
 
-function videoDurationBand(post: SocialPost, items: ReturnType<typeof postMedia>) {
-  if (post.videoCount === 0 && !post.video) return undefined
-  // A group mode without video still measures the post's own known duration.
-  const known = post.durationSec !== null && Number.isFinite(post.durationSec) && post.durationSec > 0
-  const durationSec =
-    items.find((asset) => asset.kind === 'video')?.durationSec ?? (known ? post.durationSec! : undefined)
-  if (durationSec === undefined) return 'unknown'
-  if (durationSec <= 60) return 'le_60'
-  if (durationSec <= 120) return 'le_120'
-  if (durationSec <= 180) return 'le_180'
-  return 'gt_180'
-}
-
 export function createAutofetch(options: AutofetchOptions): Autofetch {
   const now = options.now ?? (() => new Date())
+  const probeDuration = options.probeDuration ?? probeVideoDuration
   // A process starts with no key: every outstanding key is invalidated and every leftover file is removed.
   const files = openDeliveryFiles(options.cacheDir)
   options.storage.tx((db) => {
@@ -282,22 +324,21 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
     })
   }
 
-  async function save(
-    item: ReturnType<typeof postMedia>[number],
-    signal: AbortSignal
-  ): Promise<{ downloaded: boolean; file?: { name: string; media: AutofetchMedia } }> {
+  async function save(item: PostMediaItem, signal: AbortSignal): Promise<SaveOutcome> {
+    const isVideo = item.kind === 'video'
+    const maxBytes = isVideo ? AUTOFETCH_MAX_VIDEO_BYTES : AUTOFETCH_MAX_IMAGE_BYTES
+    const nativeSec = positiveSeconds(item.durationSec)
+    // A native duration over the limit is refused before any byte is fetched, whatever the file's size.
+    if (nativeSec !== undefined && nativeSec > COMPRESSION_MAX_SECONDS) return { downloaded: false, skip: 'too_long' }
     let downloaded = false
-    const maxBytes = item.kind === 'video' ? AUTOFETCH_MAX_VIDEO_BYTES : AUTOFETCH_MAX_IMAGE_BYTES
+    let measuredSec: number | undefined
     try {
       const budget = AbortSignal.any([
         signal,
         AbortSignal.timeout(item.downloadTimeoutMs ?? AUTOFETCH_ASSET_TIMEOUT_MS)
       ])
-      const compressor =
-        item.kind === 'video' && (item.durationSec ?? Infinity) <= COMPRESSION_MAX_SECONDS
-          ? options.compressVideo
-          : undefined
-      const cap = compressor ? COMPRESSION_MAX_INPUT_BYTES : maxBytes
+      // A video may be compressed, so it may download up to the compressor's input cap.
+      const cap = isVideo && options.compressVideo ? COMPRESSION_MAX_INPUT_BYTES : maxBytes
       const file =
         item.rangeBytes !== undefined && item.rangeBytes <= cap
           ? await options.download(item.url, budget, cap, item.headers, item.rangeBytes)
@@ -305,22 +346,34 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
       if (budget.aborted) return { downloaded }
       const mime = file.contentType.split(';')[0]?.trim().toLowerCase() ?? ''
       const ext = EXTENSIONS[mime]
-      const kindMatches = item.kind === 'video' ? mime === 'video/mp4' : mime.startsWith('image/')
-      if (
-        !ext ||
-        !kindMatches ||
-        file.data.length > (compressor ? COMPRESSION_MAX_INPUT_BYTES : maxBytes) ||
-        !matchesSignature(mime, file.data)
-      )
-        return { downloaded }
+      const kindMatches = isVideo ? mime === 'video/mp4' : mime.startsWith('image/')
+      if (!ext || !kindMatches || file.data.length > cap || !matchesSignature(mime, file.data)) return { downloaded }
       downloaded = true
-      const data =
-        file.data.length <= maxBytes
-          ? file.data
-          : await compressor?.(file.data, maxBytes, COMPRESSION_MAX_SECONDS, signal)
-      if (!data || signal.aborted || data.length > maxBytes || !matchesSignature(mime, data)) return { downloaded }
+      if (isVideo && nativeSec === undefined) {
+        // No native duration: measure the downloaded MP4 before it is compressed or delivered.
+        measuredSec = positiveSeconds(await probeDuration(file.data, signal).catch(() => undefined))
+        if (signal.aborted) return { downloaded }
+        if (measuredSec === undefined) return { downloaded, skip: 'unknown_duration' }
+        if (measuredSec > COMPRESSION_MAX_SECONDS) return { downloaded, measuredSec, skip: 'too_long' }
+      }
+      let data = file.data
+      if (data.length > maxBytes) {
+        // One bounded compression attempt. Its output must be a valid MP4 within the delivery limit.
+        const compressed = await options
+          .compressVideo?.(data, maxBytes, COMPRESSION_MAX_SECONDS, signal)
+          .catch(() => undefined)
+        if (signal.aborted) return { downloaded, measuredSec }
+        if (!compressed || compressed.length > maxBytes || !matchesSignature(mime, compressed)) {
+          return { downloaded, measuredSec, skip: 'compression_failed' }
+        }
+        data = compressed
+      }
       const name = files.write(data, ext)
-      return { downloaded, file: { name, media: { kind: item.kind, path: join(options.hostCacheDir, name) } } }
+      return {
+        downloaded,
+        measuredSec,
+        file: { name, media: { kind: item.kind, path: join(options.hostCacheDir, name) } }
+      }
     } catch {
       return { downloaded }
     }
@@ -393,7 +446,8 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
                   eligible: items.length,
                   downloaded,
                   videoDurationBand:
-                    !skip && lookup?.status === 'found' ? videoDurationBand(lookup.post, items) : undefined
+                    !skip && lookup?.status === 'found' ? videoDurationBand(lookup.post, items, downloads) : undefined,
+                  videoSkip: videoSkipOf(items, downloads)
                 }
               )
             )

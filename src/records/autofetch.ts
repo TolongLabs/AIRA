@@ -34,9 +34,13 @@ const REASONS = new Set([
   'repeat',
   'platform_excluded',
   'platform_disabled',
-  'no_verified_attachment'
+  'no_verified_attachment',
+  'too_long',
+  'unknown_duration',
+  'compression_failed'
 ])
 export const AUTOFETCH_KEY_LIFETIME_MS = 10 * 60_000
+export type VideoSkipReason = 'too_long' | 'unknown_duration' | 'compression_failed'
 
 function safeReason(reason?: string): string | null {
   if (!reason) return null
@@ -70,6 +74,7 @@ export function recordSocialLookup(
     eligible?: number
     downloaded?: number
     videoDurationBand?: 'le_60' | 'le_120' | 'le_180' | 'gt_180' | 'unknown'
+    videoSkip?: VideoSkipReason
   }
 ): void {
   const {
@@ -82,7 +87,8 @@ export function recordSocialLookup(
     skip,
     eligible = 0,
     downloaded = 0,
-    videoDurationBand
+    videoDurationBand,
+    videoSkip
   } = data
   const runId = 'runId' in parent ? parent.runId : null
   const turnId = 'turnId' in parent ? parent.turnId : null
@@ -96,6 +102,7 @@ export function recordSocialLookup(
       : 'failed'
   const reason =
     skip ??
+    videoSkip ??
     (lookup?.status === 'failed' ? lookup.reason : trace?.reason) ??
     (runId !== null && lookup?.status === 'found' && eligible === 0 ? 'no_verified_attachment' : undefined)
   const attempts = (trace?.attempts ?? []).slice(0, 4).map((attempt) => ({

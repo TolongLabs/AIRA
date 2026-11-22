@@ -171,7 +171,7 @@ export function parseFxTwitterResponse(payload: unknown, target: SocialPostTarge
   if (tweet.id === target.id) {
     const native = photos.map(object).filter((photo) => photo.type === 'photo')
     post.attachments = nativePhotos(target.lookupKey, photoList(native.map((photo) => photo.url)))
-    if (firstVideo.type === 'video' && !media.broadcast && post.video && post.durationSec !== null) {
+    if (firstVideo.type === 'video' && !media.broadcast && post.video) {
       post.attachments.push({
         kind: 'video',
         owner: target.lookupKey,
