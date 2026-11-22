@@ -63,6 +63,10 @@ interface AlertRule {
   symbol: string
   direction: 'above' | 'below' | 'moves'
   level: number
+  /* Which chat answers it. Absent means the default target (set under
+     Settings → Markets). Kept on every re-save so arming one alert never
+     strips the routing off the others. */
+  to?: string
 }
 
 /* ── watchlist ordering ───────────────────────────────────────────────────
@@ -236,6 +240,7 @@ function WatchRow({
   name,
   quote,
   selected,
+  disabled,
   onSelect,
   onRemove
 }: {
@@ -243,6 +248,7 @@ function WatchRow({
   name: string
   quote?: Quote
   selected: boolean
+  disabled?: boolean
   onSelect: () => void
   onRemove: () => void
 }) {
@@ -290,10 +296,11 @@ function WatchRow({
           type="button"
           aria-label={`stop following ${symbol}`}
           onClick={onRemove}
+          disabled={disabled}
           /* Always visible rather than revealed on hover: hover does not
              exist on a phone, and a control you cannot reach on a phone is a
              control that is not there. */
-          className="cursor-pointer rounded-full border-0 bg-transparent p-1 text-faint transition-colors hover:text-down focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+          className="cursor-pointer rounded-full border-0 bg-transparent p-1 text-faint transition-colors hover:text-down focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none disabled:cursor-default disabled:opacity-40"
         >
           <X className="size-3.5" />
         </button>
@@ -310,16 +317,20 @@ function Alerts({
   watch,
   alerts,
   quoteOf,
+  disabled,
   onSave
 }: {
   watch: string[]
   alerts: AlertRule[]
   quoteOf: (s: string) => Quote | undefined
-  onSave: (next: AlertRule[]) => void
+  disabled?: boolean
+  onSave: (next: AlertRule[]) => Promise<void>
 }) {
   const [symbol, setSymbol] = useState('')
   const [direction, setDirection] = useState<AlertRule['direction']>('below')
   const [level, setLevel] = useState('')
+  const [savingAlert, setSavingAlert] = useState(false)
+  const busy = disabled || savingAlert
 
   /* Nothing converts anywhere: a level is compared against the provider's own
      number, in the instrument's own currency. Naming it is the difference
@@ -333,7 +344,7 @@ function Alerts({
         {alerts.map((a, i) => {
           const q = quoteOf(a.symbol)
           const away =
-            q?.price == null
+            q?.price == null || (a.direction !== 'moves' && !(a.level > 0))
               ? null
               : a.direction === 'moves'
                 ? `${Math.abs(q.change_pct ?? 0).toFixed(2)}% today`
@@ -355,7 +366,15 @@ function Alerts({
                 size="sm"
                 variant="ghost"
                 className={away ? '' : 'ml-auto'}
-                onClick={() => onSave(alerts.filter((_, j) => j !== i))}
+                disabled={busy}
+                onClick={async () => {
+                  setSavingAlert(true)
+                  try {
+                    await onSave(alerts.filter((_, j) => j !== i))
+                  } finally {
+                    setSavingAlert(false)
+                  }
+                }}
               >
                 <X />
                 remove
@@ -370,17 +389,24 @@ function Alerts({
         className="mt-5 flex flex-wrap items-end gap-3 border-t border-line pt-5"
         onSubmit={(e) => {
           e.preventDefault()
+          if (busy) return
           const sym = symbol.trim().toLowerCase()
           const n = parseFloat(level)
           if (!sym || Number.isNaN(n)) {
             toast('pick a symbol and a number', false)
             return
           }
-          onSave([
+          if (!(n > 0)) {
+            toast('pick a level above zero', false)
+            return
+          }
+          setSavingAlert(true)
+          void onSave([
             ...alerts.filter((a) => !(a.symbol === sym && a.direction === direction)),
             { symbol: sym, direction, level: n }
           ])
-          setLevel('')
+            .then(() => setLevel(''))
+            .finally(() => setSavingAlert(false))
         }}
       >
         <Field label="which one">
@@ -413,8 +439,8 @@ function Alerts({
             className="w-32"
           />
         </Field>
-        <Button variant="primary" type="submit" className="mb-0.5">
-          Arm alert
+        <Button variant="primary" type="submit" className="mb-0.5" disabled={busy}>
+          {savingAlert ? 'Arming…' : 'Arm alert'}
         </Button>
       </form>
     </Card>
@@ -437,6 +463,7 @@ export default function MarketsPage() {
   const [chartErr, setChartErr] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [mutating, setMutating] = useState(false)
   const [sort, setSort] = useState<Sort>(readSort)
   /* Quotes fetched on demand for a symbol added seconds ago, laid over the
      poller's snapshot until the next poll makes them the same thing. */
@@ -503,7 +530,12 @@ export default function MarketsPage() {
   }, [ordered, sym])
 
   useEffect(() => {
-    if (!sym) return
+    if (!sym) {
+      setHist(null)
+      setChartErr(null)
+      setLoadingChart(false)
+      return
+    }
     let live = true
     setLoadingChart(true)
     setChartErr(null)
@@ -618,14 +650,37 @@ export default function MarketsPage() {
   }, [dash.data, fresh, scope, sym, watch])
 
   async function saveMarkets(patch: { watchlist?: string[]; alerts?: AlertRule[] }) {
-    await post('/api/settings/markets', patch)
-    settings.reload()
+    if (!settings.data) throw new Error('settings are still loading — try again in a moment')
+    if (settings.error) throw new Error(String(settings.error))
+    setMutating(true)
+    try {
+      await post('/api/settings/markets', {
+        ...patch,
+        expected: Object.fromEntries(
+          Object.keys(patch).map((key) => [
+            key,
+            (settings.data?.markets as Record<string, unknown> | undefined)?.[key] ?? null
+          ])
+        )
+      })
+      await settings.reload()
+    } finally {
+      setMutating(false)
+    }
   }
 
   /* Append, always. The stored list is insertion order and the rail sorts a
      copy of it — so "newest first" is a header press, not a rewrite of what
      she reads back when asked what you follow. */
   async function addSymbol(s: string) {
+    if (!settings.data || settings.error) {
+      toast('settings are still loading — try again in a moment', false)
+      return
+    }
+    if (mutating) {
+      toast('still saving — try again in a moment', false)
+      return
+    }
     if (watch.includes(s)) {
       setSym(s)
       setAdding(false)
@@ -656,6 +711,11 @@ export default function MarketsPage() {
   }
 
   async function dropSymbol(s: string) {
+    if (!settings.data || settings.error) {
+      toast('settings are still loading — try again in a moment', false)
+      return
+    }
+    if (mutating) return
     try {
       await saveMarkets({ watchlist: watch.filter((x) => x !== s) })
       if (sym === s) {
@@ -667,7 +727,12 @@ export default function MarketsPage() {
            screen with no row in the rail. Taking the neighbour from the sort
            the reader is actually looking at also beats falling back to
            whatever the stored list happens to start with. */
-        setSym(ordered.filter((x) => x !== s)[0] ?? null)
+        const next = ordered.filter((x) => x !== s)[0] ?? null
+        setSym(next)
+        if (!next) {
+          setHist(null)
+          setChartErr(null)
+        }
       }
       // A stale price for something no longer followed would be handed
       // straight back if it were ever re-added.
@@ -797,6 +862,7 @@ export default function MarketsPage() {
                   name={nameOf(s)}
                   quote={quoteOf(s)}
                   selected={s.toLowerCase() === String(sym).toLowerCase()}
+                  disabled={mutating || !settings.data || !!settings.error}
                   onSelect={() => setSym(s)}
                   onRemove={() => void dropSymbol(s)}
                 />
@@ -969,10 +1035,19 @@ export default function MarketsPage() {
               watch={watch}
               alerts={alerts}
               quoteOf={quoteOf}
-              onSave={(next) => {
-                saveMarkets({ alerts: next })
-                  .then(() => toast('saved ✓'))
-                  .catch((e: Error) => toast(e.message, false))
+              disabled={!settings.data || !!settings.error || mutating}
+              onSave={async (next) => {
+                if (!settings.data || settings.error) {
+                  toast('settings are still loading — try again in a moment', false)
+                  throw new Error('settings not ready')
+                }
+                try {
+                  await saveMarkets({ alerts: next })
+                  toast('saved ✓')
+                } catch (e) {
+                  toast((e as Error).message, false)
+                  throw e
+                }
               }}
             />
           </Section>

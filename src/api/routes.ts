@@ -49,7 +49,7 @@ export interface RouteResult {
   body: unknown
 }
 
-const DEFAULT_CHANNEL_DIRECTORY_PATH = '/gateway/channel_directory.json'
+const DEFAULT_CHANNEL_DIRECTORY_PATH = '/gateway/directory/channel_directory.json'
 const DEFAULT_TURNS_LIMIT = 50
 const MAX_TURNS_LIMIT = 200
 const REPORT_WINDOW_MS = 7 * 86_400_000
@@ -101,6 +101,17 @@ function handleChats(deps: SiteApiDeps): RouteResult {
   const directory = rawChats.some((chat) => chat.label === '')
     ? readChannelDirectory(deps.channelDirectoryPath ?? DEFAULT_CHANNEL_DIRECTORY_PATH)
     : new Map<string, string>()
+  const activity = deps.storage.read(
+    (db) =>
+      new Map(
+        (
+          db.prepare('SELECT chat_id, MAX(received_at) AS last_seen FROM inbound_message GROUP BY chat_id').all() as {
+            chat_id: string
+            last_seen: string
+          }[]
+        ).map((row) => [row.chat_id, row.last_seen])
+      )
+  )
   const chats = rawChats.map((chat) => {
     const label =
       chat.label ||
@@ -110,6 +121,7 @@ function handleChats(deps: SiteApiDeps): RouteResult {
     return {
       ...chat,
       storedLabel: chat.label,
+      lastInboundAt: activity.get(chat.chatId) ?? null,
       label,
       settings: resolveSettings(deps.storage, chat)
     }

@@ -8,7 +8,7 @@ export interface Async<T> {
   data: T | null
   error: string | null
   loading: boolean
-  reload: () => void
+  reload: () => Promise<T | null>
 }
 
 /** GET a JSON endpoint, with the failure surfaced instead of swallowed. */
@@ -16,22 +16,32 @@ export function useApi<T>(path: string | null): Async<T> {
   const [data, setData] = useState<T | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [nonce, setNonce] = useState(0)
-
-  useEffect(() => {
-    if (!path) return
-    let live = true
+  const generation = useRef(0)
+  const reload = useCallback(async (): Promise<T | null> => {
+    const current = ++generation.current
+    if (!path) return null
     setLoading(true)
-    get<T>(path)
-      .then((d) => live && (setData(d), setError(null)))
-      .catch((e: Error) => live && setError(e.message))
-      .finally(() => live && setLoading(false))
-    return () => {
-      live = false
+    try {
+      const next = await get<T>(path)
+      if (current !== generation.current) return null
+      setData(next)
+      setError(null)
+      return next
+    } catch (e) {
+      if (current === generation.current) setError(e instanceof Error ? e.message : 'Owner request failed')
+      return null
+    } finally {
+      if (current === generation.current) setLoading(false)
     }
-  }, [path, nonce])
-
-  const reload = useCallback(() => setNonce((n) => n + 1), [])
+  }, [path])
+  useEffect(() => {
+    setData(null)
+    setError(null)
+    void reload()
+    return () => {
+      generation.current++
+    }
+  }, [reload])
   return { data, error, loading, reload }
 }
 

@@ -58,8 +58,14 @@ function indexQuotes(list: Quote[]): Record<string, Quote> {
   return out
 }
 
+/* A rule armed on the Markets page belongs to no chat (`to` unset) and is
+   delivered to the default target. It still has to be visible — and disarmable
+   — from a chat, otherwise it can never be listed or cleared once armed. */
 function alertsForChat(alerts: AlertRule[], chatKey: string): AlertRule[] {
-  return alerts.filter((rule) => (rule.to ?? '') === chatKey)
+  return alerts.filter((rule) => {
+    const to = rule.to ?? ''
+    return to === '' || to === chatKey
+  })
 }
 
 function errorMessage(err: unknown, fallback: string): string {
@@ -290,8 +296,15 @@ function handleWatchAlert(
     const { data } = context.commit(() => {
       const cfg = loadWatchConfig(configPath)
       let watch = watchlistFor(chatKey, cfg)
+      // A chat arming or disarming takes over a matching site-wide rule (no
+      // `to`): otherwise the rule survives every clear and haunts the list.
       const remaining = cfg.alerts.filter(
-        (r) => !(r.symbol.toLowerCase() === sym && r.direction.toLowerCase() === direction && (r.to ?? '') === chatKey)
+        (r) =>
+          !(
+            r.symbol.toLowerCase() === sym &&
+            r.direction.toLowerCase() === direction &&
+            ((r.to ?? '') === chatKey || (r.to ?? '') === '')
+          )
       )
       if (kind === 'alert') {
         remaining.push({ symbol: sym, direction, level: level!, to: chatKey })

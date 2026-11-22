@@ -96,19 +96,17 @@ describe('platform sub-toggles in the settings registry', () => {
   })
 })
 
-const SITE_TOKEN = 'test-site-token-0123456789abcdefghijklmn'
-
 function sitePut(siteUrl: string, body: unknown) {
   return fetch(`${siteUrl}/api/settings`, {
     method: 'PUT',
-    headers: { authorization: `Bearer ${SITE_TOKEN}`, 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body)
   })
 }
 
 describe('platform switches through PUT /api/settings', () => {
   it('sets, repeats and clears one platform key with setting_change rows by the site', async () => {
-    const { app, chatId } = await startApp(queueModel([{ text: 'ok' }]), { env: { SITE_TOKEN } })
+    const { app, chatId } = await startApp(queueModel([{ text: 'ok' }]))
     const address = await app.listenSite(0, '127.0.0.1')
     if (!address) throw new Error('site failed to listen')
     const siteUrl = `http://127.0.0.1:${address.port}`
@@ -136,9 +134,7 @@ describe('platform switches through PUT /api/settings', () => {
     })
     expect(chatSet.status).toBe(200)
 
-    const chats = (await (
-      await fetch(`${siteUrl}/api/chats`, { headers: { authorization: `Bearer ${SITE_TOKEN}` } })
-    ).json()) as {
+    const chats = (await (await fetch(`${siteUrl}/api/chats`)).json()) as {
       chats: { chatId: string; settings: Record<string, { value: unknown; level: string }> }[]
     }
     const first = chats.chats.find((entry) => entry.chatId === chatId)?.settings['social.platforms.x']
@@ -301,7 +297,7 @@ describe('intake with a disabled platform', () => {
     }) as typeof fetch
     vi.stubGlobal('fetch', stub)
 
-    const { app, gateway, chatId } = await startApp(queueModel([{ text: 'noted' }]), { env: { SITE_TOKEN } })
+    const { app, gateway, chatId } = await startApp(queueModel([{ text: 'noted' }]))
 
     setSetting(app.storage, {
       level: 'chat',

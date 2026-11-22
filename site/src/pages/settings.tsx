@@ -49,12 +49,24 @@ function ChatWatchlists({ chats, regions }: { chats: Chat[]; regions: { value: s
   const [rows, setRows] = useState<Record<string, string[]>>({})
   const [own, setOwn] = useState<Record<string, boolean>>({})
   const [inherit, setInherit] = useState<Record<string, boolean>>({})
+  const [busy, setBusy] = useState<Record<string, boolean>>({})
+  const rowsRef = useRef<Record<string, string[]>>({})
+  const chainRef = useRef<Record<string, Promise<void>>>({})
 
   useEffect(() => {
-    setRows(Object.fromEntries(chats.map((c) => [c.scope_key ?? c.jid, (c.watchlist ?? []).map(String)])))
+    const next = Object.fromEntries(chats.map((c) => [c.scope_key ?? c.jid, (c.watchlist ?? []).map(String)]))
+    rowsRef.current = next
+    setRows(next)
     setOwn(Object.fromEntries(chats.map((c) => [c.scope_key ?? c.jid, !!c.own_watchlist])))
     setInherit(Object.fromEntries(chats.map((c) => [c.scope_key ?? c.jid, !!c.inherits_watchlist])))
   }, [chats])
+
+  function runSerialized(key: string, fn: () => Promise<void>): Promise<void> {
+    const prev = chainRef.current[key] ?? Promise.resolve()
+    const next = prev.then(fn)
+    chainRef.current[key] = next.catch(() => {})
+    return next
+  }
 
   /* Following the default is a choice a chat makes, not the state it starts
      in. It used to be inferred from "has no list of its own", which meant a
@@ -64,36 +76,58 @@ function ChatWatchlists({ chats, regions }: { chats: Chat[]; regions: { value: s
      empty means inherit, so it is now stored. */
   async function setFollowsDefault(chat: Chat, want: boolean) {
     const key = chat.scope_key ?? chat.jid
-    try {
-      const r = await post<{
-        inherits_default?: boolean
-        watchlist?: string[]
-      }>('/api/settings/watchlist_inherit', {
-        scope_key: chat.scope_key,
-        inherit: want
-      })
-      setInherit((was) => ({ ...was, [key]: !!r.inherits_default }))
-      setRows((was) => ({ ...was, [key]: (r.watchlist ?? []).map(String) }))
-      if (want) setOwn((was) => ({ ...was, [key]: false }))
-      toast(want ? 'following the default list ✓' : 'no longer following it ✓')
-    } catch (e) {
-      toast((e as Error).message, false)
-    }
+    const scopeKey = chat.scope_key ?? chat.jid
+    return runSerialized(key, async () => {
+      setBusy((was) => ({ ...was, [key]: true }))
+      try {
+        const r = await post<{
+          inherits_default?: boolean
+          watchlist?: string[]
+        }>('/api/settings/watchlist_inherit', {
+          scope_key: scopeKey,
+          inherit: want
+        })
+        const hasInherit = r && typeof r.inherits_default === 'boolean'
+        const hasWatch = r && Array.isArray(r.watchlist)
+        const nextInherit = hasInherit ? !!r.inherits_default : want
+        const nextRows = hasWatch ? (r.watchlist ?? []).map(String) : (rowsRef.current[key] ?? [])
+        rowsRef.current = { ...rowsRef.current, [key]: nextRows }
+        setInherit((was) => ({ ...was, [key]: nextInherit }))
+        setRows((was) => ({ ...was, [key]: nextRows }))
+        if (nextInherit) setOwn((was) => ({ ...was, [key]: false }))
+        toast(nextInherit ? 'following the default list ✓' : 'no longer following it ✓')
+      } catch (e) {
+        toast((e as Error).message, false)
+      } finally {
+        setBusy((was) => ({ ...was, [key]: false }))
+      }
+    })
   }
 
-  async function save(chat: Chat, symbols: string[]) {
+  function mutate(chat: Chat, update: (prev: string[]) => string[]) {
     const key = chat.scope_key ?? chat.jid
-    try {
-      const r = await post<{ inherits_default?: boolean }>('/api/settings/watchlist', {
-        scope_key: chat.scope_key,
-        symbols: symbols.join(' ')
-      })
-      setRows((was) => ({ ...was, [key]: symbols }))
-      setOwn((was) => ({ ...was, [key]: !r.inherits_default }))
-      toast(r.inherits_default ? 'back to the default list ✓' : 'saved ✓')
-    } catch (e) {
-      toast((e as Error).message, false)
-    }
+    const scopeKey = chat.scope_key ?? chat.jid
+    return runSerialized(key, async () => {
+      const prev = rowsRef.current[key] ?? []
+      const next = update(prev)
+      setBusy((was) => ({ ...was, [key]: true }))
+      try {
+        const r = await post<{ inherits_default?: boolean }>('/api/settings/watchlist', {
+          scope_key: scopeKey,
+          symbols: next.join(' ')
+        })
+        const hasInherit = r && typeof r.inherits_default === 'boolean'
+        const nextOwn = hasInherit ? !r.inherits_default : next.length > 0
+        rowsRef.current = { ...rowsRef.current, [key]: next }
+        setRows((was) => ({ ...was, [key]: next }))
+        setOwn((was) => ({ ...was, [key]: nextOwn }))
+        toast(r && r.inherits_default ? 'back to the default list ✓' : 'saved ✓')
+      } catch (e) {
+        toast((e as Error).message, false)
+      } finally {
+        setBusy((was) => ({ ...was, [key]: false }))
+      }
+    })
   }
 
   const named = chats.filter((c) => !c.pending)
@@ -103,8 +137,9 @@ function ChatWatchlists({ chats, regions }: { chats: Chat[]; regions: { value: s
     <div>
       {named.map((c) => {
         const key = c.scope_key ?? c.jid
-        const list = rows[key] ?? []
+        const list = rows[key] ?? rowsRef.current[key] ?? []
         const isOpen = open === key
+        const isBusy = !!busy[key]
         return (
           <div key={key} className="border-t border-line-2 py-3 first:border-t-0 first:pt-0">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -132,13 +167,9 @@ function ChatWatchlists({ chats, regions }: { chats: Chat[]; regions: { value: s
                     <button
                       type="button"
                       aria-label={`remove ${sym} from ${c.label || c.name}`}
-                      onClick={() =>
-                        void save(
-                          c,
-                          list.filter((x) => x !== sym)
-                        )
-                      }
-                      className="cursor-pointer rounded-full border-0 bg-transparent p-1 text-muted hover:text-down"
+                      disabled={isBusy}
+                      onClick={() => void mutate(c, (prev) => prev.filter((x) => x !== sym))}
+                      className="cursor-pointer rounded-full border-0 bg-transparent p-1 text-muted hover:text-down disabled:cursor-default disabled:opacity-40"
                     >
                       <X className="size-3.5" />
                     </button>
@@ -161,7 +192,10 @@ function ChatWatchlists({ chats, regions }: { chats: Chat[]; regions: { value: s
 
             {isOpen && (
               <div className="mt-3">
-                <SymbolSearch regions={regions} onPick={(sym) => void save(c, [...new Set([...list, sym])])} />
+                <SymbolSearch
+                  regions={regions}
+                  onPick={(sym) => void mutate(c, (prev) => [...new Set([...prev, sym])])}
+                />
                 {!own[key] && (
                   <p className="mt-2 mb-0 max-w-prose text-[0.82rem] text-muted">
                     {inherit[key]
@@ -176,7 +210,7 @@ function ChatWatchlists({ chats, regions }: { chats: Chat[]; regions: { value: s
                     type="checkbox"
                     className="mt-0.5 size-4 cursor-pointer accent-[var(--accent)]"
                     checked={!!inherit[key]}
-                    disabled={!!own[key]}
+                    disabled={!!own[key] || isBusy}
                     onChange={(e) => void setFollowsDefault(c, e.target.checked)}
                   />
                   <span className="text-[0.82rem] text-muted">
@@ -185,7 +219,13 @@ function ChatWatchlists({ chats, regions }: { chats: Chat[]; regions: { value: s
                   </span>
                 </label>
                 {own[key] && (
-                  <Button size="sm" variant="ghost" className="mt-2" onClick={() => void save(c, [])}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="mt-2"
+                    disabled={isBusy}
+                    onClick={() => void mutate(c, () => [])}
+                  >
                     clear this chat’s list
                   </Button>
                 )}
@@ -484,12 +524,18 @@ function ModelsTab({ settings, onChanged }: { settings: Settings; onChanged: () 
   async function test() {
     setBusy(true)
     try {
-      const r = (await post('/api/settings/models_probe', {})) as {
+      // Probe what is typed, not what was last saved: testing after editing
+      // the address must check the new one, not the old one.
+      const r = (await post('/api/settings/models_probe', { endpoint })) as {
         reachable: boolean
-        tags: string[]
+        tags?: unknown
       }
-      setProbe(r)
-      toast(r.reachable ? `serving ${r.tags.length} model(s) ✓` : 'nothing answered', r.reachable)
+      // `tags` has been absent before — never trust it straight into `.join`.
+      const tags = Array.isArray(r.tags) ? r.tags.map(String) : []
+      setProbe({ reachable: !!r.reachable, tags })
+      let summary = 'nothing answered'
+      if (r.reachable) summary = tags.length ? `serving ${tags.length} model(s) ✓` : 'reachable — serving nothing yet'
+      toast(summary, !!r.reachable)
     } catch (e) {
       toast((e as Error).message, false)
     } finally {
@@ -632,7 +678,7 @@ function ModelsTab({ settings, onChanged }: { settings: Settings; onChanged: () 
         {probe && (
           <p className="mt-0 mb-4 text-[0.86rem] text-muted">
             {probe.reachable
-              ? `Reachable. Serving: ${probe.tags.join(', ') || 'nothing yet'}`
+              ? `Reachable. Serving: ${(probe.tags ?? []).join(', ') || 'nothing yet'}`
               : 'Nothing answered at that address.'}
           </p>
         )}
@@ -669,13 +715,25 @@ function MarketsTab({ settings, onChanged }: { settings: Settings; onChanged: ()
   const digest = settings.markets?.news_digest ?? {}
   const digestOn = Boolean((digest as { enabled?: boolean }).enabled)
   const digestTo = ((digest as { to?: unknown[] }).to ?? []).map(String)
+  const rawHours = (digest as { hours?: unknown }).hours
+  // `hours` is edited nowhere on this page — carry it through every save, or
+  // toggling the digest silently unschedules it.
+  const digestHours = Array.isArray(rawHours) ? rawHours.map(Number).filter((n) => Number.isFinite(n)) : []
 
   async function save(patch: {
     default_target?: string
     news_digest?: { enabled: boolean; to: string[]; hours?: number[] }
   }) {
     try {
-      await post('/api/settings/markets', patch)
+      await post('/api/settings/markets', {
+        ...patch,
+        expected: Object.fromEntries(
+          Object.keys(patch).map((key) => [
+            key,
+            (settings.markets as Record<string, unknown> | undefined)?.[key] ?? null
+          ])
+        )
+      })
       toast('saved ✓')
       onChanged()
     } catch (e) {
@@ -762,7 +820,7 @@ function MarketsTab({ settings, onChanged }: { settings: Settings; onChanged: ()
           <Toggle
             checked={digestOn}
             disabled={!digestOn && digestTo.length === 0}
-            onChange={(v) => void save({ news_digest: { enabled: v, to: digestTo } })}
+            onChange={(v) => void save({ news_digest: { enabled: v, to: digestTo, hours: digestHours } })}
             label="Send an hourly world-news digest"
             hint={
               digestTo.length === 0
@@ -781,9 +839,12 @@ function MarketsTab({ settings, onChanged }: { settings: Settings; onChanged: ()
               searchPlaceholder="type a name or number…"
               value={digestTo[0] ?? ''}
               onChange={(v) => {
-                const to = v ? [v] : []
+                // The picker edits only the first recipient — keep the rest,
+                // and `hours`, or choosing a chat silently drops both.
+                const tail = digestTo.slice(1).filter((t) => t !== v)
+                const to = v ? [v, ...tail] : tail
                 void save({
-                  news_digest: { enabled: to.length ? digestOn : false, to }
+                  news_digest: { enabled: to.length ? digestOn : false, to, hours: digestHours }
                 })
               }}
               options={chats.map((c) => ({
@@ -1015,10 +1076,14 @@ function VoiceTab({ settings, onChanged }: { settings: Settings; onChanged: () =
           recording of her voice, so picking the wrong one is audible.
         </p>
         <div className="flex flex-wrap items-center gap-3">
+          {/* Options are the raw codes with display labels alongside. Matching
+              on the label and falling back to `auto` saved any language with
+              no label here as `auto` — silently changing what it meant. */}
           <Segmented
-            options={langs.map((c) => LANG_LABELS[c] ?? c)}
-            value={LANG_LABELS[lang] ?? lang}
-            onChange={(v) => void saveLang(Object.keys(LANG_LABELS).find((k) => LANG_LABELS[k] === v) ?? 'auto')}
+            options={langs.includes(lang) ? langs : [...langs, lang]}
+            labels={LANG_LABELS}
+            value={lang}
+            onChange={(v) => void saveLang(v)}
           />
           {busy && <span className="text-sm text-muted">saving…</span>}
         </div>
@@ -1126,9 +1191,13 @@ function FilesTab({ settings, onChanged }: { settings: Settings; onChanged: () =
   const [busy, setBusy] = useState(false)
   /* A name chosen in the New dialog but not yet saved. It has to survive the
      re-fetch effect below, which otherwise snaps `name` back to something that
-     exists on disk the moment the list reloads. */
-  const [pending, setPending] = useState<string | null>(null)
+     exists on disk the moment the list reloads. Scoped to its kind: a name
+     drafted for `soul` must not pin the `rules` picker to a file that does
+     not exist there. */
+  const [pending, setPending] = useState<{ kind: string; name: string } | null>(null)
+  const pendingName = pending && pending.kind === kind ? pending.name : null
   const current = useRef<{ kind: string; name: string } | null>(null)
+  const lastKind = useRef(kind)
 
   const names = useMemo(() => {
     if (kind === 'soul') return settings.personalities ?? []
@@ -1137,15 +1206,38 @@ function FilesTab({ settings, onChanged }: { settings: Settings; onChanged: () =
   }, [kind, settings])
 
   /* Open on the file most likely meant — the persona and mode actually in
-     use — instead of whatever sorts first alphabetically. */
+     use — instead of whatever sorts first alphabetically. This runs on kind
+     changes and when the current file stops existing (e.g. after a delete),
+     never on a plain settings reload: re-picking the default after every Save
+     is what used to load another file over the one just written. */
   useEffect(() => {
+    const kindChanged = lastKind.current !== kind
+    lastKind.current = kind
+    // The name is claimed by the save, not by the dialog: once the reloaded
+    // list holds the pending file it is real and the hold can go.
+    if (pendingName) {
+      if (names.includes(pendingName)) setPending(null)
+      return
+    }
+    // Already open on a live file — a settings reload must not move it.
+    if (!kindChanged && name && names.includes(name)) return
     const want = kind === 'soul' ? settings.bindings?.defaults?.personality : settings.bindings?.defaults?.mode
-    if (pending) return // a new file being written right now
     setName(names.includes(want ?? '') ? want! : (names[0] ?? ''))
-  }, [kind, names, settings, pending])
+  }, [kind, names, settings, pendingName, name])
 
   useEffect(() => {
+    if (pendingName && name === pendingName) {
+      // Brand-new file, nothing on disk to load yet. Point the save target at
+      // it and leave the text alone — fetching it would only paint a 404 over
+      // a file about to be created.
+      current.current = { kind, name }
+      return
+    }
     if (names.length && !name) return
+    // The save target is the file being looked at, set before the fetch, not
+    // when it succeeds: a failed load must not leave Save aimed at the file
+    // that was open before.
+    current.current = { kind, name: names.length ? name : '' }
     let live = true
     const url =
       `/api/settings/file?kind=${encodeURIComponent(kind)}` + (names.length ? `&name=${encodeURIComponent(name)}` : '')
@@ -1154,15 +1246,36 @@ function FilesTab({ settings, onChanged }: { settings: Settings; onChanged: () =
         if (!live) return
         setText(f.text ?? '')
         setLoaded(f.text ?? '')
-        current.current = { kind, name: names.length ? name : '' }
       })
+      // A failed load keeps the editor as it is: the text on screen is still
+      // the operator's, and Save still aims at this file for a retry.
       .catch((e: Error) => live && toast(e.message, false))
     return () => {
       live = false
     }
-  }, [kind, name, names.length])
+  }, [kind, name, names.length, pendingName])
 
   const dirty = text !== loaded
+
+  /* Switching file, kind or tab with unsaved text used to throw the text away
+     without a word — only a full page unload was guarded. Block the switch
+     and keep the text instead: Save or Revert first, then move. */
+  function keepUnsaved(what: string) {
+    if (!dirty) return true
+    toast(`Unsaved changes kept — Save or Revert before opening ${what}`, false)
+    return false
+  }
+  function guardedSetKind(next: 'soul' | 'rules' | 'agents') {
+    if (next === kind) return
+    if (!keepUnsaved('another file')) return
+    setPending(null)
+    setKind(next)
+  }
+  function guardedSetName(next: string) {
+    if (next === name) return
+    if (!keepUnsaved('another file')) return
+    setName(next)
+  }
 
   async function save() {
     const target = current.current
@@ -1175,11 +1288,11 @@ function FilesTab({ settings, onChanged }: { settings: Settings; onChanged: () =
         text
       })
       setLoaded(text)
-      // The name is claimed by the save, not by the dialog. Clearing this lets
-      // the list refresh pick it up as a real file from here on.
-      setPending(null)
+      // The name is claimed by the save, not by the dialog. Pending clears in
+      // the select effect once the reloaded list contains the new file —
+      // clearing it here would snap the editor back to the default first.
       onChanged()
-      toast('Saved. Applies from her next message.')
+      toast('Owner profile file saved.')
     } catch (e) {
       toast((e as Error).message, false)
     } finally {
@@ -1229,13 +1342,13 @@ function FilesTab({ settings, onChanged }: { settings: Settings; onChanged: () =
     <Section title="Profile files">
       <Card className="p-5">
         <p className="mt-0 mb-5 max-w-prose text-[0.92rem] text-muted">
-          The text she actually reads before replying. Editing this changes her on the next message — there is no
-          restart and no undo, so read before you overwrite.
+          These files configure the host owner service. The WhatsApp core loads the character pack bound to each chat.
+          Review the selected file before saving.
         </p>
 
         <div className="flex flex-wrap items-end gap-3">
           <Field label="what kind">
-            <Segmented options={['soul', 'rules', 'agents'] as const} value={kind} onChange={setKind} />
+            <Segmented options={['soul', 'rules', 'agents'] as const} value={kind} onChange={guardedSetKind} />
           </Field>
           {names.length > 0 && (
             <Field label="which one">
@@ -1244,7 +1357,7 @@ function FilesTab({ settings, onChanged }: { settings: Settings; onChanged: () =
                 placeholder="pick one…"
                 searchPlaceholder="type a name…"
                 value={name}
-                onChange={setName}
+                onChange={guardedSetName}
                 options={names.map((n) => ({ value: n, label: n }))}
               />
             </Field>
@@ -1259,6 +1372,7 @@ function FilesTab({ settings, onChanged }: { settings: Settings; onChanged: () =
             <div className="flex items-center gap-2">
               <Button
                 onClick={() => {
+                  if (!keepUnsaved('a new file')) return
                   const raw = window.prompt(
                     kind === 'soul'
                       ? 'Name for the new personality (letters, digits, - and _)'
@@ -1276,7 +1390,7 @@ function FilesTab({ settings, onChanged }: { settings: Settings; onChanged: () =
                   }
                   // Nothing is written until Save: the name is claimed by the
                   // save, not by the dialog, so a change of mind costs nothing.
-                  setPending(fresh)
+                  setPending({ kind, name: fresh })
                   setName(fresh)
                   toast(
                     `New ${kind === 'soul' ? 'personality' : 'mode'} "${fresh}" — edit it and save to create it`,
@@ -1287,11 +1401,14 @@ function FilesTab({ settings, onChanged }: { settings: Settings; onChanged: () =
                 <Plus /> New
               </Button>
               <ConfirmAction
+                // A new key per target: an armed confirm must not survive a
+                // change of file and delete something it no longer names.
+                key={`${kind}:${name}`}
                 size="md"
                 label="Delete"
                 confirmLabel="Delete"
                 icon={<Trash2 />}
-                disabled={busy || !name || names.length < 2}
+                disabled={busy || !name || !!pendingName || names.length < 2}
                 question={`Delete the ${kind === 'soul' ? 'personality' : 'mode'} “${name}”?`}
                 warning="The file is removed, not hidden. This can’t be undone."
                 onConfirm={remove}
@@ -1319,6 +1436,9 @@ function FilesTab({ settings, onChanged }: { settings: Settings; onChanged: () =
       {dirty && (
         <div className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-4 rounded-full border border-accent bg-card-2 py-3 pr-3 pl-6 font-semibold shadow-float">
           <span>Unsaved changes</span>
+          <Button variant="ghost" disabled={busy} onClick={() => setText(loaded)}>
+            Revert
+          </Button>
           <Button variant="primary" disabled={busy} onClick={() => void save()}>
             {busy ? <Spinner /> : <Save />}
             Save
@@ -1407,12 +1527,23 @@ export default function SettingsPage() {
 
           {settings.data && (
             <>
+              {['models', 'voice'].includes(tab) && (
+                <p className="mb-3 text-muted">
+                  These settings belong to the host owner service. The WhatsApp core uses its deployed model and media
+                  configuration.
+                </p>
+              )}
               {tab === 'models' && <ModelsTab settings={settings.data} onChanged={settings.reload} />}
               {tab === 'markets' && <MarketsTab settings={settings.data} onChanged={settings.reload} />}
               {tab === 'avatar' && <AvatarTab settings={settings.data} onChanged={settings.reload} />}
               {tab === 'voice' && <VoiceTab settings={settings.data} onChanged={settings.reload} />}
               {tab === 'home' && <HomeTab settings={settings.data} onChanged={settings.reload} />}
-              {tab === 'files' && <FilesTab settings={settings.data} onChanged={settings.reload} />}
+              {/* Always mounted and hidden elsewhere: unmounting on every tab
+                  switch is what threw unsaved file text away. Switches of file
+                  and kind are guarded inside FilesTab instead. */}
+              <div hidden={tab !== 'files'}>
+                <FilesTab settings={settings.data} onChanged={settings.reload} />
+              </div>
             </>
           )}
         </div>

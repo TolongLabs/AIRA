@@ -209,6 +209,10 @@ The core runs them as turns in their chat, with the bound character and the chat
   `cron.jobs` functions and their lock; `--untag` takes it out. Cutover tags, rollback untags. Tagging also removes
   any `HERMES-SCOPE` marker from the job's text: a job made from a chat keeps that chat's marker, and a request with a
   marker is a member's message. Untagging does not bring it back; rollback restores the gateway's job file.
+- **Site-created jobs.** The authenticated owner endpoint registers an opaque schedule tag against one active
+  internal chat before the gateway can fire it. A site-created routine always delivers to that chat. A new
+  destination requires a separate routine. The registered chat is resolved again on firing. Paused chats do
+  not reply. Updating the prompt preserves the tag.
 - **Identity comes from the list.** A job tag is honoured only in an unmarked request, like a reminder's. The chat
   comes from `gateway.jobs`, never from the text. An id that is not listed, or whose chat is not active, is an
   unmarked request and sends nothing.

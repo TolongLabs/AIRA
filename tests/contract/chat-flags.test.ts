@@ -6,8 +6,6 @@ import { ensureChat, setChatStatus } from '../../src/settings/chats.js'
 import { setSetting } from '../../src/settings/settings.js'
 import { queueModel, startApp } from '../support/app.js'
 
-const TOKEN = 'test-site-token-0123456789abcdefghijklmn'
-
 function readFlags(dataDir: string): { version: number; chats: Record<string, Record<string, unknown>> } {
   return JSON.parse(readFileSync(join(dataDir, 'gateway', 'chats.json'), 'utf8')) as {
     version: number
@@ -16,7 +14,7 @@ function readFlags(dataDir: string): { version: number; chats: Record<string, Re
 }
 
 async function startWithSite() {
-  const started = await startApp(queueModel([{ text: 'ok' }]), { env: { SITE_TOKEN: TOKEN } })
+  const started = await startApp(queueModel([{ text: 'ok' }]))
   const address = await started.app.listenSite(0, '127.0.0.1')
   if (!address) throw new Error('expected site server to listen')
   return { ...started, siteUrl: `http://127.0.0.1:${address.port}` }
@@ -26,7 +24,6 @@ async function putSite(siteUrl: string, path: string, body: unknown) {
   return fetch(`${siteUrl}${path}`, {
     method: 'PUT',
     headers: {
-      authorization: `Bearer ${TOKEN}`,
       'content-type': 'application/json'
     },
     body: JSON.stringify(body)

@@ -115,6 +115,17 @@ export function setChatLabel(
     const current = stmt.get(input.chatId) as string | undefined
     if (current === undefined || current === input.label) return false
 
+    // An owner can clear a saved label and keep using the live display-name fallback.
+    if (
+      input.actor === 'gateway' &&
+      db
+        .prepare(
+          "SELECT 1 FROM setting_change WHERE target = 'chat' AND scope = ? AND key = 'label' AND actor = 'site' LIMIT 1"
+        )
+        .get(input.chatId)
+    )
+      return false
+
     db.prepare('UPDATE chat SET label = ? WHERE chat_id = ?').run(input.label, input.chatId)
     db.prepare(
       `INSERT INTO setting_change (target, actor, level, scope, key, old_value, new_value, changed_at)

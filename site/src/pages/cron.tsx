@@ -94,18 +94,28 @@ function SchedulePicker({ value, onChange }: { value: CronSchedule; onChange: (s
   )
 }
 
-function DeliverPicker({ chats, value, onChange }: { chats: Chat[]; value: string; onChange: (v: string) => void }) {
-  const chosen = useMemo(
-    () =>
-      new Set(
-        value
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      ),
-    [value]
+function DeliverPicker({
+  chats,
+  value,
+  onChange,
+  single
+}: {
+  chats: Chat[]
+  value: string
+  onChange: (v: string) => void
+  single: boolean
+}) {
+  const chosen = new Set(
+    value
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
   )
   function toggle(target: string) {
+    if (single) {
+      onChange(target)
+      return
+    }
     const next = new Set(chosen)
     if (next.has(target)) next.delete(target)
     else next.add(target)
@@ -116,7 +126,7 @@ function DeliverPicker({ chats, value, onChange }: { chats: Chat[]; value: strin
       {chats.map((c) => (
         <label key={c.target} className="flex min-h-10 cursor-pointer items-center gap-2.5 text-[0.92rem]">
           <input
-            type="checkbox"
+            type={single ? 'radio' : 'checkbox'}
             checked={chosen.has(c.target)}
             onChange={() => toggle(c.target)}
             className="size-4 accent-[var(--accent)]"
@@ -147,11 +157,17 @@ function JobEditor({
     job ? CronSchedule.parse(job.schedule) : CronSchedule.default()
   )
   const [scheduleEdited, setScheduleEdited] = useState(false)
-  const [prompt, setPrompt] = useState(job?.prompt ?? job?.prompt_preview ?? '')
+  const [prompt, setPrompt] = useState(
+    (job?.prompt ?? job?.prompt_preview ?? '').replace(/^\[AIRA-SCHEDULED v1 kind=job id=site_[a-f0-9]{32}\]\s*/, '')
+  )
   const [deliver, setDeliver] = useState(job?.deliver ?? '')
   const [busy, setBusy] = useState(false)
 
   async function save() {
+    if (!job && !deliver) {
+      toast('Choose the chat for this routine', false)
+      return
+    }
     if (!name.trim() || !prompt.trim()) {
       toast('a job needs a name and something to say', false)
       return
@@ -242,7 +258,12 @@ function JobEditor({
         </div>
 
         <Field label="who it goes to">
-          <DeliverPicker chats={chats} value={deliver} onChange={setDeliver} />
+          <DeliverPicker
+            chats={chats}
+            value={deliver}
+            onChange={setDeliver}
+            single={!job || (job.prompt ?? '').includes('id=site_')}
+          />
         </Field>
 
         <div className="flex flex-wrap gap-2">
@@ -438,7 +459,7 @@ export default function CronPage() {
               { t: ' ' },
               { n: until(Date.parse(soonest.next_run_at!) / 1000) }
             ]
-          : [{ t: 'Nothing scheduled' }]
+          : [{ t: jobs.error ? 'Schedule unavailable' : jobs.loading ? 'Loading schedule…' : 'Nothing scheduled' }]
       }
       actions={
         <Button variant="primary" onClick={() => setAdding((v) => !v)}>
@@ -463,6 +484,12 @@ export default function CronPage() {
       )}
 
       <Section title="Scheduled">
+        {jobs.error && (
+          <p role="alert">
+            {jobs.error} <button onClick={jobs.reload}>Retry</button>
+          </p>
+        )}
+        {chatsApi.error && <p role="alert">Chat destinations unavailable. {chatsApi.error}</p>}
         {jobs.loading && !jobs.data ? (
           <div className="flex items-center gap-2 text-muted">
             <Spinner /> loading…
@@ -472,7 +499,9 @@ export default function CronPage() {
             {(jobs.data?.jobs ?? []).map((j) => (
               <JobRow key={j.job_id} job={j} chats={chats} onChanged={jobs.reload} />
             ))}
-            {!(jobs.data?.jobs ?? []).length && <Empty>Nothing scheduled yet. “New job” starts one.</Empty>}
+            {!jobs.error && !(jobs.data?.jobs ?? []).length && (
+              <Empty>Nothing scheduled yet. “New job” starts one.</Empty>
+            )}
           </div>
         )}
       </Section>

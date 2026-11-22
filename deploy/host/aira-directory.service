@@ -1,0 +1,7 @@
+[Unit]
+Description=Refresh the WhatsApp directory used by the AIRA owner console
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/.local/lib/aira/sync-directory.py
+UMask=0077

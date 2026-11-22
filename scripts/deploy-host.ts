@@ -1,14 +1,19 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
-import { createRealOps } from './updater/ops.js'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { isMap, isScalar, isSeq, parseDocument } from 'yaml'
+import { createRealOps, resolveSiteUrl, waitForDeployLock } from './updater/ops.js'
 import type { DeployRecord, UpdaterOps } from './updater/update.js'
 
 const DEFAULT_IMAGE = 'ghcr.io/tolonglabs/aira'
 const DEFAULT_WAIT_FOR_IDLE_MS = 120_000
 const DEFAULT_HEALTH_TIMEOUT_MS = 60_000
 const DEFAULT_POLL_MS = 2000
+/** Upper bound for one ntfy post. The deploy must never hang on its alert. */
+export const NTFY_TIMEOUT_MS = 10_000
+/** How long a CI deploy waits for the timer path to finish before giving up. */
+export const DEPLOY_LOCK_WAIT_MS = 10 * 60_000
 
 export interface DeployHostOps extends UpdaterOps {
   writeEnv(version: string): Promise<void>
@@ -19,13 +24,32 @@ export interface DeployHostConfig {
   waitForIdleMs: number
   healthTimeoutMs: number
   pollMs?: number
+  /** The host install folder. Holds compose.yml, .env, config.yml and the deploy lock. */
+  installDir?: string
+  /** The repo checkout that carries deploy/compose.yml and config.yml. Auto-detected when unset. */
+  repoDir?: string
+  /** Sync compose.yml and config.yml from the repo before starting. Defaults to true. */
+  syncFiles?: boolean
+  /** How long to wait for the timer path to finish. Defaults to DEPLOY_LOCK_WAIT_MS. */
+  lockWaitMs?: number
 }
 
 export type DeployHostResult =
   | { action: 'deployed'; from: string | undefined; to: string }
-  | { action: 'failed'; from: string | undefined; to: string; reason: 'snapshot_failed' | 'pull_failed' | 'env_failed' }
+  | {
+      action: 'failed'
+      from: string | undefined
+      to: string
+      reason: 'snapshot_failed' | 'pull_failed' | 'env_failed' | 'version_failed' | 'locked'
+    }
   | {
       action: 'rolled_back'
+      from: string | undefined
+      to: string
+      reason: 'start_failed' | 'unhealthy' | 'synthetic_turn_failed'
+    }
+  | {
+      action: 'rollback_failed'
       from: string | undefined
       to: string
       reason: 'start_failed' | 'unhealthy' | 'synthetic_turn_failed'
@@ -109,7 +133,17 @@ export async function writeInstallEnv(envFile: string, image: string, version: s
     AIRA_IMAGE: image,
     AIRA_VERSION: version
   })
-  await writeFile(envFile, updated, 'utf8')
+  // Secrets live here: replace the file atomically and keep it readable by its owner only.
+  await mkdir(dirname(envFile), { recursive: true })
+  const tmpFile = `${envFile}.tmp.${process.pid}.${Date.now()}`
+  try {
+    await writeFile(tmpFile, updated, { mode: 0o600 })
+    await rename(tmpFile, envFile)
+    await chmod(envFile, 0o600)
+  } catch (err) {
+    await rm(tmpFile, { force: true })
+    throw err
+  }
 }
 
 export async function sendNtfy(
@@ -120,7 +154,8 @@ export async function sendNtfy(
   if (!ntfyUrl) return
   await fetchFn(ntfyUrl, {
     method: 'POST',
-    body: message
+    body: message,
+    signal: AbortSignal.timeout(NTFY_TIMEOUT_MS)
   })
 }
 
@@ -151,27 +186,181 @@ async function runStep<T>(
   }
 }
 
+async function readRepoFile(
+  repoDir: string | undefined,
+  ...segments: string[]
+): Promise<{ path: string; text: string } | undefined> {
+  const candidates = [
+    ...(repoDir === undefined ? [] : [join(repoDir, ...segments)]),
+    fileURLToPath(new URL(['..', ...segments].join('/'), import.meta.url)),
+    resolve(process.cwd(), ...segments)
+  ]
+  for (const candidate of candidates) {
+    try {
+      return { path: candidate, text: await readFile(candidate, 'utf8') }
+    } catch {}
+  }
+  return undefined
+}
+
+/** Add defaults to an installed YAML document without resetting host-managed values.
+ * Compose mounts are keyed by container destination, including after a host path change. */
+export function applyHostConfigKeys(repoText: string, installText: string, compose = false): string {
+  const installed = parseDocument(installText),
+    defaults = parseDocument(repoText)
+  if (installed.errors.length || defaults.errors.length || !isMap(installed.contents) || !isMap(defaults.contents))
+    throw new Error('Invalid deployment YAML')
+  let changed = false
+  function merge(template: unknown, path: string[]) {
+    if (!isMap(template)) return
+    for (const item of template.items) {
+      const key = String(item.key),
+        where = [...path, key]
+      const before = installed.getIn(where, true)
+      if (before === undefined || (compose && where.join('.') === 'services.aira.image')) {
+        if (String(before) !== String(item.value) || before === undefined) {
+          installed.setIn(where, item.value)
+          changed = true
+        }
+      } else if (compose && where.join('.') === 'services.aira.volumes' && isSeq(before) && isSeq(item.value)) {
+        const mount = (node: unknown) =>
+          isMap(node)
+            ? node.get('target')
+            : isScalar(node)
+              ? String(node.value)
+                  .replace(/:(?:ro|rw)$/, '')
+                  .split(':')
+                  .at(-1)
+              : undefined
+        const targets = new Set(before.items.map(mount))
+        for (const entry of item.value.items)
+          if (!targets.has(mount(entry))) {
+            before.add(entry)
+            changed = true
+          }
+      } else if (isMap(before)) merge(item.value, where)
+    }
+  }
+  merge(defaults.contents, [])
+  return changed ? installed.toString() : installText
+}
+
+async function replaceYaml(target: string, text: string) {
+  const tmp = target + '.' + process.pid + '.tmp'
+  try {
+    await writeFile(tmp, text, { mode: 0o600, flag: 'wx' })
+    await rename(tmp, target)
+  } finally {
+    await rm(tmp, { force: true })
+  }
+}
+
+async function readOptional(path: string): Promise<string | undefined> {
+  try {
+    return await readFile(path, 'utf8')
+  } catch (err) {
+    if ((err as { code?: unknown }).code === 'ENOENT') return undefined
+    throw err
+  }
+}
+
+async function syncComposeFile(repoDir: string | undefined, installDir: string): Promise<void> {
+  const found = await readRepoFile(repoDir, 'deploy', 'compose.yml')
+  if (!found) {
+    writeLine('deploy: sync-compose skipped (no repo checkout found)')
+    return
+  }
+  const target = join(installDir, 'compose.yml')
+  const current = await readOptional(target)
+  const merged = current === undefined ? found.text : applyHostConfigKeys(found.text, current, true)
+  if (current === merged) return
+  await mkdir(dirname(target), { recursive: true })
+  await replaceYaml(target, merged)
+  writeLine('deploy: sync-compose updated compose.yml')
+}
+
+async function syncConfigFile(repoDir: string | undefined, installDir: string): Promise<void> {
+  const found = await readRepoFile(repoDir, 'config.yml')
+  if (!found) {
+    writeLine('deploy: sync-config skipped (no repo checkout found)')
+    return
+  }
+  const target = join(installDir, 'config.yml')
+  const current = await readOptional(target)
+  const merged = current === undefined ? found.text : applyHostConfigKeys(found.text, current)
+  if (current === merged) return
+  await mkdir(dirname(target), { recursive: true })
+  await replaceYaml(target, merged)
+  writeLine('deploy: sync-config updated config.yml')
+}
+
 async function rollback(
   ops: DeployHostOps,
+  timeouts: { healthTimeoutMs: number; pollMs: number },
   previous: string | undefined,
   target: string,
   reason: 'start_failed' | 'unhealthy' | 'synthetic_turn_failed'
 ): Promise<DeployHostResult> {
-  if (previous !== undefined) {
+  if (previous === undefined) {
+    await safeRecord(ops, {
+      at: ops.now().toISOString(),
+      from: previous,
+      to: target,
+      outcome: 'rollback_failed',
+      reason
+    })
+    await runStep(ops, 'alert', () =>
+      safeAlert(ops, `Deploy of ${target} failed (${reason}) with nothing to roll back to; service is down`)
+    )
+    return { action: 'rollback_failed', from: previous, to: target, reason }
+  }
+  let restarted = false
+  try {
     await runStep(
       ops,
       'rollback',
       async () => {
-        try {
-          await ops.writeEnv(previous)
-          await ops.start(previous)
-        } catch (err) {
-          await safeAlert(ops, `Rollback to ${previous} failed after ${reason}; service is down: ${errorMessage(err)}`)
-          throw err
-        }
+        await ops.writeEnv(previous)
+        await ops.start(previous)
       },
       { detail: previous }
-    ).catch(() => undefined)
+    )
+    restarted = true
+  } catch (err) {
+    await safeAlert(ops, `Rollback to ${previous} failed after ${reason}; service is down: ${errorMessage(err)}`)
+  }
+  if (restarted) {
+    // The old image may be broken too. Only a healthy rollback counts as rolled back.
+    const recovered = await runStep(
+      ops,
+      'rollback-health',
+      () => waitForHealthy(ops, timeouts.healthTimeoutMs, timeouts.pollMs),
+      {
+        ok: (value) => value
+      }
+    )
+    if (!recovered) {
+      await safeRecord(ops, {
+        at: ops.now().toISOString(),
+        from: previous,
+        to: target,
+        outcome: 'rollback_failed',
+        reason
+      })
+      await runStep(ops, 'alert', () =>
+        safeAlert(ops, `Rollback to ${previous} started but stayed unhealthy after ${reason}; service is down`)
+      )
+      return { action: 'rollback_failed', from: previous, to: target, reason }
+    }
+  } else {
+    await safeRecord(ops, {
+      at: ops.now().toISOString(),
+      from: previous,
+      to: target,
+      outcome: 'rollback_failed',
+      reason
+    })
+    return { action: 'rollback_failed', from: previous, to: target, reason }
   }
   await safeRecord(ops, {
     at: ops.now().toISOString(),
@@ -188,7 +377,7 @@ async function failBeforeStart(
   ops: DeployHostOps,
   previous: string | undefined,
   target: string,
-  reason: 'snapshot_failed' | 'pull_failed' | 'env_failed',
+  reason: 'snapshot_failed' | 'pull_failed' | 'env_failed' | 'version_failed' | 'locked',
   message: string
 ): Promise<DeployHostResult> {
   await safeRecord(ops, {
@@ -202,90 +391,162 @@ async function failBeforeStart(
   return { action: 'failed', from: previous, to: target, reason }
 }
 
-/** Runs the host deploy sequence: idle wait, snapshot, pull, .env update, recreate, health, turn, prune, alert. */
+/** Runs the host deploy sequence: lock, idle wait, file sync, snapshot, pull, .env update, recreate, health, turn, prune, alert. */
 export async function runDeployHost(ops: DeployHostOps, config: DeployHostConfig): Promise<DeployHostResult> {
   const pollMs = config.pollMs ?? DEFAULT_POLL_MS
-  const previous = await runStep(ops, 'running-version', () => safeCall(() => ops.runningVersion(), undefined))
+  const timeouts = { healthTimeoutMs: config.healthTimeoutMs, pollMs }
+  const installDir = config.installDir
+  const lock = installDir
+    ? await runStep(ops, 'lock', () =>
+        waitForDeployLock(ops, join(installDir, 'deploy.lock'), config.lockWaitMs ?? DEPLOY_LOCK_WAIT_MS)
+      )
+    : undefined
+  if (installDir && !lock) {
+    return failBeforeStart(
+      ops,
+      undefined,
+      config.version,
+      'locked',
+      `Deploy of ${config.version} aborted: another deploy holds the lock`
+    )
+  }
+  try {
+    let previous: string | undefined
+    try {
+      previous = await runStep(ops, 'running-version', () => ops.runningVersion())
+    } catch (err) {
+      return failBeforeStart(
+        ops,
+        undefined,
+        config.version,
+        'version_failed',
+        `Deploy of ${config.version} aborted: running version lookup failed: ${errorMessage(err)}`
+      )
+    }
 
-  await runStep(ops, 'idle-wait', () => waitForIdle(ops, config.waitForIdleMs, pollMs))
+    await runStep(ops, 'idle-wait', () => waitForIdle(ops, config.waitForIdleMs, pollMs))
 
-  if (previous !== undefined) {
-    const snapped = await runStep(ops, 'snapshot', () => safeCall(() => ops.snapshot(), false), {
-      ok: (value) => value
-    })
-    if (!snapped) {
+    if (previous !== undefined) {
+      const snapped = await runStep(ops, 'snapshot', () => safeCall(() => ops.snapshot(), false), {
+        ok: (value) => value
+      })
+      if (!snapped) {
+        if (
+          (await safeCall(() => ops.healthy(), false)) ||
+          !ops.offlineSnapshot ||
+          !(await safeCall(ops.offlineSnapshot, false))
+        ) {
+          return failBeforeStart(
+            ops,
+            previous,
+            config.version,
+            'snapshot_failed',
+            `Deploy of ${config.version} aborted: snapshot failed`
+          )
+        }
+        await runStep(ops, 'alert', () =>
+          safeAlert(ops, `Deploy of ${config.version} used a fresh offline snapshot of the unavailable core`)
+        )
+      }
+    }
+
+    try {
+      await runStep(ops, 'pull', () => ops.pull(config.version), { detail: config.version })
+    } catch (err) {
       return failBeforeStart(
         ops,
         previous,
         config.version,
-        'snapshot_failed',
-        `Deploy of ${config.version} aborted: snapshot failed`
+        'pull_failed',
+        `Deploy of ${config.version} aborted: pull failed: ${errorMessage(err)}`
       )
     }
-  }
 
-  try {
-    await runStep(ops, 'pull', () => ops.pull(config.version), { detail: config.version })
-  } catch (err) {
-    return failBeforeStart(
-      ops,
-      previous,
-      config.version,
-      'pull_failed',
-      `Deploy of ${config.version} aborted: pull failed: ${errorMessage(err)}`
-    )
-  }
+    const originals = new Map<string, string | undefined>()
+    async function restoreFiles() {
+      for (const [path, text] of originals) {
+        if (text === undefined) await rm(path, { force: true })
+        else if ((await readOptional(path)) !== text) await replaceYaml(path, text)
+      }
+    }
+    async function restore(reason: 'start_failed' | 'unhealthy' | 'synthetic_turn_failed') {
+      try {
+        await restoreFiles()
+      } catch {
+        await safeRecord(ops, {
+          at: ops.now().toISOString(),
+          from: previous,
+          to: config.version,
+          outcome: 'rollback_failed',
+          reason
+        })
+        await safeAlert(ops, 'Rollback failed to restore the install configuration')
+        return { action: 'rollback_failed' as const, from: previous, to: config.version, reason }
+      }
+      return rollback(ops, timeouts, previous, config.version, reason)
+    }
+    try {
+      if (installDir && config.syncFiles !== false) {
+        for (const name of ['compose.yml', 'config.yml']) {
+          const file = join(installDir, name)
+          originals.set(file, await readOptional(file))
+        }
+        await runStep(ops, 'sync-compose', () => syncComposeFile(config.repoDir, installDir))
+        await runStep(ops, 'sync-config', () => syncConfigFile(config.repoDir, installDir))
+      }
+      await runStep(ops, 'env', () => ops.writeEnv(config.version), { detail: config.version })
+    } catch (err) {
+      await restoreFiles()
+      return failBeforeStart(
+        ops,
+        previous,
+        config.version,
+        'env_failed',
+        `Deploy of ${config.version} aborted: .env update failed: ${errorMessage(err)}`
+      )
+    }
 
-  try {
-    await runStep(ops, 'env', () => ops.writeEnv(config.version), { detail: config.version })
-  } catch (err) {
-    return failBeforeStart(
-      ops,
-      previous,
-      config.version,
-      'env_failed',
-      `Deploy of ${config.version} aborted: .env update failed: ${errorMessage(err)}`
-    )
-  }
+    try {
+      await runStep(ops, 'recreate', () => ops.start(config.version), { detail: config.version })
+    } catch {
+      return restore('start_failed')
+    }
 
-  try {
-    await runStep(ops, 'recreate', () => ops.start(config.version), { detail: config.version })
-  } catch {
-    return rollback(ops, previous, config.version, 'start_failed')
-  }
+    const healthy = await runStep(ops, 'health', () => waitForHealthy(ops, config.healthTimeoutMs, pollMs), {
+      ok: (value) => value
+    })
+    if (!healthy) {
+      return restore('unhealthy')
+    }
 
-  const healthy = await runStep(ops, 'health', () => waitForHealthy(ops, config.healthTimeoutMs, pollMs), {
-    ok: (value) => value
-  })
-  if (!healthy) {
-    return rollback(ops, previous, config.version, 'unhealthy')
-  }
+    const turned = await runStep(ops, 'synthetic-turn', () => safeCall(() => ops.syntheticTurn(), false), {
+      ok: (value) => value
+    })
+    if (!turned) {
+      return restore('synthetic_turn_failed')
+    }
 
-  const turned = await runStep(ops, 'synthetic-turn', () => safeCall(() => ops.syntheticTurn(), false), {
-    ok: (value) => value
-  })
-  if (!turned) {
-    return rollback(ops, previous, config.version, 'synthetic_turn_failed')
-  }
+    try {
+      await runStep(ops, 'prune', () => ops.pruneImages(config.version, previous))
+    } catch (err) {
+      await safeAlert(ops, `Deploy of ${config.version} succeeded, but image prune failed: ${errorMessage(err)}`)
+    }
 
-  try {
-    await runStep(ops, 'prune', () => ops.pruneImages(config.version, previous))
-  } catch (err) {
-    await safeAlert(ops, `Deploy of ${config.version} succeeded, but image prune failed: ${errorMessage(err)}`)
+    await safeRecord(ops, {
+      at: ops.now().toISOString(),
+      from: previous,
+      to: config.version,
+      outcome: 'deployed'
+    })
+    const summary =
+      previous !== undefined
+        ? `Deploy of ${config.version} succeeded (from ${previous})`
+        : `Deploy of ${config.version} succeeded`
+    await runStep(ops, 'alert', () => safeAlert(ops, summary))
+    return { action: 'deployed', from: previous, to: config.version }
+  } finally {
+    if (lock) await safeCall(() => lock.release(), undefined)
   }
-
-  await safeRecord(ops, {
-    at: ops.now().toISOString(),
-    from: previous,
-    to: config.version,
-    outcome: 'deployed'
-  })
-  const summary =
-    previous !== undefined
-      ? `Deploy of ${config.version} succeeded (from ${previous})`
-      : `Deploy of ${config.version} succeeded`
-  await runStep(ops, 'alert', () => safeAlert(ops, summary))
-  return { action: 'deployed', from: previous, to: config.version }
 }
 
 export function expandHome(input: string): string {
@@ -317,13 +578,18 @@ export function parseArgs(argv: string[]): { version: string; install: string } 
   return { version, install: expandHome(install) }
 }
 
-function createDeployHostOps(installDir: string, image: string, ntfyUrl: string | undefined): DeployHostOps {
+async function createDeployHostOps(
+  installDir: string,
+  image: string,
+  ntfyUrl: string | undefined
+): Promise<DeployHostOps> {
   const baseOps = createRealOps({
     image,
     repository: process.env['AIRA_REPOSITORY'] || 'TolongLabs/AIRA',
     composeFile: join(installDir, 'compose.yml'),
     service: 'aira',
     coreUrl: process.env['AIRA_CORE_URL'] || 'http://127.0.0.1:9881',
+    siteUrl: await resolveSiteUrl(installDir, process.env),
     recordFile: process.env['AIRA_DEPLOY_LOG'] || join(installDir, 'deploys.jsonl')
   })
   const envFile = join(installDir, '.env')
@@ -344,9 +610,10 @@ if (isMain) {
   const { version, install } = parseArgs(process.argv.slice(2))
   const image = process.env['AIRA_IMAGE'] || DEFAULT_IMAGE
   const ntfyUrl = process.env['AIRA_NTFY_URL'] || undefined
-  const ops = createDeployHostOps(install, image, ntfyUrl)
+  const ops = await createDeployHostOps(install, image, ntfyUrl)
   const result = await runDeployHost(ops, {
     version,
+    installDir: install,
     waitForIdleMs: Number(process.env['AIRA_WAIT_FOR_IDLE_MS'] || DEFAULT_WAIT_FOR_IDLE_MS),
     healthTimeoutMs: Number(process.env['AIRA_HEALTH_TIMEOUT_MS'] || DEFAULT_HEALTH_TIMEOUT_MS)
   })

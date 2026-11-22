@@ -2,12 +2,18 @@ import { readFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { extname, resolve, sep } from 'node:path'
 import type { Logger } from '../records/logger.js'
+import { changeOwnerJob, ownerCronTransport } from './owner-cron.js'
+import { changeOwnerMarkets } from './owner-markets.js'
+import { proxyOwnerApi } from './owner-proxy.js'
 import { dispatchGet, isKnownRoute, type SiteApiDeps } from './routes.js'
 import { dispatchWrite, hostAllowed, isWriteRoute, originAllowed } from './writes.js'
 
 // The core's private HTTP API for the owner site (docs/trd/site.md#serving-the-api).
 
 export interface SiteApiServerOptions extends SiteApiDeps {
+  marketsPath?: string
+  ownerApiSocket?: string
+  ownerApiOrigin?: string
   logger: Logger
   /** `site.allowedOrigins` */
   allowedOrigins: readonly string[]
@@ -85,6 +91,45 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const path = (request.url ?? '/').split('?')[0] ?? '/'
+    if ((path === '/owner-api/cron' || path === '/owner-api/settings/markets') && request.method === 'POST') {
+      if (
+        !hostAllowed(request.headers.host) ||
+        !originAllowed(request.headers.origin, options.allowedOrigins, request.headers.host)
+      )
+        return json(response, 403, { error: 'origin_refused' })
+      if (!options.ownerApiSocket && !options.ownerApiOrigin)
+        return json(response, 503, { error: 'owner_service_unconfigured' })
+      const body = await readJson(request)
+      if ('error' in body) return json(response, body.status, { error: body.error })
+      const token = request.headers['x-tolongai-token']
+      try {
+        if (path.endsWith('/markets')) {
+          const authorize = ownerCronTransport(
+            options.ownerApiOrigin ?? 'http://owner.internal',
+            options.ownerApiSocket,
+            typeof token === 'string' ? token : '',
+            '/api/settings'
+          )
+          const check = await authorize()
+          if (check.status !== 200) return json(response, check.status, check.body)
+          if (!options.marketsPath || !check.body.markets)
+            return json(response, 503, { error: 'Market settings unavailable' })
+          const result = changeOwnerMarkets(options.marketsPath, body.body)
+          return json(response, result.status, result.body)
+        }
+        const call = ownerCronTransport(
+          options.ownerApiOrigin ?? 'http://owner.internal',
+          options.ownerApiSocket,
+          typeof token === 'string' ? token : ''
+        )
+        const result = await changeOwnerJob(options.storage, body.body, call)
+        return json(response, result.status, result.body)
+      } catch {
+        return json(response, 502, { error: 'Owner request interrupted. Reload to check the saved state.' })
+      }
+    }
+    if (path.startsWith('/owner-api/'))
+      return proxyOwnerApi(request, response, options.ownerApiOrigin, options.allowedOrigins, options.ownerApiSocket)
     if (!path.startsWith('/api/')) {
       await serveSite(path, request.method, response)
       return

@@ -14,6 +14,7 @@ export interface UpdaterOps {
   activeTurns(): Promise<number | undefined>
   /** Asks the core for a verified snapshot and waits for it. False when it failed or timed out. */
   snapshot(): Promise<boolean>
+  offlineSnapshot?(): Promise<boolean>
   pull(version: string): Promise<void>
   /** Stops the running container and starts the given version. */
   start(version: string): Promise<void>
@@ -29,26 +30,35 @@ export interface UpdaterOps {
   now(): Date
 }
 
+import { acquireDeployLock, type DeployLock } from './ops.js'
+
 export interface DeployRecord {
   at: string
   from: string | undefined
   to: string
-  outcome: 'deployed' | 'rolled_back' | 'skipped_manual' | 'failed_before_start'
+  outcome: 'deployed' | 'rolled_back' | 'rollback_failed' | 'skipped_manual' | 'failed_before_start'
   reason?: string
 }
 
 export type UpdateResult =
-  | { action: 'none'; reason: 'no_release' | 'up_to_date' | 'manual_release' | 'snapshot_failed' | 'pull_failed' }
+  | {
+      action: 'none'
+      reason:
+        'no_release' | 'up_to_date' | 'manual_release' | 'snapshot_failed' | 'pull_failed' | 'version_failed' | 'locked'
+    }
   | { action: 'deployed'; from: string | undefined; to: string }
   | { action: 'rolled_back'; from: string | undefined; to: string; reason: string }
+  | { action: 'rollback_failed'; from: string | undefined; to: string; reason: string }
 
 export interface UpdaterConfig {
   waitForIdleMs: number
   healthTimeoutMs: number
   pollMs?: number
+  /** When set, the run takes the host deploy lock first and returns locked when it is held. */
+  lockPath?: string
 }
 
-function parseVersion(v: string): readonly [number, number, number] | undefined {
+export function parseVersion(v: string): readonly [number, number, number] | undefined {
   const parts = v.replace(/^v/, '').split('.')
   const [p0, p1, p2] = parts
   if (parts.length !== 3 || p0 === undefined || p1 === undefined || p2 === undefined) return undefined
@@ -114,16 +124,53 @@ async function waitForHealthy(ops: UpdaterOps, healthTimeoutMs: number, pollMs: 
 
 async function rollback(
   ops: UpdaterOps,
+  config: UpdaterConfig,
   previous: string | undefined,
   target: string,
   reason: 'start_failed' | 'unhealthy' | 'synthetic_turn_failed'
 ): Promise<UpdateResult> {
-  if (previous !== undefined) {
-    try {
-      await ops.start(previous)
-    } catch (err) {
-      await safeAlert(ops, `Rollback to ${previous} failed after ${reason}; service is down: ${errorMessage(err)}`)
+  const pollMs = config.pollMs ?? 2000
+  if (previous === undefined) {
+    await safeRecord(ops, {
+      at: ops.now().toISOString(),
+      from: previous,
+      to: target,
+      outcome: 'rollback_failed',
+      reason
+    })
+    await safeAlert(ops, `Deploy of ${target} failed (${reason}) with nothing to roll back to; service is down`)
+    return { action: 'rollback_failed', from: previous, to: target, reason }
+  }
+  let restarted = false
+  try {
+    await ops.start(previous)
+    restarted = true
+  } catch (err) {
+    await safeAlert(ops, `Rollback to ${previous} failed after ${reason}; service is down: ${errorMessage(err)}`)
+  }
+  if (restarted) {
+    // The old image may be broken too. Only a healthy rollback counts as rolled back.
+    const recovered = await waitForHealthy(ops, config.healthTimeoutMs, pollMs)
+    if (!recovered) {
+      await safeRecord(ops, {
+        at: ops.now().toISOString(),
+        from: previous,
+        to: target,
+        outcome: 'rollback_failed',
+        reason
+      })
+      await safeAlert(ops, `Rollback to ${previous} started but stayed unhealthy after ${reason}; service is down`)
+      return { action: 'rollback_failed', from: previous, to: target, reason }
     }
+  } else {
+    await safeRecord(ops, {
+      at: ops.now().toISOString(),
+      from: previous,
+      to: target,
+      outcome: 'rollback_failed',
+      reason
+    })
+    return { action: 'rollback_failed', from: previous, to: target, reason }
   }
   await safeRecord(ops, {
     at: ops.now().toISOString(),
@@ -137,6 +184,26 @@ async function rollback(
 }
 
 export async function runUpdate(ops: UpdaterOps, config: UpdaterConfig): Promise<UpdateResult> {
+  if (config.lockPath !== undefined) {
+    let held: DeployLock | undefined
+    try {
+      held = await acquireDeployLock(config.lockPath)
+    } catch (err) {
+      await safeAlert(ops, `Deploy lock at ${config.lockPath} is unusable: ${errorMessage(err)}`)
+      return { action: 'none', reason: 'locked' }
+    }
+    if (!held) return { action: 'none', reason: 'locked' }
+    const lock: DeployLock = held
+    try {
+      return await runUpdateInner(ops, config)
+    } finally {
+      await safeCall(() => lock.release(), undefined)
+    }
+  }
+  return runUpdateInner(ops, config)
+}
+
+async function runUpdateInner(ops: UpdaterOps, config: UpdaterConfig): Promise<UpdateResult> {
   const pollMs = config.pollMs ?? 2000
 
   const release = await safeCall(() => ops.newestRelease(), undefined)
@@ -144,8 +211,22 @@ export async function runUpdate(ops: UpdaterOps, config: UpdaterConfig): Promise
     return { action: 'none', reason: 'no_release' }
   }
 
-  const previous = await safeCall(() => ops.runningVersion(), undefined)
-  if (previous !== undefined && !isNewer(release.version, previous)) {
+  let previous: string | undefined
+  try {
+    previous = await ops.runningVersion()
+  } catch (err) {
+    await safeRecord(ops, {
+      at: ops.now().toISOString(),
+      from: undefined,
+      to: release.version,
+      outcome: 'failed_before_start',
+      reason: 'version_failed'
+    })
+    await safeAlert(ops, `Deploy of ${release.version} aborted: running version lookup failed: ${errorMessage(err)}`)
+    return { action: 'none', reason: 'version_failed' }
+  }
+  // Only a versioned install can be up to date. A sha- or stable tag carries no version, so the release goes on.
+  if (previous !== undefined && parseVersion(previous) !== undefined && !isNewer(release.version, previous)) {
     return { action: 'none', reason: 'up_to_date' }
   }
 
@@ -164,20 +245,27 @@ export async function runUpdate(ops: UpdaterOps, config: UpdaterConfig): Promise
   if (previous !== undefined) {
     const snapped = await safeCall(() => ops.snapshot(), false)
     if (!snapped) {
-      await safeRecord(ops, {
-        at: ops.now().toISOString(),
-        from: previous,
-        to: release.version,
-        outcome: 'failed_before_start',
-        reason: 'snapshot_failed'
-      })
-      await safeAlert(ops, `Deploy of ${release.version} aborted: snapshot failed`)
-      return { action: 'none', reason: 'snapshot_failed' }
+      if (
+        (await safeCall(() => ops.healthy(), false)) ||
+        !ops.offlineSnapshot ||
+        !(await safeCall(ops.offlineSnapshot, false))
+      ) {
+        await safeRecord(ops, {
+          at: ops.now().toISOString(),
+          from: previous,
+          to: release.version,
+          outcome: 'failed_before_start',
+          reason: 'snapshot_failed'
+        })
+        await safeAlert(ops, `Deploy of ${release.version} aborted: snapshot failed`)
+        return { action: 'none', reason: 'snapshot_failed' }
+      }
+      await safeAlert(ops, `Deploy of ${release.version} used a fresh offline snapshot of the unavailable core`)
     }
   }
 
   try {
-    await ops.pull(release.version)
+    await ops.pull(release.tag)
   } catch (err) {
     await safeRecord(ops, {
       at: ops.now().toISOString(),
@@ -191,21 +279,21 @@ export async function runUpdate(ops: UpdaterOps, config: UpdaterConfig): Promise
   }
 
   try {
-    await ops.start(release.version)
+    await ops.start(release.tag)
   } catch {
-    return rollback(ops, previous, release.version, 'start_failed')
+    return rollback(ops, config, previous, release.version, 'start_failed')
   }
 
   if (!(await waitForHealthy(ops, config.healthTimeoutMs, pollMs))) {
-    return rollback(ops, previous, release.version, 'unhealthy')
+    return rollback(ops, config, previous, release.version, 'unhealthy')
   }
 
   if (!(await safeCall(() => ops.syntheticTurn(), false))) {
-    return rollback(ops, previous, release.version, 'synthetic_turn_failed')
+    return rollback(ops, config, previous, release.version, 'synthetic_turn_failed')
   }
 
   try {
-    await ops.pruneImages(release.version, previous)
+    await ops.pruneImages(release.tag, previous)
   } catch (err) {
     await safeAlert(ops, `Deploy of ${release.version} succeeded, but image prune failed: ${errorMessage(err)}`)
   }

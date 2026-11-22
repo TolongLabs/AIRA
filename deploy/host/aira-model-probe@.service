@@ -1,0 +1,9 @@
+[Unit]
+Description=Check the models served by an owner-entered Ollama endpoint
+
+[Service]
+ExecStart=/usr/bin/python3 %h/.local/lib/aira/model-probe.py
+StandardInput=socket
+StandardOutput=socket
+RuntimeMaxSec=12
+NoNewPrivileges=true

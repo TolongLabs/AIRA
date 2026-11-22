@@ -1245,7 +1245,15 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
   /** An owner's gateway job, run as a routine turn in the chat the host's list names. */
   async function handleJob(request: Extract<ScheduledRequest, { kind: 'job' }>): Promise<TurnReply | null> {
     const listed = deps.config.gateway?.jobs?.find((job) => job.id === request.jobId)
-    const chat = listed ? getChatByWaId(storage, listed.chat) : undefined
+    const binding =
+      !listed && request.jobId.startsWith('site_')
+        ? storage.read((db) => db.prepare('SELECT chat_id FROM site_job WHERE tag=?').pluck().get(request.jobId))
+        : undefined
+    const chat = listed
+      ? getChatByWaId(storage, listed.chat)
+      : typeof binding === 'string'
+        ? getChat(storage, binding)
+        : undefined
     if (chat?.status !== 'active' || request.text === '') return null
     // One firing per 10-minute window: the gateway's repeats of a firing are answered from the stored reply.
     const window = Math.floor(now().getTime() / JOB_WINDOW_MS)

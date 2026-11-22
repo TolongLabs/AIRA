@@ -293,7 +293,7 @@ function useEnv(): Env {
   const [env, setEnv] = useState<Env>(FALLBACK)
   useEffect(() => {
     let live = true
-    fetch('/api/env')
+    fetch('/owner-api/env')
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!live || !d?.brand) return
@@ -330,7 +330,8 @@ function ClientClock({ timezone }: { timezone: string }) {
      nobody involved has ever been to, and worse, a time that had nothing to do
      with the one her quiet hours and her openings are computed in. The point
      of putting a clock up here was to make THAT number visible. */
-  const zone = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
+  const zone = timezone
+  if (!zone) return <span title="Owner timezone unavailable">Clock unavailable</span>
   let text: string
   try {
     text = new Intl.DateTimeFormat(undefined, {
@@ -341,13 +342,7 @@ function ClientClock({ timezone }: { timezone: string }) {
       timeZone: zone
     }).format(now)
   } catch {
-    // An unknown zone name must not take the header down with it.
-    text = new Intl.DateTimeFormat(undefined, {
-      weekday: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    }).format(now)
+    return <span title="Invalid owner timezone">Clock unavailable</span>
   }
 
   return (

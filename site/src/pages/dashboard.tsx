@@ -1,8 +1,8 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from 'recharts'
 import { BookOpen, Clock, LineChart, Music, Network, Play, RotateCw, Settings2, Square, Type } from 'lucide-react'
 import type { Dashboard } from '@/lib/api'
-import { post } from '@/lib/api'
+import { get, post } from '@/lib/api'
 import { useApi, toast, Toaster, useThemeColors } from '@/lib/hooks'
 import { ago, num, until } from '@/lib/utils'
 import { Shell } from '@/components/shell'
@@ -109,16 +109,37 @@ function StatTiles({
 function ServiceRow({ unit, state, onDone }: { unit: string; state: string; onDone: () => void }) {
   const on = state === 'active'
   const tone = on ? 'var(--up)' : state === 'failed' ? 'var(--down)' : 'var(--amber)'
+  /* One flight at a time: without this the buttons stay live during the
+     call and every click fires another. */
+  const [busy, setBusy] = useState(false)
 
-  async function act(action: 'start' | 'stop' | 'restart') {
+  async function act(action: 'start' | 'stop' | 'restart', rethrow: boolean) {
+    if (busy) return
+    setBusy(true)
     try {
       await post('/api/services', { unit, action })
+      const expected = action === 'stop' ? 'inactive' : 'active'
+      let actual: string | undefined
+      for (const delay of [1000, 1000, 2000, 3000]) {
+        await new Promise((resolve) => window.setTimeout(resolve, delay))
+        try {
+          actual = (await get<Dashboard>('/api/dashboard')).services?.[unit]
+        } catch {
+          actual = undefined
+        }
+        if (actual === expected) break
+      }
+      if (actual !== expected) throw new Error(`Could not confirm ${unit} is ${expected}`)
       toast(`${unit} ${action} ✓`)
       window.setTimeout(onDone, 900)
     } catch (e) {
       toast((e as Error).message, false)
-      // Rethrown so a confirm strip stays open on a failed stop.
-      throw e
+      /* Rethrown only for the stop confirm so its strip stays open on a
+         failed stop. Restart/start have no confirm to hold open, and
+         rethrowing there leaks an unhandled rejection. */
+      if (rethrow) throw e
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -128,7 +149,7 @@ function ServiceRow({ unit, state, onDone }: { unit: string; state: string; onDo
       <span className="min-w-0 flex-1 truncate text-[0.95rem]">{unit}</span>
       <span className="text-[0.82rem] text-muted">{state}</span>
       <div className="flex gap-1">
-        <Button size="sm" variant="ghost" onClick={() => void act('restart')} title="restart">
+        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void act('restart', false)} title="restart">
           <RotateCw />
         </Button>
         {on ? (
@@ -141,10 +162,11 @@ function ServiceRow({ unit, state, onDone }: { unit: string; state: string; onDo
             icon={<Square />}
             question={`Stop ${unit}?`}
             warning="It stays down until you start it again."
-            onConfirm={() => act('stop')}
+            disabled={busy}
+            onConfirm={() => act('stop', true)}
           />
         ) : (
-          <Button size="sm" variant="ghost" title="start" onClick={() => void act('start')}>
+          <Button size="sm" variant="ghost" title="start" disabled={busy} onClick={() => void act('start', false)}>
             <Play />
           </Button>
         )}

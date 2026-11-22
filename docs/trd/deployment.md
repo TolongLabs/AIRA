@@ -90,7 +90,7 @@ Run by the operator on the host, with each step that changes the host confirmed 
    `docker build -f deploy/Dockerfile -t aira-local:<commit> .` and set `AIRA_IMAGE=aira-local`,
    `AIRA_VERSION=<commit>`.
 4. `docker compose --env-file .env up -d`, then poll `GET /health` until ready.
-5. Send one synthetic turn to the core's port and check for a deliverable answer.
+5. Verify the live site and run a marked synthetic turn through the deployed image with isolated storage.
 6. Install the updater's units with `AIRA_COMPOSE_FILE` and `AIRA_CORE_URL` pointing at this install. Its timer is
    enabled once a release image exists in the registry.
 
@@ -106,10 +106,12 @@ pass on a push to `main`. Deploys run one at a time. Like rokabot's, every merge
 3. Pull `sha-<7>` under one 20-minute budget across up to 3 attempts. The first attempt gets 3 minutes, so a stalled
    first connection retries quickly; each later attempt gets the time left. When the budget runs out or all 3 attempts
    fail, the deploy fails as `pull_failed` before `.env` is touched. Otherwise
-   rewrite `AIRA_VERSION` and `AIRA_IMAGE` in place in the install's `.env` (every other line kept; a missing key is
+   atomically replace `AIRA_VERSION` and `AIRA_IMAGE` in the install's `.env` (every other line kept; a missing key is
    appended), and recreate the container. Start-up runs migrations inside a transaction.
-4. Poll the health endpoint until ready, up to `AIRA_HEALTH_TIMEOUT_MS` (default 60000), and send one synthetic
-   turn.
+4. Poll the health endpoint until ready, up to `AIRA_HEALTH_TIMEOUT_MS` (default 60000), and verify the built page, core chat list and
+   authenticated owner dashboard. Inside the running container, start an isolated gateway with a temporary database,
+   the example pack and a deterministic model. Send a tool-bearing, scope-marked DM fixture over HTTP. Require both
+   the expected answer and a delivered turn row. The probe never sends a WhatsApp message.
 5. On success: keep the previous image for rollback and remove older ones, append one JSON line (`from`, `to`,
    `outcome`, `reason`) to `deploys.jsonl` in the install folder, then post the result to the host's ntfy. When
    `AIRA_NTFY_URL` is unset no post is made, and the same text also goes to stderr.
@@ -120,10 +122,10 @@ pass on a push to `main`. Deploys run one at a time. Like rokabot's, every merge
   job runs inside the `production` GitHub environment and serialises on the `aira-deploy` concurrency group with
   `cancel-in-progress: false`. Workflows from forks and outside contributors need the owner's approval before they
   run, so no outside pull request can reach the runner.
-- The CI deploy runs its own sequence (`runDeployHost` in `scripts/deploy-host.ts`) and shares only the
-  `createRealOps` effect layer with the timer path (`runUpdate` in `scripts/updater`). The timer path records to
-  `/var/lib/aira/deploys.jsonl` by default and never deploys a release whose body carries a `manual` line: it
-  records `skipped_manual` instead.
+- The CI runner deploys main-branch SHA images. The user timer follows release tags. They share a host
+  `flock` for the full deployment, including rollback. A mutable running tag is pinned to its image ID before
+  a pull. With a stopped core, take a fresh verified SQLite backup from the host volume. A failed restore or
+  an unhealthy previous version is recorded as `rollback_failed`.
 
 ## Shadow Period
 
@@ -169,3 +171,10 @@ by the new core since cutover exist only in the new database; the rollback recor
 | Key                   | Default | Effect                                                         |
 | --------------------- | ------- | -------------------------------------------------------------- |
 | `gateway.hostDataDir` | empty   | The data volume's path on the host. Start-up fails while empty |
+
+### Owner console release checks
+
+A deploy checks the owner-facing site listener, a built page, the core chat schema and the routed owner API.
+The synthetic gateway check must exercise the intended turn branch. A previous deployment counts as restored only
+when its health checks pass. Preserve host-specific configuration, write credentials atomically with private file
+permissions and require a fresh verified snapshot before a version change.

@@ -171,7 +171,7 @@ describe('runDeployHost', () => {
 
   it('rolls back .env and container when health check times out', async () => {
     const { ops, calls, records, alerts } = createFakeOps({
-      healthyQueue: [false]
+      healthyQueue: [false, false, false, true]
     })
 
     const result = await runDeployHost(ops, {
@@ -251,6 +251,7 @@ describe('runDeployHost', () => {
       recordFile,
       run: async (_command, args, _env, options) => {
         commands.push(args)
+        if (args.includes('dist/scripts/deploy-turn-probe.js')) return { code: 0, stdout: 'deploy-turn-ok', stderr: '' }
         if (args.includes('images')) {
           return {
             code: 0,
@@ -408,11 +409,9 @@ describe('runDeployHost', () => {
     expect(commands.some((args) => args.includes('up'))).toBe(false)
   })
 
-  it('a synthetic turn that never answers counts as failed and rolls back', async () => {
+  it('a timed-out synthetic turn counts as failed and rolls back', async () => {
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
-    const turnController = new AbortController()
-    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(turnController.signal)
-
+    let checkedTimeout = 0
     const dir = tmpDir()
     const envFile = join(dir, '.env')
     const recordFile = join(dir, 'deploys.jsonl')
@@ -429,7 +428,11 @@ describe('runDeployHost', () => {
       service: 'aira',
       coreUrl: 'http://127.0.0.1:9881',
       recordFile,
-      run: async (_command, args, env) => {
+      run: async (_command, args, env, options) => {
+        if (args.includes('dist/scripts/deploy-turn-probe.js')) {
+          checkedTimeout = options?.timeoutMs ?? 0
+          throw new Error('synthetic turn timed out')
+        }
         if (args.includes('images')) {
           return {
             code: 0,
@@ -442,18 +445,7 @@ describe('runDeployHost', () => {
         }
         return { code: 0, stdout: '', stderr: '' }
       },
-      fetch: ((input, init) => {
-        const url = String(input)
-        if (url.endsWith('/v1/chat/completions')) {
-          return new Promise((_resolve, reject) => {
-            init?.signal?.addEventListener(
-              'abort',
-              () => reject(init.signal?.reason ?? new DOMException('timed out', 'TimeoutError')),
-              { once: true }
-            )
-            setTimeout(() => turnController.abort(new DOMException('timed out', 'TimeoutError')), 5)
-          })
-        }
+      fetch: (async () => {
         healthCall += 1
         return Promise.resolve(
           new Response(
@@ -474,7 +466,7 @@ describe('runDeployHost', () => {
 
     const result = await runDeployHost(ops, defaultConfig)
 
-    expect(timeoutSpy).toHaveBeenCalledWith(SYNTHETIC_TURN_TIMEOUT_MS)
+    expect(checkedTimeout).toBe(SYNTHETIC_TURN_TIMEOUT_MS)
     expect(result).toEqual({
       action: 'rolled_back',
       from: 'sha-0000001',
