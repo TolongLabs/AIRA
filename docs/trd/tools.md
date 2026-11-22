@@ -383,7 +383,9 @@ YouTube requires an official host. Instagram's `/p/<id>` needs an Instagram-like
 Facebook's unknown-host shapes require a long numeric id or a `pfbid` post id.
 
 A disabled `social.platforms.<id>` makes that platform's link plain text for intake and refuses a
-`read_post` call for the link or its source ID. The page tool also respects that choice on a seen post.
+`read_post` call for the link or its source ID. The page tool and automatic page reads from typed search also respect that choice. When checking
+read policy, recognise equivalent HTTP links, explicit default ports and a trailing DNS dot. Run this
+local check before selecting a page for reading.
 A disabled `autofetch.platforms.<id>` skips group fetch independently. Apply each check to the parsed
 platform before resolving a share, calling a reader or fetching bytes. Record `platform_disabled` for
 the skipped lookup with zero reader attempts. A skipped link leaves later eligible links and their
