@@ -27,7 +27,7 @@ import {
 } from './urls.js'
 
 export const DEFAULT_HTTP_READER_TIMEOUT_MS = 2500
-export const DEFAULT_YTDLP_TIMEOUT_MS = 4500
+export const DEFAULT_YTDLP_TIMEOUT_MS = 9000
 /** Measured 22 Nov 2026: TikWM answered in 5.7 to 7.5 s from two networks. */
 const TIKWM_TIMEOUT_MS = 10_000
 /** Measured 22 Nov 2026: Apify socialdatax answered in 3.7 to 6.2 s for note_id lookups. */
@@ -163,12 +163,12 @@ const adapters: Record<SocialPlatform, PlatformAdapter> = {
   },
   bluesky: {
     read: ['text', 'preview', 'photos', 'video'],
-    group: ['photos'],
+    group: ['photos', 'video'],
     readers: (_, env) => [blueskyApiReader(env)]
   },
   threads: {
     read: ['text', 'preview', 'photos', 'video'],
-    group: ['photos'],
+    group: ['photos', 'video'],
     readers: (_, env) => [threadsPageReader(env)]
   },
   instagram: {
@@ -244,16 +244,16 @@ export function requiresExtractor(target: SocialPostTarget, mirrors?: SocialMirr
 const EXTRACTOR_FETCH_VIDEO: readonly SocialPlatform[] = ['bilibili', 'facebook']
 
 /**
- * The fetch operations for a platform in a chat. A mirror's group grant covers groups only, so a DM gets the
- * platform's own operations and never reaches the mirror. Reddit's grant is also limited to its listed groups.
+ * The fetch operations for a platform in a chat. A mirror's `read_and_group` grant applies to both opted-in groups
+ * and opted-in DMs. Reddit's grant is also limited to its listed chat IDs when `redditGroupChatIds` is set.
  */
 export function groupOperations(
   platform: SocialPlatform,
   mirrors?: SocialMirrorSettings,
   chatId?: string,
-  inGroup = true
+  _inGroup = true
 ): readonly GroupOperation[] {
-  if (mirrorMode(platform, mirrors) !== 'read_and_group' || !inGroup) return adapters[platform].group
+  if (mirrorMode(platform, mirrors) !== 'read_and_group') return adapters[platform].group
   const scope = platform === 'reddit' ? mirrors?.redditGroupChatIds : undefined
   if (scope !== undefined && (chatId === undefined ? scope.length === 0 : !scope.includes(chatId))) return []
   return platform === 'reddit' || platform === 'rednote' ? ['photos', 'video'] : ['video']

@@ -130,7 +130,7 @@ social:
     # redditGroupChatIds: [] # Optional scope for Reddit group attachments
   timeoutMs: 12000
   httpReaderTimeoutMs: 2500
-  ytDlpTimeoutMs: 4500
+  ytDlpTimeoutMs: 9000
   cacheTtlMs: 900000
   maxCacheEntries: 256
   maxTextChars: 1500

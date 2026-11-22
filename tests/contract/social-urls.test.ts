@@ -214,6 +214,34 @@ describe('parseSocialPostUrl', () => {
       extractorUrl: plain?.extractorUrl
     })
   })
+
+  it.each([
+    ['bare', 'https://www.bilibili.com/video/BV1Ssxs6pEM2/'],
+    [
+      'feed tracking parameters',
+      'https://www.bilibili.com/video/BV1Ssxs6pEM2/?trackid=web_pegasus_0.router-web-pegasus-2479516-sm4rx.1795361092202.263&spm_id_from=333.1007.tianma.1-3-3.click'
+    ],
+    [
+      'share parameters',
+      'https://www.bilibili.com/video/BV1Ssxs6pEM2/?share_source=copy_web&vd_source=4345bd6db85738b390500f7023e01996'
+    ]
+  ])('normalizes Bilibili %s URL to canonicalUrl and bilibili:BV1Ssxs6pEM2 lookupKey', (_shape, url) => {
+    expect(parseSocialPostUrl(url)).toMatchObject({
+      platform: 'bilibili',
+      id: 'BV1Ssxs6pEM2',
+      canonicalUrl: 'https://www.bilibili.com/video/BV1Ssxs6pEM2',
+      extractorUrl: 'https://www.bilibili.com/video/BV1Ssxs6pEM2',
+      lookupKey: 'bilibili:BV1Ssxs6pEM2'
+    })
+    expect(findSocialPostTargets(`watch ${url}`)).toMatchObject([
+      {
+        platform: 'bilibili',
+        id: 'BV1Ssxs6pEM2',
+        canonicalUrl: 'https://www.bilibili.com/video/BV1Ssxs6pEM2',
+        lookupKey: 'bilibili:BV1Ssxs6pEM2'
+      }
+    ])
+  })
 })
 
 describe('findSocialPostTargets', () => {

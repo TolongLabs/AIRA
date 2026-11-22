@@ -22,8 +22,10 @@ import { pruneRecords } from '../../src/records/retention.js'
 import { ensureChat, setChatStatus } from '../../src/settings/chats.js'
 import { setSetting } from '../../src/settings/settings.js'
 import { parseFxTwitterResponse } from '../../src/social/parsers.js'
+import { groupOperations, socialCapabilities } from '../../src/social/readers.js'
 import type { SocialPost, SocialPostLookup } from '../../src/social/types.js'
 import { parseOfficialSocialPostUrl, type SocialPostTarget } from '../../src/social/urls.js'
+import { SocialPostViewer } from '../../src/social/viewer.js'
 import type { Storage } from '../../src/storage/database.js'
 import type { TurnService } from '../../src/turn/pipeline.js'
 import { tmpDir, tmpStorage } from '../support/tmp.js'
@@ -441,13 +443,14 @@ describe('autofetch', () => {
     expect(existsSync(join(env.dataDir, 'cache', 'autofetch'))).toBe(false)
   })
 
-  it('records the known duration band of a video its group mode does not send', async () => {
+  it('records the known duration band of a video without a deliverable attachment', async () => {
     const env = setup({
       posts: {
         'threads:DFixtur3abc': {
           durationSec: 45,
           videoCount: 1,
-          video: { url: 'https://video.example/clip.mp4', bytes: null, headers: null, hasAudio: null }
+          video: { url: 'https://video.example/clip.mp4', bytes: null, headers: null, hasAudio: null },
+          attachments: []
         }
       }
     })
@@ -459,6 +462,125 @@ describe('autofetch', () => {
       ['le_60']
     )
     expect(env.downloads).toEqual([])
+  })
+
+  it('enables both photos and video autofetch operations for Bluesky and Threads', () => {
+    for (const platform of ['bluesky', 'threads'] as const) {
+      expect(groupOperations(platform)).toEqual(['photos', 'video'])
+      expect(groupOperations(platform, undefined, undefined, false)).toEqual(['photos', 'video'])
+      expect(socialCapabilities(false)['features.autofetch'].find((entry) => entry.id === platform)).toEqual({
+        id: platform,
+        name: platform === 'bluesky' ? 'Bluesky' : 'Threads',
+        operations: ['photos', 'video']
+      })
+    }
+  })
+
+  it('selects and downloads native video attachments from Bluesky and Threads readers', async () => {
+    const did = 'did:plc:exampleauthortwo'
+    const cid = 'bafkreifhuv36ji7vcq3tmdjltceyrfaat6vdccn2pklxf7j7dgsobdlgbm'
+    const blueskyPost = {
+      thread: {
+        post: {
+          uri: `at://${did}/app.bsky.feed.post/3mk4lzkrnk22d`,
+          author: { did, handle: 'example_video.test', displayName: 'Example Person' },
+          record: {
+            createdAt: '2026-04-22T23:00:21.312Z',
+            text: 'Bluesky video post',
+            embed: {
+              $type: 'app.bsky.embed.video',
+              video: { $type: 'blob', ref: { $link: cid }, mimeType: 'video/mp4', size: 956983 }
+            }
+          },
+          embed: {
+            $type: 'app.bsky.embed.video#view',
+            cid,
+            thumbnail: 'https://cdn.bsky.app/video-cover'
+          }
+        }
+      }
+    }
+    const threadsHtml = readFileSync(new URL('../fixtures/social/threads-post.html', import.meta.url), 'utf8')
+    const pdsBlobUrl = `https://8.8.8.8/xrpc/com.atproto.sync.getBlob?did=${encodeURIComponent(did)}&cid=${encodeURIComponent(cid)}`
+    const threadsClipUrl = 'https://instagram.fkul4-3.fna.fbcdn.net/o1/v/fixture-clip.mp4'
+
+    const viewer = new SocialPostViewer(
+      { timeoutMs: 2000, cacheTtlMs: 0, maxCacheEntries: 4, maxTextChars: 1500, ytDlpPath: 'yt-dlp' },
+      {
+        lookup: async () => ['8.8.8.8'],
+        fetcher: async (input) => {
+          const url = String(input)
+          if (url.startsWith('https://public.api.bsky.app/xrpc/app.bsky.feed.getPostThread')) {
+            return Response.json(blueskyPost)
+          }
+          if (url === `https://plc.directory/${did}`) {
+            return Response.json({
+              service: [{ id: '#atproto_pds', type: 'AtprotoPersonalDataServer', serviceEndpoint: 'https://8.8.8.8/' }]
+            })
+          }
+          if (url === 'https://www.threads.com/@poster_one/post/DFixtur3abc') {
+            return new Response(threadsHtml, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } })
+          }
+          return new Response(null, { status: 404 })
+        }
+      }
+    )
+
+    const env = setup()
+    const lookupSpy = vi.spyOn(viewer, 'lookup')
+    const autofetch = createAutofetch({
+      ...env.options,
+      viewer,
+      download: async (url, signal, maxBytes) => {
+        if (url === pdsBlobUrl) {
+          env.downloads.push(url)
+          return { data: testMediaBytes('mp4', url), contentType: 'video/mp4' }
+        }
+        return env.download(url, signal, maxBytes)
+      },
+      probeDuration: async () => 12
+    })
+
+    const blueskyMedia = await autofetch.fetch({
+      chat: env.waId,
+      text: `https://bsky.app/profile/${did}/post/3mk4lzkrnk22d`
+    })
+    expect(blueskyMedia.media.map((item) => item.kind)).toEqual(['video'])
+    expect(env.downloads).toEqual([pdsBlobUrl])
+    expect(await lookupSpy.mock.results[0]?.value).toMatchObject({
+      status: 'found',
+      post: {
+        attachments: [
+          {
+            kind: 'video',
+            owner: `bluesky:${did}:3mk4lzkrnk22d`,
+            durationSec: null,
+            video: { url: pdsBlobUrl, bytes: 956983, headers: null, hasAudio: null }
+          }
+        ]
+      }
+    })
+
+    env.downloads.length = 0
+    const threadsMedia = await autofetch.fetch({
+      chat: env.waId,
+      text: 'https://www.threads.com/@poster_one/post/DFixtur3abc'
+    })
+    expect(threadsMedia.media.map((item) => item.kind)).toEqual(['video', 'image', 'image'])
+    expect(env.downloads[0]).toBe(threadsClipUrl)
+    expect(await lookupSpy.mock.results[1]?.value).toMatchObject({
+      status: 'found',
+      post: {
+        attachments: expect.arrayContaining([
+          {
+            kind: 'video',
+            owner: 'threads:DFixtur3abc',
+            durationSec: null,
+            video: { url: threadsClipUrl, bytes: null, headers: null, hasAudio: true }
+          }
+        ])
+      }
+    })
   })
 
   it('downloads a large verified TikTok mirror video in byte ranges with the mirror time limit', async () => {
@@ -1056,8 +1178,8 @@ describe('autofetch video duration and compression', () => {
   })
 })
 
-describe('mirror group-only in DMs', () => {
-  it('never looks up or downloads mirror group media in an opted-in DM, even when the scope names that DM', async () => {
+describe('mirror read_and_group in DMs', () => {
+  it('fetches mirror media in an opted-in DM while keeping redditGroupChatIds scoping', async () => {
     const env = setup({
       type: 'dm',
       posts: {
@@ -1076,13 +1198,36 @@ describe('mirror group-only in DMs', () => {
       chat: env.waId,
       text: 'https://www.tiktok.com/@example/video/1234567890 https://www.reddit.com/r/example/comments/abc123/a_post/'
     })
-    expect(batch.media).toEqual([])
-    expect(env.lookups).toEqual([])
-    expect(env.downloads).toEqual([])
+    expect(batch.media.map((item) => item.kind)).toEqual(['video', 'image'])
+    expect(env.lookups).toEqual(['tiktok:1234567890', 'reddit:abc123'])
+    expect(env.downloads).toEqual(['https://v16m.tiktokcdn.com/clip.mp4', 'https://img.example/a.jpg'])
+
+    const excludedEnv = setup({
+      type: 'dm',
+      posts: {
+        'tiktok:9999999999': {
+          video: { url: 'https://v16m.tiktokcdn.com/other.mp4', bytes: null, headers: null, hasAudio: true },
+          durationSec: 18
+        },
+        'reddit:xyz789': { photoUrls: ['https://img.example/b.jpg'] }
+      }
+    })
+    const excludedReddit = createAutofetch({
+      ...excludedEnv.options,
+      mirrors: { tiktok: 'read_and_group', reddit: 'read_and_group', redditGroupChatIds: ['c_000000000000'] }
+    })
+    const partial = await excludedReddit.fetch({
+      chat: excludedEnv.waId,
+      text: 'https://www.tiktok.com/@example/video/9999999999 https://www.reddit.com/r/example/comments/xyz789/another_post/'
+    })
+    expect(partial.media.map((item) => item.kind)).toEqual(['video'])
+    expect(excludedEnv.lookups).toEqual(['tiktok:9999999999'])
     expect(
-      env.storage.read((db) => db.prepare('SELECT platform, outcome, reason FROM social_lookup ORDER BY ordinal').all())
+      excludedEnv.storage.read((db) =>
+        db.prepare('SELECT platform, outcome, reason FROM social_lookup ORDER BY ordinal').all()
+      )
     ).toEqual([
-      { platform: 'tiktok', outcome: 'skipped', reason: 'platform_excluded' },
+      { platform: 'tiktok', outcome: 'readable', reason: null },
       { platform: 'reddit', outcome: 'skipped', reason: 'platform_excluded' }
     ])
   })
