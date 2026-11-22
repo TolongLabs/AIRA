@@ -297,7 +297,7 @@ function isAbortError(error: unknown): boolean {
 
 /** A strong ETag names one exact version of a file. A weak ETag or a Last-Modified date does not. */
 function strongValidator(version: string | null | undefined): version is string {
-  return typeof version === 'string' && /^"[^"]+"$/.test(version)
+  return typeof version === 'string' && /^"[\x21\x23-\x7e\x80-\xff]+"$/.test(version)
 }
 
 /** The only request headers a media download may carry: a host's user agent and referrer, never cookies. */
@@ -456,13 +456,15 @@ export function createFetchPagePort(
         requesting = false
         const mime = res.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase()
         // Only an ETag can prove a resumed range is the same file; Last-Modified still guards parts against each other.
-        const version = res.headers.get('etag') ?? res.headers.get('last-modified')
-        const etag = res.headers.get('etag')
+        // An empty ETag names nothing, so Last-Modified identifies the version instead.
+        const header = res.headers.get('etag')?.trim()
+        const etag = header && header !== '""' ? header : null
+        const version = etag ?? res.headers.get('last-modified')
         if (
           res.status !== 206 ||
           mime !== 'video/mp4' ||
           res.headers.get('content-range') !== `bytes ${from}-${end}/${bytes}` ||
-          (first && (first.finalUrl !== finalUrl || first.version !== version)) ||
+          (first && (first.finalUrl !== finalUrl || first.version !== version || first.etag !== etag)) ||
           !res.body
         ) {
           void res.body?.cancel().catch(() => undefined)

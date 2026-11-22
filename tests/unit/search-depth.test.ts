@@ -61,6 +61,24 @@ describe('search field evidence', () => {
 })
 
 describe('search depth', () => {
+  it('keeps size lines whole without bullets and long prose split at sentences beside a bullet', async () => {
+    const depth = (snippet: string, field: { kind: 'list' | 'other'; subject: string }) =>
+      createSearchDepth(
+        { search: { search: vi.fn(async () => [{ title: 't', url: 'https://cafe.example/p', snippet }]) } },
+        { maxSearches: 1, maxPages: 0, maxProviderCalls: 1 }
+      ).deep({ query: 'q', fields: [field] }, context())
+    const sizes = await depth('Short (8 fl. oz.)\nTall (12 fl. oz.)\nGrande (16 fl. oz.)', {
+      kind: 'list',
+      subject: 'Drink sizes'
+    })
+    expect(sizes.brief.passages).toEqual([])
+    const prose = `- Home\n${'The park is open daily and well kept. '.repeat(12)}The Merlion has a total height of 8.6 metres.`
+    const height = await depth(prose, { kind: 'other', subject: 'Merlion height' })
+    expect(height.brief.passages.map((passage) => passage.text)).toContainEqual(
+      expect.stringContaining('The Merlion has a total height of 8.6 metres.')
+    )
+  })
+
   it('does not take size lines with abbreviated units for list items in a real search', async () => {
     const sizes = {
       title: 'Drink sizes',
