@@ -396,7 +396,9 @@ platform's video operation only after three successful live checks on each host.
 verified capability if either host lacks a suitable attachment. Preserve mirror settings and per-chat scope.
 A Bilibili link with an explicit positive part number keeps that part in the canonical URL, extractor URL,
 lookup key and repeat reservation. Match the extractor's BV and part before delivery. An unqualified link cannot
-deliver an ambiguous multipart result. Live streams and playlists supply no delivery attachment.
+deliver an ambiguous multipart result. Malformed or repeated part selectors remain recognizable for read
+policy and cannot select a delivery attachment. The fetch catalog lists extractor-backed video operations
+only when the extractor is installed. Live streams and playlists supply no delivery attachment.
 For file limits, duration and receipt handling see [Autofetch](system.md#autofetch).
 
 LinkedIn has recognition only (T0 on both deployments). Recognise official post slugs with an activity ID,
@@ -426,7 +428,8 @@ the server offers Reddit group media in any group. TikWM receives the resolved c
 Reddit post ID. Neither receives the member’s original share token or chat data.
 
 The reader requires a matching post identity and a supported first-party or mirror media origin. For a group
-attachment, video needs known duration and verified post ownership. A single native Reddit photo must come
+attachment, video needs verified post ownership. If the source supplies no duration, probe the bounded MP4
+before delivery. The group redistribution grant excludes DMs. A single native Reddit photo must come
 from the image post's own original `i.redd.it` URL, with any destination override agreeing. A preview, a
 crosspost, a gallery and an external image link do not qualify under this rule. TikWM uses the
 watermarked rendition and can take up to 10,000 ms for lookup by default, within the shared lookup deadline.
