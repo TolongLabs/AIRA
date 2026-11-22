@@ -82,7 +82,8 @@ async function boundedJson(response: Response): Promise<unknown> {
 function setVideo(post: SocialPost, video: PlayableVideo, allowGroup: boolean) {
   post.video = video
   post.videoCount = 1
-  if (allowGroup && post.durationSec !== null)
+  // A verified video owned by this post may carry no duration; the group path measures it before delivery.
+  if (allowGroup)
     post.attachments = [{ kind: 'video', owner: post.target.lookupKey, video, durationSec: post.durationSec }]
 }
 

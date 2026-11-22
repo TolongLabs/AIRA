@@ -192,6 +192,7 @@ function postMedia(
   post: SocialPost,
   target: SocialPostTarget,
   chatId: string,
+  inGroup: boolean,
   mirrors?: SocialMirrorSettings
 ): {
   kind: AutofetchMedia['kind']
@@ -203,7 +204,7 @@ function postMedia(
 }[] {
   const resolved = canonicalTarget(post, target)
   if (!resolved) return []
-  const operations = groupOperations(resolved.platform, mirrors, chatId)
+  const operations = groupOperations(resolved.platform, mirrors, chatId, inGroup)
   const attachments = (post.attachments ?? []).filter(
     (item) => item.owner === resolved.lookupKey && operations.includes(item.kind === 'image' ? 'photos' : 'video')
   )
@@ -272,13 +273,14 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
   /** True when an active group or DM has the switch on and is not muted. Also its platform switches. */
   function allowedChat(
     waId: string
-  ): { chatId: string; platformOn: (platform: SocialPlatform) => boolean } | undefined {
+  ): { chatId: string; inGroup: boolean; platformOn: (platform: SocialPlatform) => boolean } | undefined {
     const chat = getChatByWaId(options.storage, waId)
     if (chat?.status !== 'active') return undefined
     const settings = resolveSettings(options.storage, chat)
     if (settings['features.autofetch']?.value !== true || settings['muted']?.value) return undefined
     return {
       chatId: chat.chatId,
+      inGroup: chat.type === 'group',
       platformOn: (platform) => platformSwitchOn(settings, 'autofetch', platform)
     }
   }
@@ -298,7 +300,12 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
     )
   }
 
-  function freshTargets(chatId: string, text: string, platformOn: (platform: SocialPlatform) => boolean) {
+  function freshTargets(
+    chatId: string,
+    inGroup: boolean,
+    text: string,
+    platformOn: (platform: SocialPlatform) => boolean
+  ) {
     const targets = findSocialPostTargets(text, (entry) => options.logger?.info('social.unknown_host', entry))
     if (targets.length === 0) return { picked: [], selected: 0 }
     return options.storage.tx((db) => {
@@ -309,7 +316,8 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
       let skips = 0
       for (const target of targets) {
         let skip: Skip | undefined
-        if (groupOperations(target.platform, options.mirrors, chatId).length === 0) skip = 'platform_excluded'
+        if (target.invalidPart || groupOperations(target.platform, options.mirrors, chatId, inGroup).length === 0)
+          skip = 'platform_excluded'
         else if (!platformOn(target.platform)) skip = 'platform_disabled'
         else if (selected >= AUTOFETCH_MAX_LINKS) continue
         else if (!reserveRepeat(db, chatId, target.lookupKey, at)) skip = 'repeat'
@@ -384,7 +392,7 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
       const allowed = allowedChat(input.chat)
       if (!allowed) return { media: [] }
       const chatId = allowed.chatId
-      const { picked, selected } = freshTargets(chatId, input.text, allowed.platformOn)
+      const { picked, selected } = freshTargets(chatId, allowed.inGroup, input.text, allowed.platformOn)
       if (picked.length === 0) return { media: [] }
 
       const runId = options.storage.tx((db) => startJobRun(db, { kind: 'autofetch', chatId }, now))
@@ -410,7 +418,7 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
                   .catch(() => undefined)
           const items =
             lookup?.status === 'found' && !controller.signal.aborted
-              ? postMedia(lookup.post, target, chatId, options.mirrors)
+              ? postMedia(lookup.post, target, chatId, allowed.inGroup, options.mirrors)
               : []
           if (lookup?.status === 'found') {
             // Reserve the canonical post too, so another share link to it is not looked up again, media or not.

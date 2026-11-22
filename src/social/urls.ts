@@ -24,6 +24,8 @@ export interface SocialPostTarget {
   extractorUrl: string
   profile?: string
   startSec?: number
+  /** The post is readable, but its Bilibili part does not select a deliverable asset. */
+  invalidPart?: true
   /** A share or short link. Its address names no post, so resolveShareLink follows it before the lookup. */
   needsRedirect?: boolean
   /** The unwrapped input URL before normalization, when it differs from `canonicalUrl`. */
@@ -195,9 +197,12 @@ function parseBilibili(url: URL, host: string, unknown: boolean): SocialPostTarg
     const id = video[1] ?? ''
     const normalizedId = /^av/i.test(id) ? id.toLowerCase() : `BV${id.slice(2)}`
     const part = url.searchParams.getAll('p')
-    if (part.length > 1 || (part.length === 1 && !/^[1-9]\d*$/.test(part[0]!))) return null
     const canonical = `https://www.bilibili.com/video/${normalizedId}`
-    if (!part.length) return target('bilibili', normalizedId, canonical)
+    const base = target('bilibili', normalizedId, canonical)
+    if (!part.length) return base
+    if (part.length !== 1 || !/^[1-9]\d*$/.test(part[0]!)) {
+      return { ...base, lookupKey: base.lookupKey + ':invalid-part', invalidPart: true }
+    }
     const selected = target('bilibili', normalizedId, `${canonical}?p=${part[0]}`)
     return { ...selected, lookupKey: `${selected.lookupKey}:p${part[0]}` }
   }

@@ -218,12 +218,20 @@ export function requiresExtractor(target: SocialPostTarget, mirrors?: SocialMirr
   )
 }
 
+/** Platforms whose fetched video needs the extractor, so the catalog offers it only when yt-dlp is installed. */
+const EXTRACTOR_FETCH_VIDEO: readonly SocialPlatform[] = ['bilibili', 'facebook']
+
+/**
+ * The fetch operations for a platform in a chat. A mirror's group grant covers groups only, so a DM gets the
+ * platform's own operations and never reaches the mirror. Reddit's grant is also limited to its listed groups.
+ */
 export function groupOperations(
   platform: SocialPlatform,
   mirrors?: SocialMirrorSettings,
-  chatId?: string
+  chatId?: string,
+  inGroup = true
 ): readonly GroupOperation[] {
-  if (mirrorMode(platform, mirrors) !== 'read_and_group') return adapters[platform].group
+  if (mirrorMode(platform, mirrors) !== 'read_and_group' || !inGroup) return adapters[platform].group
   const scope = platform === 'reddit' ? mirrors?.redditGroupChatIds : undefined
   if (scope !== undefined && (chatId === undefined ? scope.length === 0 : !scope.includes(chatId))) return []
   return platform === 'reddit' ? ['photos', 'video'] : ['video']
@@ -249,7 +257,9 @@ export function socialCapabilities(extractorAvailable: boolean, mirrors?: Social
       return [entry(id, operations)]
     }),
     'features.autofetch': platforms.flatMap((id) => {
-      const operations = groupOperations(id, mirrors)
+      const operations = groupOperations(id, mirrors).filter(
+        (value) => extractorAvailable || value !== 'video' || !EXTRACTOR_FETCH_VIDEO.includes(id)
+      )
       return operations.length ? [entry(id, operations)] : []
     })
   }
@@ -471,7 +481,8 @@ function ytDlpReader(env: ReaderEnv, isConfigured: () => boolean = () => true): 
       if ('reason' in result) return { ok: false, reason: result.reason }
       const page = object(result.metadata).webpage_url
       const declared = typeof page === 'string' ? parseOfficialSocialPostUrl(page) : null
-      if (declared && !declared.needsRedirect && declared.lookupKey !== target.lookupKey) {
+      const expected = target.invalidPart ? parseOfficialSocialPostUrl(target.extractorUrl) : target
+      if (declared && !declared.needsRedirect && declared.lookupKey !== expected?.lookupKey) {
         return { ok: false, reason: 'identity_mismatch' }
       }
       return { ok: true, post: parseYtDlpMetadata(result.metadata, target, ctx.maxTextChars) }
