@@ -68,14 +68,14 @@ describe('research boundaries', () => {
     expect(call.mock.calls[1]?.[0].messages[0].content).not.toContain('x'.repeat(4001))
   })
 
-  it('skips an excluded result before selecting a page to read', async () => {
-    const linkedinUrl = 'https://www.linkedin.com/posts/synthetic-update-activity-1234567890123456789'
+  it('skips a forbidden result before selecting a page to read', async () => {
+    const blockedUrl = 'https://metadata.internal/private-report'
     const call = vi
       .fn()
       .mockResolvedValueOnce({ text: JSON.stringify({ queries: ['one', 'two', 'three'] }) })
       .mockResolvedValueOnce({ text: JSON.stringify(doc) })
     const search = vi.fn().mockResolvedValue([
-      { title: 'LinkedIn post', url: linkedinUrl, snippet: '' },
+      { title: 'Blocked host', url: blockedUrl, snippet: '' },
       { title: 'A source', url: 'https://example.com/', snippet: '' }
     ])
     const read = vi.fn().mockResolvedValue({ title: 'A source', text: 'x'.repeat(5000) })
@@ -88,7 +88,7 @@ describe('research boundaries', () => {
       limits: { maxSearches: 2, maxPages: 2, deadlineMs: 120000 },
       now: () => new Date(at)
     })
-    expect(read).not.toHaveBeenCalledWith(linkedinUrl, expect.any(AbortSignal))
+    expect(read).not.toHaveBeenCalledWith(blockedUrl, expect.any(AbortSignal))
     expect(read).toHaveBeenCalledWith('https://example.com/', expect.any(AbortSignal))
     expect(result.sources).toHaveLength(1)
     expect(result.sources[0]?.url).toBe('https://example.com/')

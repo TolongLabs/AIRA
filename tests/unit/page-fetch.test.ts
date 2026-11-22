@@ -67,8 +67,8 @@ describe('isBlockedPage', () => {
 })
 
 describe('createFetchPagePort redirects and cookies', () => {
-  it('stops before resolving or fetching a redirect to an excluded host', async () => {
-    const fetchFn = vi.fn(async () => redirect('https://www.linkedin.com/in/example'))
+  it('stops before resolving or fetching a redirect to a forbidden host', async () => {
+    const fetchFn = vi.fn(async () => redirect('https://metadata.internal/example'))
     const lookup = vi.fn(publicHost)
     const port = createFetchPagePort({ fetch: fetchFn as unknown as typeof fetch, lookup })
     await expect(port.read('https://example.com/a', signal)).rejects.toThrow('forbidden url')

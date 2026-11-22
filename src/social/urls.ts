@@ -14,6 +14,7 @@ export type SocialPlatform =
   | 'lemon8'
   | 'rednote'
   | 'douyin'
+  | 'linkedin'
 
 /** The name a person sees for each platform: a footer, a note or a model sentence. */
 export const PLATFORM_NAME: Record<SocialPlatform, string> = {
@@ -28,7 +29,8 @@ export const PLATFORM_NAME: Record<SocialPlatform, string> = {
   bilibili: 'Bilibili',
   lemon8: 'Lemon8',
   rednote: 'Rednote',
-  douyin: 'Douyin'
+  douyin: 'Douyin',
+  linkedin: 'LinkedIn'
 }
 
 export interface SocialPostTarget {
@@ -59,7 +61,8 @@ const HOSTS: Record<SocialPlatform, string[]> = {
   facebook: ['facebook.com', 'fb.watch'],
   lemon8: ['lemon8-app.com'],
   rednote: ['xiaohongshu.com', 'rednote.com', 'xhslink.com', 'xhslink.cn'],
-  douyin: ['douyin.com', 'iesdouyin.com']
+  douyin: ['douyin.com', 'iesdouyin.com'],
+  linkedin: ['linkedin.com', 'lnkd.in']
 }
 
 // Tried in this order on a host that is no platform's own. YouTube is host-only and never matches there.
@@ -422,6 +425,37 @@ function parseDouyin(url: URL, host: string): SocialPostTarget | null {
   return null
 }
 
+// LinkedIn is read on its own hosts only. Direct posts on apex or www normalize to their canonical URN feed address.
+// Short links on lnkd.in (`/{code}` or `/p/{code}`) resolve through the guarded share resolver.
+const LINKEDIN_POST_PATH = /^\/posts\/[^/]+[-_]activity-(\d{19})(?:-[a-z0-9_-]+)?\/?$/i
+const LINKEDIN_FEED_PATH = /^\/feed\/update\/urn:li:(activity|ugcPost|share):(\d+)\/?$/i
+const LNKD_IN_PATH = /^\/(?!p\/?$)(?:(p)\/)?([\w-]+)\/?$/
+
+function parseLinkedIn(url: URL, host: string): SocialPostTarget | null {
+  if (host === 'www.linkedin.com' || host === 'linkedin.com') {
+    const postId = url.pathname.match(LINKEDIN_POST_PATH)?.[1]
+    if (postId) {
+      return target('linkedin', postId, `https://www.linkedin.com/feed/update/urn:li:activity:${postId}/`)
+    }
+    const feed = url.pathname.match(LINKEDIN_FEED_PATH)
+    if (feed) {
+      const [, rawKind = '', id = ''] = feed
+      const kind = rawKind.toLowerCase() === 'ugcpost' ? 'ugcPost' : rawKind.toLowerCase()
+      return target('linkedin', id, `https://www.linkedin.com/feed/update/urn:li:${kind}:${id}/`)
+    }
+    return null
+  }
+  if (host === 'lnkd.in') {
+    const match = url.pathname.match(LNKD_IN_PATH)
+    if (!match) return null
+    const [, prefix, code = ''] = match
+    const canonical = prefix ? `https://lnkd.in/p/${code}` : `https://lnkd.in/${code}`
+    const key = prefix ? `linkedin:share:p:${code}` : `linkedin:share:${code}`
+    return shareTarget('linkedin', code, canonical, key)
+  }
+  return null
+}
+
 function parseFor(platform: SocialPlatform, url: URL, host: string, unknown: boolean): SocialPostTarget | null {
   switch (platform) {
     case 'x':
@@ -448,6 +482,8 @@ function parseFor(platform: SocialPlatform, url: URL, host: string, unknown: boo
       return parseRednote(url, host)
     case 'douyin':
       return parseDouyin(url, host)
+    case 'linkedin':
+      return parseLinkedIn(url, host)
   }
 }
 

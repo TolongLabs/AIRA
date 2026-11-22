@@ -258,6 +258,7 @@ export const configSchema = z.strictObject({
           reddit: z.enum(['off', 'read', 'read_and_group']).default('off'),
           rednote: z.enum(['off', 'read', 'read_and_group']).default('off'),
           douyin: z.enum(['off', 'read', 'read_and_group']).default('off'),
+          linkedin: z.enum(['off', 'read', 'read_and_group']).default('off'),
           redditGroupChatIds: z.array(z.string().regex(/^c_[0-9a-f]{12}$/)).optional()
         })
         .prefault({}),
