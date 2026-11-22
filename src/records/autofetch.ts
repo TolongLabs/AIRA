@@ -13,7 +13,9 @@ const ATTEMPT_IDS = new Set([
   'reddit.feed',
   'reddit.arctic_shift',
   'tiktok.tikwm',
+  'tiktok.apify',
   'rednote.apify',
+  'douyin.apify',
   'youtube.oembed',
   'yt_dlp'
 ])

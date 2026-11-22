@@ -44,7 +44,8 @@ const FETCHERS: Record<SocialPlatform, ReplyFetcher> = {
   threads: fetchThreadsReplies,
   facebook: async () => failed('facebook', 'unsupported'),
   lemon8: async () => failed('lemon8', 'unsupported'),
-  rednote: async () => failed('rednote', 'unsupported')
+  rednote: async () => failed('rednote', 'unsupported'),
+  douyin: async () => failed('douyin', 'unsupported')
 }
 
 function isAbort(error: unknown): boolean {

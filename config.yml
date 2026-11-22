@@ -126,6 +126,7 @@ social:
     tiktok: off
     reddit: off
     rednote: off
+    douyin: off
     # redditGroupChatIds: [] # Optional scope for Reddit group attachments
   timeoutMs: 12000
   httpReaderTimeoutMs: 2500

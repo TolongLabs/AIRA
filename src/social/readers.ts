@@ -5,7 +5,7 @@ import { type Lookup, publicAddress } from './fetch.js'
 import { parseInstagramPage } from './instagram.js'
 import { parseLemon8Page } from './lemon8.js'
 import { fetchPostPage, META_PAGE_HEADERS } from './meta.js'
-import { createMirrorReader, type MirrorPlatform } from './mirror-readers.js'
+import { createMirrorReader, createTikTokApifyReader, type MirrorPlatform } from './mirror-readers.js'
 import {
   object,
   parseBlueskyThread,
@@ -209,13 +209,18 @@ const adapters: Record<SocialPlatform, PlatformAdapter> = {
   rednote: {
     read: ['text', 'preview', 'photos', 'video'],
     group: [],
-    readers: (_, env) => rednoteReaders(env)
+    readers: (_, env) => apifyMirrorReaders('rednote', env)
+  },
+  douyin: {
+    read: ['text', 'preview', 'video'],
+    group: [],
+    readers: (_, env) => apifyMirrorReaders('douyin', env)
   }
 }
 
 function mirrorMode(platform: SocialPlatform, mirrors?: SocialMirrorSettings) {
   if (platform === 'tiktok' || platform === 'reddit') return mirrors?.[platform] ?? 'off'
-  if (platform === 'rednote') return mirrors?.apifyToken ? (mirrors.rednote ?? 'off') : 'off'
+  if (platform === 'rednote' || platform === 'douyin') return mirrors?.apifyToken ? (mirrors[platform] ?? 'off') : 'off'
   return 'off'
 }
 
@@ -265,7 +270,7 @@ export function socialCapabilities(extractorAvailable: boolean, mirrors?: Social
     'features.social': platforms.flatMap((id) => {
       const adapter = adapters[id]
       const mirror = mirrorMode(id, mirrors) !== 'off'
-      if (id === 'rednote' && !mirror) return []
+      if ((id === 'rednote' || id === 'douyin') && !mirror) return []
       if (adapter.extractorRequired && !extractorAvailable && !mirror) return []
       if (id === 'reddit' && mirror) return [entry(id, ['text', 'preview', 'photos', 'video'])]
       const operations =
@@ -289,6 +294,7 @@ export function switchablePlatforms(): { read: SocialPlatform[]; fetch: SocialPl
     tiktok: 'read_and_group',
     reddit: 'read_and_group',
     rednote: 'read_and_group',
+    douyin: 'read_and_group',
     apifyToken: 'configured'
   })
   return {
@@ -301,17 +307,28 @@ export function switchablePlatforms(): { read: SocialPlatform[]; fetch: SocialPl
 export function readersFor(target: SocialPostTarget, env: ReaderEnv): SocialReader[] {
   const readers = adapters[target.platform].readers(target, env)
   if (target.platform === 'tiktok' && supportsMirror(target, env.mirrors)) {
+    const allowGroup = mirrorMode('tiktok', env.mirrors) === 'read_and_group'
     const timeoutMs = Math.max(TIKWM_TIMEOUT_MS, env.httpTimeoutMs)
-    readers.unshift(createMirrorReader('tiktok', timeoutMs, mirrorMode('tiktok', env.mirrors) === 'read_and_group'))
+    const mirrorReaders: SocialReader[] = [createMirrorReader('tiktok', timeoutMs, allowGroup)]
+    if (env.mirrors?.apifyToken) {
+      mirrorReaders.push(
+        createTikTokApifyReader(
+          Math.max(REDNOTE_APIFY_TIMEOUT_MS, env.httpTimeoutMs),
+          allowGroup,
+          env.mirrors.apifyToken
+        )
+      )
+    }
+    readers.unshift(...mirrorReaders)
   }
   return readers
 }
 
-function rednoteReaders(env: ReaderEnv): SocialReader[] {
-  const mode = mirrorMode('rednote', env.mirrors)
+function apifyMirrorReaders(platform: 'rednote' | 'douyin', env: ReaderEnv): SocialReader[] {
+  const mode = mirrorMode(platform, env.mirrors)
   if (mode === 'off' || !env.mirrors?.apifyToken) return []
   const timeoutMs = Math.max(REDNOTE_APIFY_TIMEOUT_MS, env.httpTimeoutMs)
-  return [createMirrorReader('rednote', timeoutMs, mode === 'read_and_group', undefined, env.mirrors.apifyToken)]
+  return [createMirrorReader(platform, timeoutMs, mode === 'read_and_group', undefined, env.mirrors.apifyToken)]
 }
 
 function redditReaders(env: ReaderEnv): SocialReader[] {

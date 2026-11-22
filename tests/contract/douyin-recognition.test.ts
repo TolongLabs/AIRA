@@ -1,203 +1,237 @@
 import { describe, expect, it, vi } from 'vitest'
-import { loadPack } from '../../src/character/loader.js'
-import { createLogger } from '../../src/records/logger.js'
-import { createRedactor } from '../../src/records/redact.js'
-import { ensureChat, setChatStatus } from '../../src/settings/chats.js'
-import { resolveSettings } from '../../src/settings/settings.js'
+import { enabledMirrorAsset, mirrorAssetPlatform } from '../../src/social/mirror-readers.js'
+import { groupOperations, socialCapabilities, switchablePlatforms } from '../../src/social/readers.js'
+import { resolveShareLink } from '../../src/social/share.js'
 import { findSocialPostTargets, parseSocialPostUrl, recognitionOnlyName } from '../../src/social/urls.js'
-import type { Storage } from '../../src/storage/database.js'
-import { openTurn, receiveInbound } from '../../src/storage/turns.js'
-import { readPageTool, readPostTool } from '../../src/tools/core/web.js'
-import { createToolRegistry } from '../../src/tools/registry.js'
-import type { ToolContext } from '../../src/tools/types.js'
-import { createTurnSources } from '../../src/turn/sources.js'
-import type { TurnContext } from '../../src/turn/types.js'
-import { tmpDir, tmpStorage } from '../support/tmp.js'
+import { SocialPostViewer } from '../../src/social/viewer.js'
+import { createFetchPagePort } from '../../src/tools/ports.js'
 
-const pack = loadPack('characters/example', 'repository')
-
-const VIDEO_ID = '1234567890123456789'
-const SHARE_VIDEO_ID = '9876543210987654321'
-const DIRECT_VIDEO = `https://www.douyin.com/video/${VIDEO_ID}`
-const DIRECT_SHARE_VIDEO = `https://www.iesdouyin.com/share/video/${SHARE_VIDEO_ID}`
-const SHORT_CODE = 'AbC123xYz09'
-const SHORT_URL = `https://v.douyin.com/${SHORT_CODE}`
-const MIRROR_URL = 'https://www.douyin.com/example/status/1234567890123456789'
+const VIDEO_ID = '7569981400569833915'
+const TIKTOK_ID = '7693184538704416031'
+const DIRECT_DOUYIN = `https://www.douyin.com/video/${VIDEO_ID}`
+const SHARE_IESDOUYIN = `https://www.iesdouyin.com/share/video/${VIDEO_ID}`
+const SHORT_V_DOUYIN = 'https://v.douyin.com/D5NaytY'
+const TIKTOK_URL = `https://www.tiktok.com/@tiktok/video/${TIKTOK_ID}`
 const X_URL = 'https://x.com/example/status/1234567890123456789'
 
-let seq = 0
+const publicLookup = async () => ['93.184.216.34']
 
-function makeTurnContext(storage: Storage): TurnContext {
-  seq += 1
-  const chat = ensureChat(storage, { waId: `fake-chat-douyin-${seq}`, type: 'group' })
-  setChatStatus(storage, { chatId: chat.chatId, status: 'active', actor: 'test' })
-  const senderId = `subj-douyin-${seq}`
-  const mid = `mid-douyin-${seq}`
-  const turnId = `turn-douyin-${seq}`
-  receiveInbound(storage, { chatId: chat.chatId, mid, senderId })
-  openTurn(storage, { turnId, chatId: chat.chatId, senderId, kind: 'reply', mids: [mid] })
-  return {
-    turnId,
-    chat,
-    senderId,
-    character: pack,
-    settings: resolveSettings(storage, chat),
-    kind: 'reply',
-    delivery: { kind: 'reply' },
-    deadline: Date.now() + 10_000,
-    sources: createTurnSources()
-  }
-}
-
-function makeToolContext(turn: TurnContext, callId: string): ToolContext {
-  return {
-    ...turn,
-    callId,
-    signal: new AbortController().signal,
-    now: () => new Date('2026-11-22T00:00:00.000Z'),
-    commit: () => {
-      throw new Error('commit must not be called')
+const DOUYIN_FIXTURE = [
+  {
+    id: VIDEO_ID,
+    text: 'Sample Douyin caption #topic',
+    createTime: 1762523644,
+    url: DIRECT_DOUYIN,
+    authorMeta: { name: 'Douyin Author', username: '' },
+    thumb: 'https://p26-sign.douyinpic.com/tos-cn-p/cover.jpeg',
+    videoMeta: {
+      originCover: 'https://p26-sign.douyinpic.com/tos-cn-p/origin-cover.jpeg',
+      duration: 43242,
+      playUrl: 'https://api-play.amemv.com/aweme/v1/play/?video_id=sample'
     }
   }
+]
+
+const TIKTOK_APIFY_FIXTURE = [
+  {
+    id: TIKTOK_ID,
+    desc: 'Sample TikTok caption',
+    createTime: 1791209149,
+    duration: 68,
+    thumbnail: 'https://p16-common-sign.tiktokcdn-us.com/thumb.image',
+    videoDownloadUrl: `https://api.apify.com/v2/key-value-stores/store123/records/video_${TIKTOK_ID}`,
+    author: { uniqueId: 'tiktok' }
+  }
+]
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' }
+  })
 }
 
-function expectRefusedDouyin(result: { ok: boolean; kind?: string; reason?: string }): void {
-  expect(result.ok).toBe(false)
-  if (result.ok) throw new Error('expected a refusal')
-  expect(result.kind).toBe('refused')
-  expect(result.reason).toContain('Douyin')
-}
+describe('douyin Apify mirror and tiktok Apify fallback', () => {
+  it('parses Douyin direct, iesdouyin, and v.douyin short links and reserves subdomains', () => {
+    for (const url of [DIRECT_DOUYIN, SHARE_IESDOUYIN]) {
+      const parsed = parseSocialPostUrl(url)
+      expect(parsed).toMatchObject({
+        platform: 'douyin',
+        id: VIDEO_ID,
+        lookupKey: `douyin:${VIDEO_ID}`,
+        canonicalUrl: DIRECT_DOUYIN
+      })
+      expect(parsed?.needsRedirect).toBeUndefined()
+    }
 
-describe('douyin recognition', () => {
-  it('read_page refuses a recognised video by URL and source without dispatch', async () => {
-    const storage = tmpStorage()
-    const turn = makeTurnContext(storage)
-    const seen = turn.sources.add(DIRECT_VIDEO, 'message')
-    if (seen === undefined) throw new Error('source was not registered')
-    const pageRead = vi.fn(async () => ({ title: 'page', text: 'body' }))
-    const download = vi.fn(async () => {
-      throw new Error('download must not be called')
+    expect(parseSocialPostUrl(SHORT_V_DOUYIN)).toMatchObject({
+      platform: 'douyin',
+      id: 'D5NaytY',
+      needsRedirect: true,
+      canonicalUrl: SHORT_V_DOUYIN
     })
-    const tool = readPageTool({ filesDir: tmpDir(), page: { read: pageRead, download } })
-    const context = makeToolContext(turn, `${turn.turnId}-page`)
 
-    expectRefusedDouyin(await tool.handler({ url: DIRECT_VIDEO }, context))
-    expectRefusedDouyin(await tool.handler({ source: seen.id }, context))
-    expect(pageRead).not.toHaveBeenCalled()
-    expect(download).not.toHaveBeenCalled()
-  })
+    expect(recognitionOnlyName(DIRECT_DOUYIN)).toBeNull()
+    expect(parseSocialPostUrl('https://www.douyin.com/user/MS4wLjAB')).toBeNull()
+    expect(parseSocialPostUrl('https://www.douyin.com/video/12345')).toBeNull()
+    expect(parseSocialPostUrl('https://v.douyin.com/')).toBeNull()
 
-  it('read_post refuses recognised share-video and short links by URL and source without dispatch', async () => {
-    const storage = tmpStorage()
-    const turn = makeTurnContext(storage)
-    const shareSeen = turn.sources.add(DIRECT_SHARE_VIDEO, 'message')
-    const shortSeen = turn.sources.add(SHORT_URL, 'message')
-    if (shareSeen === undefined || shortSeen === undefined) throw new Error('source was not registered')
-    const postRead = vi.fn(async () => {
-      throw new Error('post reader must not be called')
-    })
-    const tool = readPostTool({ filesDir: tmpDir(), post: { read: postRead } })
-    const context = makeToolContext(turn, `${turn.turnId}-post`)
-
-    expectRefusedDouyin(await tool.handler({ url: DIRECT_SHARE_VIDEO }, context))
-    expectRefusedDouyin(await tool.handler({ source: shortSeen.id }, context))
-    expect(postRead).not.toHaveBeenCalled()
-  })
-
-  it('recognises the two verified video routes, rejecting nearby non-posts', () => {
-    expect(recognitionOnlyName(DIRECT_VIDEO)).toBe('Douyin')
-    expect(recognitionOnlyName(DIRECT_SHARE_VIDEO)).toBe('Douyin')
-
-    expect(recognitionOnlyName('https://www.douyin.com/video/123456789012345678')).toBeNull()
-    expect(recognitionOnlyName('https://www.douyin.com/video/12345678901234567890')).toBeNull()
-    expect(recognitionOnlyName('https://www.douyin.com/video/abc123')).toBeNull()
-    expect(recognitionOnlyName('https://www.douyin.com/video/')).toBeNull()
-    expect(recognitionOnlyName('https://www.douyin.com/user/synthetic123')).toBeNull()
-    expect(recognitionOnlyName(`https://www.iesdouyin.com/share/video/${VIDEO_ID.slice(0, 18)}`)).toBeNull()
-    expect(recognitionOnlyName('https://www.iesdouyin.com/share/video/abc123')).toBeNull()
-  })
-
-  it('recognises the single-code short shape, rejecting the bare short root', () => {
-    expect(recognitionOnlyName(SHORT_URL)).toBe('Douyin')
-
-    expect(recognitionOnlyName('https://v.douyin.com/')).toBeNull()
-    expect(recognitionOnlyName('https://www.douyin.com/explore/')).toBeNull()
-  })
-
-  it('an owned-host path shaped like another platform selects nothing; a following valid post still does', () => {
-    expect(recognitionOnlyName(DIRECT_VIDEO)).toBe('Douyin')
-
-    expect(recognitionOnlyName(MIRROR_URL)).toBeNull()
-    expect(parseSocialPostUrl(MIRROR_URL)).toBeNull()
-    const targets = findSocialPostTargets(`${MIRROR_URL} ${X_URL}`)
-    expect(targets.map((target) => target.platform)).toEqual(['x'])
-    expect(findSocialPostTargets(DIRECT_VIDEO)).toEqual([])
-    expect(findSocialPostTargets(SHORT_URL)).toEqual([])
-  })
-
-  it('keeps exact recognition on owned hosts; provider subdomains select no platform', () => {
-    expect(recognitionOnlyName(DIRECT_VIDEO)).toBe('Douyin')
-    expect(recognitionOnlyName(DIRECT_SHARE_VIDEO)).toBe('Douyin')
-    expect(recognitionOnlyName(SHORT_URL)).toBe('Douyin')
-
-    for (const host of ['m.douyin.com', 'm.iesdouyin.com', 'www.v.douyin.com']) {
+    for (const host of ['m.douyin.com', 'open.douyin.com', 'm.iesdouyin.com']) {
       const url = `https://${host}/example/status/1234567890123456789`
-      expect(recognitionOnlyName(url)).toBeNull()
       expect(parseSocialPostUrl(url)).toBeNull()
-      expect(findSocialPostTargets(`${url} ${X_URL}`).map((target) => target.platform)).toEqual(['x'])
+      expect(findSocialPostTargets(`${url} ${X_URL}`).map((t) => t.platform)).toEqual(['x'])
     }
   })
 
-  it('registry refuses direct and source reads on both tools with a Douyin outcome and code-only rows', async () => {
-    const storage = tmpStorage()
-    const turn = makeTurnContext(storage)
-    const videoSeen = turn.sources.add(DIRECT_VIDEO, 'message')
-    const shareSeen = turn.sources.add(DIRECT_SHARE_VIDEO, 'message')
-    const shortSeen = turn.sources.add(SHORT_URL, 'message')
-    if (videoSeen === undefined || shareSeen === undefined || shortSeen === undefined)
-      throw new Error('source was not registered')
-    const pageRead = vi.fn(async () => ({ title: 'page', text: 'body' }))
-    const download = vi.fn(async () => {
-      throw new Error('download must not be called')
-    })
-    const postRead = vi.fn(async () => {
-      throw new Error('post reader must not be called')
-    })
-    const pageTool = readPageTool({ filesDir: tmpDir(), page: { read: pageRead, download } })
-    const postTool = readPostTool({ filesDir: tmpDir(), post: { read: postRead } })
-    const registry = createToolRegistry({
-      storage,
-      config: { tools: { defaultTimeoutMs: 1000 } },
-      logger: createLogger({ level: 'error', module: 'tools-test', sink: () => {} }),
-      redactor: createRedactor()
-    })
-    registry.register(pageTool)
-    registry.register(postTool)
-    const offered = registry.offered(turn)
-    expect(offered.map((tool) => tool.schema.name).sort()).toEqual(['read_page', 'read_post'])
-    const calls: { tool: string; args: Record<string, string> }[] = [
-      { tool: 'read_page', args: { url: DIRECT_VIDEO } },
-      { tool: 'read_page', args: { source: shareSeen.id } },
-      { tool: 'read_post', args: { url: SHORT_URL } },
-      { tool: 'read_post', args: { source: shortSeen.id } }
-    ]
-    for (const [index, { tool, args }] of calls.entries()) {
-      const offeredTool = offered.find((entry) => entry.schema.name === tool)
-      if (!offeredTool) throw new Error(`${tool} was not offered`)
-      const response = await offeredTool.call(args, `${turn.turnId}-${tool}-${index}`, new AbortController().signal)
-      expect(JSON.parse(response.content)).toMatchObject({ ok: false, outcome: expect.stringContaining('Douyin') })
-    }
-    const messages = storage.read((db) =>
-      db.prepare('SELECT message FROM failure WHERE turn_id = ? ORDER BY message').pluck().all(turn.turnId)
+  it('resolves v.douyin.com short links to the canonical video target', async () => {
+    const share = parseSocialPostUrl(SHORT_V_DOUYIN)!
+    const resolved = await resolveShareLink(
+      share,
+      async () => new Response(null, { status: 302, headers: { location: `${SHARE_IESDOUYIN}/?foo=bar` } })
     )
-    expect(messages).toEqual([
-      'read_page refused (douyin_recognition_only)',
-      'read_page refused (douyin_recognition_only)',
-      'read_post refused (douyin_recognition_only)',
-      'read_post refused (douyin_recognition_only)'
+    expect(resolved).toMatchObject({
+      platform: 'douyin',
+      id: VIDEO_ID,
+      lookupKey: `douyin:${VIDEO_ID}`,
+      canonicalUrl: DIRECT_DOUYIN
+    })
+  })
+
+  it('reads Douyin video via Apify and gates group attachments', async () => {
+    const playUrl = 'https://api-play.amemv.com/aweme/v1/play/?video_id=sample'
+    const fetcher = vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const href = String(input)
+      if (href.includes('natanielsantos~douyin-scraper')) {
+        expect(init?.method).toBe('POST')
+        expect(JSON.parse(String(init?.body))).toEqual({
+          postUrls: [DIRECT_DOUYIN],
+          shouldDownloadVideos: false,
+          shouldDownloadCovers: false
+        })
+        return jsonResponse(DOUYIN_FIXTURE)
+      }
+      throw new Error(`unexpected fetch ${href}`)
+    })
+
+    const viewer = new SocialPostViewer(
+      {
+        mirrors: { douyin: 'read_and_group', apifyToken: 'test-token' },
+        timeoutMs: 12000,
+        maxTextChars: 1500,
+        cacheTtlMs: 0,
+        maxCacheEntries: 16,
+        ytDlpPath: 'yt-dlp'
+      },
+      { fetcher, lookup: publicLookup }
+    )
+    const result = await viewer.lookup(parseSocialPostUrl(DIRECT_DOUYIN)!)
+    expect(result.status).toBe('found')
+    if (result.status !== 'found') throw new Error('expected found')
+    expect(result.post.text).toBe('Sample Douyin caption #topic')
+    expect(result.post.authorName).toBe('Douyin Author')
+    expect(result.post.durationSec).toBe(43.242)
+    expect(result.post.imageUrl).toBe('https://p26-sign.douyinpic.com/tos-cn-p/origin-cover.jpeg')
+    expect(result.post.video).toEqual({
+      url: playUrl,
+      mirror: 'douyin',
+      bytes: null,
+      hasAudio: null,
+      headers: null
+    })
+    expect(result.post.attachments).toEqual([
+      {
+        kind: 'video',
+        owner: `douyin:${VIDEO_ID}`,
+        video: result.post.video,
+        durationSec: 43.242
+      }
     ])
-    expect(postRead).not.toHaveBeenCalled()
-    expect(pageRead).not.toHaveBeenCalled()
-    expect(download).not.toHaveBeenCalled()
+  })
+
+  it('falls back from failed TikWM to TikTok Apify watermark-free reader and locks Bearer auth to Apify KV store', async () => {
+    const fetcher = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const href = String(input)
+      if (href.includes('tikwm.com')) return new Response('rate limited', { status: 429 })
+      if (href.includes('gentle_cloud~tiktok-videos-watermark-free-scraper')) {
+        return jsonResponse(TIKTOK_APIFY_FIXTURE)
+      }
+      throw new Error(`unexpected fetch ${href}`)
+    })
+
+    const viewer = new SocialPostViewer(
+      {
+        mirrors: { tiktok: 'read_and_group', apifyToken: 'secret-apify-token' },
+        timeoutMs: 12000,
+        maxTextChars: 1500,
+        cacheTtlMs: 0,
+        maxCacheEntries: 16,
+        ytDlpPath: 'yt-dlp'
+      },
+      { fetcher, lookup: publicLookup }
+    )
+    const result = await viewer.lookup(parseSocialPostUrl(TIKTOK_URL)!)
+    expect(result.status).toBe('found')
+    if (result.status !== 'found') throw new Error('expected found')
+    expect(result.post.text).toBe('Sample TikTok caption')
+    expect(result.post.authorHandle).toBe('tiktok')
+    expect(result.post.durationSec).toBe(68)
+    expect(result.post.video?.url).toBe(`https://api.apify.com/v2/key-value-stores/store123/records/video_${TIKTOK_ID}`)
+    expect(result.post.attachments).toHaveLength(1)
+
+    const seenAuth: Array<{ url: string; auth: string | null }> = []
+    const port = createFetchPagePort({
+      sameOriginCookieless: true,
+      apifyToken: 'secret-apify-token',
+      lookup: publicLookup,
+      fetch: async (url, init) => {
+        const headers = new Headers(init?.headers)
+        seenAuth.push({ url: String(url), auth: headers.get('authorization') })
+        return new Response(Buffer.from([0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70]), {
+          status: 200,
+          headers: { 'content-type': 'video/mp4' }
+        })
+      }
+    })
+    await port.download(
+      `https://api.apify.com/v2/key-value-stores/store123/records/video_${TIKTOK_ID}`,
+      new AbortController().signal,
+      1_000_000
+    )
+    await port.download('https://v5-che.douyinvod.com/sample.mp4', new AbortController().signal, 1_000_000)
+    expect(seenAuth).toEqual([
+      {
+        url: `https://api.apify.com/v2/key-value-stores/store123/records/video_${TIKTOK_ID}`,
+        auth: 'Bearer secret-apify-token'
+      },
+      {
+        url: 'https://v5-che.douyinvod.com/sample.mp4',
+        auth: null
+      }
+    ])
+  })
+
+  it('gates Douyin capabilities, switches, and mirror asset policy on mirror mode and token', () => {
+    expect(switchablePlatforms().read).toContain('douyin')
+    expect(switchablePlatforms().fetch).toContain('douyin')
+
+    const offCaps = socialCapabilities(true, { douyin: 'off', apifyToken: 'tok' })
+    expect(offCaps['features.social'].some((e) => e.id === 'douyin')).toBe(false)
+    expect(offCaps['features.autofetch'].some((e) => e.id === 'douyin')).toBe(false)
+
+    const noKeyCaps = socialCapabilities(true, { douyin: 'read_and_group' })
+    expect(noKeyCaps['features.social'].some((e) => e.id === 'douyin')).toBe(false)
+
+    const onCaps = socialCapabilities(true, { douyin: 'read_and_group', apifyToken: 'tok' })
+    expect(onCaps['features.social'].find((e) => e.id === 'douyin')?.operations).toEqual(['text', 'preview', 'video'])
+    expect(onCaps['features.autofetch'].find((e) => e.id === 'douyin')?.operations).toEqual(['video'])
+    expect(groupOperations('douyin', { douyin: 'read_and_group', apifyToken: 'tok' }, 'c_1', false)).toEqual([])
+
+    const douyinCdn = 'https://v5-che.douyinvod.com/sample.mp4'
+    const apifyKv = `https://api.apify.com/v2/key-value-stores/store123/records/video_${TIKTOK_ID}`
+    expect(mirrorAssetPlatform(douyinCdn)).toBe('douyin')
+    expect(mirrorAssetPlatform(apifyKv)).toBe('tiktok')
+    expect(enabledMirrorAsset(douyinCdn, 'douyin', { douyin: 'read', apifyToken: 'tok' })).toBe(true)
+    expect(enabledMirrorAsset(douyinCdn, 'douyin', { douyin: 'read' })).toBe(false)
+    expect(enabledMirrorAsset(apifyKv, 'tiktok', { tiktok: 'read' })).toBe(true)
   })
 })

@@ -346,6 +346,8 @@ export function createFetchPagePort(
     sameOriginCookieless?: boolean
     /** No cookie jar, and forwarded headers stay on the first origin; redirects to other origins still work. */
     cookieless?: boolean
+    /** Bearer token sent strictly to `https://api.apify.com/v2/key-value-stores/...` for Apify-hosted media. */
+    apifyToken?: string
     /** Longest page text a read returns. */
     maxChars?: number
   } = {}
@@ -384,10 +386,16 @@ export function createFetchPagePort(
       }
       const cookie = jar ? cookieHeader(jar, parsed.origin) : undefined
       const sent = options.cookieless && parsed.origin !== firstOrigin ? undefined : headers
+      const apifyAuth =
+        options.apifyToken &&
+        parsed.origin === 'https://api.apify.com' &&
+        parsed.pathname.startsWith('/v2/key-value-stores/')
+          ? { Authorization: `Bearer ${options.apifyToken}` }
+          : undefined
       const res = await fetchFn(currentUrl, {
         redirect: 'manual',
         signal,
-        headers: { ...sent, ...(cookie ? { cookie } : {}) }
+        headers: { ...sent, ...apifyAuth, ...(cookie ? { cookie } : {}) }
       })
       if (jar) rememberCookies(jar, parsed.origin, res.headers.getSetCookie())
       if (REDIRECT_STATUSES.has(res.status)) {
