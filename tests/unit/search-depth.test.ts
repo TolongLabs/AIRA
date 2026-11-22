@@ -62,7 +62,7 @@ describe('search field evidence', () => {
 
 describe('search depth', () => {
   it('keeps size lines whole without bullets and long prose split at sentences beside a bullet', async () => {
-    const depth = (snippet: string, field: { kind: 'list' | 'other'; subject: string }) =>
+    const depth = (snippet: string, field: { kind: 'list' | 'other' | 'price'; subject: string }) =>
       createSearchDepth(
         { search: { search: vi.fn(async () => [{ title: 't', url: 'https://cafe.example/p', snippet }]) } },
         { maxSearches: 1, maxPages: 0, maxProviderCalls: 1 }
@@ -73,11 +73,14 @@ describe('search depth', () => {
     })
     expect(sizes.brief.passages).toEqual([])
     for (const snippet of [
-      'Short (8 fl. oz. / 236 ml)\nTall (12 fl. oz. / 355 ml)\nGrande (16 fl. oz. / 473 ml)',
+      'Short (8 Fl. Oz. / 236 ml)\nTall (12 Fl. Oz. / 355 ml)\nGrande (16 Fl. Oz. / 473 ml)',
+      'Short (8 Fl. Oz.) RM 10\nTall (12 Fl. Oz.) RM 12\nGrande (16 Fl. Oz.) RM 14',
       'Short (8 Fl. Oz.)\nTall (12 Fl. Oz.)\nGrande (16 Fl. Oz.)'
     ]) {
       expect((await depth(snippet, { kind: 'list', subject: 'Drink sizes' })).brief.passages).toEqual([])
     }
+    const bare = await depth('1.\n\nAn oat latte.\n\nTea RM 8.', { kind: 'price', subject: 'Oat latte' })
+    expect(bare.brief.passages).toEqual([])
     const tabbed = await depth('1.\tEspresso\n\n2.\tLatte\n\n3.\tMocha', { kind: 'list', subject: 'Coffee' })
     expect(tabbed.brief.passages).toHaveLength(1)
     const prose = `- Home\n${'The park is open daily and well kept. '.repeat(20)}The Merlion has a total height of 8.6 metres.`

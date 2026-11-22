@@ -422,6 +422,14 @@ describe('approved mirror readers', () => {
     expect(changed.watch).not.toHaveBeenCalled()
   })
 
+  it('checks a weak or unquoted ETag together with the date across parts', async () => {
+    const date = 'Sun, 22 Nov 2026 00:00:00 GMT'
+    const tag = await watchTikTok({ ranges: 'valid', etag: 'v1', changedEtag: 'v2', lastModified: date })
+    expect(tag.watch).not.toHaveBeenCalled()
+    const weak = await watchTikTok({ ranges: 'valid', etag: 'W/"v1"', lastModified: date, changedDate: true })
+    expect(weak.watch).not.toHaveBeenCalled()
+  })
+
   it('compares an unquoted ETag across parts when no date is sent', async () => {
     const same = await watchTikTok({ ranges: 'valid', etag: 'v1' })
     expect(same.watch).toHaveBeenCalledOnce()

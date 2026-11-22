@@ -123,7 +123,7 @@ export function passageMatches(field: SearchField, passage: string): boolean {
   }
 }
 
-const LIST_LINE = /^\s*(?:[-*•]|\d+[.)])\s/
+const LIST_LINE = /^[ \t]*(?:[-*•]|\d+[.)])[ \t]/
 
 /**
  * Lines split into sentences. A list line stays whole. Prose ends a sentence at CJK end punctuation, or at `.`, `!`
@@ -132,17 +132,23 @@ const LIST_LINE = /^\s*(?:[-*•]|\d+[.)])\s/
  */
 function sentencesOf(paragraph: string): string[] {
   return paragraph.split('\n').flatMap((line) =>
-    LIST_LINE.test(line) || SIZE_LABEL.test(line.trim().replace(/[.!?:]+$/, ''))
+    LIST_LINE.test(line) ||
+    SIZE_LABEL.test(
+      line
+        .replace(PRICE, '')
+        .trim()
+        .replace(/[.!?:]+$/, '')
+    )
       ? [line]
       : line
-          .replace(/([.!?]+)\s+(?=[\p{Lu}\p{Lt}\p{Lo}"“‘'([])/gu, '$1\n')
+          .replace(/(?<!\bfl)([.!?]+)\s+(?=[\p{Lu}\p{Lt}\p{Lo}"“‘'([])/gu, '$1\n')
           .replace(/([。！？]+)/gu, '$1\n')
           .split('\n')
   )
 }
 
 function candidatePassages(text: string): string[] {
-  const hasList = /(?:^|\n)\s*(?:[-*•]|\d+[.)])\s/.test(text)
+  const hasList = /(?:^|\n)[ \t]*(?:[-*•]|\d+[.)])[ \t]/.test(text)
   const blocks = hasList ? text.split(/\n(?=#{1,2}\s)/) : text.split(/\n\s*\n/)
   return blocks.flatMap((paragraph) => {
     const units = sentencesOf(paragraph)

@@ -460,6 +460,19 @@ describe('autofetch', () => {
     expect(env.download).toHaveBeenCalledWith(video.url, expect.any(AbortSignal), expect.any(Number), null, 9_000_000)
   })
 
+  it('takes the photos of the post a Threads share link resolves to, and reserves it', async () => {
+    const env = setup()
+    env.viewer.lookup.mockImplementation(async (target: SocialPostTarget) => {
+      env.lookups.push(target.lookupKey)
+      const resolved = parseOfficialSocialPostUrl('https://www.threads.com/@poster_one/post/DFixtur3abc')!
+      return { status: 'found', post: post(resolved, { photoUrls: ['https://img.example/a.jpg'] }) }
+    })
+    const media = await env.autofetch.fetch({ chat: env.waId, text: 'https://www.threads.com/share/BShare12x' })
+    expect(media.map((item) => item.kind)).toEqual(['image'])
+    await env.autofetch.fetch({ chat: env.waId, text: 'https://www.threads.com/@poster_one/post/DFixtur3abc' })
+    expect(env.lookups).toHaveLength(1)
+  })
+
   it('takes nothing from a lookup whose canonical address is itself a share link', async () => {
     const env = setup()
     env.viewer.lookup.mockImplementation(async (target: SocialPostTarget) => {
