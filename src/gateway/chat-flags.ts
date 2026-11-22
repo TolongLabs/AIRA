@@ -46,7 +46,7 @@ export function buildChatFlags(storage: Storage, packs?: PacksSource): ChatFlags
     const chanceValue = settings['reactions.chance']?.value
     const reactionChance = typeof chanceValue === 'number' ? chanceValue / 100 : 0.33
     const free = chat.type === 'group' && settings['freeResponse']?.value === true
-    const autofetch = chat.type === 'group' && settings['features.autofetch']?.value === true && !muted
+    const autofetch = settings['features.autofetch']?.value === true && !muted
     const nameCall = chat.type === 'group' && settings['nameCall']?.value === true
     let names: string[] = []
     if (nameCall) {

@@ -154,6 +154,29 @@ sys.modules["brain.autofetch"] = fake
 assert scope["_aira_autofetch"]() is fake
 '''
 
+DM_AUTOFETCH_TEST = r'''import ast, sys
+from pathlib import Path
+from types import SimpleNamespace
+tree = ast.parse(Path(sys.argv[1]).read_text())
+# Exercise the installed adapter's gate and both offer calls without importing or starting the real gateway.
+gate = next(n for n in ast.walk(tree) if isinstance(n, ast.If)
+            and "_should_process_message" in ast.unparse(n.test)
+            and any(isinstance(c, ast.Call) and getattr(c.func, "attr", None) == "offer" for c in ast.walk(n)))
+block = next(n.body for n in ast.walk(tree) if isinstance(getattr(n, "body", None), list) and gate in n.body)
+index = block.index(gate)
+snippet = "def dispatch(self, data):\n" + "\n".join("    " + line for stmt in block[index:index + 3]
+           for line in ast.unparse(stmt).splitlines()) + "\n    return 'normal reply'"
+seen = []
+af = SimpleNamespace(offer=lambda adapter, data, **kwargs: seen.append(kwargs))
+scope = {"_aira_autofetch": lambda: af}
+exec(snippet, scope)
+assert scope["dispatch"](SimpleNamespace(_should_process_message=lambda data: True), {"isGroup": False}) == "normal reply"
+assert seen == [{"accepted": True}], seen
+seen.clear()
+assert scope["dispatch"](SimpleNamespace(_should_process_message=lambda data: False), {"isGroup": True}) is None
+assert seen == [{}], seen
+'''
+
 
 def patches() -> list[dict]:
     """Every patch, in the order it is applied. Paths are relative to the gateway tree."""
@@ -646,6 +669,30 @@ async def test_reply_prefix_still_injected_when_text_in_history():
             "tests": [["{python}", "-c", AUTOFETCH_TEST, "{target}"]],
             "cwd": ".",
             "why": "the old core's plugin sent a Threads avatar and one image of six",
+        },
+        {
+            "name": "autofetch-dm",
+            "target": ADAPTER,
+            "present": "[aira] autofetch-dm",
+            "edits": (('''                    _af.offer(self, data)
+                return None
+
+            # Determine message type
+''',
+                       '''                    _af.offer(self, data)
+                return None
+
+            # [aira] autofetch-dm: accepted DMs can fetch media while the reply continues.
+            _af = _aira_autofetch()
+            if _af is not None:
+                _af.offer(self, data, accepted=True)
+
+            # Determine message type
+'''),),
+            "syntax": py,
+            "tests": [["{python}", "-c", DM_AUTOFETCH_TEST, "{target}"]],
+            "cwd": ".",
+            "why": "an accepted DM never reached brain.autofetch; only dropped group messages were offered",
         },
     ]
 

@@ -1,7 +1,8 @@
-"""AIRA's brain.autofetch: a group's post links answered with their media (docs/trd/system.md#autofetch).
+"""AIRA's brain.autofetch: a group's or DM's post links answered with their media (docs/trd/system.md#autofetch).
 
 The adapter's auto-fetch hook hands every group message its mention gate drops
-to `offer`. In a chat whose chats.json entry has `autofetch: true`, a message
+to `offer`, and every DM the gate passes to `offer` with `accepted=True`. In a
+chat whose chats.json entry has `autofetch: true`, a message
 with a link goes to the core, which reads the post links and answers the files
 to send. This module sends them, in order, through the adapter.
 
@@ -48,10 +49,14 @@ def _truthy(value) -> bool:
         return False
 
 
-def wanted(data) -> str | None:
-    """The chat id when this message goes to the core, else None. Never raises."""
+def wanted(data, *, accepted: bool = False) -> str | None:
+    """The chat id when this message goes to the core, else None. Never raises.
+
+    The drop path (accepted False) takes only group messages the mention gate dropped. The accepted path takes
+    only DMs it passed, so a message is offered by one path only and a dropped DM is never offered.
+    """
     try:
-        if not isinstance(data, dict) or not _truthy(data.get("isGroup")):
+        if not isinstance(data, dict) or _truthy(data.get("isGroup")) == accepted:
             return None
         if _truthy(data.get("fromMe")) or _truthy(data.get("fromOwner")):
             return None
@@ -144,10 +149,13 @@ async def _run(adapter, chat: str, text: str) -> None:
         LOG.info("autofetch sent %d of %d", sum(outcomes), len(outcomes))
 
 
-def offer(adapter, data) -> None:
-    """A group message the mention gate is dropping. Returns at once; the work runs as a task. Never raises."""
+def offer(adapter, data, *, accepted: bool = False) -> None:
+    """A group message the mention gate drops, or a DM it passed when `accepted`.
+
+    Returns at once; the work runs as a task. Never raises.
+    """
     try:
-        chat = wanted(data)
+        chat = wanted(data, accepted=accepted)
         if chat is None:
             return
         task = asyncio.get_running_loop().create_task(_run(adapter, chat, str(data.get("body") or "")))

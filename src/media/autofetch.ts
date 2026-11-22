@@ -227,12 +227,12 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
     held.set(key, { names, timer })
   }
 
-  /** True when the chat may get autofetch: an active group with the switch on, not muted. Also its platform switches. */
+  /** True when an active group or DM has the switch on and is not muted. Also its platform switches. */
   function allowedChat(
     waId: string
   ): { chatId: string; platformOn: (platform: SocialPlatform) => boolean } | undefined {
     const chat = getChatByWaId(options.storage, waId)
-    if (chat?.status !== 'active' || chat.type !== 'group') return undefined
+    if (chat?.status !== 'active') return undefined
     const settings = resolveSettings(options.storage, chat)
     if (settings['features.autofetch']?.value !== true || settings['muted']?.value) return undefined
     return {
