@@ -208,7 +208,7 @@ describe('the configured media model', () => {
 })
 
 describe('a file that cannot be read', () => {
-  it('reaches the model as a note with the pack line, when the media model fails, and the turn still answers', async () => {
+  it('acknowledges the failed read without requesting a resend, and the turn still answers', async () => {
     const watcher = fakeWatcher(() => new ModelError('rate_limit', 'free tier limit'))
     const { app, gateway, model } = await start({ watcher })
 
@@ -219,8 +219,9 @@ describe('a file that cannot be read', () => {
     expect(delivery.content).toBe('Nice one!')
     const context = contextOf(model.requests[0])
     expect(context).toContain(
-      `<media-unreadable>\n(The image could not be opened.)\nTell the sender so in your own voice, in the sense of: "${UNREADABLE_LINE}"\nFor attached files, do not ask the sender to resend them.\n</media-unreadable>`
+      `<media-unreadable>\n(The image could not be opened.)\nBriefly acknowledge what you could not read in your own voice. Do not ask the sender to resend attached files.\n</media-unreadable>`
     )
+    expect(context).not.toContain(UNREADABLE_LINE)
     expect(context).not.toContain('<media untrusted')
     expect(lastTurn(app)).toMatchObject({ state: 'delivered', outcome: 'delivered' })
     expect(rows(app, "SELECT failure_kind FROM model_call WHERE role = 'media'")).toEqual([

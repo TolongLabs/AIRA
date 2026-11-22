@@ -297,7 +297,7 @@ describe('mediaPromptText', () => {
     )
   })
 
-  it('adds a note with the pack line for each file that could not be read, and never a path', () => {
+  it('acknowledges unreadable files without asking the sender to resend them', () => {
     const text = mediaPromptText(
       {
         readings: [],
@@ -313,8 +313,7 @@ describe('mediaPromptText', () => {
         '<media-unreadable>',
         '(The image could not be opened.)',
         '(The voice note could not be opened.)',
-        `Tell the sender so in your own voice, in the sense of: "${LINE}"`,
-        'For attached files, do not ask the sender to resend them.',
+        'Briefly acknowledge what you could not read in your own voice. Do not ask the sender to resend attached files.',
         '</media-unreadable>'
       ].join('\n')
     )

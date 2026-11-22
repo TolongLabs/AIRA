@@ -329,10 +329,9 @@ export function mediaPromptText(
         const displayKind = item.kind.endsWith(' link') ? `${item.kind.slice(0, -5)} post` : item.kind
         return `(The ${displayKind} could not be opened.)`
       }),
-      `Tell the sender so in your own voice, in the sense of: "${unreadableLine}"`,
-      ...(result.unreadable.some((item) => !item.kind.endsWith(' link'))
-        ? ['For attached files, do not ask the sender to resend them.']
-        : []),
+      result.unreadable.some((item) => !item.kind.endsWith(' link'))
+        ? 'Briefly acknowledge what you could not read in your own voice. Do not ask the sender to resend attached files.'
+        : `Tell the sender so in your own voice, in the sense of: "${unreadableLine}"`,
       '</media-unreadable>'
     )
   }
