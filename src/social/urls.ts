@@ -358,21 +358,26 @@ function isLinkedInHost(hostname: string): boolean {
   return hostMatches(host, 'linkedin.com') || hostMatches(host, 'lnkd.in')
 }
 
-/**
- * A recognition-only LinkedIn link: https or http, default ports only, no credentials. Only the exact short hosts
- * count, and a short link has one path token. Runs before any network call.
- */
-function isLinkedInLink(value: string): boolean {
+/** Normalise equivalent spellings for read permissions while keeping the original address for the reader. */
+function readPolicyUrl(value: string): URL | undefined {
   let url: URL
   try {
     url = new URL(value)
   } catch {
-    return false
+    return undefined
   }
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') return false
-  // URL drops a default port, so a port left here is nonstandard. The raw check also catches dropped credentials.
-  if (url.port || url.username || url.password || /^[^:/?#]+:\/\/[^/?#]*@/.test(value.trim())) return false
-  const host = url.hostname.toLowerCase().replace(/\.+$/, '')
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return undefined
+  // URL drops default ports and empty credentials. Check the raw authority for an empty user.
+  if (url.port || url.username || url.password || /^[^:/?#]+:\/\/[^/?#]*@/.test(value.trim())) return undefined
+  url.protocol = 'https:'
+  url.hostname = url.hostname.replace(/\.+$/, '')
+  return url
+}
+
+function isLinkedInLink(value: string): boolean {
+  const url = readPolicyUrl(value)
+  if (!url) return false
+  const host = url.hostname
   if (host === 'lnkd.in' || host === 'www.lnkd.in') return LINKEDIN_SHORT_PATH.test(url.pathname)
   return (
     hostMatches(host, 'linkedin.com') &&
@@ -428,6 +433,13 @@ export function parseSocialPostUrl(value: string): SocialPostTarget | null {
 /** A post link on a platform's own domain only. Used for the address a redirect names. */
 export function parseOfficialSocialPostUrl(value: string): SocialPostTarget | null {
   return parseUrl(value, true)
+}
+
+/** Classify a URL for a read permission check without changing its eligibility for intake or fetch. */
+export function readPolicyTarget(value: string): SocialPostTarget | null {
+  const url = readPolicyUrl(value)
+  const target = url && parseSocialPostUrl(url.href)
+  return target ? { ...target, originalUrl: value.trim() } : null
 }
 
 // A link starts at `http`, and may carry WhatsApp format marks in front of it when they are not part of a word.

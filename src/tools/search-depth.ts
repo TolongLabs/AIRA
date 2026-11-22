@@ -3,6 +3,7 @@ import type { Config } from '../config/schema.js'
 import { recognitionOnlyName } from '../social/urls.js'
 import { searchLookup, sourceKey, type TurnSources } from '../turn/sources.js'
 import { isForbiddenUrl, type ToolPorts } from './ports.js'
+import { switchedOffPost } from './read-policy.js'
 import type { ToolContext } from './types.js'
 
 const subject = z.string().trim().min(1).max(120)
@@ -30,7 +31,8 @@ export const webSearchSchema = z.strictObject({
 type SearchArgs = z.infer<typeof webSearchSchema>
 export type SearchField = z.infer<typeof fieldSchema>
 type DepthConfig = Config['search']['depth']
-type SearchContext = Pick<ToolContext, 'sources' | 'deadline' | 'callDeadline' | 'signal' | 'callId' | 'now'>
+type SearchContext = Pick<ToolContext, 'sources' | 'deadline' | 'callDeadline' | 'signal' | 'callId' | 'now'> &
+  Partial<Pick<ToolContext, 'settings'>>
 type SearchResult = Awaited<ReturnType<NonNullable<ToolPorts['search']>['search']>>[number] & { source?: string }
 type Passage = { source: string; url: string; text: string }
 type Usage = { searches: number; pages: number }
@@ -272,7 +274,14 @@ export function createSearchDepth(ports: Pick<ToolPorts, 'search' | 'searchPage'
       )
       for (const result of found ?? []) {
         const key = sourceKey(result.url)
-        if (key === undefined || isForbiddenUrl(result.url) || recognitionOnlyName(result.url) !== null) continue
+        if (
+          key === undefined ||
+          isForbiddenUrl(result.url) ||
+          recognitionOnlyName(result.url) !== null ||
+          switchedOffPost(result.url, context.settings) !== undefined
+        ) {
+          continue
+        }
         if (!candidates.has(key)) candidates.set(key, result)
         addEvidence(result, result.snippet)
       }
