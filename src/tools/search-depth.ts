@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { Config } from '../config/schema.js'
+import { recognitionOnlyName } from '../social/urls.js'
 import { searchLookup, sourceKey, type TurnSources } from '../turn/sources.js'
 import { isForbiddenUrl, type ToolPorts } from './ports.js'
 import type { ToolContext } from './types.js'
@@ -271,7 +272,7 @@ export function createSearchDepth(ports: Pick<ToolPorts, 'search' | 'searchPage'
       )
       for (const result of found ?? []) {
         const key = sourceKey(result.url)
-        if (key === undefined || isForbiddenUrl(result.url)) continue
+        if (key === undefined || isForbiddenUrl(result.url) || recognitionOnlyName(result.url) !== null) continue
         if (!candidates.has(key)) candidates.set(key, result)
         addEvidence(result, result.snippet)
       }
