@@ -1,8 +1,9 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { request as httpRequest } from 'node:http'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
+import { CharacterFooterWriter } from '../../src/api/footer-writer.js'
 import { hostAllowed, originAllowed } from '../../src/api/writes.js'
 import { type App, createApp } from '../../src/app.js'
 import { buildFooter } from '../../src/format/footer.js'
@@ -18,7 +19,7 @@ import {
   setChatStatus,
   setDisplayName
 } from '../../src/settings/chats.js'
-import { setSetting } from '../../src/settings/settings.js'
+import { setSetting, unsetSetting } from '../../src/settings/settings.js'
 import { type Answer, CHAT, msg, queueModel, startApp } from '../support/app.js'
 import { addPack, testConfig } from '../support/core.js'
 import { tmpDir } from '../support/tmp.js'
@@ -496,6 +497,39 @@ describe('site API write routes', () => {
     expect(await off.json()).toMatchObject({ status: 'pending', changed: true })
   })
 
+  it('requires a loaded effective character to activate a chat, while switching to pending always succeeds', async () => {
+    const { app, siteUrl } = await startWithSite()
+    unsetSetting(app.storage, { level: 'global', scope: '', key: 'character', actor: 'test' })
+    const chat = ensureChat(app.storage, { waId: 'test-chat-bind-status', type: 'dm' })
+
+    // Unbound chat cannot be activated.
+    const missing = await writeStatus(siteUrl, chat.chatId, { status: 'active' })
+    expect(missing.status).toBe(400)
+    expect(await missing.json()).toEqual({ error: 'missing_character' })
+    expect(
+      app.storage.read((db) => db.prepare('SELECT status FROM chat WHERE chat_id = ?').pluck().get(chat.chatId))
+    ).toBe('pending')
+
+    // Unloaded character at chat level also refuses activation.
+    setSetting(app.storage, { level: 'chat', scope: chat.chatId, key: 'character', value: 'not_loaded', actor: 'test' })
+    const unloaded = await writeStatus(siteUrl, chat.chatId, { status: 'active' })
+    expect(unloaded.status).toBe(400)
+    expect(await unloaded.json()).toEqual({ error: 'missing_character' })
+
+    // Binding a loaded character allows activation.
+    const loaded = [...app.packs().packs.keys()][0] as string
+    setSetting(app.storage, { level: 'chat', scope: chat.chatId, key: 'character', value: loaded, actor: 'test' })
+    const activated = await writeStatus(siteUrl, chat.chatId, { status: 'active' })
+    expect(activated.status).toBe(200)
+    expect(await activated.json()).toEqual({ chatId: chat.chatId, status: 'active', changed: true })
+
+    // Switching to pending always succeeds, even if the active chat's character is no longer loaded.
+    setSetting(app.storage, { level: 'chat', scope: chat.chatId, key: 'character', value: 'not_loaded', actor: 'test' })
+    const deactivated = await writeStatus(siteUrl, chat.chatId, { status: 'pending' })
+    expect(deactivated.status).toBe(200)
+    expect(await deactivated.json()).toEqual({ chatId: chat.chatId, status: 'pending', changed: true })
+  })
+
   it('refuses a body that is not JSON, a bad body, an unknown chat and a foreign origin without a Bearer token', async () => {
     const { app, siteUrl } = await startWithSite()
     const chat = ensureChat(app.storage, { waId: 'test-chat-w2', type: 'dm' })
@@ -672,6 +706,98 @@ describe('site API settings write', () => {
     const missing = await writeSetting(siteUrl, { level: 'global', scope: '', key: 'character', value: 'no-such-pack' })
     expect(missing.status).toBe(400)
     expect(await missing.json()).toEqual({ error: 'unknown_character' })
+  })
+
+  it('refuses clearing chat character on an active chat without a loaded inherited character', async () => {
+    const { app, siteUrl } = await startWithSite()
+    const loaded = [...app.packs().packs.keys()][0] as string
+    unsetSetting(app.storage, { level: 'global', scope: '', key: 'character', actor: 'test' })
+
+    const activeChat = ensureChat(app.storage, { waId: 'test-chat-clear-active', type: 'group' })
+    setSetting(app.storage, { level: 'chat', scope: activeChat.chatId, key: 'character', value: loaded, actor: 'test' })
+    setChatStatus(app.storage, { chatId: activeChat.chatId, status: 'active', actor: 'test' })
+
+    // No type or global character exists -> clearing chat character is refused.
+    const refusedUnset = await writeSetting(siteUrl, {
+      level: 'chat',
+      scope: activeChat.chatId,
+      key: 'character',
+      value: null
+    })
+    expect(refusedUnset.status).toBe(400)
+    expect(await refusedUnset.json()).toEqual({ error: 'missing_character' })
+
+    // Unloaded type-level character overrides loaded global character -> clearing chat character is refused.
+    setSetting(app.storage, { level: 'global', scope: '', key: 'character', value: loaded, actor: 'test' })
+    setSetting(app.storage, { level: 'type', scope: 'group', key: 'character', value: 'not_loaded', actor: 'test' })
+    const refusedUnloadedType = await writeSetting(siteUrl, {
+      level: 'chat',
+      scope: activeChat.chatId,
+      key: 'character',
+      value: null
+    })
+    expect(refusedUnloadedType.status).toBe(400)
+    expect(await refusedUnloadedType.json()).toEqual({ error: 'missing_character' })
+
+    // Loaded type-level character -> clearing chat character succeeds.
+    setSetting(app.storage, { level: 'type', scope: 'group', key: 'character', value: loaded, actor: 'test' })
+    const clearedWithType = await writeSetting(siteUrl, {
+      level: 'chat',
+      scope: activeChat.chatId,
+      key: 'character',
+      value: null
+    })
+    expect(clearedWithType.status).toBe(200)
+    expect(await clearedWithType.json()).toEqual({
+      level: 'chat',
+      scope: activeChat.chatId,
+      key: 'character',
+      value: null,
+      changed: true
+    })
+
+    // Loaded global-level character with no type override -> clearing chat character succeeds.
+    setSetting(app.storage, { level: 'chat', scope: activeChat.chatId, key: 'character', value: loaded, actor: 'test' })
+    unsetSetting(app.storage, { level: 'type', scope: 'group', key: 'character', actor: 'test' })
+    const clearedWithGlobal = await writeSetting(siteUrl, {
+      level: 'chat',
+      scope: activeChat.chatId,
+      key: 'character',
+      value: null
+    })
+    expect(clearedWithGlobal.status).toBe(200)
+    expect(await clearedWithGlobal.json()).toEqual({
+      level: 'chat',
+      scope: activeChat.chatId,
+      key: 'character',
+      value: null,
+      changed: true
+    })
+
+    // Pending chat can clear chat character even with no inherited character.
+    unsetSetting(app.storage, { level: 'global', scope: '', key: 'character', actor: 'test' })
+    const pendingChat = ensureChat(app.storage, { waId: 'test-chat-clear-pending', type: 'dm' })
+    setSetting(app.storage, {
+      level: 'chat',
+      scope: pendingChat.chatId,
+      key: 'character',
+      value: loaded,
+      actor: 'test'
+    })
+    const clearedPending = await writeSetting(siteUrl, {
+      level: 'chat',
+      scope: pendingChat.chatId,
+      key: 'character',
+      value: null
+    })
+    expect(clearedPending.status).toBe(200)
+    expect(await clearedPending.json()).toEqual({
+      level: 'chat',
+      scope: pendingChat.chatId,
+      key: 'character',
+      value: null,
+      changed: true
+    })
   })
 
   it('refuses an unknown key, a bad value, a bad scope, a missing value and an unknown chat', async () => {
@@ -1017,13 +1143,94 @@ describe('site API characters', () => {
       expect(await badRes.json()).toEqual({ error: 'invalid_footer' })
     }
 
-    // Mismatched folder id passes cardSchema in step 2 but throws in step 6 loadPack -> rollback.
+    // Pre-existing load fault (mismatched id before edit) passes cardSchema, fails loadPack -> 409 pack_unparseable.
     const mismatched = readFileSync(cardPath, 'utf8').replace(/^id: custom$/m, 'id: other')
     writeFileSync(cardPath, mismatched, 'utf8')
     const rollbackRes = await writeFooter(siteUrl, 'custom', { icon: '🧪' })
-    expect(rollbackRes.status).toBe(400)
-    expect(await rollbackRes.json()).toEqual({ error: 'invalid_footer' })
+    expect(rollbackRes.status).toBe(409)
+    expect(await rollbackRes.json()).toEqual({ error: 'pack_unparseable' })
     expect(readFileSync(cardPath, 'utf8')).toBe(mismatched)
+    expect(
+      app.storage.read((db) =>
+        Number(db.prepare("SELECT count(*) FROM setting_change WHERE target = 'pack'").pluck().get())
+      )
+    ).toBe(0)
+  })
+
+  it('returns aliases on GET /api/characters when a pack configures aliases', async () => {
+    const { dataDir, siteUrl } = await startWithSite()
+    const cardPath = addCleanDataPack(dataDir, 'aliased')
+    const updated = readFileSync(cardPath, 'utf8').replace(
+      /^displayName: Example$/m,
+      'displayName: Aliased\naliases:\n  - Ari\n  - Example Bot'
+    )
+    writeFileSync(cardPath, updated, 'utf8')
+
+    const res = await apiFetch(siteUrl, '/api/characters')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      characters: { id: string; aliases?: string[] }[]
+    }
+    const aliased = body.characters.find((entry) => entry.id === 'aliased')
+    const example = body.characters.find((entry) => entry.id === 'example')
+    expect(aliased?.aliases).toEqual(['Ari', 'Example Bot'])
+    expect(example).not.toHaveProperty('aliases')
+  })
+
+  it('rolls back with 400 invalid_footer when a clean pack fails reload after footer write', async () => {
+    const { app, dataDir } = await startWithSite()
+    const cardPath = addCleanDataPack(dataDir, 'custom')
+    const snapshot = app.packs()
+    const mismatched = readFileSync(cardPath, 'utf8').replace(/^id: custom$/m, 'id: other')
+    writeFileSync(cardPath, mismatched, 'utf8')
+
+    const writer = new CharacterFooterWriter({
+      registry: app.registry,
+      storage: app.storage,
+      packs: () => snapshot,
+      paths: app.paths,
+      version: '0.0.0',
+      ready: () => true,
+      activeTurns: () => 0,
+      roles: () => ({
+        main: { configured: true, breakerOpen: false },
+        fallback: { configured: false, breakerOpen: false },
+        judge: { configured: false, breakerOpen: false },
+        media: { configured: false, breakerOpen: false }
+      })
+    })
+
+    const res = writer.write('custom', { icon: '🧪' })
+    expect(res).toEqual({ status: 400, body: { error: 'invalid_footer' } })
+    expect(readFileSync(cardPath, 'utf8')).toBe(mismatched)
+    expect(
+      app.storage.read((db) =>
+        Number(db.prepare("SELECT count(*) FROM setting_change WHERE target = 'pack'").pluck().get())
+      )
+    ).toBe(0)
+  })
+
+  it('restores card.yml when setting_change insert fails during PUT /api/characters/:id/footer', async () => {
+    const { app, dataDir, siteUrl } = await startWithSite()
+    const cardPath = addCleanDataPack(dataDir, 'custom', 'restore on audit failure')
+    const beforeBytes = readFileSync(cardPath)
+
+    app.storage.tx((db) => {
+      db.exec(`
+        CREATE TRIGGER abort_pack_audit
+        BEFORE INSERT ON setting_change
+        WHEN NEW.target = 'pack'
+        BEGIN
+          SELECT RAISE(ABORT, 'audit insert blocked');
+        END;
+      `)
+    })
+
+    const res = await writeFooter(siteUrl, 'custom', { icon: '🧪', labels: { web_search: 'searched' } })
+    expect(res.status).toBe(500)
+    expect(await res.json()).toEqual({ error: 'internal' })
+    expect(readFileSync(cardPath).equals(beforeBytes)).toBe(true)
+    expect(existsSync(`${cardPath}.tmp`)).toBe(false)
     expect(
       app.storage.read((db) =>
         Number(db.prepare("SELECT count(*) FROM setting_change WHERE target = 'pack'").pluck().get())

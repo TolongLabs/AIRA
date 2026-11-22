@@ -1,15 +1,11 @@
-import { readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
-import { isMap, parseDocument } from 'yaml'
 import { z } from 'zod'
-import { loadPack } from '../character/loader.js'
-import { cardSchema, footerLabelSchema, PACK_ID } from '../character/schema.js'
 import { writeUnavailableLine } from '../character/unavailable.js'
 import { setChatLabel, setChatStatus } from '../settings/chats.js'
 import { definitionFor } from '../settings/keys.js'
 import { SettingError, setSetting, unsetSetting } from '../settings/settings.js'
-import { isoNow } from '../storage/database.js'
-import { footerKindsFor, type RouteResult, type SiteApiDeps } from './routes.js'
+import { ChatBindingPolicy } from './binding-policy.js'
+import { CharacterFooterWriter } from './footer-writer.js'
+import type { RouteResult, SiteApiDeps } from './routes.js'
 
 // The site API's write routes (docs/trd/site.md#write-routes). Each write is one transaction with a change record.
 
@@ -18,10 +14,6 @@ const CHAT_LABEL = /^\/api\/chats\/([^/]+)\/label$/
 const CHARACTER_FOOTER = /^\/api\/characters\/([^/]+)\/footer$/
 const statusBody = z.strictObject({ status: z.enum(['active', 'pending']) })
 const labelBody = z.strictObject({ label: z.string().trim().max(120) })
-const footerBody = z.strictObject({
-  icon: z.union([z.string(), z.null()]).optional(),
-  labels: z.record(z.string(), z.union([z.string(), z.null()])).optional()
-})
 const SETTINGS = '/api/settings'
 const settingBody = z.strictObject({
   level: z.enum(['global', 'type', 'chat']),
@@ -66,6 +58,14 @@ function writeSetting(deps: SiteApiDeps, body: unknown): RouteResult {
   if (key === 'character' && value !== null && !(typeof value === 'string' && deps.packs().packs.has(value))) {
     return { status: 400, body: { error: 'unknown_character' } }
   }
+  if (
+    level === 'chat' &&
+    key === 'character' &&
+    value === null &&
+    !new ChatBindingPolicy(deps).canClearChatCharacter(scope)
+  ) {
+    return { status: 400, body: { error: 'missing_character' } }
+  }
   const current = deps.storage.read(
     (db) =>
       db
@@ -93,170 +93,6 @@ function writeSetting(deps: SiteApiDeps, body: unknown): RouteResult {
   }
   deps.onWrite?.()
   return { status: 200, body: { level, scope, key, value, changed: true } }
-}
-
-interface FooterChange {
-  key: string
-  oldValue: string | null
-  newValue: string | null
-}
-
-function footerChanges(
-  before: { icon?: string; labels?: Record<string, string> } | undefined,
-  after: { icon?: string; labels?: Record<string, string> } | undefined
-): FooterChange[] {
-  const changes: FooterChange[] = []
-  if (before?.icon !== after?.icon) {
-    changes.push({
-      key: 'toolFooter.icon',
-      oldValue: before?.icon === undefined ? null : JSON.stringify(before.icon),
-      newValue: after?.icon === undefined ? null : JSON.stringify(after.icon)
-    })
-  }
-  const oldLabels = before?.labels ?? {}
-  const newLabels = after?.labels ?? {}
-  const keys = new Set([...Object.keys(oldLabels), ...Object.keys(newLabels)])
-  for (const kind of [...keys].sort()) {
-    const prev = Object.hasOwn(oldLabels, kind) ? oldLabels[kind] : undefined
-    const next = Object.hasOwn(newLabels, kind) ? newLabels[kind] : undefined
-    if (prev !== next) {
-      changes.push({
-        key: `toolFooter.labels.${kind}`,
-        oldValue: prev === undefined ? null : JSON.stringify(prev),
-        newValue: next === undefined ? null : JSON.stringify(next)
-      })
-    }
-  }
-  return changes
-}
-
-function resolveDataPackDir(
-  deps: SiteApiDeps,
-  id: string
-): { ok: true; dir: string } | { ok: false; result: RouteResult } {
-  if (!PACK_ID.test(id)) return { ok: false, result: { status: 404, body: { error: 'not_found' } } }
-  const set = deps.packs()
-  const loaded = set.packs.get(id)
-  if (loaded) {
-    if (loaded.source !== 'data') return { ok: false, result: { status: 409, body: { error: 'pack_read_only' } } }
-    return { ok: true, dir: loaded.dir }
-  }
-  const fault = set.faults.find((entry) => entry.id === id)
-  if (!fault) return { ok: false, result: { status: 404, body: { error: 'not_found' } } }
-  if (resolve(fault.dir) !== resolve(join(deps.paths.root, 'characters', id))) {
-    return { ok: false, result: { status: 409, body: { error: 'pack_read_only' } } }
-  }
-  return { ok: true, dir: fault.dir }
-}
-
-function writeCharacterFooter(deps: SiteApiDeps, id: string, body: unknown): RouteResult {
-  const parsed = footerBody.safeParse(body)
-  if (!parsed.success) return { status: 400, body: { error: 'invalid_body' } }
-
-  const resolved = resolveDataPackDir(deps, id)
-  if (!resolved.ok) return resolved.result
-  const { dir } = resolved
-
-  const cardPath = join(dir, 'card.yml')
-  let oldBytes: Buffer
-  try {
-    oldBytes = readFileSync(cardPath)
-  } catch {
-    return { status: 409, body: { error: 'pack_unparseable' } }
-  }
-
-  let doc: ReturnType<typeof parseDocument>
-  let currentRaw: unknown
-  try {
-    doc = parseDocument(oldBytes.toString('utf8'))
-    if (doc.errors.length > 0) return { status: 409, body: { error: 'pack_unparseable' } }
-    currentRaw = doc.toJS()
-  } catch {
-    return { status: 409, body: { error: 'pack_unparseable' } }
-  }
-  const currentParsed = cardSchema.safeParse(currentRaw)
-  if (!currentParsed.success) return { status: 409, body: { error: 'pack_unparseable' } }
-  const currentCard = currentParsed.data
-
-  const patch = parsed.data
-  if (patch.labels) {
-    const knownKinds = new Set(footerKindsFor(deps.registry).map((entry) => entry.kind))
-    for (const kind of Object.keys(patch.labels)) {
-      if (!knownKinds.has(kind)) return { status: 400, body: { error: 'unknown_footer_kind' } }
-    }
-  }
-
-  if (patch.icon === null) {
-    doc.deleteIn(['toolFooter', 'icon'])
-  } else if (patch.icon !== undefined) {
-    doc.setIn(['toolFooter', 'icon'], patch.icon)
-  }
-
-  if (patch.labels) {
-    for (const [kind, value] of Object.entries(patch.labels)) {
-      if (value === null) {
-        doc.deleteIn(['toolFooter', 'labels', kind])
-      } else {
-        const checked = footerLabelSchema.safeParse(value)
-        if (!checked.success) return { status: 400, body: { error: 'invalid_footer' } }
-        doc.setIn(['toolFooter', 'labels', kind], checked.data)
-      }
-    }
-  }
-
-  const labelsNode = doc.getIn(['toolFooter', 'labels'], true)
-  if (isMap(labelsNode) && labelsNode.items.length === 0) doc.deleteIn(['toolFooter', 'labels'])
-  const footerNode = doc.getIn(['toolFooter'], true)
-  if (isMap(footerNode) && footerNode.items.length === 0) doc.deleteIn(['toolFooter'])
-
-  const nextParsed = cardSchema.safeParse(doc.toJS())
-  if (!nextParsed.success) return { status: 400, body: { error: 'invalid_footer' } }
-  const nextCard = nextParsed.data
-
-  const changes = footerChanges(currentCard.toolFooter, nextCard.toolFooter)
-  if (changes.length === 0) {
-    return { status: 200, body: { id, toolFooter: currentCard.toolFooter ?? {}, changed: false } }
-  }
-
-  const tmpPath = join(dir, 'card.yml.tmp')
-  const nextText = doc.toString()
-  const at = isoNow(deps.now)
-  const rowIds: number[] = []
-  deps.storage.tx((db) => {
-    try {
-      writeFileSync(tmpPath, nextText, 'utf8')
-      renameSync(tmpPath, cardPath)
-    } catch (error) {
-      try {
-        unlinkSync(tmpPath)
-      } catch {
-        // ignore cleanup failure
-      }
-      throw error
-    }
-    const insert = db.prepare(
-      `INSERT INTO setting_change (target, actor, level, scope, key, old_value, new_value, changed_at)
-       VALUES ('pack', ?, NULL, ?, ?, ?, ?, ?)`
-    )
-    for (const change of changes) {
-      const info = insert.run(SITE_ACTOR, id, change.key, change.oldValue, change.newValue, at)
-      rowIds.push(Number(info.lastInsertRowid))
-    }
-  })
-
-  try {
-    loadPack(dir, 'data')
-  } catch {
-    writeFileSync(tmpPath, oldBytes)
-    renameSync(tmpPath, cardPath)
-    deps.storage.tx((db) => {
-      const remove = db.prepare('DELETE FROM setting_change WHERE id = ?')
-      for (const rowId of rowIds) remove.run(rowId)
-    })
-    return { status: 400, body: { error: 'invalid_footer' } }
-  }
-
-  return { status: 200, body: { id, toolFooter: nextCard.toolFooter ?? {}, changed: true } }
 }
 
 function parseChatWrite<T>(
@@ -293,7 +129,7 @@ export function dispatchWrite(deps: SiteApiDeps, method: string, path: string, b
     } catch {
       return { status: 400, body: { error: 'invalid_character_id' } }
     }
-    return writeCharacterFooter(deps, id, body)
+    return new CharacterFooterWriter(deps).write(id, body)
   }
   const labelMatch = CHAT_LABEL.exec(path)
   if (labelMatch?.[1]) {
@@ -307,6 +143,9 @@ export function dispatchWrite(deps: SiteApiDeps, method: string, path: string, b
   if (!match?.[1]) return { status: 404, body: { error: 'not_found' } }
   const parsed = parseChatWrite(deps, method, match[1], body, statusBody)
   if (!parsed.ok) return parsed.result
+  if (parsed.data.status === 'active' && !new ChatBindingPolicy(deps).canActivate(parsed.chatId)) {
+    return { status: 400, body: { error: 'missing_character' } }
+  }
   const changed = setChatStatus(
     deps.storage,
     { chatId: parsed.chatId, status: parsed.data.status, actor: SITE_ACTOR },
