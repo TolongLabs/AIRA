@@ -365,9 +365,9 @@ has up to five matches with title, domain, link and price when present. It carri
 Intake, `read_post` and chat autofetch use the same post resolver and reader dispatch. A reader may return
 partial data. Previews, cards and quoted or earlier-thread media can describe a post to the reader. Group
 delivery requires separate native attachment evidence. Enable a new operation only after verifying the
-specific post identity, fields, retrieval permission and intended use. Douyin starts with all operations
-disabled and has no approved dev2 integration. Xiaohongshu/Rednote starts off by default until
-`social.mirrors.rednote` and `APIFY_API_TOKEN` are configured. Evaluate reading, intake and
+specific post identity, fields, retrieval permission and intended use. Xiaohongshu/Rednote and Douyin
+start off by default until `social.mirrors.rednote` or `social.mirrors.douyin` and `APIFY_API_TOKEN`
+(or `APIFY_API_KEY`) are configured. Evaluate reading, intake and
 redistribution independently. A public embed or a public browser
 page does not establish permission for automated reads, model processing or redistribution. Douyin
 documents OAuth-protected account capabilities. Record the approved fields and uses before enabling a provider.
@@ -418,16 +418,22 @@ and inherited per-chat read and fetch settings. The native video duration can om
 Measure a reported 300-second video before delivery, applying the shared 300-second limit. Enable photos
 and video for delivery after three successful application checks per host. There is no extractor fallback.
 
-Douyin has recognition only on both deployments. Recognise the verified video routes
-`www.douyin.com/video/{id}` and `www.iesdouyin.com/share/video/{id}` with a 19-digit post ID.
-A single alphanumeric share code on `v.douyin.com` names the platform without resolving the destination.
-Both read tools refuse these URLs and source references before dispatch with `douyin_recognition_only`.
-Reserve both provider domains and their subdomains from unknown-host post selection. Intake, deep search
-and autofetch leave the slot available for another eligible link. Douyin has no read or fetch switch.
-Both hosts received a page without the post record, and the extractor returned no matching ID.
+Douyin uses an opt-in Apify mirror (`social.mirrors.douyin`: `off`, `read`, or `read_and_group`, default
+`off`) backed by `APIFY_API_TOKEN` (or `APIFY_API_KEY`) in `.env` and actor
+`natanielsantos~douyin-scraper`. Without both the mirror switch and token no reader runs and Douyin stays
+out of the active capability lists. Recognise `www.douyin.com/video/{id}` and
+`www.iesdouyin.com/share/video/{id}` with a 19-digit post ID, normalizing to
+`https://www.douyin.com/video/{id}` (`douyin:{id}`). Recognise alphanumeric share codes on
+`v.douyin.com/{code}` and resolve them through the guarded share resolver (up to 2 manual HTTPS hops
+within `douyin.com` and `iesdouyin.com`) before calling Apify. Reserve both domains and their subdomains
+from unknown-host post selection. Apify receives only the canonical video URL, never the original share
+token or chat data. The reader requires a matching `id`, maps `videoMeta.duration` (ms) to seconds,
+resolves `videoMeta.playUrl` via one guarded redirect to a verified Douyin media CDN host
+(`*.douyinvod.com`, `*.zjcdn.com`, `*.amemv.com`, or `*.bytecdn.cn`), and takes previews only from
+`*.douyinpic.com`. Lookups get a 20,000 ms budget.
 
 Xiaohongshu (Rednote) uses an opt-in Apify mirror (`social.mirrors.rednote`: `off`, `read`, or
-`read_and_group`, default `off`) backed by `APIFY_API_TOKEN` in `.env` and actor
+`read_and_group`, default `off`) backed by `APIFY_API_TOKEN` (or `APIFY_API_KEY`) in `.env` and actor
 `socialdatax~socialdatax-xhs-data-api`. Both China and international note pages redirect logged-out
 requests to login, so without both the mirror switch and token no reader runs and Rednote stays out of
 the active capability lists. Recognise `/explore/{id}` and `/discovery/item/{id}` for 24 hexadecimal
@@ -456,8 +462,12 @@ A share token remains provisional until the guarded resolver verifies a direct p
 is used for viewer lookup and for deduplication of eligible group fetches. URL recognition and resolution grant
 no media capability.
 
-TikTok, Reddit and Rednote can opt into a fixed mirror using `social.mirrors.tiktok`,
-`social.mirrors.reddit` or `social.mirrors.rednote`.
+TikTok, Reddit, Rednote and Douyin can opt into a fixed mirror using `social.mirrors.tiktok`,
+`social.mirrors.reddit`, `social.mirrors.rednote` or `social.mirrors.douyin`.
+When `social.mirrors.tiktok` is enabled and `APIFY_API_TOKEN` (or `APIFY_API_KEY`) is set,
+`tiktok.apify` (`gentle_cloud~tiktok-videos-watermark-free-scraper`) backs up `tiktok.tikwm` before
+falling back to `yt-dlp`; its watermark-free MP4 on `https://api.apify.com/v2/key-value-stores/...`
+downloads with the bearer token locked strictly to that origin and path prefix.
 Each defaults to `off`. Use `read` after approving the mirror for post lookup and model processing.
 Use `read_and_group` after also approving group redistribution. Set `social.mirrors.redditGroupChatIds`
 to limit Reddit attachments to listed internal chat IDs in the deployment config. An omitted list keeps the
@@ -486,7 +496,7 @@ without one, including when only Last-Modified is sent, the part starts over. A 
 timer fired still stops the batch. An invalid, refused or redirected part stops the batch at once. The watch
 deadline includes the lookup, downloads, compression, and model call. A failed mirror lookup grants no group attachment.
 Facebook photo paths use the HTML post reader before falling back to the extractor. Supported platforms are X, Bluesky, Threads, YouTube, TikTok, Reddit, Instagram, Bilibili,
-Facebook, Lemon8 and Rednote.
+Facebook, Lemon8, Rednote and Douyin.
 
 The model receives an untrusted result with a readable or partial status, a platform display name and a post.
 A partial result gives its missing fields and a fixed sentence describing what was visible. A failed read uses
