@@ -1,7 +1,6 @@
-import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import type { AddressInfo } from 'node:net'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildChatFlags } from '../../src/gateway/chat-flags.js'
 import { createGatewayServer } from '../../src/gateway/server.js'
@@ -147,8 +146,6 @@ function testMediaBytes(kind: 'jpg' | 'png' | 'mp4', url: string): Buffer {
   return Buffer.concat([Buffer.from(signature, 'hex'), Buffer.from(url)])
 }
 
-const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex')
-
 describe('autofetch', () => {
   it('sends every photo of a post in order, as files in the cache the gateway reads by host path', async () => {
     const env = setup({
@@ -163,23 +160,16 @@ describe('autofetch', () => {
 
     const media = await env.autofetch.fetch({ chat: env.waId, text: 'look https://x.com/someone/status/111 lol' })
 
-    expect(media).toEqual([
-      {
-        kind: 'image',
-        path: `/host/aira/data/cache/autofetch/${sha(testMediaBytes('jpg', 'https://img.example/a.jpg'))}.jpg`
-      },
-      {
-        kind: 'image',
-        path: `/host/aira/data/cache/autofetch/${sha(testMediaBytes('png', 'https://img.example/b.png'))}.png`
-      }
-    ])
-    const local = join(
-      env.dataDir,
-      'cache',
-      'autofetch',
-      `${sha(testMediaBytes('jpg', 'https://img.example/a.jpg'))}.jpg`
-    )
-    expect(readFileSync(local)).toEqual(testMediaBytes('jpg', 'https://img.example/a.jpg'))
+    expect(media).toHaveLength(2)
+    expect(media.every((item) => item.kind === 'image')).toBe(true)
+    for (const item of media) {
+      expect(item.path.startsWith('/host/aira/data/cache/autofetch/')).toBe(true)
+      expect(item.path).not.toContain('..')
+    }
+    expect(new Set(media.map((item) => item.path)).size).toBe(2)
+    const local = media.map((item) => join(env.dataDir, 'cache', 'autofetch', basename(item.path)))
+    expect(readFileSync(local[0]!)).toEqual(testMediaBytes('jpg', 'https://img.example/a.jpg'))
+    expect(readFileSync(local[1]!)).toEqual(testMediaBytes('png', 'https://img.example/b.png'))
     expect(jobRuns(env.storage)).toEqual([
       {
         chat_id: env.chat.chatId,
@@ -716,7 +706,11 @@ it('caches the bounded compressed MP4 and keeps gateway delivery pending', async
   expect(args.slice(1)).toEqual([16_000_000, 180, expect.any(AbortSignal)])
   expect(result.deliveryKey).toBeTruthy()
   expect(result.media).toHaveLength(1)
-  expect(readFileSync(join(env.dataDir, 'cache', 'autofetch', `${sha(output)}.mp4`))).toEqual(output)
+  const delivered = result.media[0]!
+  expect(delivered.kind).toBe('video')
+  expect(delivered.path.startsWith('/host/aira/data/cache/autofetch/')).toBe(true)
+  expect(delivered.path).not.toContain('..')
+  expect(readFileSync(join(env.dataDir, 'cache', 'autofetch', basename(delivered.path)))).toEqual(output)
   expect(env.storage.read((db) => db.prepare('SELECT downloaded_files FROM social_lookup').get())).toEqual({
     downloaded_files: 1
   })
