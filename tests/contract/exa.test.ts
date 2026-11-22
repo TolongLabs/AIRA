@@ -33,6 +33,7 @@ describe('createExaSearchPort', () => {
     expect(seen[0]?.headers.get('x-api-key')).toBe('exa-secret-key')
     expect(seen[0]?.body).toEqual({
       query: 'typescript 5',
+      excludeDomains: ['linkedin.com', 'lnkd.in', 'licdn.com'],
       type: 'auto',
       numResults: 5,
       contents: { highlights: true }
@@ -48,6 +49,7 @@ describe('createExaSearchPort', () => {
             { title: null, url: 'https://example.test/1', highlights: ['', '   \n\t ', '  first\n\t highlight  '] },
             { title: 'Long', url: 'https://example.test/2', highlights: [longHighlight] },
             { title: 'No URL', highlights: ['ignored'] },
+            { title: 'Excluded', url: 'https://lnkd.in/example', highlights: ['ignored'] },
             { title: 'Bad URL', url: 123, highlights: ['ignored'] }
           ]
         }),
@@ -184,6 +186,10 @@ describe('createExaSearchPort', () => {
               }
             },
             {
+              url: 'https://lnkd.in/example',
+              image: 'https://a.test/excluded.jpg'
+            },
+            {
               image: 'http://insecure.test/main-2.jpg',
               extras: {
                 imageLinks: ['data:image/png;base64,AAA', 'https://b.test/link-2.webp', '/relative.jpg']
@@ -211,6 +217,7 @@ describe('createExaSearchPort', () => {
     expect(seen[0]?.headers.get('x-api-key')).toBe('exa-secret-key')
     expect(seen[0]?.body).toEqual({
       query: 'sunset beach',
+      excludeDomains: ['linkedin.com', 'lnkd.in', 'licdn.com'],
       type: 'auto',
       numResults: 5,
       contents: { extras: { imageLinks: 3 } }

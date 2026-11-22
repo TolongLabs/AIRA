@@ -32,7 +32,6 @@ describe('platform sub-toggles in the settings registry', () => {
       }
     }
     expect(definitionFor('autofetch.platforms.youtube')).toBeUndefined()
-    expect(definitionFor('social.platforms.linkedin')).toBeUndefined()
   })
 
   it('resolves global, type and chat inheritance and restores the inherited value on clear', () => {

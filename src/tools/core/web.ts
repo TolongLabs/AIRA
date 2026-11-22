@@ -79,9 +79,7 @@ const readSchema = z.strictObject({
   source: z.string().trim().regex(SOURCE_ID).optional().describe('The id of such a link, such as s1')
 })
 
-// Each recognised-only platform's refusal code. LinkedIn keeps its established code.
 const RECOGNITION_CODE: Record<NonNullable<ReturnType<typeof recognitionOnlyName>>, FailureCode> = {
-  LinkedIn: 'linkedin_recognition_only',
   Rednote: 'rednote_recognition_only',
   Douyin: 'douyin_recognition_only'
 }

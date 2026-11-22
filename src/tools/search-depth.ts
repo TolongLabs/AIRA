@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { Config } from '../config/schema.js'
 import { recognitionOnlyName } from '../social/urls.js'
 import { searchLookup, sourceKey, type TurnSources } from '../turn/sources.js'
+import { isExcludedUrl } from './excluded-hosts.js'
 import { isForbiddenUrl, type ToolPorts } from './ports.js'
 import { switchedOffPost } from './read-policy.js'
 import type { ToolContext } from './types.js'
@@ -234,10 +235,13 @@ export function createSearchDepth(ports: Pick<ToolPorts, 'search' | 'searchPage'
       : provider.search(query, signal))
     signal.throwIfAborted()
     const lookup = searchLookup(context.callId + suffix)
-    return results.slice(0, 8).map((result) => ({
-      ...result,
-      source: context.sources.add(result.url, lookup)?.id
-    }))
+    return results
+      .filter((result) => !isExcludedUrl(result.url))
+      .slice(0, 8)
+      .map((result) => ({
+        ...result,
+        source: context.sources.add(result.url, lookup)?.id
+      }))
   }
 
   const deep = async (args: SearchArgs, context: SearchContext) => {

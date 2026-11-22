@@ -69,6 +69,7 @@ async function start(
   options: {
     watcher?: MediaWatcher
     answers?: Parameters<typeof queueModel>[0]
+    mediaTimeoutMs?: number
     gatewayDirs?: boolean
     env?: NodeJS.ProcessEnv
   } = {}
@@ -80,6 +81,7 @@ async function start(
     ...(options.env ? { env: options.env } : {}),
     config: (config) => {
       if (options.gatewayDirs !== false) config.media.gatewayDirs = [{ host: HOST_CACHE, container: cache }]
+      if (options.mediaTimeoutMs !== undefined) config.media.timeoutMs = options.mediaTimeoutMs
       config.turn.batchMs = 250
     }
   })
@@ -217,7 +219,7 @@ describe('a file that cannot be read', () => {
     expect(delivery.content).toBe('Nice one!')
     const context = contextOf(model.requests[0])
     expect(context).toContain(
-      `<media-unreadable>\n(The image could not be opened.)\nTell the sender so in your own voice, in the sense of: "${UNREADABLE_LINE}"\n</media-unreadable>`
+      `<media-unreadable>\n(The image could not be opened.)\nTell the sender so in your own voice, in the sense of: "${UNREADABLE_LINE}"\nFor attached files, do not ask the sender to resend them.\n</media-unreadable>`
     )
     expect(context).not.toContain('<media untrusted')
     expect(lastTurn(app)).toMatchObject({ state: 'delivered', outcome: 'delivered' })
@@ -279,13 +281,17 @@ describe('a file that cannot be read', () => {
 
   it('a media watcher error is stored in the media_unreadable row', async () => {
     const watcher = fakeWatcher(() => new ModelError('transient', 'watcher socket reset'))
-    const { app, gateway, model } = await start({ watcher })
+    const { app, gateway, model } = await start({ watcher, mediaTimeoutMs: 700 })
 
     const delivery = await gateway.send(
       withMedia('m-1', 'look', [{ kind: 'image', path: `${HOST_CACHE}/images/img_a1b2.jpg` }])
     )
 
     expect(delivery.content).toBe('Nice one!')
+    expect(rows(app, "SELECT attempt, failure_kind FROM model_call WHERE role = 'media' ORDER BY attempt")).toEqual([
+      { attempt: 1, failure_kind: 'transient' },
+      { attempt: 2, failure_kind: 'transient' }
+    ])
     expect(contextOf(model.requests[0])).not.toContain('watcher socket reset')
     expect(rows(app, 'SELECT stage, kind, handled_by, message, stack FROM failure')).toEqual([
       {

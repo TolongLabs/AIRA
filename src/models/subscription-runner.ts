@@ -304,6 +304,7 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
         failureKind: failure.kind
       }
       input.onCall?.(failedCall)
+      if (session.state.toolCalls > 0) throw failure
       return runFallback(failure, failedCall)
     }
   }

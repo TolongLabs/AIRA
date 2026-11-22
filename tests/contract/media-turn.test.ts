@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Attachment } from '../../src/gateway/request.js'
 import type { MediaWatcher } from '../../src/media/gemini-watcher.js'
 import { DEFAULT_MEDIA_LIMITS } from '../../src/media/limits.js'
@@ -102,6 +102,37 @@ describe('createTurnMedia', () => {
     expect(result.calls[0]?.failureKind).toBeUndefined()
   })
 
+  it('retries transient watcher calls on the loaded file and records every attempt', async () => {
+    const watch = vi.fn(answering('a bicycle').watch)
+    watch
+      .mockRejectedValueOnce(new ModelError('transient', 'reset'))
+      .mockRejectedValueOnce(new ModelError('transient', '503'))
+    const { media } = setup({ watch }, { timeoutMs: 5_000 })
+    const result = await media.read([file('a.jpg')], deadline())
+
+    expect(result.unreadable).toEqual([])
+    expect(result.readings).toEqual([{ kind: 'image', reading: { description: 'a bicycle' } }])
+    expect(result.calls.map(({ attempt, failureKind }) => [attempt, failureKind])).toEqual([
+      [1, 'transient'],
+      [2, 'transient'],
+      [3, undefined]
+    ])
+    expect(watch.mock.calls[1]?.[0]).toBe(watch.mock.calls[0]?.[0])
+    expect(watch.mock.calls[2]?.[0]).toBe(watch.mock.calls[0]?.[0])
+    const starts = result.calls.map((call) => call.startedAt.getTime())
+    expect(starts[1]! - starts[0]!).toBeGreaterThanOrEqual(245)
+    expect(starts[2]! - starts[1]!).toBeGreaterThanOrEqual(495)
+  })
+
+  it('makes no watcher request once the turn deadline has passed', async () => {
+    const watch = vi.fn(answering('a bicycle').watch)
+    const { media } = setup({ watch })
+    const result = await media.read([file('a.jpg')], Date.now() - 1)
+    expect(watch).not.toHaveBeenCalled()
+    expect(result.calls).toEqual([])
+    expect(result.unreadable).toEqual([{ kind: 'image', reason: 'unreadable' }])
+  })
+
   it('makes no call for a file it refuses, and records a call that failed with its failure kind', async () => {
     let calls = 0
     const watcher: MediaWatcher = {
@@ -172,6 +203,7 @@ describe('createTurnMedia', () => {
         error: expect.objectContaining({ kind: 'transient', message: 'aborted' })
       }
     ])
+    expect(result.calls).toHaveLength(1)
     expect(result.calls[0]).toMatchObject({ failureKind: 'transient' })
     expect(seen[0]).toBeGreaterThanOrEqual(90)
     expect(seen[0]).toBeLessThan(140)
@@ -282,6 +314,7 @@ describe('mediaPromptText', () => {
         '(The image could not be opened.)',
         '(The voice note could not be opened.)',
         `Tell the sender so in your own voice, in the sense of: "${LINE}"`,
+        'For attached files, do not ask the sender to resend them.',
         '</media-unreadable>'
       ].join('\n')
     )

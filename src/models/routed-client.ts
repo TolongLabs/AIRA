@@ -1,6 +1,7 @@
 import type { Storage } from '../storage/database.js'
 import type { ModelCallRecord } from '../turn/types.js'
 import type { Breaker } from './breaker.js'
+import { retryDelayMs } from './retry-delay.js'
 import { addSpend, spendState } from './spend.js'
 import { type ModelClient, ModelError, type ModelRequest, type ModelResponse } from './types.js'
 
@@ -31,6 +32,8 @@ export interface RoutedClientOptions {
   onAuthFailure?: (role: string) => void
   /** Waits between retries. Replaced in tests. Default: a timer that the signal can cut short. */
   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>
+  /** Absolute deadline for reply generation. Background callers use the configured retry count. */
+  deadline?: number
   now?: () => Date
   /** A regeneration's route. Only this role and model answer, and no other target does. */
   pin?: ReplyRoute
@@ -63,11 +66,17 @@ export function createRoutedClient(options: RoutedClientOptions): ModelClient {
   const now = options.now ?? (() => new Date())
   const sleep = options.sleep ?? defaultSleep
 
+  const checkBudget = () => {
+    if (!spendState(options.storage, options.config.llm.monthlyBudgetUsd, now).repliesAllowed) {
+      throw new ModelError('budget', 'monthly budget reached')
+    }
+  }
+
   const callTarget = async (
     role: 'main' | 'fallback',
     target: RoutedTarget,
     baseRequest: ModelRequest,
-    attemptState: { count: number },
+    attemptState: { count: number; earliestAttemptAt: number },
     signal?: AbortSignal
   ): Promise<{ ok: true; response: ModelResponse } | { ok: false; error: ModelError }> => {
     let transientRetries = 0
@@ -76,6 +85,17 @@ export function createRoutedClient(options: RoutedClientOptions): ModelClient {
     while (true) {
       if (signal?.aborted) {
         throw new ModelError('transient', 'aborted')
+      }
+
+      if (
+        options.deadline !== undefined &&
+        Math.max(attemptState.earliestAttemptAt, now().getTime()) >= options.deadline
+      ) {
+        throw new ModelError('transient', 'turn deadline reached')
+      }
+      if (attemptState.count > 0) checkBudget()
+      if (options.breaker.isOpen(role)) {
+        return { ok: false, error: new ModelError('rate_limit', 'the reply route is rate limited') }
       }
 
       attemptState.count += 1
@@ -153,25 +173,24 @@ export function createRoutedClient(options: RoutedClientOptions): ModelClient {
           return { ok: false, error: err }
         }
 
-        // transient
-        if (transientRetries < options.config.llm.maxRetries) {
-          const delayMs = 250 * 2 ** transientRetries
-          transientRetries += 1
-          try {
-            await sleep(delayMs, signal)
-          } catch (sleepErr) {
-            if (signal?.aborted) {
-              throw new ModelError('transient', 'aborted', { cause: sleepErr })
-            }
-            throw toModelError(sleepErr)
-          }
-          if (signal?.aborted) {
-            throw new ModelError('transient', 'aborted')
-          }
-          continue
+        const { maxRetries } = options.config.llm
+        const canSwitch = role === 'main' && !options.pin && options.fallback && !options.breaker.isOpen('fallback')
+        if (maxRetries === 0 || ((options.deadline === undefined || canSwitch) && transientRetries >= maxRetries)) {
+          return { ok: false, error: err }
         }
-
-        return { ok: false, error: err }
+        const delayMs = retryDelayMs(transientRetries++)
+        // Count scheduled waits even when the injected clock stands still.
+        const nextAttemptAt = Math.max(now().getTime(), attemptState.earliestAttemptAt) + delayMs
+        if (options.deadline !== undefined && nextAttemptAt >= options.deadline) {
+          return { ok: false, error: err }
+        }
+        attemptState.earliestAttemptAt = nextAttemptAt
+        try {
+          await sleep(delayMs, signal)
+        } catch (sleepErr) {
+          if (signal?.aborted) throw new ModelError('transient', 'aborted', { cause: sleepErr })
+          throw toModelError(sleepErr)
+        }
       }
     }
   }
@@ -182,11 +201,8 @@ export function createRoutedClient(options: RoutedClientOptions): ModelClient {
         throw new ModelError('transient', 'aborted')
       }
 
-      if (!spendState(options.storage, options.config.llm.monthlyBudgetUsd, now).repliesAllowed) {
-        throw new ModelError('budget', 'monthly budget reached')
-      }
-
-      const attemptState = { count: 0 }
+      checkBudget()
+      const attemptState = { count: 0, earliestAttemptAt: now().getTime() }
       if (options.pin) {
         const { role, model } = options.pin
         const target = role === 'main' ? options.main : options.fallback

@@ -548,18 +548,25 @@ describe('routed-client', () => {
     expect(waits).toEqual([250, 500])
   })
 
-  it('falls back when transient retries are used up', async () => {
+  it('switches from main after its retry count and lets the fallback recover inside the deadline', async () => {
     const storage = tmpStorage()
     const main = fakeModel([
       new ModelError('transient', 't1'),
       new ModelError('transient', 't2'),
       new ModelError('transient', 't3')
     ])
-    const fallback = fakeModel([{ text: 'from fallback', model: 'fb-m' }])
+    const fallback = fakeModel([
+      new ModelError('transient', 'busy'),
+      new ModelError('transient', 'busy'),
+      new ModelError('transient', 'busy'),
+      { text: 'from fallback', model: 'fb-m' }
+    ])
     const { waits, sleep } = makeSleep()
     const client = createRoutedClient({
       main: { client: main, model: 'main-m' },
       fallback: { client: fallback, model: 'fb-m' },
+      deadline: 3000,
+      now: () => new Date(0),
       config: defaultConfig,
       breaker: createBreaker({ breakerMs: 60_000 }),
       storage,
@@ -571,8 +578,55 @@ describe('routed-client', () => {
     expect(res.text).toBe('from fallback')
     expect(res.model).toBe('fb-m')
     expect(main.requests).toHaveLength(3)
-    expect(fallback.requests).toHaveLength(1)
-    expect(waits).toEqual([250, 500])
+    expect(fallback.requests).toHaveLength(4)
+    expect(waits).toEqual([250, 500, 250, 500, 1000])
+  })
+
+  it('retries a pinned model until the elapsed limit even with no signal and a frozen clock', async () => {
+    const { waits, sleep } = makeSleep()
+    const fail = vi.fn(async () => {
+      throw new ModelError('transient', 'still down')
+    })
+    const main = fakeModel([textResponse('unused')])
+    const client = createRoutedClient({
+      main: { client: main, model: 'main-m' },
+      fallback: { client: { call: fail }, model: 'fb-m' },
+      pin: { role: 'fallback', model: 'fb-m' },
+      deadline: 12_000,
+      now: () => new Date(0),
+      config: defaultConfig,
+      breaker: createBreaker({ breakerMs: 60_000 }),
+      storage: tmpStorage(),
+      transport: 'api',
+      sleep
+    })
+
+    await expect(client.call(baseRequest())).rejects.toMatchObject({ kind: 'transient', message: 'still down' })
+    expect(waits).toEqual([250, 500, 1000, 2000, 4000, 4000])
+    expect(fail).toHaveBeenCalledTimes(7)
+    expect(main.requests).toHaveLength(0)
+  })
+
+  it('checks the spend cap again after a transient wait', async () => {
+    const storage = tmpStorage()
+    const now = () => new Date(0)
+    const main = fakeModel([new ModelError('transient', 'temporary'), textResponse('unused')])
+    const client = createRoutedClient({
+      main: { client: main, model: 'main-m' },
+      deadline: 1000,
+      now,
+      config: defaultConfig,
+      breaker: createBreaker({ breakerMs: 60_000 }),
+      storage,
+      transport: 'api',
+      sleep: async () => {
+        storage.tx((db) =>
+          addSpend(db, { role: 'main', counted: true, costUsd: 50, inputTokens: 1, outputTokens: 1 }, now)
+        )
+      }
+    })
+    await expect(client.call(baseRequest())).rejects.toMatchObject({ kind: 'budget' })
+    expect(main.requests).toHaveLength(1)
   })
 
   it('retries malformed once immediately, then falls back on a second malformed', async () => {

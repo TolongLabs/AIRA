@@ -1,4 +1,5 @@
 import { isIP } from 'node:net'
+import { isExcludedHost } from '../tools/excluded-hosts.js'
 
 export type SocialPlatform =
   'x' | 'bluesky' | 'youtube' | 'tiktok' | 'reddit' | 'instagram' | 'bilibili' | 'threads' | 'facebook' | 'lemon8'
@@ -380,20 +381,6 @@ function parseFor(platform: SocialPlatform, url: URL, host: string, unknown: boo
   }
 }
 
-// LinkedIn is recognised, never read. Its links name no post target for intake, autofetch, search or a read, and no
-// other platform's path rules apply on its hosts. Official hosts are linkedin.com with any subdomain, and lnkd.in
-// with or without www. Profiles, articles and URN types other than activity are not posts. See
-// docs/trd/tools.md#social-post-reader.
-const LINKEDIN_POST_PATH = /^\/posts\/(?:[\w.%-]+?-)?(?:activity|ugcPost)-\d+(?:-[\w-]+)?\/?$/i
-const LINKEDIN_UPDATE_PATH = /^\/feed\/update\/urn(?::|%3A)li(?::|%3A)activity(?::|%3A)\d+\/?$/i
-const LINKEDIN_SHORT_PATH = /^\/(?:p\/)?[\w-]+\/?$/
-
-/** A LinkedIn host: linkedin.com with any subdomain, mobile and regional included, or the lnkd.in domain. */
-function isLinkedInHost(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/\.+$/, '')
-  return hostMatches(host, 'linkedin.com') || hostMatches(host, 'lnkd.in')
-}
-
 /** Normalise equivalent spellings for read permissions while keeping the original address for the reader. */
 function readPolicyUrl(value: string): URL | undefined {
   let url: URL
@@ -408,15 +395,6 @@ function readPolicyUrl(value: string): URL | undefined {
   url.protocol = 'https:'
   url.hostname = url.hostname.replace(/\.+$/, '')
   return url
-}
-
-function isLinkedInLink(url: URL): boolean {
-  const host = url.hostname
-  if (host === 'lnkd.in' || host === 'www.lnkd.in') return LINKEDIN_SHORT_PATH.test(url.pathname)
-  return (
-    hostMatches(host, 'linkedin.com') &&
-    (LINKEDIN_POST_PATH.test(url.pathname) || LINKEDIN_UPDATE_PATH.test(url.pathname))
-  )
 }
 
 // Rednote (Xiaohongshu) is recognised, never read: its note pages redirect to login on both deployments. Each host
@@ -464,10 +442,9 @@ function isDouyinHost(hostname: string): boolean {
 }
 
 /** Display name for a recognised post link with no approved read operation. */
-export function recognitionOnlyName(value: string): 'LinkedIn' | 'Rednote' | 'Douyin' | null {
+export function recognitionOnlyName(value: string): 'Rednote' | 'Douyin' | null {
   const url = readPolicyUrl(value)
   if (!url) return null
-  if (isLinkedInLink(url)) return 'LinkedIn'
   const rednote = REDNOTE_PATHS.get(url.hostname)
   const douyin = DOUYIN_PATHS.get(url.hostname)
   if (!rednote && !douyin) return null
@@ -501,7 +478,7 @@ function parseUrl(value: string, officialOnly: boolean): SocialPostTarget | null
   }
 
   const host = url.hostname.toLowerCase()
-  if (isLinkedInHost(host) || isRednoteHost(host) || isDouyinHost(host)) return null
+  if (isExcludedHost(host) || isRednoteHost(host) || isDouyinHost(host)) return null
   const platform = platformForHost(host)
   let parsed: SocialPostTarget | null = null
   if (platform) parsed = parseFor(platform, url, host, false)

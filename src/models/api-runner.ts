@@ -24,10 +24,11 @@ export interface ApiRunnerOptions {
   /** Builds the client for one turn. `onCall` receives every attempt, for the model_call records. */
   clientFor: (
     onCall: (record: ModelCallRecord) => void,
-    onSpendError?: (error: unknown) => void,
-    think?: boolean,
+    onSpendError: ((error: unknown) => void) | undefined,
+    think: boolean,
     /** A regeneration's route, the model that gave the first reply. Absent: the normal routing. */
-    route?: ReplyRoute
+    route: ReplyRoute | undefined,
+    deadline: number
   ) => ModelClient
   /** The model id asked of the client. A routed client replaces it per role. */
   model: string
@@ -252,7 +253,8 @@ export function createApiRunner(options: ApiRunnerOptions): TurnRunner {
           },
           onSpendError,
           Boolean(context.think),
-          routeOf(replyTarget)
+          routeOf(replyTarget),
+          context.deadline
         ),
         signal,
         turnId: context.turnId,

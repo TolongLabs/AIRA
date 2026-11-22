@@ -1,4 +1,6 @@
+import { setTimeout as delay } from 'node:timers/promises'
 import type { Attachment } from '../gateway/request.js'
+import { retryDelayMs } from '../models/retry-delay.js'
 import type { SocialLookupObserver, SocialPost } from '../social/types.js'
 import { PLATFORM_NAME } from '../social/urls.js'
 import type { ModelCallRecord } from '../turn/types.js'
@@ -89,7 +91,7 @@ const KIND_NAME: Record<Attachment['kind'], string> = {
 interface OneRead {
   reading?: { kind: MediaKind; reading: MediaReading }
   unreadable?: { kind: string; reason: MediaUnreadable; error?: unknown }
-  call?: ModelCallRecord
+  calls?: ModelCallRecord[]
   /** The file, when it is an image attachment whose content is a picture. Set whether or not a watcher read it. */
   picture?: Attachment
 }
@@ -102,56 +104,41 @@ export function createTurnMedia(options: TurnMediaOptions): TurnMedia {
     // Without a watcher, only a picture that identify_image may index is checked, and nothing else is read.
     if (!options.watcher && !(pictures && attachment.kind === 'image')) return { unreadable: { kind, reason: 'off' } }
 
+    // Measure elapsed time independently of the turn's injected wall clock.
+    const expiresAt = performance.now() + effectiveTimeout(deadline)
+    const remainingMs = () => Math.ceil(expiresAt - performance.now())
     const loaded = await loadGatewayFile(attachment, options.gatewayDirs, options.limits.maxBytes)
     const picked = isPicture(attachment, loaded) ? { picture: attachment } : {}
     if (!options.watcher) return { unreadable: { kind, reason: 'off' }, ...picked }
     if (!loaded.ok) return { unreadable: { kind, reason: loaded.reason } }
 
-    const startedAt = now()
-    const outcome = await readMedia(loaded.file, {
-      watcher: options.watcher,
-      limits: options.limits,
-      timeoutMs: effectiveTimeout(deadline)
-    })
-    if (outcome.ok) {
-      return {
-        reading: { kind: outcome.kind, reading: outcome.reading },
-        call: {
-          role: 'media',
-          model: outcome.model,
-          transport: 'api',
-          attempt: 1,
-          startedAt,
-          durationMs: outcome.durationMs,
-          usage: outcome.usage,
-          costUsd: 0
-        },
-        ...picked
+    const calls: ModelCallRecord[] = []
+    let unreadable: NonNullable<OneRead['unreadable']> = { kind, reason: 'unreadable' }
+    for (let attempt = 1; ; attempt++) {
+      const timeoutMs = remainingMs()
+      if (timeoutMs <= 0) break
+      const startedAt = now()
+      const outcome = await readMedia(loaded.file, { watcher: options.watcher, limits: options.limits, timeoutMs })
+      const record = { role: 'media', transport: 'api', attempt, startedAt, durationMs: outcome.durationMs } as const
+      if (outcome.ok) {
+        calls.push({ ...record, model: outcome.model, usage: outcome.usage, costUsd: 0 })
+        return { reading: { kind: outcome.kind, reading: outcome.reading }, calls, ...picked }
       }
+
+      unreadable = { kind, reason: outcome.reason, ...(outcome.error !== undefined ? { error: outcome.error } : {}) }
+      if (!outcome.failureKind) break // A local limit refused the file before the watcher was called.
+      calls.push({ ...record, model: options.model, failureKind: outcome.failureKind })
+      if (outcome.failureKind !== 'transient') break
+      const waitMs = retryDelayMs(attempt - 1)
+      if (waitMs >= remainingMs()) break
+      await delay(waitMs)
     }
-    // A failure kind means the watcher was called and failed. Any other refusal came from a limit, before a call.
-    return {
-      unreadable: { kind, reason: outcome.reason, ...(outcome.error !== undefined ? { error: outcome.error } : {}) },
-      ...(outcome.failureKind
-        ? {
-            call: {
-              role: 'media',
-              model: options.model,
-              transport: 'api',
-              attempt: 1,
-              startedAt,
-              durationMs: outcome.durationMs,
-              failureKind: outcome.failureKind
-            }
-          }
-        : {}),
-      ...picked
-    }
+    return { unreadable, calls, ...picked }
   }
 
   function effectiveTimeout(deadline: number): number {
     // The main model keeps at least a third of the time that is left.
-    return Math.max(1, Math.min(options.timeoutMs, Math.floor(((deadline - now().getTime()) * 2) / 3)))
+    return Math.min(options.timeoutMs, Math.floor(((deadline - now().getTime()) * 2) / 3))
   }
 
   // A gateway-admitted image whose content is a picture. A watcher failure does not change this.
@@ -170,7 +157,7 @@ export function createTurnMedia(options: TurnMediaOptions): TurnMedia {
       for (const item of items) {
         if (item.reading) result.readings.push(item.reading)
         if (item.unreadable) result.unreadable.push(item.unreadable)
-        if (item.call) result.calls.push(item.call)
+        if (item.calls) result.calls.push(...item.calls)
       }
       const valid = items.flatMap((item) => (item.picture ? [item.picture] : []))
       if (pictures && valid.length > 0) result.pictures = valid
@@ -179,7 +166,7 @@ export function createTurnMedia(options: TurnMediaOptions): TurnMedia {
 
     async readLink(texts, deadline, allow, onMatch, observe) {
       if (!options.links) return { readings: [], unreadable: [], calls: [] }
-      const timeoutMs = effectiveTimeout(deadline)
+      const timeoutMs = Math.max(1, effectiveTimeout(deadline))
       return options.links.read(texts, timeoutMs, allow, onMatch, observe)
     }
   }
@@ -343,6 +330,9 @@ export function mediaPromptText(
         return `(The ${displayKind} could not be opened.)`
       }),
       `Tell the sender so in your own voice, in the sense of: "${unreadableLine}"`,
+      ...(result.unreadable.some((item) => !item.kind.endsWith(' link'))
+        ? ['For attached files, do not ask the sender to resend them.']
+        : []),
       '</media-unreadable>'
     )
   }

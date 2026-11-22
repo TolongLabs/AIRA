@@ -69,7 +69,6 @@ function expectRefusedRednote(result: { ok: boolean; kind?: string; reason?: str
   if (result.ok) throw new Error('expected a refusal')
   expect(result.kind).toBe('refused')
   expect(result.reason).toContain('Rednote')
-  expect(result.reason).not.toContain('LinkedIn')
 }
 
 describe('rednote recognition', () => {

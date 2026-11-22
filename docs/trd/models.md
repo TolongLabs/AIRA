@@ -134,7 +134,9 @@ it safely. When `transport: subscription` is set:
 - It starts the program with no built-in tools, no settings files, the system prompt, and the core's tool server
   address.
 - It streams the result back. It holds no state and reads no AIRA data.
-- If the service is down, the core treats the transport as unavailable and uses the fallback role.
+- If the service is down, the core treats the transport as unavailable and uses the fallback role. Once any tool
+  starts in a subscription run, a later failure ends the run. Starting the fallback from the original prompt could
+  repeat that action.
 - On this transport the fallback model answers on the API runner, with a breaker of its own. Memory extraction
   uses `llm.main` when it has a key, else `llm.fallback`. With neither, nothing is extracted.
 - One run is one program start. There is no retry inside the subscription runner.
@@ -198,6 +200,11 @@ The additional run uses the same model and an empty tool session.
 ## Fallback
 
 - The fallback model answers on the same runner interface with the same prompt and tools.
+- For an API reply, retry only the failed model request, keeping any completed tool results. Transient failures
+  wait 250 ms, then double the wait up to 4 s. When a fallback is available, switch after `llm.maxRetries` retries
+  on the main model. On the last available or pinned model, keep retrying while the next wait fits inside the
+  original turn deadline. Cancellation and the spend cap stop further calls. Setting `llm.maxRetries` to 0
+  disables these waits and retries on every role.
 - A breaker per role opens after a `rate_limit` or `auth` failure and stays open for `llm.breakerMs`. While open,
   turns go straight to the fallback. The breaker state is process-wide for a role, not per chat or character,
   because the limit it guards is account-wide.
@@ -234,7 +241,11 @@ media folders.
    Remote link downloads carry a duration, and audio longer than 600 seconds is refused. A
    voice note's duration is not in the gateway's note, so the size limit is the only length limit that applies to it.
 5. **The read.** All files of a turn are read at once, each with its own timeout: `media.timeoutMs`, and at most
-   two thirds of the time left in the turn deadline, so the main model keeps at least a third. The media model returns
+   two thirds of the time left in the turn deadline, so the main model keeps at least a third. For an attachment this
+   budget includes loading the file, watcher calls and retry waits. A transient watcher failure retries the same bytes
+   after 250 ms, doubling the delay to a 4-second maximum. Each attempt must start before the original budget expires
+   and can use only the time left. Other failures end the read. Each watcher attempt records its own call.
+   The media model returns
    a description, and a transcript where there is speech. It runs on the free tier of its own key, so its calls record
    their tokens with a cost of 0 and do not count against the spend cap.
 6. **Into the prompt.** The descriptions enter prompt block 4 as one labelled, untrusted block, clipped to a fixed
@@ -258,7 +269,8 @@ media folders.
 8. **Failure.** A file that is refused, over a limit, of an unsupported type, unread because media is off, or whose
    read fails or times out, does not end the turn. Block 4 gets a short note naming the kind of file and why, and the
    pack's `unreadableMedia` line. The model tells the sender in its own voice, so the reply can also answer the
-   files that were read and the text that came with them. The note never carries the path.
+   files that were read and the text that came with them. For direct attachments, the model does not ask the sender
+   to resend the file. The note never carries the path.
 9. **Record.** Every request to the media model is one `model_call` row with role `media`, with its tokens and its
    failure kind when it failed. Every unreadable file is one `failure` row with kind `media_unreadable`, stage
    `media`, handled by `line:unreadableMedia`, and a message with the kind of file and the reason, never the path.
@@ -538,7 +550,7 @@ credit, about one per call, not in dollars, so its prices are 0 and it does not 
 | -------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------ |
 | `llm.transport`                                                | `api`                   | Selects the runner                                                 |
 | `llm.turnDeadlineMs`                                           | 45000                   | Hard limit for one turn's model work                               |
-| `llm.maxRetries`                                               | 2                       | Retries for a `transient` failure                                  |
+| `llm.maxRetries`                                               | 2                       | Main retries before fallback. Zero disables transient retries      |
 | `llm.breakerMs`                                                | 600000                  | How long a breaker stays open                                      |
 | `llm.monthlyBudgetUsd`                                         | 50                      | Spend cap for paid roles                                           |
 | `llm.subscription.runnerUrl`                                   | `http://127.0.0.1:9882` | The host runner service                                            |

@@ -68,7 +68,7 @@ describe('research boundaries', () => {
     expect(call.mock.calls[1]?.[0].messages[0].content).not.toContain('x'.repeat(4001))
   })
 
-  it('skips a recognised LinkedIn result before selecting a page to read', async () => {
+  it('skips an excluded result before selecting a page to read', async () => {
     const linkedinUrl = 'https://www.linkedin.com/posts/synthetic-update-activity-1234567890123456789'
     const call = vi
       .fn()

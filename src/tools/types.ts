@@ -25,7 +25,6 @@ export type FailureCode =
   | 'tool_limit'
   | 'not_now'
   | 'unseen_link'
-  | 'linkedin_recognition_only'
   | 'rednote_recognition_only'
   | 'douyin_recognition_only'
 
