@@ -268,28 +268,25 @@ describe('intake with a disabled platform', () => {
       if (url.includes('api.fxtwitter.com')) {
         return Response.json({ tweet: { id: '1', text: 'x post', author: { screen_name: 'a' } } })
       }
-      if (url.includes('youtube.com/oembed')) {
-        return Response.json({
-          title: 'A short film',
-          author_name: 'Chan',
-          author_url: 'https://www.youtube.com/@chan',
-          thumbnail_url: 'https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg'
-        })
-      }
       return new Response('not found', { status: 404 })
     }) as typeof fetch
     vi.stubGlobal('fetch', stub)
 
-    const { app, gateway } = await startApp(queueModel([{ text: 'noted' }]), { env: { SITE_TOKEN } })
+    const { app, gateway, chatId } = await startApp(queueModel([{ text: 'noted' }]), { env: { SITE_TOKEN } })
 
-    const target = app.storage.read((db) => db.prepare('SELECT chat_id FROM chat LIMIT 1').pluck().get()) as string
-    setSetting(app.storage, { level: 'chat', scope: target, key: 'social.platforms.x', value: false, actor: 'test' })
+    setSetting(app.storage, {
+      level: 'chat',
+      scope: chatId,
+      key: 'social.platforms.reddit',
+      value: false,
+      actor: 'test'
+    })
 
     await gateway.send({
       chat: { waId: 'test-chat-g1', kind: 'group' },
       sender: 'test-member-alice',
       mid: 'mid-platform-intake-1',
-      text: 'see https://x.com/a/status/1 and https://www.youtube.com/watch?v=abcdefghijk'
+      text: 'see https://www.reddit.com/r/demo/s/AbC123 and https://x.com/a/status/1'
     })
     expect(
       app.storage.read((db) =>
@@ -300,10 +297,10 @@ describe('intake with a disabled platform', () => {
           .all()
       )
     ).toEqual([
-      { platform: 'x', outcome: 'skipped', reason: 'platform_disabled', attempts: '[]' },
-      expect.objectContaining({ platform: 'youtube' })
+      { platform: 'reddit', outcome: 'skipped', reason: 'platform_disabled', attempts: '[]' },
+      expect.objectContaining({ platform: 'x', outcome: 'readable' })
     ])
-    expect(fetched.some((url) => url.includes('api.fxtwitter.com'))).toBe(false)
-    expect(fetched.some((url) => url.includes('youtube.com/oembed'))).toBe(true)
+    expect(fetched.some((url) => url.includes('reddit.com'))).toBe(false)
+    expect(fetched.some((url) => url.includes('api.fxtwitter.com'))).toBe(true)
   })
 })
