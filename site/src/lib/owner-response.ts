@@ -18,6 +18,25 @@ export function checkOwnerResponse(path: string, value: unknown, method: 'GET' |
   const row = value as Record<string, unknown>
   if (row.success === false || (typeof row.error === 'string' && row.error))
     throw new Error(typeof row.error === 'string' ? row.error : 'Owner service refused the operation')
+  if (method === 'POST' && ['/api/settings/watchlist', '/api/settings/watchlist_inherit'].includes(route)) {
+    if (
+      typeof row.scope_key !== 'string' ||
+      typeof row.inherits_default !== 'boolean' ||
+      !Array.isArray(row.watchlist) ||
+      !row.watchlist.every((item) => typeof item === 'string')
+    )
+      throw new Error('Invalid watchlist acknowledgement')
+  }
+  if (method === 'POST' && route === '/api/settings/markets') {
+    const markets = row.markets
+    if (
+      !markets ||
+      typeof markets !== 'object' ||
+      !('watchlist' in markets && Array.isArray(markets.watchlist)) ||
+      !('alerts' in markets && Array.isArray(markets.alerts))
+    )
+      throw new Error('Invalid market settings acknowledgement')
+  }
   if (method !== 'GET' || !(route in fields)) return
   for (const [key, kind] of Object.entries(fields[route as keyof typeof fields])) {
     const item = row[key]

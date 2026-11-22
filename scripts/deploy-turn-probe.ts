@@ -22,11 +22,23 @@ export function syntheticTurnBody() {
   }
 }
 
+export async function verifyRunnerReachability(transport: string, runnerUrl: string, request = fetch) {
+  if (transport !== 'subscription') return
+  const response = await request(new URL('/health', runnerUrl), {
+    signal: AbortSignal.timeout(5000),
+    redirect: 'error'
+  })
+  const health: unknown = response.ok ? await response.json() : null
+  if (!health || typeof health !== 'object' || !('ok' in health) || health.ok !== true)
+    throw new Error('Subscription runner health check failed')
+}
+
 /** Use the deployed code with an isolated store and a deterministic model. Never contact a chat or model provider. */
 export async function probeTurn() {
   const dir = await mkdtemp(join(tmpdir(), 'aira-deploy-check-'))
   try {
     const config = loadConfig('config.yml')
+    await verifyRunnerReachability(config.llm.transport, config.llm.subscription.runnerUrl)
     config.storage.path = dir
     config.gateway.hostDataDir = dir
     config.llm.transport = 'api'

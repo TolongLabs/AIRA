@@ -312,8 +312,8 @@ export async function createApp(options: AppOptions): Promise<App> {
       // The program on the host runs the loop and calls the tools through the core's tool server. The fallback
       // model answers on the API runner, with its own breaker: the two limits it guards are different accounts.
       const runnerToken = env['RUNNER_TOKEN']
-      if (!runnerToken)
-        throw new ConfigError('RUNNER_TOKEN is not set in the environment (llm.transport is "subscription")')
+      if (!runnerToken || runnerToken.length < 16)
+        throw new ConfigError('RUNNER_TOKEN must contain at least 16 characters for subscription transport')
       const toolServer = createToolServer({ limits, logger: logger.child({ module: 'tool_server' }), now })
       await toolServer.listen(config.llm.subscription.toolServerPort)
       closers.push(() => toolServer.close())
