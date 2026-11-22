@@ -93,19 +93,24 @@ export interface AutofetchOptions {
  * The post's own canonical target, when it is the post the link named: same platform and id, and either the link
  * itself or a share or alias link that resolves to it. Anything else may be another post.
  */
+/** A Threads short or share link, which names no post until it redirects. */
+function isThreadsAlias(target: SocialPostTarget): boolean {
+  return target.platform === 'threads' && /^\/(?:t|share)\//.test(new URL(target.canonicalUrl).pathname)
+}
+
 function canonicalTarget(post: SocialPost, target: SocialPostTarget): SocialPostTarget | undefined {
   const resolved = parseOfficialSocialPostUrl(post.canonicalUrl)
   if (
     !resolved ||
     resolved.needsRedirect ||
+    isThreadsAlias(resolved) ||
     resolved.platform !== target.platform ||
     post.platform !== target.platform ||
     resolved.id !== post.id
   ) {
     return undefined
   }
-  const threadsAlias = target.platform === 'threads' && /^\/(?:t|share)\//.test(new URL(target.canonicalUrl).pathname)
-  if (resolved.lookupKey !== target.lookupKey && !target.needsRedirect && !threadsAlias) return undefined
+  if (resolved.lookupKey !== target.lookupKey && !target.needsRedirect && !isThreadsAlias(target)) return undefined
   return resolved
 }
 

@@ -460,6 +460,18 @@ describe('autofetch', () => {
     expect(env.download).toHaveBeenCalledWith(video.url, expect.any(AbortSignal), expect.any(Number), null, 9_000_000)
   })
 
+  it('takes nothing from a lookup whose canonical address is itself a share link', async () => {
+    const env = setup()
+    env.viewer.lookup.mockImplementation(async (target: SocialPostTarget) => {
+      env.lookups.push(target.lookupKey)
+      const share = parseOfficialSocialPostUrl('https://www.threads.com/share/BOther123')!
+      return { status: 'found', post: post(share, { photoUrls: ['https://img.example/a.jpg'] }) }
+    })
+    const media = await env.autofetch.fetch({ chat: env.waId, text: 'https://www.threads.com/share/BShare12x' })
+    expect(media).toEqual([])
+    expect(env.storage.read((db) => db.prepare('SELECT count(*) FROM autofetch_repeat').pluck().get())).toBe(1)
+  })
+
   it('reserves nothing for a direct link whose lookup names another post', async () => {
     const env = setup()
     env.viewer.lookup.mockImplementation(async (target: SocialPostTarget) => {

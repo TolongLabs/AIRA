@@ -297,7 +297,7 @@ function isAbortError(error: unknown): boolean {
 
 /** A strong ETag names one exact version of a file. A weak ETag or a Last-Modified date does not. */
 function strongValidator(version: string | null | undefined): version is string {
-  return typeof version === 'string' && /^"[^"]*"$/.test(version)
+  return typeof version === 'string' && /^"[^"]+"$/.test(version)
 }
 
 /** The only request headers a media download may carry: a host's user agent and referrer, never cookies. */
@@ -425,11 +425,11 @@ export function createFetchPagePort(
     const size = end - start + 1
     const chunks: Uint8Array[] = []
     let received = 0
-    let first: { finalUrl: string; version: string | null } | undefined
+    let first: { finalUrl: string; version: string | null; etag: string | null } | undefined
     for (let attempt = 0; ; attempt++) {
       // Only a strong validator proves resumed bytes belong to the same file; without one, or once every byte came
       // but the end did not, the part starts over.
-      if (received > 0 && (received >= size || !strongValidator(first?.version))) {
+      if (received > 0 && (received >= size || !strongValidator(first?.etag))) {
         chunks.length = 0
         received = 0
         first = undefined
@@ -451,11 +451,13 @@ export function createFetchPagePort(
           ...headers,
           Range: `bytes=${from}-${end}`,
           'Accept-Encoding': 'identity',
-          ...(received > 0 && first?.version ? { 'If-Range': first.version } : {})
+          ...(received > 0 && first?.etag ? { 'If-Range': first.etag } : {})
         })
         requesting = false
         const mime = res.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase()
+        // Only an ETag can prove a resumed range is the same file; Last-Modified still guards parts against each other.
         const version = res.headers.get('etag') ?? res.headers.get('last-modified')
+        const etag = res.headers.get('etag')
         if (
           res.status !== 206 ||
           mime !== 'video/mp4' ||
@@ -466,7 +468,7 @@ export function createFetchPagePort(
           void res.body?.cancel().catch(() => undefined)
           throw new InvalidRange('invalid MP4 byte range')
         }
-        first ??= { finalUrl, version }
+        first ??= { finalUrl, version, etag }
         streaming = true
         touch()
         const reader = res.body.getReader()
@@ -491,7 +493,7 @@ export function createFetchPagePort(
           void reader.cancel().catch(() => undefined)
         }
         if (received !== size) throw new Error('incomplete MP4 byte range')
-        return { part: Buffer.concat(chunks, size), ...first }
+        return { part: Buffer.concat(chunks, size), finalUrl: first.finalUrl, version: first.version }
       } catch (error) {
         // A stall, or a drop or early end after a valid range began, resumes. A refusal, a policy error, a wrong
         // response or the caller's deadline does not.

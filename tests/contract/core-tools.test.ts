@@ -670,13 +670,20 @@ describe('core tools', () => {
     const first = makeCtx()
     first.sources.addText('https://example.com/article', 'message')
     await registry.call('read_page', { url: 'https://example.com/article' }, first, { callId: 'c-0', source: 'model' })
-    let last = first
-    for (let i = 1; i <= 64; i++) {
-      last = makeCtx()
-      await registry.call('read_page', { url: 'https://unseen.example/' }, last, { callId: `c-${i}`, source: 'model' })
+    const second = makeCtx()
+    second.sources.addText('https://example.com/article', 'message')
+    await registry.call('read_page', { url: 'https://example.com/article' }, second, { callId: 'c-s', source: 'model' })
+    for (let i = 1; i <= 63; i++) {
+      const refused = makeCtx()
+      await registry.call('read_page', { url: 'https://unseen.example/' }, refused, {
+        callId: `c-${i}`,
+        source: 'model'
+      })
     }
     expect(registry.takeSources(first.turnId)).toEqual([])
-    expect(registry.takeSources(last.turnId)).toEqual([])
+    expect(registry.takeSources(second.turnId)).toEqual([
+      { url: 'https://example.com/article', lookup: 'message', kind: 'read' }
+    ])
   })
 
   it('read_post: refuses a YouTube short link whose canonical URL was read at intake', async () => {

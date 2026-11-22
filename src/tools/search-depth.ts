@@ -127,7 +127,10 @@ function candidatePassages(text: string): string[] {
   const hasList = /(?:^|\n)\s*(?:[-*•]|\d+[.)]) /.test(text)
   const blocks = hasList ? text.split(/\n(?=#{1,2}\s)/) : text.split(/\n\s*\n/)
   return blocks.flatMap((paragraph) => {
-    const units = paragraph.match(/[^.!?。！？\n]+(?:[.!?。！？]+(?=\s|$)|$)|[^\n]+/gu) ?? []
+    // A list keeps each line whole, so an abbreviation such as `fl. oz.` does not split an item.
+    const units = hasList
+      ? paragraph.split('\n')
+      : (paragraph.match(/[^.!?。！？\n]+(?:[.!?。！？]+(?=\s|$)|$)|[^\n]+/gu) ?? [])
     const passages: string[] = []
     let current = ''
     for (const unit of units) {
