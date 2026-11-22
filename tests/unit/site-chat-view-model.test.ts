@@ -9,7 +9,7 @@ import { type CoreCharacter, type CoreChat, CoreError, reasonText } from '../../
 function makeChat(overrides: Partial<CoreChat> = {}): CoreChat {
   return {
     chatId: 'c_123456',
-    waId: '120363000000000000@g.us',
+    waId: '0000000000@g.us',
     storedLabel: '',
     type: 'group',
     label: '',
