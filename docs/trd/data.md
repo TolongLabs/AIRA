@@ -73,47 +73,47 @@ The primary key is `(level, scope, key)`. Deleting a row at a level restores inh
 
 ### Setting Keys
 
-| Key                      | Type                                                                                     | Default (Global)        |
-| ------------------------ | ---------------------------------------------------------------------------------------- | ----------------------- |
-| `character`              | Character pack id                                                                        | Set at install          |
-| `language`               | `auto` or a language code                                                                | `auto`                  |
-| `freeResponse`           | Boolean                                                                                  | `false`                 |
-| `allowedSenders`         | List of subject ids, or `all`                                                            | `all`                   |
-| `model`                  | Role override, or `inherit`                                                              | `inherit`               |
-| `replyLength`            | `short`, `default`, `long`                                                               | `default`               |
-| `expressions`            | Boolean                                                                                  | `true`                  |
-| `quietHours`             | Start, end and time zone                                                                 | Unset                   |
-| `muted`                  | Boolean, with who and when                                                               | `false`                 |
-| `features.proactive`     | Boolean                                                                                  | `false`                 |
-| `features.reminders`     | Boolean                                                                                  | `true`                  |
-| `features.search`        | Boolean                                                                                  | `true`                  |
-| `features.social`        | Boolean                                                                                  | `true`                  |
-| `features.identify`      | Boolean: allow reverse-image hints in this chat                                          | `false`                 |
-| `features.photos`        | Boolean                                                                                  | `true`                  |
-| `features.media`         | Boolean                                                                                  | `true`                  |
-| `features.memory`        | Boolean: memory for this chat ([Memory](memory.md#per-chat-switch))                      | `true`                  |
-| `features.think`         | Boolean: `/think` runs one turn at deeper effort ([Models](models.md#deeper-thinking))   | `true`                  |
-| `features.context`       | Boolean: replay the chat log as context ([Prompt Engine](prompt-engine.md#live-context)) | `true`                  |
-| `context.maxMessages`    | Integer 0 to 100: chat-log messages replayed per turn                                    | `40`                    |
-| `memory.pageMessages`    | Integer 5 to 50: messages that close a memory episode                                    | `25`                    |
-| `features.voice`         | Boolean                                                                                  | `false`                 |
-| `features.lessons`       | Boolean                                                                                  | `false`                 |
-| `features.reports`       | Boolean: `/doc` document creation                                                        | `true`                  |
-| `features.research`      | Boolean: `/research` jobs and their PDF reports                                          | `true`                  |
-| `features.feedback`      | Boolean: `/report` private feedback links                                                | `false`                 |
-| `report.format`          | Reserved: a per-chat report format profile ([Research](research.md#the-renderer))        | unset: `render.report`  |
-| `report.defaultFormat`   | `pdf` or `markdown`: the format of `/doc` when the message names none                    | `pdf`                   |
-| `features.owner`         | Boolean: the owner's market and coding-session tools                                     | `false`                 |
-| `features.autofetch`     | Boolean: a group's post links get their media back ([System](system.md#autofetch))       | `false`                 |
-| `features.toolFooter`    | Boolean                                                                                  | `true`                  |
-| `nameCall`               | Boolean: answer a group message that only names the character                            | `false`                 |
-| `nameCall.names`         | 1 to 5 names, each 2 to 24 letters, digits or spaces                                     | unset: the card's names |
-| `reactions`              | Boolean: passive emoji reactions to members' messages                                    | `false`                 |
-| `reactions.chance`       | Integer 0 to 100: percent chance to react when a rule trips                              | `33`                    |
-| `commands.maxPerMessage` | Integer 1 to 5: commands run from one message                                            | `1`                     |
-| `tools.maxPerMessage`    | Integer 1 to 8: tool calls one reply may make                                            | `3`                     |
-| `footerEmoji`            | One emoji, at most 8 characters                                                          | unset: the card's icon  |
-| `mcp.<server id>`        | Boolean                                                                                  | `false`                 |
+| Key                      | Type                                                                                       | Default (Global)        |
+| ------------------------ | ------------------------------------------------------------------------------------------ | ----------------------- |
+| `character`              | Character pack id                                                                          | Set at install          |
+| `language`               | `auto` or a language code                                                                  | `auto`                  |
+| `freeResponse`           | Boolean                                                                                    | `false`                 |
+| `allowedSenders`         | List of subject ids, or `all`                                                              | `all`                   |
+| `model`                  | Role override, or `inherit`                                                                | `inherit`               |
+| `replyLength`            | `short`, `default`, `long`                                                                 | `default`               |
+| `expressions`            | Boolean                                                                                    | `true`                  |
+| `quietHours`             | Start, end and time zone                                                                   | Unset                   |
+| `muted`                  | Boolean, with who and when                                                                 | `false`                 |
+| `features.proactive`     | Boolean                                                                                    | `false`                 |
+| `features.reminders`     | Boolean                                                                                    | `true`                  |
+| `features.search`        | Boolean                                                                                    | `true`                  |
+| `features.social`        | Boolean                                                                                    | `true`                  |
+| `features.identify`      | Boolean: allow reverse-image hints in this chat                                            | `false`                 |
+| `features.photos`        | Boolean                                                                                    | `true`                  |
+| `features.media`         | Boolean                                                                                    | `true`                  |
+| `features.memory`        | Boolean: memory for this chat ([Memory](memory.md#per-chat-switch))                        | `true`                  |
+| `features.think`         | Boolean: `/think` runs one turn at deeper effort ([Models](models.md#deeper-thinking))     | `true`                  |
+| `features.context`       | Boolean: replay the chat log as context ([Prompt Engine](prompt-engine.md#live-context))   | `true`                  |
+| `context.maxMessages`    | Integer 0 to 100: chat-log messages replayed per turn                                      | `40`                    |
+| `memory.pageMessages`    | Integer 5 to 50: messages that close a memory episode                                      | `25`                    |
+| `features.voice`         | Boolean                                                                                    | `false`                 |
+| `features.lessons`       | Boolean                                                                                    | `false`                 |
+| `features.reports`       | Boolean: `/doc` document creation                                                          | `true`                  |
+| `features.research`      | Boolean: `/research` jobs and their PDF reports                                            | `true`                  |
+| `features.feedback`      | Boolean: `/report` private feedback links                                                  | `false`                 |
+| `report.format`          | Reserved: a per-chat report format profile ([Research](research.md#the-renderer))          | unset: `render.report`  |
+| `report.defaultFormat`   | `pdf` or `markdown`: the format of `/doc` when the message names none                      | `pdf`                   |
+| `features.owner`         | Boolean: the owner's market and coding-session tools                                       | `false`                 |
+| `features.autofetch`     | Boolean: a group's or DM's post links get their media back ([System](system.md#autofetch)) | `false`                 |
+| `features.toolFooter`    | Boolean                                                                                    | `true`                  |
+| `nameCall`               | Boolean: answer a group message that only names the character                              | `false`                 |
+| `nameCall.names`         | 1 to 5 names, each 2 to 24 letters, digits or spaces                                       | unset: the card's names |
+| `reactions`              | Boolean: passive emoji reactions to members' messages                                      | `false`                 |
+| `reactions.chance`       | Integer 0 to 100: percent chance to react when a rule trips                                | `33`                    |
+| `commands.maxPerMessage` | Integer 1 to 5: commands run from one message                                              | `1`                     |
+| `tools.maxPerMessage`    | Integer 1 to 8: tool calls one reply may make                                              | `3`                     |
+| `footerEmoji`            | One emoji, at most 8 characters                                                            | unset: the card's icon  |
+| `mcp.<server id>`        | Boolean                                                                                    | `false`                 |
 
 For each supported social operation, `social.platforms.<id>` and `autofetch.platforms.<id>` are
 independent Boolean settings. Each defaults to true. Chat, chat-type and global overrides follow the normal
