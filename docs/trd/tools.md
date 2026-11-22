@@ -382,6 +382,13 @@ their platform shape is strict. Lookups use the platform target. The unknown hos
 YouTube requires an official host. Instagram's `/p/<id>` needs an Instagram-like hostname on an unknown host.
 Facebook's unknown-host shapes require a long numeric id or a `pfbid` post id.
 
+A disabled `social.platforms.<id>` makes that platform's link plain text for intake and refuses a
+`read_post` call for the link or its source ID. The page tool also respects that choice on a seen post.
+A disabled `autofetch.platforms.<id>` skips group fetch independently. Apply each check to the parsed
+platform before resolving a share, calling a reader or fetching bytes. Record `platform_disabled` for
+the skipped lookup with zero reader attempts. A skipped link leaves later eligible links and their
+lookup slots available and creates no repeat reservation. The YouTube watch gate still applies.
+
 LinkedIn has recognition only (T0 on both deployments). Recognise official post slugs with an activity ID,
 feed update activity URNs, and single-token lnkd.in shares. A short link identifies the service only.
 Keep these links out of intake and fetch selection. The read tools name LinkedIn and refuse a recognised URL
