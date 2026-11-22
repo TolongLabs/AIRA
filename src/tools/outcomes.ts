@@ -14,7 +14,6 @@ export const FAILURE_CODES: readonly FailureCode[] = [
   'tool_limit',
   'not_now',
   'unseen_link',
-  'rednote_recognition_only',
   'douyin_recognition_only'
 ]
 
@@ -33,7 +32,6 @@ const BY_CODE: Record<Exclude<FailureCode, 'schema'>, string> = {
   tool_limit: 'You cannot do any more of that for this message.',
   not_now: 'You cannot do that right now.',
   unseen_link: 'You only open links that came up in this chat or in your own search.',
-  rednote_recognition_only: 'You cannot open Rednote links here.',
   douyin_recognition_only: 'You cannot open Douyin links here.',
   after_read: 'You will not change anything based on that page.'
 }

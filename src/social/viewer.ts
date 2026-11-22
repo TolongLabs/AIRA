@@ -205,12 +205,14 @@ export class SocialPostViewer {
       this.logLookup(requested.platform, 'failed', [], 'timeout')
       return { status: 'failed', reason: 'timeout' }
     }
-    const deadlineAt = this.now() + this.settings.timeoutMs
+    const lookupTimeoutMs =
+      requested.platform === 'rednote' ? Math.max(this.settings.timeoutMs, 20_000) : this.settings.timeoutMs
+    const deadlineAt = this.now() + lookupTimeoutMs
     const controller = new AbortController()
     const abort = () => controller.abort()
     signal?.addEventListener('abort', abort, { once: true })
     if (signal?.aborted) controller.abort()
-    const timer = setTimeout(() => controller.abort(), this.settings.timeoutMs)
+    const timer = setTimeout(() => controller.abort(), lookupTimeoutMs)
     let resolvedCanonical: string | undefined
     let resolution: Pick<SocialLookupTrace, 'redirectHops' | 'resolveMs'> = {}
     try {
@@ -256,7 +258,7 @@ export class SocialPostViewer {
           fetcher: this.fetcher,
           runExtractor: this.runExtractor,
           maxTextChars: this.settings.maxTextChars,
-          budgetMs: this.settings.timeoutMs
+          budgetMs: lookupTimeoutMs
         }
       )
       observe?.({ ...resolution, attempts: outcome.attempts })

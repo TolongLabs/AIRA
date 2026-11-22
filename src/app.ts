@@ -392,7 +392,12 @@ export async function createApp(options: AppOptions): Promise<App> {
         ? createExaPagePort({ apiKey: exaKey, fallback: plainPage, maxChars: config.search.pageMaxChars })
         : plainPage
     const socialLog = logger.child({ module: 'social' })
-    const viewer = new SocialPostViewer(config.social, { logger })
+    const apifyToken = env['APIFY_API_TOKEN']?.trim() || undefined
+    if (config.social.mirrors.rednote !== 'off' && !apifyToken) {
+      logger.warn('social.mirror_off', { platform: 'rednote', reason: 'no_key' })
+    }
+    const socialMirrors = { ...config.social.mirrors, ...(apifyToken ? { apifyToken } : {}) }
+    const viewer = new SocialPostViewer({ ...config.social, mirrors: socialMirrors }, { logger })
     const replyReader = new ReplyReader(config.social, { logger, youtubeApiKey: () => env['YOUTUBE_API_KEY'] })
     const extractorAvailable = await isYtDlpAvailable(config.social.ytDlpPath)
     viewer.setYtDlpAvailable(extractorAvailable)
@@ -405,7 +410,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     // Other social media files may redirect to a CDN on another origin; they still carry no cookies.
     const socialMediaDownload = createFetchPagePort({ cookieless: true }).download
     const autofetch = createAutofetch({
-      mirrors: config.social.mirrors,
+      mirrors: socialMirrors,
       compressVideo,
       storage,
       viewer,
@@ -619,7 +624,7 @@ export async function createApp(options: AppOptions): Promise<App> {
           findTarget: (text) => findLinkTarget([text], (entry) => socialLog.info('social.unknown_host', entry)),
           ...(mediaWatcher ? { watcher: mediaWatcher } : {}),
           download: (url, signal, maxBytes, headers, rangeBytes, source) =>
-            enabledMirrorAsset(url, source, config.social.mirrors)
+            enabledMirrorAsset(url, source, socialMirrors)
               ? socialAssetDownload(url, signal, maxBytes, headers, rangeBytes)
               : socialMediaDownload(url, signal, maxBytes, headers),
           model: mediaModel ?? '',
@@ -853,7 +858,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     if (siteToken !== undefined && siteToken.length >= MIN_SITE_TOKEN_LENGTH) {
       siteServer = createSiteApiServer({
         extractorAvailable,
-        socialMirrors: config.social.mirrors,
+        socialMirrors,
         token: siteToken,
         allowedOrigins: config.site.allowedOrigins,
         registry,

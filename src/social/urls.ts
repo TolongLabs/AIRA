@@ -2,7 +2,17 @@ import { isIP } from 'node:net'
 import { isExcludedHost } from '../tools/excluded-hosts.js'
 
 export type SocialPlatform =
-  'x' | 'bluesky' | 'youtube' | 'tiktok' | 'reddit' | 'instagram' | 'bilibili' | 'threads' | 'facebook' | 'lemon8'
+  | 'x'
+  | 'bluesky'
+  | 'youtube'
+  | 'tiktok'
+  | 'reddit'
+  | 'instagram'
+  | 'bilibili'
+  | 'threads'
+  | 'facebook'
+  | 'lemon8'
+  | 'rednote'
 
 /** The name a person sees for each platform: a footer, a note or a model sentence. */
 export const PLATFORM_NAME: Record<SocialPlatform, string> = {
@@ -15,7 +25,8 @@ export const PLATFORM_NAME: Record<SocialPlatform, string> = {
   instagram: 'Instagram',
   facebook: 'Facebook',
   bilibili: 'Bilibili',
-  lemon8: 'Lemon8'
+  lemon8: 'Lemon8',
+  rednote: 'Rednote'
 }
 
 export interface SocialPostTarget {
@@ -44,7 +55,8 @@ const HOSTS: Record<SocialPlatform, string[]> = {
   bilibili: ['bilibili.com', 'b23.tv'],
   threads: ['threads.com', 'threads.net'],
   facebook: ['facebook.com', 'fb.watch'],
-  lemon8: ['lemon8-app.com']
+  lemon8: ['lemon8-app.com'],
+  rednote: ['xiaohongshu.com', 'rednote.com', 'xhslink.com', 'xhslink.cn']
 }
 
 // Tried in this order on a host that is no platform's own. YouTube is host-only and never matches there.
@@ -356,6 +368,34 @@ function parseLemon8(url: URL, host: string): SocialPostTarget | null {
   return null
 }
 
+// Rednote (Xiaohongshu) is read on its own hosts only. A note is `/explore/{24-hex}` or `/discovery/item/{24-hex}` on
+// apex or www of xiaohongshu.com and rednote.com, normalized to www.xiaohongshu.com/explore/{id}. Short links on
+// xhslink.com (`/{code}` or `/o/{code}`) and xhslink.cn (`/o/{code}`) resolve via the guarded share resolver.
+const REDNOTE_DIRECT_HOSTS = new Set(['xiaohongshu.com', 'www.xiaohongshu.com', 'rednote.com', 'www.rednote.com'])
+const REDNOTE_NOTE_PATH = /^\/(?:explore|discovery\/item)\/([0-9a-f]{24})\/?$/i
+const XHSLINK_COM_PATH = /^\/(?!o\/?$)(?:(o)\/)?([a-z0-9]+)\/?$/i
+const XHSLINK_CN_PATH = /^\/o\/([a-z0-9]+)\/?$/i
+
+function parseRednote(url: URL, host: string): SocialPostTarget | null {
+  if (REDNOTE_DIRECT_HOSTS.has(host)) {
+    const id = url.pathname.match(REDNOTE_NOTE_PATH)?.[1]?.toLowerCase()
+    return id ? target('rednote', id, `https://www.xiaohongshu.com/explore/${id}`) : null
+  }
+  if (host === 'xhslink.com') {
+    const match = url.pathname.match(XHSLINK_COM_PATH)
+    if (!match) return null
+    const [, prefix, code = ''] = match
+    const canonical = prefix ? `https://xhslink.com/o/${code}` : `https://xhslink.com/${code}`
+    const key = prefix ? `rednote:share:o:${code}` : `rednote:share:${code}`
+    return shareTarget('rednote', code, canonical, key)
+  }
+  if (host === 'xhslink.cn') {
+    const code = url.pathname.match(XHSLINK_CN_PATH)?.[1]
+    return code ? shareTarget('rednote', code, `https://xhslink.cn/o/${code}`, `rednote:share:cn:${code}`) : null
+  }
+  return null
+}
+
 function parseFor(platform: SocialPlatform, url: URL, host: string, unknown: boolean): SocialPostTarget | null {
   switch (platform) {
     case 'x':
@@ -378,6 +418,8 @@ function parseFor(platform: SocialPlatform, url: URL, host: string, unknown: boo
       return parseFacebook(url, host, unknown)
     case 'lemon8':
       return parseLemon8(url, host)
+    case 'rednote':
+      return parseRednote(url, host)
   }
 }
 
@@ -395,32 +437,6 @@ function readPolicyUrl(value: string): URL | undefined {
   url.protocol = 'https:'
   url.hostname = url.hostname.replace(/\.+$/, '')
   return url
-}
-
-// Rednote (Xiaohongshu) is recognised, never read: its note pages redirect to login on both deployments. Each host
-// below owns its paths, so a path there never reaches the unknown-host parsers. Every subdomain of the four
-// domains is reserved the same way. Only the listed hosts are recognised: the two domains take apex and www
-// only. xhslink.com takes a bare code or `o/{code}`, and xhslink.cn takes `o/{code}`. A bare `o` is the route.
-const REDNOTE_NOTE_PATH = /^\/(?:explore|discovery\/item)\/[0-9a-f]{24}\/?$/i
-const XHSLINK_COM_PATH = /^\/(?!o\/?$)(?:o\/)?[a-z0-9]+\/?$/i
-const XHSLINK_CN_PATH = /^\/o\/[a-z0-9]+\/?$/i
-const REDNOTE_PATHS = new Map<string, RegExp>([
-  ['xiaohongshu.com', REDNOTE_NOTE_PATH],
-  ['www.xiaohongshu.com', REDNOTE_NOTE_PATH],
-  ['rednote.com', REDNOTE_NOTE_PATH],
-  ['www.rednote.com', REDNOTE_NOTE_PATH],
-  ['xhslink.com', XHSLINK_COM_PATH],
-  ['xhslink.cn', XHSLINK_CN_PATH]
-])
-
-function isRednoteHost(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/\.+$/, '')
-  return (
-    hostMatches(host, 'xiaohongshu.com') ||
-    hostMatches(host, 'rednote.com') ||
-    hostMatches(host, 'xhslink.com') ||
-    hostMatches(host, 'xhslink.cn')
-  )
 }
 
 // Douyin is recognised, never read: both deployments received a page without the post record. Only these exact hosts
@@ -442,16 +458,14 @@ function isDouyinHost(hostname: string): boolean {
 }
 
 /** Display name for a recognised post link with no approved read operation. */
-export function recognitionOnlyName(value: string): 'Rednote' | 'Douyin' | null {
+export function recognitionOnlyName(value: string): 'Douyin' | null {
   const url = readPolicyUrl(value)
   if (!url) return null
-  const rednote = REDNOTE_PATHS.get(url.hostname)
   const douyin = DOUYIN_PATHS.get(url.hostname)
-  if (!rednote && !douyin) return null
+  if (!douyin) return null
   try {
     const path = decodeURI(url.pathname)
-    if (rednote?.test(path)) return 'Rednote'
-    return douyin?.test(path) ? 'Douyin' : null
+    return douyin.test(path) ? 'Douyin' : null
   } catch {
     return null
   }
@@ -478,7 +492,7 @@ function parseUrl(value: string, officialOnly: boolean): SocialPostTarget | null
   }
 
   const host = url.hostname.toLowerCase()
-  if (isExcludedHost(host) || isRednoteHost(host) || isDouyinHost(host)) return null
+  if (isExcludedHost(host) || isDouyinHost(host)) return null
   const platform = platformForHost(host)
   let parsed: SocialPostTarget | null = null
   if (platform) parsed = parseFor(platform, url, host, false)

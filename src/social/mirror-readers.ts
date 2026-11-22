@@ -4,11 +4,14 @@ import type { SocialMirrorSettings } from './readers.js'
 import type { PlayableVideo, SocialPost } from './types.js'
 import { parseOfficialSocialPostUrl, type SocialPlatform, type SocialPostTarget } from './urls.js'
 
-export type MirrorPlatform = 'tiktok' | 'reddit'
+export type MirrorPlatform = 'tiktok' | 'reddit' | 'rednote'
 
 const MAX_RESPONSE_BYTES = 256_000
+const MAX_REDNOTE_PHOTOS = 20
 const TIKWM = 'https://www.tikwm.com'
 const ARCTIC_SHIFT = 'https://arctic-shift.photon-reddit.com'
+const APIFY_REDNOTE_ENDPOINT =
+  'https://api.apify.com/v2/acts/socialdatax~socialdatax-xhs-data-api/run-sync-get-dataset-items?timeout=30&memory=256'
 
 function httpsUrl(value: unknown): URL | undefined {
   if (typeof value !== 'string' || /\s/.test(value)) return
@@ -44,12 +47,21 @@ function isTikTokCdnHost(host: string): boolean {
   return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.tiktokcdn(?:-us)?\.com$/.test(host)
 }
 
+/** Rednote media CDN hosts (`*.xhscdn.com`), excluding avatar hosts so profile pictures never qualify as post media. */
+function isXhsPostMediaHost(host: string): boolean {
+  return (
+    !host.startsWith('sns-avatar-') &&
+    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.xhscdn\.com$/.test(host)
+  )
+}
+
 /** The mirror platform whose media origin serves this URL, if any. */
-export function mirrorAssetPlatform(value: string): 'tiktok' | 'reddit' | undefined {
+export function mirrorAssetPlatform(value: string): MirrorPlatform | undefined {
   const url = httpsUrl(value)
   if (!url) return undefined
   if (url.hostname === TIKWM_MEDIA_HOST || isTikTokCdnHost(url.hostname)) return 'tiktok'
   if (url.hostname === 'v.redd.it' || REDDIT_PREVIEW_HOSTS.has(url.hostname)) return 'reddit'
+  if (isXhsPostMediaHost(url.hostname)) return 'rednote'
   return undefined
 }
 
@@ -59,7 +71,8 @@ export function enabledMirrorAsset(
   source: SocialPlatform | undefined,
   settings: SocialMirrorSettings
 ): boolean {
-  if (source !== 'tiktok' && source !== 'reddit') return false
+  if (source !== 'tiktok' && source !== 'reddit' && source !== 'rednote') return false
+  if (source === 'rednote' && !settings.apifyToken) return false
   return (settings[source] ?? 'off') !== 'off' && mirrorAssetPlatform(value) === source
 }
 
@@ -205,19 +218,77 @@ function redditPost(document: unknown, target: SocialPostTarget, maxChars: numbe
   return { ok: true, post }
 }
 
+function xhsMediaUrl(value: unknown): string | null {
+  const url = httpsUrl(value)
+  return url && isXhsPostMediaHost(url.hostname) ? url.href : null
+}
+
+function rednotePost(document: unknown, target: SocialPostTarget, maxChars: number, allowGroup: boolean): ReaderResult {
+  const entries = Array.isArray(document) ? document : [document]
+  const row = entries
+    .map(object)
+    .find((candidate) => string(candidate.note_id).toLowerCase() === target.id.toLowerCase())
+  if (!row) {
+    const hasAnyId = entries.some((candidate) => string(object(candidate).note_id).length > 0)
+    return { ok: false, reason: hasAnyId ? 'identity_mismatch' : 'no_post_data' }
+  }
+
+  const post = base(target)
+  const title = string(row.title).trim()
+  const content = string(row.content).trim()
+  const combined = title && content && !content.startsWith(title) ? `${title}\n\n${content}` : content || title
+  post.text = capped(combined, maxChars)
+  post.authorName = capped(row.author_name, 160)
+  const published = positive(row.publish_time)
+  if (published !== null) post.createdAt = new Date(published * 1000).toISOString()
+
+  const cover = xhsMediaUrl(row.cover_image_url)
+  const videoUrl = xhsMediaUrl(row.video_video_url)
+  const isVideo = row.note_type === 'video' || videoUrl !== null
+
+  if (isVideo) {
+    post.imageUrl = cover
+    post.videoCount = 1
+    const durationMs = positive(row.video_duration_ms)
+    post.durationSec = durationMs !== null ? durationMs / 1000 : null
+    if (videoUrl) {
+      setVideo(post, { url: videoUrl, mirror: 'rednote', bytes: null, hasAudio: null, headers: null }, allowGroup)
+    }
+    return { ok: true, post }
+  }
+
+  const seen = new Set<string>()
+  const photos: string[] = []
+  for (const entry of array(row.image_items)) {
+    const photo = xhsMediaUrl(object(entry).image_url)
+    if (!photo || seen.has(photo)) continue
+    seen.add(photo)
+    photos.push(photo)
+    if (photos.length >= MAX_REDNOTE_PHOTOS) break
+  }
+  post.photoUrls = photos
+  post.photoCount = photos.length
+  post.imageUrl = photos[0] ?? cover
+  if (allowGroup && photos.length > 0) {
+    post.attachments = photos.map((url) => ({ kind: 'image', owner: target.lookupKey, url }))
+  }
+  return { ok: true, post }
+}
+
 export function createMirrorReader(
   platform: MirrorPlatform,
   timeoutMs: number,
   allowGroup: boolean,
-  onRefused?: () => void
+  onRefused?: () => void,
+  apifyToken?: string
 ): SocialReader {
-  const tiktok = platform === 'tiktok'
+  const id = platform === 'tiktok' ? 'tiktok.tikwm' : platform === 'reddit' ? 'reddit.arctic_shift' : 'rednote.apify'
   return {
-    id: tiktok ? 'tiktok.tikwm' : 'reddit.arctic_shift',
+    id,
     kind: 'mirror_api',
     provides: ['text', 'author', 'media', 'video'],
     timeoutMs,
-    isConfigured: () => true,
+    isConfigured: () => (platform === 'rednote' ? Boolean(apifyToken) : true),
     async read(target: SocialPostTarget, ctx: ReaderContext): Promise<ReaderResult> {
       const resolved = parseOfficialSocialPostUrl(target.canonicalUrl)
       if (
@@ -226,12 +297,34 @@ export function createMirrorReader(
         resolved?.platform !== platform ||
         resolved.needsRedirect ||
         resolved.id !== target.id ||
-        (tiktok && !new URL(resolved.canonicalUrl).pathname.includes('/video/'))
+        (platform === 'tiktok' && !new URL(resolved.canonicalUrl).pathname.includes('/video/'))
       )
         return { ok: false, reason: 'identity_mismatch' }
-      const endpoint = new URL(tiktok ? `${TIKWM}/api/` : `${ARCTIC_SHIFT}/api/posts/ids`)
-      endpoint.searchParams.set(tiktok ? 'url' : 'ids', tiktok ? resolved.canonicalUrl : resolved.id)
-      const response = await ctx.fetcher(endpoint, { signal: ctx.signal, redirect: 'error' })
+      if (platform === 'rednote' && !apifyToken) return { ok: false, reason: 'unsupported' }
+
+      let response: Response
+      if (platform === 'rednote') {
+        response = await ctx.fetcher(APIFY_REDNOTE_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apifyToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            operation: 'get_note_detail',
+            note_id: resolved.id,
+            max_items: 1,
+            auto_paginate: false
+          }),
+          signal: ctx.signal,
+          redirect: 'error'
+        })
+      } else {
+        const tiktok = platform === 'tiktok'
+        const endpoint = new URL(tiktok ? `${TIKWM}/api/` : `${ARCTIC_SHIFT}/api/posts/ids`)
+        endpoint.searchParams.set(tiktok ? 'url' : 'ids', tiktok ? resolved.canonicalUrl : resolved.id)
+        response = await ctx.fetcher(endpoint, { signal: ctx.signal, redirect: 'error' })
+      }
       if (!response.ok) {
         if (response.status === 403 || response.status === 429) onRefused?.()
         void response.body?.cancel().catch(() => undefined)
@@ -243,7 +336,9 @@ export function createMirrorReader(
       } catch {
         return { ok: false, reason: ctx.signal.aborted ? 'timeout' : 'invalid_json' }
       }
-      return (tiktok ? tikTokPost : redditPost)(document, target, ctx.maxTextChars, allowGroup)
+      if (platform === 'tiktok') return tikTokPost(document, target, ctx.maxTextChars, allowGroup)
+      if (platform === 'reddit') return redditPost(document, target, ctx.maxTextChars, allowGroup)
+      return rednotePost(document, target, ctx.maxTextChars, allowGroup)
     }
   }
 }

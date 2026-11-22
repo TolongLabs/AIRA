@@ -30,6 +30,8 @@ export const DEFAULT_HTTP_READER_TIMEOUT_MS = 2500
 export const DEFAULT_YTDLP_TIMEOUT_MS = 4500
 /** Measured 22 Nov 2026: TikWM answered in 5.7 to 7.5 s from two networks. */
 const TIKWM_TIMEOUT_MS = 10_000
+/** Measured 22 Nov 2026: Apify socialdatax answered in 3.7 to 6.2 s for note_id lookups. */
+const REDNOTE_APIFY_TIMEOUT_MS = 18_000
 
 const BLUESKY_PDS_TIMEOUT_MS = 1500
 const MAX_BLUESKY_PDS_CACHE_ENTRIES = 256
@@ -131,6 +133,8 @@ export class BlueskyPdsDirectory {
 
 export type SocialMirrorSettings = Partial<Record<MirrorPlatform, 'off' | 'read' | 'read_and_group'>> & {
   redditGroupChatIds?: readonly string[] | undefined
+  /** Runtime Apify API token from `.env` (never stored in config.yml). */
+  apifyToken?: string | undefined
 }
 
 export interface ReaderEnv {
@@ -201,11 +205,18 @@ const adapters: Record<SocialPlatform, PlatformAdapter> = {
     read: ['text', 'preview', 'photos', 'video'],
     group: ['photos', 'video'],
     readers: (_, env) => [lemon8PageReader(env)]
+  },
+  rednote: {
+    read: ['text', 'preview', 'photos', 'video'],
+    group: [],
+    readers: (_, env) => rednoteReaders(env)
   }
 }
 
 function mirrorMode(platform: SocialPlatform, mirrors?: SocialMirrorSettings) {
-  return platform === 'tiktok' || platform === 'reddit' ? (mirrors?.[platform] ?? 'off') : 'off'
+  if (platform === 'tiktok' || platform === 'reddit') return mirrors?.[platform] ?? 'off'
+  if (platform === 'rednote') return mirrors?.apifyToken ? (mirrors.rednote ?? 'off') : 'off'
+  return 'off'
 }
 
 function supportsMirror(target: SocialPostTarget, mirrors?: SocialMirrorSettings): boolean {
@@ -240,7 +251,7 @@ export function groupOperations(
   if (mirrorMode(platform, mirrors) !== 'read_and_group' || !inGroup) return adapters[platform].group
   const scope = platform === 'reddit' ? mirrors?.redditGroupChatIds : undefined
   if (scope !== undefined && (chatId === undefined ? scope.length === 0 : !scope.includes(chatId))) return []
-  return platform === 'reddit' ? ['photos', 'video'] : ['video']
+  return platform === 'reddit' || platform === 'rednote' ? ['photos', 'video'] : ['video']
 }
 
 export function socialCapabilities(extractorAvailable: boolean, mirrors?: SocialMirrorSettings) {
@@ -254,6 +265,7 @@ export function socialCapabilities(extractorAvailable: boolean, mirrors?: Social
     'features.social': platforms.flatMap((id) => {
       const adapter = adapters[id]
       const mirror = mirrorMode(id, mirrors) !== 'off'
+      if (id === 'rednote' && !mirror) return []
       if (adapter.extractorRequired && !extractorAvailable && !mirror) return []
       if (id === 'reddit' && mirror) return [entry(id, ['text', 'preview', 'photos', 'video'])]
       const operations =
@@ -273,7 +285,12 @@ export function socialCapabilities(extractorAvailable: boolean, mirrors?: Social
 
 /** Platforms a chat switch can name: every read and fetch the adapters allow, with mirrors and the extractor on. */
 export function switchablePlatforms(): { read: SocialPlatform[]; fetch: SocialPlatform[] } {
-  const possible = socialCapabilities(true, { tiktok: 'read_and_group', reddit: 'read_and_group' })
+  const possible = socialCapabilities(true, {
+    tiktok: 'read_and_group',
+    reddit: 'read_and_group',
+    rednote: 'read_and_group',
+    apifyToken: 'configured'
+  })
   return {
     read: possible['features.social'].map((entry) => entry.id),
     fetch: possible['features.autofetch'].map((entry) => entry.id)
@@ -288,6 +305,13 @@ export function readersFor(target: SocialPostTarget, env: ReaderEnv): SocialRead
     readers.unshift(createMirrorReader('tiktok', timeoutMs, mirrorMode('tiktok', env.mirrors) === 'read_and_group'))
   }
   return readers
+}
+
+function rednoteReaders(env: ReaderEnv): SocialReader[] {
+  const mode = mirrorMode('rednote', env.mirrors)
+  if (mode === 'off' || !env.mirrors?.apifyToken) return []
+  const timeoutMs = Math.max(REDNOTE_APIFY_TIMEOUT_MS, env.httpTimeoutMs)
+  return [createMirrorReader('rednote', timeoutMs, mode === 'read_and_group', undefined, env.mirrors.apifyToken)]
 }
 
 function redditReaders(env: ReaderEnv): SocialReader[] {
