@@ -72,11 +72,16 @@ describe('search depth', () => {
       subject: 'Drink sizes'
     })
     expect(sizes.brief.passages).toEqual([])
-    const prose = `- Home\n${'The park is open daily and well kept. '.repeat(12)}The Merlion has a total height of 8.6 metres.`
+    const prose = `- Home\n${'The park is open daily and well kept. '.repeat(20)}The Merlion has a total height of 8.6 metres.`
     const height = await depth(prose, { kind: 'other', subject: 'Merlion height' })
-    expect(height.brief.passages.map((passage) => passage.text)).toContainEqual(
-      expect.stringContaining('The Merlion has a total height of 8.6 metres.')
-    )
+    expect(height.brief.passages.map((passage) => passage.text)).toEqual([
+      expect.stringMatching(/^The park[\s\S]*The Merlion has a total height of 8\.6 metres\.$/)
+    ])
+    const numbered = await depth('1. iPhone 16\n2. Galaxy S25\n3. Pixel 9', {
+      kind: 'list',
+      subject: 'Example models'
+    })
+    expect(numbered.brief.passages).toHaveLength(1)
   })
 
   it('does not take size lines with abbreviated units for list items in a real search', async () => {

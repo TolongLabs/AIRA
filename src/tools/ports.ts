@@ -456,10 +456,12 @@ export function createFetchPagePort(
         requesting = false
         const mime = res.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase()
         // Only an ETag can prove a resumed range is the same file; Last-Modified still guards parts against each other.
-        // An empty ETag names nothing, so Last-Modified identifies the version instead.
-        const header = res.headers.get('etag')?.trim()
-        const etag = header && header !== '""' ? header : null
-        const version = etag ?? res.headers.get('last-modified')
+        // Only a well-formed entity tag counts as an ETag; otherwise Last-Modified identifies the version. The kind is
+        // kept, so an ETag and a date with the same text never match.
+        const header = res.headers.get('etag')?.trim() ?? ''
+        const etag = /^(?:W\/)?"[\x21\x23-\x7e\x80-\xff]+"$/.test(header) ? header : null
+        const modified = res.headers.get('last-modified')
+        const version = etag ? `etag:${etag}` : modified ? `date:${modified}` : null
         if (
           res.status !== 206 ||
           mime !== 'video/mp4' ||

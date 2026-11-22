@@ -123,16 +123,21 @@ export function passageMatches(field: SearchField, passage: string): boolean {
   }
 }
 
+const LIST_LINE = /^\s*(?:[-*•]|\d+[.)])\s/
+
 /**
- * Lines split into sentences. A sentence ends at CJK end punctuation, or at `.`, `!` or `?` before a space and a
- * word that does not start in lower case, so `8 fl. oz.` and `e.g. latte` stay whole.
+ * Lines split into sentences. A list line stays whole. Prose ends a sentence at CJK end punctuation, or at `.`, `!`
+ * or `?` before a space and a capital, a caseless letter or an opening quote, so `8 fl. oz.` and `e.g. latte` stay
+ * whole.
  */
 function sentencesOf(paragraph: string): string[] {
   return paragraph.split('\n').flatMap((line) =>
-    line
-      .replace(/([.!?]+)\s+(?=[^\p{Ll}\s])/gu, '$1\n')
-      .replace(/([。！？]+)/gu, '$1\n')
-      .split('\n')
+    LIST_LINE.test(line)
+      ? [line]
+      : line
+          .replace(/([.!?]+)\s+(?=[\p{Lu}\p{Lt}\p{Lo}"“‘'([])/gu, '$1\n')
+          .replace(/([。！？]+)/gu, '$1\n')
+          .split('\n')
   )
 }
 

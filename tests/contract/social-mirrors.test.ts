@@ -46,6 +46,7 @@ function stack(
     lastModified?: string
     slowRefusal?: boolean
     headerStall?: boolean
+    mixedValidators?: boolean
     thumbnail?: string
     cover?: string
   } = {}
@@ -126,12 +127,13 @@ function stack(
       if (!range) return new Response(null, { status: 403 })
       const start = Number(range[1])
       const end = Number(range[2])
-      const etag = options.etag === undefined ? '"v1"' : options.etag
+      const odd = options.mixedValidators && Math.round((start / largeMp4.length) * 4) % 2 === 1
+      const etag = odd ? null : options.etag === undefined ? '"v1"' : options.etag
       const headers: Record<string, string> = {
         'content-type': 'video/mp4',
         'content-range': `bytes ${start}-${end}/${largeMp4.length}`,
         ...(etag ? { etag } : {}),
-        ...(options.lastModified ? { 'last-modified': options.lastModified } : {})
+        ...(options.lastModified || odd ? { 'last-modified': odd ? '"v1"' : options.lastModified! } : {})
       }
       const second = Math.floor(largeMp4.length / 4)
       if (options.headerStall && start === second && !interrupted.has(start)) {
@@ -378,13 +380,23 @@ describe('approved mirror readers', () => {
     const { result, requests } = await watchTikTok({
       ranges: 'drop',
       etag: null,
-      lastModified: '"Sun, 22 Nov 2026 00:00:00 GMT"'
+      lastModified: '"2026-11-22T00:00:00Z"'
     })
     expect(result.links?.[0]?.reading?.description).toBe('Watched complete clip')
     expect(requests.some((headers) => headers.has('if-range'))).toBe(false)
     const second = Math.floor(largeMp4.length / 4)
     const secondEnd = Math.floor(largeMp4.length / 2) - 1
     expect(requests.filter((headers) => headers.get('range') === `bytes=${second}-${secondEnd}`)).toHaveLength(2)
+  })
+
+  it('does not join parts whose ETag and Last-Modified only look alike', async () => {
+    const { watch } = await watchTikTok({ ranges: 'valid', mixedValidators: true })
+    expect(watch).not.toHaveBeenCalled()
+  })
+
+  it.each(['""', 'W/""', '" "'])('compares Last-Modified across parts when the ETag is %s', async (etag) => {
+    const { watch } = await watchTikTok({ ranges: 'valid', etag, lastModified: 'Sun, 22 Nov 2026 00:00:00 GMT' })
+    expect(watch).toHaveBeenCalledOnce()
   })
 
   it('retries a part whose request stalls before its headers', async () => {
@@ -396,7 +408,8 @@ describe('approved mirror readers', () => {
   it.each([
     ['https://p16-sign.tiktokcdn-us.com/cover.jpg', 'https://p16-sign.tiktokcdn-us.com/cover.jpg'],
     ['https://preview.redd.it/fixture.png', null],
-    ['https://..tiktokcdn.com/cover.jpg', null]
+    ['https://..tiktokcdn.com/cover.jpg', null],
+    ['https://-bad.tiktokcdn.com/cover.jpg', null]
   ])('keeps a TikTok mirror cover %s only on TikTok image hosts', async (cover, kept) => {
     const { viewer } = stack({ tiktok: 'read' }, { cover })
     const result = await viewer.lookup(parseOfficialSocialPostUrl(nativeTikTok)!)
