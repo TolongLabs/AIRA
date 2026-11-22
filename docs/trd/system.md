@@ -306,10 +306,11 @@ for that message. The normal reply does not send the fetched files again. Fetchi
   A completed or expired batch cannot be claimed again. Restart invalidates outstanding keys and clears leftovers.
 - **Failure is silent.** Nobody asked the bot anything, so a post that cannot be read, a file over its limit or a
   refused download sends nothing to the chat.
-- **Mirror delivery.** The existing `read_and_group` grant covers groups only. Direct chats can fetch
-  independently verified native attachments from platforms with direct delivery support. When configured, `social.mirrors.redditGroupChatIds` limits Reddit attachment lookup to listed
-  internal chat IDs that also pass the active-group and autofetch gates. An out-of-scope share is recorded as
-  `platform_excluded` without contacting Reddit, the mirror or the media host.
+- **Mirror delivery.** A mirror's `read_and_group` grant applies equally to opted-in groups and DMs. Direct chats can
+  also fetch independently verified native attachments from platforms with direct delivery support. When configured,
+  `social.mirrors.redditGroupChatIds` limits Reddit attachment lookup to listed internal chat IDs that also pass the
+  active-chat and autofetch gates. An out-of-scope share is recorded as `platform_excluded` without contacting Reddit,
+  the mirror or the media host.
 - **Lifetime.** Files belong exclusively to one delivery. Accepted completion removes all files, including failed
   slots. At the ten-minute key expiry the core removes outstanding files even while idle. On startup it clears
   leftover delivery files, including the previous hash-named cache. A failed handoff also removes its files.
