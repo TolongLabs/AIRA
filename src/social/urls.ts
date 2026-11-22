@@ -419,15 +419,36 @@ function isRednoteHost(hostname: string): boolean {
   )
 }
 
+// Douyin is recognised, never read: both deployments received a page without the post record. Only these exact hosts
+// and paths are recognised: www.douyin.com `/video/{id}`, www.iesdouyin.com `/share/video/{id}` with a 19-digit post
+// ID, and v.douyin.com `/{code}` with one alphanumeric share code. Every subdomain of douyin.com and iesdouyin.com is
+// reserved from unknown-host post selection, so no other path there reaches the unknown-host parsers.
+const DOUYIN_VIDEO_PATH = /^\/video\/\d{19}\/?$/
+const DOUYIN_SHARE_PATH = /^\/share\/video\/\d{19}\/?$/
+const DOUYIN_SHORT_PATH = /^\/[a-z0-9]+\/?$/i
+const DOUYIN_PATHS = new Map<string, RegExp>([
+  ['www.douyin.com', DOUYIN_VIDEO_PATH],
+  ['www.iesdouyin.com', DOUYIN_SHARE_PATH],
+  ['v.douyin.com', DOUYIN_SHORT_PATH]
+])
+
+function isDouyinHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.+$/, '')
+  return hostMatches(host, 'douyin.com') || hostMatches(host, 'iesdouyin.com')
+}
+
 /** Display name for a recognised post link with no approved read operation. */
-export function recognitionOnlyName(value: string): 'LinkedIn' | 'Rednote' | null {
+export function recognitionOnlyName(value: string): 'LinkedIn' | 'Rednote' | 'Douyin' | null {
   const url = readPolicyUrl(value)
   if (!url) return null
   if (isLinkedInLink(url)) return 'LinkedIn'
-  const pattern = REDNOTE_PATHS.get(url.hostname)
-  if (!pattern) return null
+  const rednote = REDNOTE_PATHS.get(url.hostname)
+  const douyin = DOUYIN_PATHS.get(url.hostname)
+  if (!rednote && !douyin) return null
   try {
-    return pattern.test(decodeURI(url.pathname)) ? 'Rednote' : null
+    const path = decodeURI(url.pathname)
+    if (rednote?.test(path)) return 'Rednote'
+    return douyin?.test(path) ? 'Douyin' : null
   } catch {
     return null
   }
@@ -454,7 +475,7 @@ function parseUrl(value: string, officialOnly: boolean): SocialPostTarget | null
   }
 
   const host = url.hostname.toLowerCase()
-  if (isLinkedInHost(host) || isRednoteHost(host)) return null
+  if (isLinkedInHost(host) || isRednoteHost(host) || isDouyinHost(host)) return null
   const platform = platformForHost(host)
   let parsed: SocialPostTarget | null = null
   if (platform) parsed = parseFor(platform, url, host, false)

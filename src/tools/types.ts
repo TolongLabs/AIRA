@@ -27,6 +27,7 @@ export type FailureCode =
   | 'unseen_link'
   | 'linkedin_recognition_only'
   | 'rednote_recognition_only'
+  | 'douyin_recognition_only'
 
 /** What a state change was: built by code from the committed result, never from the model's words. */
 export interface ReceiptDraft {
