@@ -2,3 +2,4 @@
 import { cpSync } from 'node:fs'
 
 cpSync('src/storage/migrations', 'dist/src/storage/migrations', { recursive: true })
+cpSync('scripts/updater/offline-snapshot.py', 'dist/scripts/updater/offline-snapshot.py')
