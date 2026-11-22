@@ -270,6 +270,72 @@ describe('owner market tools', () => {
     expect(loaded.alerts).toEqual([{ symbol: 'eth', direction: 'below', level: 2000, to: otherChat }])
   })
 
+  it('cleared default watchlist stays cleared and site-wide alerts are listable and clearable', async () => {
+    const dir = tmpDir('aira-watch-site-')
+    const configPath = join(dir, 'markets.yaml')
+    const myChat = '000000000000@g.us'
+    const otherChat = '0000000000000@g.us'
+
+    writeFileSync(
+      configPath,
+      stringify({
+        watchlist: [],
+        watch: ['spx'],
+        alerts: [
+          { symbol: 'nvda', direction: 'above', level: 200 },
+          { symbol: 'eth', direction: 'below', level: 2000, to: otherChat }
+        ]
+      }),
+      'utf8'
+    )
+
+    // A cleared default list is not resurrected from the legacy `watch` key.
+    expect(loadWatchConfig(configPath).watchlist).toEqual([])
+
+    const { registry, makeCtx } = setup({ configPath })
+    const ctx = makeCtx({ waId: myChat })
+
+    // A site-wide rule (no `to`) shows up in the chat's list instead of being invisible.
+    const listRes = await registry.call('market_watch_list', {}, ctx, {
+      callId: 's1',
+      source: 'model'
+    })
+    expect(listRes.ok).toBe(true)
+    if (listRes.ok) {
+      const data = listRes.data as { alerts: { symbol: string; to?: string }[] }
+      expect(data.alerts).toEqual([{ symbol: 'nvda', direction: 'above', level: 200 }])
+    }
+
+    // Arming the same rule adopts the site-wide one instead of duplicating it.
+    const alertRes = await registry.call('market_alert_set', { symbol: 'nvda', direction: 'above', level: 210 }, ctx, {
+      callId: 's2',
+      source: 'model'
+    })
+    expect(alertRes.ok).toBe(true)
+    if (alertRes.ok) {
+      const data = alertRes.data as { alerts: { symbol: string; level: number; to?: string }[] }
+      expect(data.alerts).toEqual([{ symbol: 'nvda', direction: 'above', level: 210, to: myChat }])
+    }
+
+    // Reject a missing level instead of arming a broken rule.
+    const badRes = await registry.call('market_alert_set', { symbol: 'nvda', direction: 'above' }, ctx, {
+      callId: 's3',
+      source: 'model'
+    })
+    expect(badRes.ok).toBe(false)
+
+    const unRes = await registry.call('market_alert_clear', { symbol: 'nvda', direction: 'above' }, ctx, {
+      callId: 's4',
+      source: 'model'
+    })
+    expect(unRes.ok).toBe(true)
+
+    // The other chat's alert survives; nothing site-wide is left behind.
+    const loaded = loadWatchConfig(configPath)
+    expect(loaded.alerts).toEqual([{ symbol: 'eth', direction: 'below', level: 2000, to: otherChat }])
+    expect(loaded.watchlist).toEqual([])
+  })
+
   it('leaves no receipt when writing the config file fails', async () => {
     const dir = tmpDir('aira-watch-fail-')
     // Point configPath at an existing directory so renameSync fails with EISDIR.

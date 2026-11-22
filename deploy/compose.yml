@@ -6,6 +6,8 @@ services:
     restart: unless-stopped
     # Longer than shutdown.graceMs in config.yml, so running turns can finish.
     stop_grace_period: 30s
+    environment:
+      AIRA_OWNER_API_SOCKET: /gateway/directory/owner-api.sock
     env_file: .env
     mem_limit: 1g
     read_only: true
@@ -26,6 +28,8 @@ services:
       # the core refuses every media path. The mount points must match `media.gatewayDirs` in config.yml.
       - ${AIRA_GATEWAY_CACHE:-./unset}:/gateway/cache:ro
       - ${AIRA_GATEWAY_AUDIO_CACHE:-./unset}:/gateway/audio_cache:ro
+      # The host mirrors only names and ids here. A directory mount observes atomic replacements.
+      - ${AIRA_DIRECTORY_DIR:-${HOME}/.local/share/aira/gateway-directory}:/gateway/directory:ro
       # The owner tools' host files (docs/trd/tools.md#owner-tools): a folder, so a write can replace a file atomically.
       # ~/.config/aira holds markets.yaml and session_notice_routes.json; ~/.claude/projects is read only.
       - ${AIRA_OWNER_CONFIG:-./unset}:/owner/config

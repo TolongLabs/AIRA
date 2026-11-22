@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, ChevronDown, ChevronUp, Pause, Play, Search } from 'lucide-react'
 import type { LibDetail, LibIndex, LibItem, SongLine } from '@/lib/api'
-import { get, post, mediaSrc } from '@/lib/api'
+import { get, post, ownerImage } from '@/lib/api'
 import { toast, Toaster, useApi } from '@/lib/hooks'
 import { cn, num } from '@/lib/utils'
 import { Shell } from '@/components/shell'
@@ -65,11 +65,18 @@ const TYPE_TINT: Record<string, { text: string; ring: string }> = {
 /* ── routing ──────────────────────────────────────────────────────────────
    Hash routes, not a router: one entry file, real back-button behaviour, and
    a link a reader can paste. `#/song:lemon` opens an item; `#songs` a list. */
+function safeReadHash() {
+  const raw = window.location.hash.replace(/^#\/?/, '')
+  try {
+    return decodeURIComponent(raw)
+  } catch {
+    return raw
+  }
+}
 function useHashRoute() {
-  const read = () => decodeURIComponent(window.location.hash.replace(/^#/, ''))
-  const [route, setRoute] = useState(read)
+  const [route, setRoute] = useState(safeReadHash)
   useEffect(() => {
-    const on = () => setRoute(read())
+    const on = () => setRoute(safeReadHash())
     window.addEventListener('hashchange', on)
     return () => window.removeEventListener('hashchange', on)
   }, [])
@@ -278,6 +285,42 @@ function SongBody({ lines, index, go }: { lines: SongLine[]; index: Map<string, 
    reader. */
 const MD_IMAGE = /!\[([^\]]*)\]\(([^)\s]+)\)/g
 
+function LibraryImage({ path, alt }: { path: string; alt: string }) {
+  const local = path.split('?')[0] === '/api/media'
+  const [image, setImage] = useState<{ path: string; url?: string; error?: string } | null>(null)
+  useEffect(() => {
+    if (!local) return
+    const controller = new AbortController()
+    let url: string | undefined
+    ownerImage(path, controller.signal)
+      .then((blob) => {
+        if (controller.signal.aborted) return
+        url = URL.createObjectURL(blob)
+        setImage({ path, url })
+      })
+      .catch((error: Error) => {
+        if (!controller.signal.aborted) setImage({ path, error: error.message })
+      })
+    return () => {
+      controller.abort()
+      if (url) URL.revokeObjectURL(url)
+    }
+  }, [local, path])
+  const src = local ? image?.path === path && image.url : /^https?:\/\//i.test(path) && path
+  if (!src)
+    return <span>{(image?.path === path && image.error) || (local ? 'Loading image…' : 'Image unavailable')}</span>
+  return (
+    <a
+      href={src}
+      target="_blank"
+      rel="noreferrer noopener"
+      className="block overflow-hidden rounded-card border border-line bg-sunk"
+    >
+      <img src={src} alt={alt} loading="lazy" className="block h-44 w-full bg-sunk object-cover" />
+    </a>
+  )
+}
+
 function NoteBody({ body }: { body: string }) {
   const blocks: React.ReactNode[] = []
   let para: string[] = []
@@ -307,15 +350,7 @@ function NoteBody({ body }: { body: string }) {
     blocks.push(
       <div key={`g${blocks.length}`} className="my-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {mine.map((s) => (
-          <a
-            key={s.src}
-            href={s.src}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="block overflow-hidden rounded-card border border-line bg-sunk transition-colors hover:border-line-strong"
-          >
-            <img src={s.src} alt={s.alt} loading="lazy" className="block h-44 w-full bg-sunk object-cover" />
-          </a>
+          <LibraryImage key={s.src} path={s.src} alt={s.alt} />
         ))}
       </div>
     )
@@ -326,7 +361,7 @@ function NoteBody({ body }: { body: string }) {
     const found = [...line.matchAll(MD_IMAGE)]
     if (found.length) {
       flushPara()
-      for (const m of found) shots.push({ alt: m[1], src: mediaSrc(m[2]) })
+      for (const m of found) shots.push({ alt: m[1], src: m[2] })
       continue
     }
     flushShots()
@@ -472,7 +507,8 @@ function ItemView({ id, go }: { id: string; go: (to: string) => void }) {
 function ItemRow({
   item,
   go,
-  onGone
+  onGone,
+  onChanged
 }: {
   item: LibItem
   go: (to: string) => void
@@ -480,6 +516,9 @@ function ItemRow({
      neighbours strip inside an item exists to move you around, and a delete
      control there would be a destructive action offered in passing. */
   onGone?: () => void
+  /* Fired after a successful review toggle so the 600-row index does not go
+     stale behind the card's optimistic chip. */
+  onChanged?: () => void
 }) {
   const tint = TYPE_TINT[item.type] ?? TYPE_TINT.note
   /* Two steps, because there is no undo — the file is unlinked and the row
@@ -488,6 +527,9 @@ function ItemRow({
      disarms it", which was never true of the code: nothing but a 4s timer
      dismissed it, and there was no Escape and no outside click. */
   const [busy, setBusy] = useState(false)
+  /* Hidden after a confirmed delete so the row does not linger when the
+     index reload behind it fails. The server already removed it. */
+  const [gone, setGone] = useState(false)
 
   /* `reviewed` is the one lifecycle a library entry has, and it round-trips
      through the API, so the card owns an optimistic copy rather than waiting
@@ -506,6 +548,7 @@ function ItemRow({
         reviewed: want
       })
       toast(want ? 'marked checked ✓' : 'marked unchecked')
+      onChanged?.()
     } catch (e) {
       setReviewed(!want) /* put the chip back where it was */
       toast((e as Error).message, false)
@@ -522,7 +565,12 @@ function ItemRow({
          forget_song's job and it is a different question. */
       await post('/api/library', { action: 'forget_node', id: item.id })
       toast('removed ✓')
-      onGone?.()
+      setGone(true)
+      try {
+        onGone?.()
+      } catch {
+        /* The row is already hidden; a failed reload must not bring it back. */
+      }
     } catch (e) {
       toast((e as Error).message, false)
       throw e // keep the confirm open on a refused delete
@@ -557,6 +605,8 @@ function ItemRow({
      question and belongs to forget_song. Offering the same control for both
      would make the destructive one look routine. */
   const canRemove = item.type !== 'song' && !!onGone
+
+  if (gone) return null
 
   return (
     /* A div, not a button: the control lives inside the card and a button
@@ -734,6 +784,16 @@ export default function LibraryPage() {
   const data = idx.data
   const isItem = route.includes(':')
   const tab = isItem ? '' : route || 'overview'
+  /* A result or tab click must leave the search behind. While the box holds
+     text the hits list owns the stage, so navigating without clearing it
+     changes the hash with nothing visibly happening. */
+  const nav = useCallback(
+    (to: string) => {
+      setQ('')
+      go(to)
+    },
+    [go]
+  )
 
   /* One filter over everything, because "which list is 苦い in" is exactly the
      question the reader does not have an answer to yet. */
@@ -781,7 +841,7 @@ export default function LibraryPage() {
             <Tabs
               label="Library sections"
               value={tab}
-              onChange={(t) => go(t === 'overview' ? '' : t)}
+              onChange={(t) => nav(t === 'overview' ? '' : t)}
               tabs={[
                 { key: 'overview', label: 'Overview' },
                 ...data.types.map((t) => ({
@@ -813,7 +873,13 @@ export default function LibraryPage() {
               {hits.rows.length ? (
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {hits.rows.map((i) => (
-                    <ItemRow key={i.id} item={i} go={go} onGone={() => void idx.reload()} />
+                    <ItemRow
+                      key={i.id}
+                      item={i}
+                      go={nav}
+                      onGone={() => void idx.reload()}
+                      onChanged={() => void idx.reload()}
+                    />
                   ))}
                 </div>
               ) : (
@@ -821,16 +887,26 @@ export default function LibraryPage() {
               )}
             </Section>
           ) : isItem ? (
-            <ItemView id={route} go={go} />
+            <ItemView id={route} go={nav} />
           ) : tab === 'overview' ? (
-            <Overview data={data} go={go} />
+            <Overview data={data} go={nav} />
           ) : (
-            <Section title={`${typeLabel(tab)} · ${num(data.counts[tab])}`}>
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {(data.items[tab] ?? []).map((i) => (
-                  <ItemRow key={i.id} item={i} go={go} onGone={() => void idx.reload()} />
-                ))}
-              </div>
+            <Section title={`${typeLabel(tab)} · ${num(data.counts[tab] ?? 0)}`}>
+              {(data.items[tab] ?? []).length ? (
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {(data.items[tab] ?? []).map((i) => (
+                    <ItemRow
+                      key={i.id}
+                      item={i}
+                      go={nav}
+                      onGone={() => void idx.reload()}
+                      onChanged={() => void idx.reload()}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <Empty>Nothing filed under {typeLabel(tab).toLowerCase()} yet.</Empty>
+              )}
             </Section>
           )}
         </>

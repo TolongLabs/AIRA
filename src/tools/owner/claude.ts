@@ -368,7 +368,7 @@ function chatRowsForTarget(doc: RoutesDoc, target: string, machineFilter?: strin
   const out: RouteRow[] = []
   for (const row of routes) {
     if (!isRecord(row)) continue
-    const rowTarget = typeof row.target === 'string' ? row.target.trim() : ''
+    const rowTarget = typeof row.target === 'string' ? row.target.trim().replace(/^whatsapp:/, '') : ''
     const rowMachine = typeof row.machine === 'string' ? row.machine.trim() : ''
     if (rowTarget !== target || !rowMachine) continue
     if (machineFilter && rowMachine !== machineFilter) continue
@@ -542,7 +542,7 @@ function sessionNoticesTool(routesFile: string): ToolDefinition<z.infer<typeof s
 
           for (const row of routes) {
             if (!isRecord(row)) continue
-            const rowTarget = typeof row.target === 'string' ? row.target.trim() : ''
+            const rowTarget = typeof row.target === 'string' ? row.target.trim().replace(/^whatsapp:/, '') : ''
             const rowMachine = typeof row.machine === 'string' ? row.machine.trim() : ''
             if (rowTarget !== target || !rowMachine) continue
             if (picked && rowMachine !== picked) continue

@@ -189,4 +189,26 @@ bearer token.
   migrates `mirai-theme` into `tolongai-theme`.
 - A page calls the API on its own origin, so a browser write carries the API's own `Origin` and is accepted.
 - The Chats page is the only page on the core's API. Dashboard, Settings, Library, Graph, Cron, Markets, Notices
-  and Send keep the legacy API. How the owner-tool pages reach their API after cutover is decided with #24.
+  and Send reach the host owner service through the same origin under `/owner-api/`. The core strips this prefix
+  and sends the request to the corresponding `/api/` endpoint on the configured owner service. Core paths
+  such as `/api/chats` retain their independent response shapes. Owner credentials travel only in the
+  `X-TolongAI-Token` header. The proxy streams uploads and media and propagates refusal or service failure.
+  On dev2 the container connects through a private Unix socket. A systemd user socket forwards to the host's
+  bridge address only after an anonymous settings request returns 401. Using loopback here would bypass owner
+  authentication.
+- Gateway names can supply display names. Clearing an owner label keeps the stored label empty across new messages.
+  Container installs expose only the gateway directory index to the core. The index refreshes after replacement. Each chat row includes the time of its latest inbound message, or null
+  for a record with no inbound messages. Phone and linked-device identities remain separate unless verified.
+
+## Owner Page Edits
+
+The Settings editor keeps its selected file and unsaved buffer until Save or Revert. A failed read disables
+writes to that target. Models, Voice and Files change the host owner service. The core uses its own deployed
+configuration and the chat's character binding. The Ollama probe checks the entered origin from the host,
+authenticates the owner's token and reads only the model list. It never saves the entered endpoint.
+
+Market list replacements carry the field values seen by the editor. A conflicting write returns 409.
+The core writes the same markets file read by the owner tools. Digest changes preserve the other recipients
+and hours. Notice routes store the gateway's prefixed WhatsApp target. Core lookups accept both that form
+and older bare targets. A refused write retains its draft. Service actions check the resulting unit state.
+A lost upload acknowledgement requires checking recent sends before retrying.

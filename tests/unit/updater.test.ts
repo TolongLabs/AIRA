@@ -213,11 +213,11 @@ describe('runUpdate', () => {
       'newestRelease',
       'runningVersion',
       'activeTurns',
-      'pull:1.0.0',
-      'start:1.0.0',
+      'pull:v1.0.0',
+      'start:v1.0.0',
       'healthy',
       'syntheticTurn',
-      'pruneImages:1.0.0:none',
+      'pruneImages:v1.0.0:none',
       'record:deployed'
     ])
     expect(records).toHaveLength(1)
@@ -244,17 +244,48 @@ describe('runUpdate', () => {
     const { ops, calls, records, alerts } = createFakeOps({ snapshotOk: false })
     const result = await runUpdate(ops, defaultConfig)
     expect(result).toEqual({ action: 'none', reason: 'snapshot_failed' })
-    expect(calls).not.toContain('pull:1.2.0')
-    expect(calls).not.toContain('start:1.2.0')
+    expect(calls).not.toContain('pull:v1.2.0')
+    expect(calls).not.toContain('start:v1.2.0')
     expect(records[0]).toMatchObject({ outcome: 'failed_before_start', reason: 'snapshot_failed' })
     expect(alerts).toHaveLength(1)
+  })
+
+  it('deploys the release when the running tag carries no version', async () => {
+    const { ops, calls } = createFakeOps({
+      release: { tag: 'v1.2.0', version: '1.2.0', manual: false },
+      running: 'sha-abc1234'
+    })
+    const result = await runUpdate(ops, defaultConfig)
+    expect(result).toEqual({ action: 'deployed', from: 'sha-abc1234', to: '1.2.0' })
+    expect(calls).toContain('pull:v1.2.0')
+    expect(calls).toContain('pruneImages:v1.2.0:sha-abc1234')
+  })
+
+  it('snapshots and deploys when the running tag is stable', async () => {
+    const { ops, calls } = createFakeOps({
+      release: { tag: 'v1.2.0', version: '1.2.0', manual: false },
+      running: 'stable'
+    })
+    const result = await runUpdate(ops, defaultConfig)
+    expect(result).toEqual({ action: 'deployed', from: 'stable', to: '1.2.0' })
+    expect(calls).toContain('snapshot')
+    expect(calls).toContain('pruneImages:v1.2.0:stable')
+  })
+
+  it('proceeds after a verified offline snapshot when the core is down', async () => {
+    const { ops, calls, alerts } = createFakeOps({ snapshotOk: false, healthyQueue: [] })
+    ops.offlineSnapshot = async () => true
+    const result = await runUpdate(ops, defaultConfig)
+    expect(calls).toContain('pull:v1.2.0')
+    expect(result).toEqual({ action: 'rollback_failed', from: '1.1.0', to: '1.2.0', reason: 'unhealthy' })
+    expect(alerts.some((msg) => msg.includes('fresh offline snapshot'))).toBe(true)
   })
 
   it('aborts before start when pull fails and leaves the running version untouched', async () => {
     const { ops, calls, records, alerts } = createFakeOps({ fail: { pull: true } })
     const result = await runUpdate(ops, defaultConfig)
     expect(result).toEqual({ action: 'none', reason: 'pull_failed' })
-    expect(calls).not.toContain('start:1.2.0')
+    expect(calls).not.toContain('start:v1.2.0')
     expect(records[0]).toMatchObject({ outcome: 'failed_before_start', reason: 'pull_failed' })
     expect(alerts).toHaveLength(1)
   })
@@ -268,11 +299,11 @@ describe('runUpdate', () => {
       'runningVersion',
       'activeTurns',
       'snapshot',
-      'pull:1.2.0',
-      'start:1.2.0',
+      'pull:v1.2.0',
+      'start:v1.2.0',
       'healthy',
       'syntheticTurn',
-      'pruneImages:1.2.0:1.1.0',
+      'pruneImages:v1.2.0:1.1.0',
       'record:deployed'
     ])
     expect(records).toEqual([
@@ -295,14 +326,14 @@ describe('runUpdate', () => {
     expect(alerts).toHaveLength(1)
   })
 
-  it('rolls back, records and alerts when health check times out', async () => {
+  it('records rollback_failed when the old image stays unhealthy after a rollback', async () => {
     const { ops, calls, records, alerts } = createFakeOps({ healthyQueue: [false] })
     const result = await runUpdate(ops, { waitForIdleMs: 2000, healthTimeoutMs: 4000, pollMs: 2000 })
-    expect(result).toEqual({ action: 'rolled_back', from: '1.1.0', to: '1.2.0', reason: 'unhealthy' })
+    expect(result).toEqual({ action: 'rollback_failed', from: '1.1.0', to: '1.2.0', reason: 'unhealthy' })
     expect(calls).toContain('start:1.1.0')
     expect(calls).not.toContain('syntheticTurn')
-    expect(records[0]).toMatchObject({ outcome: 'rolled_back', reason: 'unhealthy' })
-    expect(alerts).toHaveLength(1)
+    expect(records[0]).toMatchObject({ outcome: 'rollback_failed', reason: 'unhealthy' })
+    expect(alerts.some((msg) => msg.toLowerCase().includes('service is down'))).toBe(true)
   })
 
   it('rolls back, records and alerts when synthetic turn fails', async () => {
@@ -314,10 +345,11 @@ describe('runUpdate', () => {
     expect(alerts).toHaveLength(1)
   })
 
-  it('alerts that the service is down when rollback start also fails', async () => {
-    const { ops, alerts } = createFakeOps({ fail: { start: true, failRollbackStart: true } })
+  it('records rollback_failed when rollback start also fails', async () => {
+    const { ops, alerts, records } = createFakeOps({ fail: { start: true, failRollbackStart: true } })
     const result = await runUpdate(ops, defaultConfig)
-    expect(result).toEqual({ action: 'rolled_back', from: '1.1.0', to: '1.2.0', reason: 'start_failed' })
+    expect(result).toEqual({ action: 'rollback_failed', from: '1.1.0', to: '1.2.0', reason: 'start_failed' })
+    expect(records[0]).toMatchObject({ outcome: 'rollback_failed', reason: 'start_failed' })
     expect(alerts.some((msg) => msg.toLowerCase().includes('service is down'))).toBe(true)
   })
 
@@ -327,12 +359,15 @@ describe('runUpdate', () => {
     expect(result).toEqual({ action: 'deployed', from: '1.1.0', to: '1.2.0' })
   })
 
-  it('never rejects even when newestRelease or runningVersion reject', async () => {
+  it('never rejects: a newestRelease failure skips, a runningVersion failure aborts before pull', async () => {
     const { ops } = createFakeOps({ fail: { newestRelease: true } })
     await expect(runUpdate(ops, defaultConfig)).resolves.toEqual({ action: 'none', reason: 'no_release' })
 
-    const { ops: ops2 } = createFakeOps({ fail: { runningVersion: true } })
-    await expect(runUpdate(ops2, defaultConfig)).resolves.toEqual({ action: 'deployed', from: undefined, to: '1.2.0' })
+    const { ops: ops2, calls, records } = createFakeOps({ fail: { runningVersion: true } })
+    await expect(runUpdate(ops2, defaultConfig)).resolves.toEqual({ action: 'none', reason: 'version_failed' })
+    expect(calls).not.toContain('pull:v1.2.0')
+    expect(calls).not.toContain('start:v1.2.0')
+    expect(records[0]).toMatchObject({ outcome: 'failed_before_start', reason: 'version_failed' })
   })
 })
 
@@ -434,7 +469,7 @@ describe('createRealOps', () => {
     expect(await ops404.newestRelease()).toBeUndefined()
   })
 
-  it('parses runningVersion from docker compose images json output and ignores stable', async () => {
+  it('parses runningVersion from docker compose images json output and keeps stable', async () => {
     const opsVersion = createRealOps(
       baseOptions({
         run: async () => ({
@@ -446,16 +481,23 @@ describe('createRealOps', () => {
     )
     expect(await opsVersion.runningVersion()).toBe('1.2.3')
 
+    const id = 'a'.repeat(64)
     const opsStable = createRealOps(
       baseOptions({
-        run: async () => ({
+        run: async (_command, args) => ({
           code: 0,
-          stdout: JSON.stringify([{ Repository: 'ghcr.io/tolonglabs/aira', Tag: 'stable' }]),
-          stderr: ''
+          stderr: '',
+          stdout: args.includes('images')
+            ? '[{"Tag":"stable"}]'
+            : args.includes('inspect')
+              ? 'sha256:' + id
+              : args.includes('ps')
+                ? 'container'
+                : ''
         })
       })
     )
-    expect(await opsStable.runningVersion()).toBeUndefined()
+    expect(await opsStable.runningVersion()).toBe('rollback-' + id.slice(0, 16))
 
     const opsEmpty = createRealOps(
       baseOptions({
@@ -584,26 +626,10 @@ describe('createRealOps', () => {
     expect(compliant.killed).toEqual(['SIGTERM'])
   })
 
-  it('bounds syntheticTurn fetch with AbortSignal.timeout(60_000)', async () => {
-    const controller = new AbortController()
-    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal)
-    const ops = createRealOps(
-      baseOptions({
-        fetch: ((_input, init) =>
-          new Promise((_resolve, reject) => {
-            init?.signal?.addEventListener(
-              'abort',
-              () => reject(init.signal?.reason ?? new DOMException('timed out', 'TimeoutError')),
-              { once: true }
-            )
-          })) as typeof fetch
-      })
-    )
-
-    const resultPromise = ops.syntheticTurn()
-    expect(timeoutSpy).toHaveBeenCalledWith(SYNTHETIC_TURN_TIMEOUT_MS)
-    controller.abort(new DOMException('timed out', 'TimeoutError'))
-    expect(await resultPromise).toBe(false)
+  it('bounds the in-container synthetic turn and rejects a missing receipt', async () => {
+    const run = vi.fn(async () => ({ code: 0, stdout: 'auxiliary', stderr: '' }))
+    expect(await createRealOps(baseOptions({ run })).syntheticTurn()).toBe(false)
+    expect(run.mock.calls[0]).toContainEqual(expect.objectContaining({ timeoutMs: SYNTHETIC_TURN_TIMEOUT_MS }))
   })
 
   it('checks syntheticTurn status 200 with non-empty content and appends deploy records', async () => {
@@ -611,6 +637,7 @@ describe('createRealOps', () => {
     const ops = createRealOps(
       baseOptions({
         recordFile,
+        run: async () => ({ code: 0, stdout: 'deploy-turn-ok', stderr: '' }),
         fetch: (async () =>
           new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), { status: 200 })) as typeof fetch
       })

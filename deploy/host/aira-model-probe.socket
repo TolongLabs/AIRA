@@ -1,0 +1,12 @@
+[Unit]
+Description=Probe an owner-entered Ollama endpoint from the host
+
+[Socket]
+ListenStream=%h/.local/share/aira/gateway-directory/model-probe.sock
+SocketMode=0600
+DirectoryMode=0700
+Accept=yes
+MaxConnections=4
+
+[Install]
+WantedBy=sockets.target

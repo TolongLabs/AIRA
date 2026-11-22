@@ -1,0 +1,5 @@
+[Unit]
+Description=Forward the AIRA owner API socket to the authenticated host listener
+
+[Service]
+ExecStart=%h/.local/lib/aira/owner-api-bridge.sh

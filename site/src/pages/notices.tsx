@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Shell } from '@/components/shell'
-import { post } from '@/lib/api'
+import { get, post } from '@/lib/api'
 import { toast, Toaster, useApi } from '@/lib/hooks'
 import { Badge, Button, Card, ConfirmAction, Empty, Field, Picker, Section, Segmented, Toggle } from '@/components/ui'
 
@@ -134,10 +134,24 @@ export default function NoticesPage() {
     setBusy(key)
     try {
       await post('/api/settings/notice_route', r)
-      await api.reload()
+      const saved = await get<Notices>('/api/notices')
+      const row = saved.routes?.find((row) => row.target === r.target && row.machine === r.machine)
+      if (
+        r.remove
+          ? row
+          : !row ||
+            (r.enabled !== undefined && row.enabled !== r.enabled) ||
+            (r.label !== undefined && row.label !== r.label)
+      )
+        throw new Error('The saved route does not match the requested change')
+      api.reload()
       toast(r.remove ? 'route removed ✓' : 'saved ✓')
     } catch (e) {
       toast((e as Error).message, false)
+      /* Rethrown so ConfirmAction stays armed on a failed remove instead of
+         disarming as though the row had gone. Non-confirm callers swallow
+         the rejection at their own call site. */
+      throw e
     } finally {
       setBusy('')
     }
@@ -272,7 +286,7 @@ export default function NoticesPage() {
                   <Toggle
                     checked={r.enabled}
                     disabled={busy === key}
-                    onChange={(v) => void save({ ...r, enabled: v })}
+                    onChange={(v) => void save({ ...r, enabled: v }).catch(() => {})}
                     label={r.enabled ? 'on' : 'off'}
                   />
                   {/* Deleting sat one unconfirmed click from the reversible
@@ -284,7 +298,7 @@ export default function NoticesPage() {
                     label="remove"
                     confirmLabel="Remove"
                     question={`Remove the route telling ${nameOf(r.target)} about ${r.machine}?`}
-                    onConfirm={() => void save({ ...r, remove: true })}
+                    onConfirm={() => save({ ...r, remove: true })}
                   />
                 </div>
               </div>
@@ -295,11 +309,12 @@ export default function NoticesPage() {
                 <Segmented
                   options={['a summary', 'the whole reply'] as const}
                   value={r.mode === 'full' ? 'the whole reply' : 'a summary'}
+                  disabled={busy === key}
                   onChange={(v) =>
                     void save({
                       ...r,
                       mode: v === 'the whole reply' ? 'full' : 'summary'
-                    })
+                    }).catch(() => {})
                   }
                 />
                 <span className="text-[0.8rem] text-faint">
@@ -316,11 +331,12 @@ export default function NoticesPage() {
                 <Segmented
                   options={['after every reply', 'only when it closes'] as const}
                   value={r.when === 'session_end' ? 'only when it closes' : 'after every reply'}
+                  disabled={busy === key}
                   onChange={(v) =>
                     void save({
                       ...r,
                       when: v === 'only when it closes' ? 'session_end' : 'every_turn'
-                    })
+                    }).catch(() => {})
                   }
                 />
                 <span className="text-[0.8rem] text-faint">
@@ -367,7 +383,7 @@ export default function NoticesPage() {
                 <Toggle
                   checked={!!r.quote_prompt}
                   disabled={busy === key || r.mode === 'full'}
-                  onChange={(v) => void save({ ...r, quote_prompt: v })}
+                  onChange={(v) => void save({ ...r, quote_prompt: v }).catch(() => {})}
                   label="quote what was asked"
                 />
                 <span className="text-[0.8rem] text-faint">
@@ -495,10 +511,14 @@ export default function NoticesPage() {
               className="sm:mt-6"
               disabled={!machine || !target || busy !== ''}
               onClick={() =>
-                void save({ machine, target, enabled: false }).then(() => {
-                  setMachine('')
-                  setTarget('')
-                })
+                void save({ machine, target, enabled: false })
+                  .then(() => {
+                    /* Cleared only on success: a failed save keeps both
+                       pickers so nothing typed is lost to a retry. */
+                    setMachine('')
+                    setTarget('')
+                  })
+                  .catch(() => {})
               }
             >
               Add

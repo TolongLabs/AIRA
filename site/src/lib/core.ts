@@ -14,6 +14,7 @@ export interface Resolved {
 export interface CoreChat {
   chatId: string
   waId: string
+  lastInboundAt?: string | null
   storedLabel: string
   type: 'dm' | 'group'
   label: string

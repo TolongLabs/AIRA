@@ -765,6 +765,13 @@ function ChatRow({
             </span>
             {chat.status === 'pending' && <span className="shrink-0 text-[0.72rem] text-amber">off</span>}
           </span>
+          {chat.type === 'dm' && (
+            <span className="block text-xs text-faint">
+              {chat.lastInboundAt
+                ? 'Last message received ' + new Date(chat.lastInboundAt).toLocaleString()
+                : 'No recorded incoming messages'}
+            </span>
+          )}
           {chat.label && <span className="mt-0.5 block truncate text-[0.72rem] text-faint">{chat.waId}</span>}
         </span>
         <span className="hidden shrink-0 items-center gap-2 sm:flex">

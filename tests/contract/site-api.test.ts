@@ -451,6 +451,23 @@ describe('site API read routes', () => {
     const chatsRes = await apiFetch(siteUrl, '/api/chats')
     const chatsBody = (await chatsRes.json()) as { chats: { chatId: string; label: string }[] }
     expect(chatsBody.chats.find((c) => c.chatId === dm.chatId)?.label).toBe('Alice DM')
+
+    const clear = await fetch(`${siteUrl}/api/chats/${dm.chatId}/label`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ label: '' })
+    })
+    expect(clear.status).toBe(200)
+    await gateway.send({
+      chat: { waId: dmWaId, kind: 'dm' },
+      sender: dmWaId,
+      mid: 'after-clear',
+      text: 'hi',
+      name: 'Current name'
+    })
+    expect(getChatByWaId(app.storage, dmWaId)?.label).toBe('')
+    const updated = (await (await apiFetch(siteUrl, '/api/chats')).json()) as typeof chatsBody
+    expect(updated.chats.find((c) => c.chatId === dm.chatId)?.label).toBe('Current name')
   })
 })
 

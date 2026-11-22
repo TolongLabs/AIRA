@@ -15,8 +15,8 @@
   "messages": [
     {
       "from": "browser",
-      "label": "GET /api/chats + Bearer SITE_TOKEN",
-      "note": "A missing or wrong token gets 401 unauthorized. A token under 32 chars means no API at all.",
+      "label": "GET /api/chats",
+      "note": "Core reads are served on the private listener. Owner-tool calls use a separate route and token.",
       "to": "server",
       "y": 180
     },
@@ -89,7 +89,7 @@
           "path": "site/src/lib/core.ts"
         }
       ],
-      "sublabel": "token in local storage",
+      "sublabel": "Core client on the private site",
       "type": "frontend"
     },
     {
@@ -100,7 +100,7 @@
           "path": "src/api/server.ts"
         }
       ],
-      "sublabel": "token gate, then dispatch",
+      "sublabel": "route and method dispatch",
       "type": "backend"
     },
     {

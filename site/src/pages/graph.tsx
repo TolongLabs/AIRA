@@ -147,6 +147,7 @@ export default function GraphPage() {
      were the same screen — an empty state without this flashes on every mount
      and every lens switch. */
   const [loaded, setLoaded] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [selected, setSelected] = useState<{
     label: string
     type: string
@@ -174,70 +175,85 @@ export default function GraphPage() {
   /* ── load + seed ─────────────────────────────────────────────────────── */
   useEffect(() => {
     let live = true
-    get<GraphData>(`/api/graph?lens=${lens}`).then((d) => {
-      if (!live) return
-      const byId = new Map<string, Node>()
-      const nodes: Node[] = d.nodes.map((r) => {
-        const n: Node = { ...r, x: 0, y: 0, vx: 0, vy: 0, deg: 0 }
-        byId.set(r.id, n)
-        return n
-      })
-      const edges: Edge[] = []
-      for (const e of d.edges) {
-        const a = byId.get(e.s),
-          b = byId.get(e.t)
-        if (!a || !b) continue
-        a.deg++
-        b.deg++
-        edges.push({ a, b, r: e.r })
-      }
+    setLoadError(null)
+    get<GraphData>(`/api/graph?lens=${lens}`)
+      .then((d) => {
+        if (!live) return
+        const byId = new Map<string, Node>()
+        const nodes: Node[] = d.nodes.map((r) => {
+          const n: Node = { ...r, x: 0, y: 0, vx: 0, vy: 0, deg: 0 }
+          byId.set(r.id, n)
+          return n
+        })
+        const edges: Edge[] = []
+        for (const e of d.edges) {
+          const a = byId.get(e.s),
+            b = byId.get(e.t)
+          if (!a || !b) continue
+          a.deg++
+          b.deg++
+          edges.push({ a, b, r: e.r })
+        }
 
-      /* Hub-seeded layout: the best-connected nodes get placed on a ring far
+        /* Hub-seeded layout: the best-connected nodes get placed on a ring far
          apart, and their satellites spiral out beside them. Random seeding
          made every cluster start on top of every other and then explode. */
-      const hubs = [...nodes]
-        .filter((n) => n.deg >= 5)
-        .sort((a, b) => b.deg - a.deg)
-        .slice(0, 12)
-      const hubOf = new Map<Node, Node>()
-      hubs.forEach((h, i) => {
-        const R = 260 + 22 * hubs.length
-        const a = (i / Math.max(1, hubs.length)) * Math.PI * 2
-        h.x = Math.cos(a) * R
-        h.y = Math.sin(a) * R
-        hubOf.set(h, h)
-      })
-      const GOLDEN = Math.PI * (3 - Math.sqrt(5))
-      let k = 0
-      for (const n of nodes) {
-        if (hubOf.has(n)) continue
-        const near = edges.find((e) => (e.a === n && hubOf.has(e.b)) || (e.b === n && hubOf.has(e.a)))
-        const hub = near ? (near.a === n ? near.b : near.a) : null
-        const step = k++
-        const ang = step * GOLDEN
-        const rad = 40 + Math.sqrt(step + 1) * 26
-        n.x = (hub?.x ?? 0) + Math.cos(ang) * rad
-        n.y = (hub?.y ?? 0) + Math.sin(ang) * rad
-      }
+        const hubs = [...nodes]
+          .filter((n) => n.deg >= 5)
+          .sort((a, b) => b.deg - a.deg)
+          .slice(0, 12)
+        const hubOf = new Map<Node, Node>()
+        hubs.forEach((h, i) => {
+          const R = 260 + 22 * hubs.length
+          const a = (i / Math.max(1, hubs.length)) * Math.PI * 2
+          h.x = Math.cos(a) * R
+          h.y = Math.sin(a) * R
+          hubOf.set(h, h)
+        })
+        const GOLDEN = Math.PI * (3 - Math.sqrt(5))
+        let k = 0
+        for (const n of nodes) {
+          if (hubOf.has(n)) continue
+          const near = edges.find((e) => (e.a === n && hubOf.has(e.b)) || (e.b === n && hubOf.has(e.a)))
+          const hub = near ? (near.a === n ? near.b : near.a) : null
+          const step = k++
+          const ang = step * GOLDEN
+          const rad = 40 + Math.sqrt(step + 1) * 26
+          n.x = (hub?.x ?? 0) + Math.cos(ang) * rad
+          n.y = (hub?.y ?? 0) + Math.sin(ang) * rad
+        }
 
-      sim.current.nodes = nodes
-      sim.current.edges = edges
+        sim.current.nodes = nodes
+        sim.current.edges = edges
 
-      /* Settle it before anybody sees it. The seeding is a guess; the physics
+        /* Settle it before anybody sees it. The seeding is a guess; the physics
          is what turns it into a layout, and watching that happen is not a
          feature — it reads as the page malfunctioning. */
-      const warm = { nodes, edges, alpha: 1, drag: null }
-      for (let i = 0; i < PREWARM; i++) integrate(warm)
-      for (const n of nodes) {
-        n.vx = 0
-        n.vy = 0
-      }
-      sim.current.alpha = SETTLED_ALPHA
-      setCounts(d.counts)
-      setLoaded(true)
-      setTotal({ nodes: nodes.length, edges: edges.length })
-      setSelected(null)
-    })
+        const warm = { nodes, edges, alpha: 1, drag: null }
+        for (let i = 0; i < PREWARM; i++) integrate(warm)
+        for (const n of nodes) {
+          n.vx = 0
+          n.vy = 0
+        }
+        sim.current.alpha = SETTLED_ALPHA
+        setCounts(d.counts)
+        setLoaded(true)
+        setLoadError(null)
+        setTotal({ nodes: nodes.length, edges: edges.length })
+        setSelected(null)
+      })
+      .catch((e: Error) => {
+        if (!live) return
+        /* Do not leave the previous lens on screen as if it were this one. */
+        sim.current.nodes = []
+        sim.current.edges = []
+        sim.current.alpha = SETTLED_ALPHA
+        setCounts({})
+        setTotal({ nodes: 0, edges: 0 })
+        setSelected(null)
+        setLoaded(true)
+        setLoadError(e.message)
+      })
     return () => {
       live = false
     }
@@ -466,7 +482,7 @@ export default function GraphPage() {
             blank rectangle with a zero in the corner. Nothing here creates
             nodes — she files them as she talks — so the empty state points at
             the place where that happens rather than offering a dead button. */}
-        {loaded && !total.nodes && (
+        {loaded && !total.nodes && !loadError && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
             <div className="pointer-events-auto max-w-md text-center">
               <b className="mb-2 block font-serif text-[1.3rem] leading-tight font-normal">
@@ -495,7 +511,10 @@ export default function GraphPage() {
                 key={l}
                 type="button"
                 aria-pressed={l === lens}
-                onClick={() => setLens(l)}
+                onClick={() => {
+                  setLoadError(null)
+                  setLens(l)
+                }}
                 className={cn(
                   'min-h-9 cursor-pointer rounded-full border-0 px-4 text-[0.88rem] font-medium capitalize transition-colors',
                   l === lens ? 'bg-accent-soft text-accent' : 'bg-transparent text-muted hover:text-ink'
@@ -541,6 +560,14 @@ export default function GraphPage() {
               {total.nodes} nodes · {total.edges} edges
             </span>
           )}
+          {loadError && (
+            <span
+              role="alert"
+              className="pointer-events-auto rounded-full border border-down/40 bg-card/90 px-4 py-2 text-down backdrop-blur"
+            >
+              Could not load {lens}: {loadError}
+            </span>
+          )}
         </div>
 
         {selected && (
@@ -577,7 +604,7 @@ export default function GraphPage() {
 
             {selected.url && (
               <a
-                href={`/library/${selected.url}`}
+                href={`/app/library.html#${selected.url}`}
                 className="mt-3 inline-block text-[0.9rem] text-accent no-underline hover:underline"
               >
                 open in the library →
@@ -588,7 +615,7 @@ export default function GraphPage() {
             {selected.links.map((l, i) => (
               <a
                 key={`${l.label}-${i}`}
-                href={l.url ? `/library/${l.url}` : undefined}
+                href={l.url ? `/app/library.html#${l.url}` : undefined}
                 className="flex items-center gap-2 border-t border-line-2 py-1.5 text-[0.9rem] text-ink no-underline first:border-t-0 hover:text-accent"
               >
                 <span

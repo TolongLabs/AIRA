@@ -1,11 +1,13 @@
 import { type ChildProcess, type SpawnOptions, spawn } from 'node:child_process'
-import { appendFile, mkdir } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { appendFile, mkdir, readFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { DeployRecord, Release, UpdaterOps } from './update.js'
 
 /**
  * Shared pull budget across all attempts for one deploy. dev2 pulls at 1 to 2 MB/s (measured: 428 s, 554 s and 907 s
- * for three images), and the deploy job caps at 30 minutes, so a 20-minute budget covers full pulls while leaving
+ * for three images), and the deploy job caps at 45 minutes, so a 20-minute budget covers full pulls while leaving
  * headroom for the rest of the deploy.
  */
 export const DOCKER_PULL_BUDGET_MS = 20 * 60_000
@@ -16,6 +18,10 @@ export const DOCKER_PULL_ATTEMPTS = 3
 export const DOCKER_TIMEOUT_MS = 90_000
 export const KILL_GRACE_MS = 5_000
 export const SYNTHETIC_TURN_TIMEOUT_MS = 60_000
+/** Upper bound for one health or release fetch. Polling loops must never hang past their deadline. */
+export const HEALTH_FETCH_TIMEOUT_MS = 10_000
+export const RELEASE_FETCH_TIMEOUT_MS = 10_000
+/** A lock older than this is treated as left over by a dead deploy. Past the longest deploy budget. */
 
 export interface RunOptions {
   timeoutMs?: number
@@ -29,6 +35,8 @@ export interface RealOpsOptions {
   composeFile: string
   service: string
   coreUrl: string
+  /** The site API base URL. When set, healthy() also requires the site to be ready. */
+  siteUrl?: string
   recordFile: string
   run?: (
     command: string,
@@ -213,20 +221,41 @@ function parseComposeTag(stdout: string): string | undefined {
     return undefined
   }
   const tag = first?.['Tag'] ?? first?.['tag']
-  if (typeof tag !== 'string' || tag.length === 0 || tag === 'stable' || tag === '<none>') {
+  if (typeof tag !== 'string' || tag.length === 0 || tag === '<none>') {
     return undefined
   }
   return tag
+}
+
+export async function verifyOwnerConsole(
+  site: string,
+  fetcher: typeof fetch,
+  tokenFile = join(homedir(), '.hermes', 'brain', '.site-token')
+) {
+  const base = site.replace(/\/+$/, '')
+  const load = (path: string, headers: Record<string, string> = {}) =>
+    fetcher(base + path, { headers, signal: AbortSignal.timeout(HEALTH_FETCH_TIMEOUT_MS), redirect: 'error' })
+  const page = await load('/app/')
+  if (!page.ok || !(await page.text()).includes('/app/assets/')) return false
+  const chats = await load('/api/chats')
+  if (!chats.ok || !Array.isArray(((await chats.json()) as { chats?: unknown }).chats)) return false
+  const token = (await readFile(tokenFile, 'utf8')).trim()
+  if (!token) return false
+  const dash = await load('/owner-api/dashboard', { 'X-TolongAI-Token': token })
+  if (!dash.ok) return false
+  const data = (await dash.json()) as { services?: unknown; recent?: unknown }
+  return typeof data.services === 'object' && data.services !== null && Array.isArray(data.recent)
 }
 
 export function createRealOps(options: RealOpsOptions): UpdaterOps {
   const run = options.run ?? defaultRun
   const fetchFn = options.fetch ?? fetch
   const baseUrl = options.coreUrl.replace(/\/+$/, '')
+  const siteUrl = options.siteUrl
 
   const readHealth = async (): Promise<HealthBody | undefined> => {
     try {
-      const res = await fetchFn(`${baseUrl}/health`)
+      const res = await fetchFn(`${baseUrl}/health`, { signal: AbortSignal.timeout(HEALTH_FETCH_TIMEOUT_MS) })
       if (!res.ok) return undefined
       const data = (await res.json()) as unknown
       return typeof data === 'object' && data !== null ? (data as HealthBody) : undefined
@@ -240,7 +269,8 @@ export function createRealOps(options: RealOpsOptions): UpdaterOps {
   return {
     async newestRelease(): Promise<Release | undefined> {
       const res = await fetchFn(`https://api.github.com/repos/${options.repository}/releases/latest`, {
-        headers: { accept: 'application/vnd.github+json' }
+        headers: { accept: 'application/vnd.github+json' },
+        signal: AbortSignal.timeout(RELEASE_FETCH_TIMEOUT_MS)
       })
       if (res.status === 404) return undefined
       if (!res.ok) {
@@ -265,7 +295,18 @@ export function createRealOps(options: RealOpsOptions): UpdaterOps {
         'json',
         options.service
       ])
-      return parseComposeTag(stdout)
+      if (!stdout.trim() || stdout.trim() === '[]') return undefined
+      const tag = parseComposeTag(stdout)
+      if (tag && /^(?:sha-[a-f0-9]+|v?\d+\.\d+\.\d+(?:[-+][\w.-]+)?|rollback-[a-f0-9]+)$/.test(tag)) return tag
+      const container = (
+        await execChecked(run, 'docker', ['compose', '-f', options.composeFile, 'ps', '-a', '-q', options.service])
+      ).trim()
+      if (!container) throw new Error('Cannot identify the current container')
+      const image = (await execChecked(run, 'docker', ['inspect', '--format', '{{.Image}}', container])).trim()
+      if (!/^sha256:[a-f0-9]{64}$/.test(image)) throw new Error('Cannot identify rollback image')
+      const pinned = 'rollback-' + image.slice(7, 23)
+      await execChecked(run, 'docker', ['image', 'tag', image, options.image + ':' + pinned])
+      return pinned
     },
 
     async activeTurns(): Promise<number | undefined> {
@@ -273,9 +314,34 @@ export function createRealOps(options: RealOpsOptions): UpdaterOps {
       return typeof health?.activeTurns === 'number' ? health.activeTurns : undefined
     },
 
+    async offlineSnapshot(): Promise<boolean> {
+      const id = (
+        await execChecked(run, 'docker', ['compose', '-f', options.composeFile, 'ps', '-a', '-q', options.service])
+      ).trim()
+      if (!id) return false
+      const root = (
+        await execChecked(run, 'docker', [
+          'inspect',
+          '--format',
+          '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}',
+          id
+        ])
+      ).trim()
+      if (!root.startsWith('/')) return false
+      await execChecked(
+        run,
+        'python3',
+        [fileURLToPath(new URL('./offline-snapshot.py', import.meta.url)), root],
+        undefined,
+        120_000
+      )
+      return true
+    },
     async snapshot(): Promise<boolean> {
       const before = await readHealth()
-      const beforeId = typeof before?.snapshot?.id === 'number' ? before.snapshot.id : 0
+      // Without a readable baseline an old verified snapshot would look new. Fail instead of snapshotting blind.
+      if (!before) return false
+      const beforeId = typeof before.snapshot?.id === 'number' ? before.snapshot.id : 0
       await execChecked(run, 'docker', ['compose', '-f', options.composeFile, 'kill', '-s', 'SIGUSR2', options.service])
       const deadline = Date.now() + 60_000
       while (true) {
@@ -292,6 +358,11 @@ export function createRealOps(options: RealOpsOptions): UpdaterOps {
     },
 
     async pull(version: string): Promise<void> {
+      // A locally built image has no registry tag. Pulling it would ask a registry that never held it.
+      if (!options.image.includes('/')) {
+        process.stdout.write(`deploy: pull skipped for local image ${options.image}:${version}\n`)
+        return
+      }
       const deadline = Date.now() + DOCKER_PULL_BUDGET_MS
       let lastError: unknown
       for (let attempt = 1; attempt <= DOCKER_PULL_ATTEMPTS; attempt += 1) {
@@ -320,26 +391,42 @@ export function createRealOps(options: RealOpsOptions): UpdaterOps {
 
     async healthy(): Promise<boolean> {
       const health = await readHealth()
-      return health?.status === 'ready'
+      if (health?.status !== 'ready') return false
+      if (siteUrl === undefined || siteUrl === '') return true
+      try {
+        const res = await fetchFn(`${siteUrl.replace(/\/+$/, '')}/api/health`, {
+          signal: AbortSignal.timeout(HEALTH_FETCH_TIMEOUT_MS)
+        })
+        if (!res.ok) return false
+        const data = (await res.json()) as unknown
+        return typeof data === 'object' && data !== null && (data as { status?: unknown }).status === 'ready'
+      } catch {
+        return false
+      }
     },
 
     async syntheticTurn(): Promise<boolean> {
       try {
-        const res = await fetchFn(`${baseUrl}/v1/chat/completions`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            messages: [{ role: 'user', content: 'deploy check' }],
-            stream: false
-          }),
-          signal: AbortSignal.timeout(SYNTHETIC_TURN_TIMEOUT_MS)
-        })
-        if (res.status !== 200) return false
-        const data = (await res.json()) as {
-          choices?: { message?: { content?: unknown } }[]
-        }
-        const content = data.choices?.[0]?.message?.content
-        return typeof content === 'string' && content.trim().length > 0
+        // A router or auxiliary canned answer cannot satisfy the check. The image must record
+        // delivery from the normal model turn branch in an isolated fixture.
+        if (siteUrl && !(await verifyOwnerConsole(siteUrl, fetchFn))) return false
+        const out = await execChecked(
+          run,
+          'docker',
+          [
+            'compose',
+            '-f',
+            options.composeFile,
+            'exec',
+            '-T',
+            options.service,
+            'node',
+            'dist/scripts/deploy-turn-probe.js'
+          ],
+          undefined,
+          SYNTHETIC_TURN_TIMEOUT_MS
+        )
+        return out.trim().split('\n').at(-1) === 'deploy-turn-ok'
       } catch {
         return false
       }
@@ -372,5 +459,79 @@ export function createRealOps(options: RealOpsOptions): UpdaterOps {
     now(): Date {
       return new Date()
     }
+  }
+}
+
+/** The host lock that serialises the timer path with CI deploys. Both run on the host install folder. */
+export function deployLockPath(composeFile: string): string {
+  return join(dirname(composeFile), 'deploy.lock')
+}
+
+/** The site API base URL on the host: explicit env, else the install's .env, else loopback. */
+export async function resolveSiteUrl(dir: string, env: NodeJS.ProcessEnv = process.env): Promise<string> {
+  const fromEnv = env['AIRA_SITE_URL']
+  if (fromEnv && fromEnv.trim() !== '') return fromEnv.trim()
+  let text = ''
+  try {
+    text = await readFile(join(dir, '.env'), 'utf8')
+  } catch {
+    text = ''
+  }
+  const readKey = (key: string): string | undefined => {
+    const line = text.split(/\r?\n/).find((candidate) => candidate.startsWith(`${key}=`))
+    if (!line) return undefined
+    let value = line.slice(key.length + 1).trim()
+    if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1)
+    else if (value.length >= 2 && value.startsWith("'") && value.endsWith("'")) value = value.slice(1, -1)
+    return value === '' ? undefined : value
+  }
+  const bind = env['AIRA_SITE_BIND'] || readKey('AIRA_SITE_BIND') || '127.0.0.1'
+  const port = env['AIRA_SITE_PORT'] || readKey('AIRA_SITE_PORT') || '9890'
+  return `http://${bind}:${port}`
+}
+
+export interface DeployLock {
+  release(): Promise<void>
+}
+
+/** Linux releases flock on process exit, even if a deployment is interrupted. */
+export async function acquireDeployLock(lockPath: string): Promise<DeployLock | undefined> {
+  await mkdir(dirname(lockPath), { recursive: true })
+  const holder = spawn('flock', ['--exclusive', '--nonblock', lockPath, 'sh', '-c', 'printf ready; cat >/dev/null'], {
+    stdio: ['pipe', 'pipe', 'ignore']
+  })
+  const exited = new Promise<number | null>((resolve, reject) => {
+    holder.once('error', reject)
+    holder.once('close', resolve)
+  })
+  const ready = await Promise.race([
+    new Promise<boolean>((resolve) => holder.stdout.once('data', () => resolve(true))),
+    exited.then((code) => {
+      if (code !== 0 && code !== 1) throw new Error('Deploy lock unavailable')
+      return false
+    })
+  ])
+  if (!ready) return undefined
+  return {
+    async release() {
+      holder.stdin.end()
+      await exited
+    }
+  }
+}
+
+/** Waits up to timeoutMs for the host deploy lock. Returns undefined when the wait runs out. */
+export async function waitForDeployLock(
+  ops: { now(): Date; sleep(ms: number): Promise<void> },
+  lockPath: string,
+  timeoutMs: number,
+  pollMs = 5000
+): Promise<DeployLock | undefined> {
+  const deadline = ops.now().getTime() + timeoutMs
+  while (true) {
+    const lock = await acquireDeployLock(lockPath)
+    if (lock) return lock
+    if (ops.now().getTime() >= deadline) return undefined
+    await ops.sleep(pollMs)
   }
 }

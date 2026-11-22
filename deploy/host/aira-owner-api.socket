@@ -1,0 +1,10 @@
+[Unit]
+Description=AIRA owner API bridge from the private container
+
+[Socket]
+ListenStream=%h/.local/share/aira/gateway-directory/owner-api.sock
+SocketMode=0600
+DirectoryMode=0700
+
+[Install]
+WantedBy=sockets.target

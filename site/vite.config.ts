@@ -10,11 +10,7 @@ import { resolve } from 'node:path'
 // and mean each page ships only its own JS, with Rollup hoisting the shared
 // React/runtime into one chunk both pages cache.
 //
-// Build output lands in ./dist, which is APP_DIR in site.py. It used to land
-// in a sibling ../mirai, which read as a SECOND frontend folder rather than as
-// this one's output — the app now lives in exactly one directory, source in
-// src/ and the build beside it. dist IS committed, deliberately: the site is
-// served straight from it, so a clone can run without a Node toolchain.
+// CI builds the release bundle. Generated assets stay outside version control.
 export default defineConfig({
   base: '/app/',
   plugins: [react(), tailwindcss()],
@@ -42,8 +38,8 @@ export default defineConfig({
     // `bun run dev` talks to the real brain, so the UI is never developed
     // against fixtures — the API is the contract and it stays honest.
     proxy: {
-      '/api': 'http://127.0.0.1:6769',
-      '/library': 'http://127.0.0.1:6769'
+      '/api': 'http://127.0.0.1:9898',
+      '/owner-api': 'http://127.0.0.1:9898'
     }
   }
 })

@@ -226,7 +226,7 @@ describe('session_notices', () => {
       routes: [
         {
           machine: 'box-alpha',
-          target: '0000000000@s.whatsapp.net',
+          target: 'whatsapp:0000000000@s.whatsapp.net',
           enabled: true,
           mode: 'full',
           when: 'session_end',

@@ -82,13 +82,13 @@
         <rect x="295.25" y="430" width="10" height="210" rx="3" class="c-backend" stroke-width="1"/>
 
         <!-- Messages -->
-        <g data-edge-from="browser" data-edge-to="server" data-edge-label="GET /api/chats + Bearer SITE_TOKEN" data-edge-key="0">
+        <g data-edge-from="browser" data-edge-to="server" data-edge-label="GET /api/chats" data-edge-key="0">
           <path data-composition-edge-from="browser" data-composition-edge-to="server" data-composition-points="136.5,180;293.25,180" d="M 136.5 180 L 293.25 180" class="a-default" data-animate="edge" style="--step:0" stroke-width="1.4" marker-end="url(#arrowhead)"/>
         <g data-detail="context">
-          <rect x="96.67500000000001" y="160" width="236.39999999999998" height="18" rx="3" class="c-mask"/>
-          <text x="214.875" y="170" class="t-muted" font-size="11" text-anchor="middle">GET /api/chats + Bearer SITE_TOKEN</text>
+          <rect x="162.675" y="160" width="104.39999999999999" height="18" rx="3" class="c-mask"/>
+          <text x="214.875" y="170" class="t-muted" font-size="11" text-anchor="middle">GET /api/chats</text>
         </g>
-        <text data-detail="context" x="148.5" y="198" class="t-muted" font-size="7"><tspan x="148.5" dy="0">A missing or wrong token gets 401</tspan><tspan x="148.5" dy="11">unauthorized. A token under 32</tspan><tspan x="148.5" dy="11">chars means no API at all.</tspan></text>
+        <text data-detail="context" x="148.5" y="198" class="t-muted" font-size="7"><tspan x="148.5" dy="0">Core reads are served on the</tspan><tspan x="148.5" dy="11">private listener. Owner-tool</tspan><tspan x="148.5" dy="11">calls use a separate route and</tspan><tspan x="148.5" dy="11">token.</tspan></text>
         </g>
 
         <g data-edge-from="server" data-edge-to="routes" data-edge-label="dispatchGet" data-edge-key="1">
@@ -156,8 +156,8 @@
 
 
         <!-- Participants -->
-        <g id="node-browser" data-node-id="browser" data-node-label="Site page" tabindex="0" role="button" aria-label="Focus Site page, token in local storage, Sequence participant" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="token in local storage" data-node-context="Sequence participant">
-          <title>Site page · token in local storage · Sequence participant</title>
+        <g id="node-browser" data-node-id="browser" data-node-label="Site page" tabindex="0" role="button" aria-label="Focus Site page, Core client on the private site, Sequence participant" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="Core client on the private site" data-node-context="Sequence participant">
+          <title>Site page · Core client on the private site · Sequence participant</title>
           <rect x="62" y="72" width="135" height="60" rx="6" class="c-mask"/>
           <rect x="62" y="72" width="135" height="60" rx="6" class="c-frontend" data-animate="node" style="--step:0" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(68 78) scale(0.6875)">
@@ -167,18 +167,18 @@
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="129.5" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Site page</text>
-          <text data-detail="context" x="129.5" y="122" class="t-muted" font-size="7" text-anchor="middle">token in local storage</text>
+          <text data-detail="context" x="129.5" y="122" class="t-muted" font-size="6.8" text-anchor="middle">Core client on the private site</text>
         </g>
 
-        <g id="node-server" data-node-id="server" data-node-label="createSiteApiServer" tabindex="0" role="button" aria-label="Focus createSiteApiServer, token gate, then dispatch, Sequence participant" aria-pressed="false" data-node-kind="backend" data-node-sublabel="token gate, then dispatch" data-node-context="Sequence participant">
-          <title>createSiteApiServer · token gate, then dispatch · Sequence participant</title>
+        <g id="node-server" data-node-id="server" data-node-label="createSiteApiServer" tabindex="0" role="button" aria-label="Focus createSiteApiServer, route and method dispatch, Sequence participant" aria-pressed="false" data-node-kind="backend" data-node-sublabel="route and method dispatch" data-node-context="Sequence participant">
+          <title>createSiteApiServer · route and method dispatch · Sequence participant</title>
           <rect x="232.75" y="72" width="135" height="60" rx="6" class="c-mask"/>
           <rect x="232.75" y="72" width="135" height="60" rx="6" class="c-backend" data-animate="node" style="--step:1" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(238.75 78) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="300.25" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">createSiteApiServer</text>
-          <text data-detail="context" x="300.25" y="122" class="t-muted" font-size="7" text-anchor="middle">token gate, then dispatch</text>
+          <text data-detail="context" x="300.25" y="122" class="t-muted" font-size="7" text-anchor="middle">route and method dispatch</text>
         </g>
 
         <g id="node-writes" data-node-id="writes" data-node-label="writes.ts" tabindex="0" role="button" aria-label="Focus writes.ts, Host and Origin gates, Sequence participant" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Host and Origin gates" data-node-context="Sequence participant">

@@ -1,3 +1,4 @@
+import { checkOwnerResponse } from './owner-response'
 /* The one door to the brain.
  *
  * Reads are open on loopback; off-loopback the sensitive ones (and every
@@ -8,21 +9,21 @@
 
 const TOKEN_KEY = 'tolongai-token'
 
-/** A same-origin media URL the BROWSER can fetch as an `<img src>`.
- *
- * Every other call here is made by this code and can set the auth header.
- * An `<img>` cannot, so `/api/media` accepts the token in the query instead
- * — the one route that does. Off-loopback without it the image 401s and the
- * viewer sees a broken-image icon with no explanation, which is exactly how
- * a shipped feature looks unimplemented.
- *
- * Loopback needs no token, so a missing one is not an error: return the path
- * unchanged and let the server decide. */
-export function mediaSrc(path: string): string {
-  if (!path.startsWith('/api/media')) return path
-  const t = localStorage.getItem(TOKEN_KEY)
-  if (!t) return path
-  return path + (path.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(t)
+export async function ownerImage(path: string, signal: AbortSignal): Promise<Blob> {
+  const media = new URL(path, window.location.origin)
+  if (media.origin !== window.location.origin || media.pathname !== '/api/media') throw new Error('Invalid media URL')
+  media.searchParams.delete('token')
+  const load = () => fetch(ownerPath(media.pathname + media.search), { headers: authHeaders(), signal })
+  let result = await load()
+  if (result.status === 401) {
+    localStorage.removeItem(TOKEN_KEY)
+    await requestToken()
+    result = await load()
+  }
+  if (!result.ok) throw new Error('Could not load image (' + result.status + ')')
+  const blob = await result.blob()
+  if (!/^image\/(jpeg|png|gif|webp|avif|bmp)$/i.test(blob.type)) throw new Error('Unsupported image format')
+  return blob
 }
 
 ;(function migrateLegacyToken() {
@@ -86,8 +87,13 @@ function authHeaders(base: Record<string, string> = {}) {
   return t ? { ...base, 'X-TolongAI-Token': t } : base
 }
 
+export function ownerPath(path: string): string {
+  if (!path.startsWith('/api/')) throw new Error('Invalid owner API path')
+  return '/owner-api/' + path.slice('/api/'.length)
+}
+
 export async function get<T = unknown>(path: string): Promise<T> {
-  const go = () => fetch(path, { headers: authHeaders({ Accept: 'application/json' }) })
+  const go = () => fetch(ownerPath(path), { headers: authHeaders({ Accept: 'application/json' }) })
   let r = await go()
   if (r.status === 401) {
     localStorage.removeItem(TOKEN_KEY)
@@ -95,12 +101,14 @@ export async function get<T = unknown>(path: string): Promise<T> {
     r = await go()
   }
   if (!r.ok) throw new Error(`GET ${path} failed (${r.status})`)
-  return r.json() as Promise<T>
+  const value: unknown = await r.json()
+  checkOwnerResponse(path, value, 'GET')
+  return value as T
 }
 
 export async function post<T = unknown>(path: string, body: unknown): Promise<T> {
   const go = () =>
-    fetch(path, {
+    fetch(ownerPath(path), {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body)
@@ -121,7 +129,9 @@ export async function post<T = unknown>(path: string, body: unknown): Promise<T>
     }
     throw new Error(message)
   }
-  return r.json().catch(() => ({})) as Promise<T>
+  const value: unknown = await r.json()
+  checkOwnerResponse(path, value, 'POST')
+  return value as T
 }
 
 /** POST a multipart form, reporting upload progress as a 0–1 fraction.
@@ -139,7 +149,7 @@ export async function postForm<T = unknown>(
   const go = () =>
     new Promise<{ status: number; body: string }>((resolve, reject) => {
       const x = new XMLHttpRequest()
-      x.open('POST', path)
+      x.open('POST', ownerPath(path))
       for (const [k, v] of Object.entries(authHeaders())) x.setRequestHeader(k, v)
       x.upload.onprogress = (e) => {
         if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total)
@@ -160,8 +170,14 @@ export async function postForm<T = unknown>(
   } catch {
     /* keep the status line */
   }
-  if (r.status < 200 || r.status >= 300) throw Object.assign(new Error(j?.error || `HTTP ${r.status}`), { body: j })
-  return (j ?? {}) as T
+  if (r.status < 200 || r.status >= 300)
+    throw Object.assign(new Error(j?.error || `HTTP ${r.status}`), {
+      body: j,
+      uncertain: (r.status >= 500 && !j?.error) || r.status === 502 || r.status === 504
+    })
+  if (!j) throw Object.assign(new Error('Missing send acknowledgement'), { uncertain: true })
+  checkOwnerResponse(path, j, 'POST')
+  return j as T
 }
 
 /* ── shapes the API actually returns ──────────────────────────────────── */

@@ -40,12 +40,17 @@ export function GenerateButton({
     setBusy(true)
     setDraft(null)
     try {
-      const r = await post<{ text: string }>('/api/generate', {
+      const r = await post<{ text?: unknown }>('/api/generate', {
         kind,
         intent: said,
         ...(context ? { context } : {})
       })
-      setDraft(r.text)
+      const text = typeof r?.text === 'string' ? r.text : ''
+      if (!text.trim()) {
+        toast('the model returned nothing — try again', false)
+        return
+      }
+      setDraft(text)
     } catch (e) {
       toast((e as Error).message, false)
     } finally {
@@ -100,7 +105,7 @@ export function GenerateButton({
         </Button>
       </div>
 
-      {draft !== null && (
+      {typeof draft === 'string' && draft && (
         <div className="mt-3">
           <p className="m-0 mb-1.5 text-[0.78rem] text-muted">Draft — yours to keep or bin:</p>
           <div className="max-h-64 overflow-auto rounded-card border border-line bg-card p-3 text-[0.92rem] leading-relaxed whitespace-pre-wrap">
@@ -112,6 +117,7 @@ export function GenerateButton({
               size="sm"
               type="button"
               onClick={() => {
+                if (typeof draft !== 'string' || !draft.trim()) return
                 onAccept(draft)
                 setOpen(false)
                 setDraft(null)

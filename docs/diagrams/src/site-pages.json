@@ -8,7 +8,7 @@
     },
     {
       "from": "coreClient",
-      "label": "Bearer aira-site-token",
+      "label": "Private core /api",
       "to": "coreApi",
       "variant": "security"
     },
@@ -19,7 +19,7 @@
     },
     {
       "from": "legacyClient",
-      "label": "Bearer tolongai-token",
+      "label": "/owner-api + token header",
       "to": "legacyApi",
       "variant": "security"
     },
@@ -79,7 +79,7 @@
         }
       ],
       "stage": 1,
-      "sublabel": "5 calls, own token key",
+      "sublabel": "Core read and write routes",
       "type": "backend"
     },
     {
@@ -92,7 +92,7 @@
         }
       ],
       "stage": 1,
-      "sublabel": "old token key",
+      "sublabel": "Owner token header",
       "type": "backend"
     },
     {
@@ -121,7 +121,7 @@
         }
       ],
       "stage": 2,
-      "sublabel": "/api/dashboard, library… unchanged",
+      "sublabel": "Host owner service via core proxy",
       "type": "backend"
     },
     {

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { changeOwnerJob } from '../../src/api/owner-cron.js'
 import { createReplyCleaner } from '../../src/format/clean.js'
 import { scheduledTag } from '../../src/gateway/schedule.js'
 import type { TurnMedia } from '../../src/media/turn-media.js'
@@ -804,6 +805,34 @@ describe("the owner's gateway jobs", () => {
     testConfig((config) => {
       config.gateway.jobs = [{ id: JOB, chat: CHAT }]
     })
+
+  it('fires an owner-site job through the normal gateway and revokes its binding on removal', async () => {
+    const runner = scriptedRunner((input) => 'done: ' + userText(input))
+    const core = await startTestCore({ runner })
+    core.activate(CHAT)
+    let prompt = ''
+    const call = async (body?: Record<string, unknown>) => {
+      if (!body)
+        return {
+          status: 200,
+          body: { jobs: prompt ? [{ job_id: 'fixture', prompt, name: 'Fixture', deliver: 'whatsapp:' + CHAT }] : [] }
+        }
+      if (typeof body.prompt === 'string') prompt = body.prompt
+      return { status: 200, body: { success: true, job_id: 'fixture' } }
+    }
+    const made = await changeOwnerJob(
+      core.storage,
+      { action: 'create', deliver: 'whatsapp:' + CHAT, name: 'Fixture', prompt: 'Check the fixture.' },
+      call
+    )
+    expect(made.status).toBe(200)
+    expect(prompt).toContain('[AIRA-SCHEDULED')
+    expect((await core.gateway.fire(prompt)).content).toContain('Check the fixture.')
+    expect(runner.inputs).toHaveLength(1)
+    expect((await changeOwnerJob(core.storage, { action: 'remove', job_id: 'fixture' }, call)).status).toBe(200)
+    expect((await core.gateway.fire(prompt)).content).toBe('NO_REPLY')
+    expect(runner.inputs).toHaveLength(1)
+  })
 
   it('runs a listed job as a routine turn in its chat, once per firing', async () => {
     const runner = scriptedRunner((input) => `done: ${userText(input)}`)

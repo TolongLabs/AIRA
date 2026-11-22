@@ -1,0 +1,8 @@
+[Unit]
+Description=Watch the gateway directory for replacements
+
+[Path]
+PathChanged=%h/.hermes/channel_directory.json
+
+[Install]
+WantedBy=default.target

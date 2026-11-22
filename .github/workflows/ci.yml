@@ -153,7 +153,8 @@ jobs:
     # A named environment makes each run a GitHub deployment, listed on the repository page.
     environment:
       name: production
-    timeout-minutes: 30
+    # Worst case is lock wait plus a full pull budget plus the health and snapshot polls.
+    timeout-minutes: 45
     permissions:
       contents: read
     concurrency:
@@ -166,6 +167,23 @@ jobs:
 
       # Bun comes from the runner's tool cache; nothing is installed on the host itself.
       - uses: oven-sh/setup-bun@v2
+
+      - run: bun install --frozen-lockfile --production --ignore-scripts
+
+      - name: Install the gateway directory mirror
+        run: |
+          install -Dm644 deploy/host/sync-directory.py "$HOME/.local/lib/aira/sync-directory.py"
+          install -Dm644 deploy/host/aira-directory.service "$HOME/.config/systemd/user/aira-directory.service"
+          install -Dm644 deploy/host/aira-directory.path "$HOME/.config/systemd/user/aira-directory.path"
+          install -Dm755 deploy/host/owner-api-bridge.sh "$HOME/.local/lib/aira/owner-api-bridge.sh"
+          install -Dm644 deploy/host/aira-owner-api.socket "$HOME/.config/systemd/user/aira-owner-api.socket"
+          install -Dm644 deploy/host/aira-owner-api.service "$HOME/.config/systemd/user/aira-owner-api.service"
+          install -Dm644 deploy/host/model-probe.py "$HOME/.local/lib/aira/model-probe.py"
+          install -Dm644 deploy/host/aira-model-probe.socket "$HOME/.config/systemd/user/aira-model-probe.socket"
+          install -Dm644 deploy/host/aira-model-probe@.service "$HOME/.config/systemd/user/aira-model-probe@.service"
+          systemctl --user daemon-reload
+          systemctl --user enable --now aira-directory.path aira-owner-api.socket aira-model-probe.socket
+          systemctl --user start aira-directory.service
 
       - name: Deploy on host
         env:

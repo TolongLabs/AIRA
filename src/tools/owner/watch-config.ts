@@ -69,19 +69,25 @@ export function cleanSymbols(symbols: unknown): string[] {
   return out
 }
 
-export function loadWatchConfig(configPath: string): WatchConfig {
+export function loadWatchConfig(configPath: string, strict = false): WatchConfig {
   let raw: unknown
   try {
     const text = readFileSync(configPath, 'utf8')
     raw = parse(text) ?? {}
-  } catch {
+  } catch (error) {
+    if (strict && (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     return { watchlist: [], alerts: [] }
   }
   if (!isRecord(raw)) {
+    if (strict) throw new Error('Invalid market configuration')
     return { watchlist: [], alerts: [] }
   }
   const data: Record<string, unknown> = { ...raw }
-  const watchRaw = Array.isArray(data.watchlist) && data.watchlist.length > 0 ? data.watchlist : data.watch
+  // An explicitly cleared default list (`watchlist: []`) stays cleared. The
+  // legacy `watch` key is only a fallback for files written before `watchlist`
+  // existed — falling back whenever `watchlist` is EMPTY resurrects a list the
+  // owner just deleted, because every save also refreshes `watch`.
+  const watchRaw = Array.isArray(data.watchlist) ? data.watchlist : data.watch
   data.watchlist = Array.isArray(watchRaw)
     ? watchRaw
         .map((s) =>

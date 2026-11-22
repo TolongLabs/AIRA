@@ -79,10 +79,10 @@
         <text x="745" y="68" class="t-dim" font-size="9" font-weight="600" text-anchor="middle">04 / Stores</text>
 
         <!-- Flow paths -->
-        <path data-edge-from="chats" data-edge-to="coreClient" data-edge-label="reads and writes" data-edge-key="0" data-composition-points="156,157;259,157" d="M 156 157 L 259 157" class="a-default" data-animate="edge" style="--step:0" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="coreClient" data-edge-to="coreApi" data-edge-label="Bearer aira-site-token" data-edge-key="1" data-composition-points="371,157;467,157" d="M 371 157 L 467 157" class="a-security" data-animate="edge" style="--step:1" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <path data-edge-from="chats" data-edge-to="coreClient" data-edge-label="reads and writes" data-edge-key="0" data-composition-points="156,157;256,157" d="M 156 157 L 256 157" class="a-default" data-animate="edge" style="--step:0" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="coreClient" data-edge-to="coreApi" data-edge-label="Private core /api" data-edge-key="1" data-composition-points="374,157;467,157" d="M 374 157 L 467 157" class="a-security" data-animate="edge" style="--step:1" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
         <path data-edge-from="ownerPages" data-edge-to="legacyClient" data-edge-label="reads and writes" data-edge-key="2" data-composition-points="165,271;259,271" d="M 165 271 L 259 271" class="a-default" data-animate="edge" style="--step:2" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="legacyClient" data-edge-to="legacyApi" data-edge-label="Bearer tolongai-token" data-edge-key="3" data-composition-points="371,271;454.5,271" d="M 371 271 L 454.5 271" class="a-security" data-animate="edge" style="--step:3" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <path data-edge-from="legacyClient" data-edge-to="legacyApi" data-edge-label="/owner-api + token header" data-edge-key="3" data-composition-points="371,271;456.5,271" d="M 371 271 L 456.5 271" class="a-security" data-animate="edge" style="--step:3" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
         <path data-edge-from="coreApi" data-edge-to="sqlite" data-edge-label="chats, settings, turns, memory" data-edge-key="4" data-composition-points="593,157;689,157" d="M 593 157 L 689 157" class="a-default" data-animate="edge" style="--step:4" stroke-width="1.4" marker-end="url(#arrowhead)"/>
 
         <!-- Nodes -->
@@ -114,26 +114,26 @@
           <text data-detail="context" x="100" y="288.4" class="t-muted" font-size="7" text-anchor="middle">Dashboard, Settings, Library…</text>
         </g>
 
-        <g id="node-coreClient" data-node-id="coreClient" data-node-label="lib/core.ts" tabindex="0" role="button" aria-label="Focus lib/core.ts, 5 calls, own token key, 02 / API clients" aria-pressed="false" data-node-kind="backend" data-node-sublabel="5 calls, own token key" data-node-context="02 / API clients">
-          <title>lib/core.ts · 5 calls, own token key · 02 / API clients</title>
-          <rect x="259" y="128" width="112" height="58" rx="6" class="c-mask"/>
-          <rect x="259" y="128" width="112" height="58" rx="6" class="c-backend" data-animate="node" style="--step:1" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(265 134) scale(0.6875)">
+        <g id="node-coreClient" data-node-id="coreClient" data-node-label="lib/core.ts" tabindex="0" role="button" aria-label="Focus lib/core.ts, Core read and write routes, 02 / API clients" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Core read and write routes" data-node-context="02 / API clients">
+          <title>lib/core.ts · Core read and write routes · 02 / API clients</title>
+          <rect x="256" y="128" width="118" height="58" rx="6" class="c-mask"/>
+          <rect x="256" y="128" width="118" height="58" rx="6" class="c-backend" data-animate="node" style="--step:1" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(262 134) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="315" y="161" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">lib/core.ts</text>
-          <text data-detail="context" x="315" y="174.4" class="t-muted" font-size="7" text-anchor="middle">5 calls, own token key</text>
+          <text data-detail="context" x="315" y="174.4" class="t-muted" font-size="7" text-anchor="middle">Core read and write routes</text>
         </g>
 
-        <g id="node-legacyClient" data-node-id="legacyClient" data-node-label="lib/api.ts" tabindex="0" role="button" aria-label="Focus lib/api.ts, old token key, 02 / API clients" aria-pressed="false" data-node-kind="backend" data-node-sublabel="old token key" data-node-context="02 / API clients">
-          <title>lib/api.ts · old token key · 02 / API clients</title>
+        <g id="node-legacyClient" data-node-id="legacyClient" data-node-label="lib/api.ts" tabindex="0" role="button" aria-label="Focus lib/api.ts, Owner token header, 02 / API clients" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Owner token header" data-node-context="02 / API clients">
+          <title>lib/api.ts · Owner token header · 02 / API clients</title>
           <rect x="259" y="242" width="112" height="58" rx="6" class="c-mask"/>
           <rect x="259" y="242" width="112" height="58" rx="6" class="c-backend" data-animate="node" style="--step:3" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(265 248) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="315" y="275" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">lib/api.ts</text>
-          <text data-detail="context" x="315" y="288.4" class="t-muted" font-size="7" text-anchor="middle">old token key</text>
+          <text data-detail="context" x="315" y="288.4" class="t-muted" font-size="7" text-anchor="middle">Owner token header</text>
         </g>
 
         <g id="node-coreApi" data-node-id="coreApi" data-node-label="Core site API" tabindex="0" role="button" aria-label="Focus Core site API, /api/chats, settings, tools…, 03 / APIs" aria-pressed="false" data-node-kind="backend" data-node-sublabel="/api/chats, settings, tools…" data-node-context="03 / APIs">
@@ -147,15 +147,15 @@
           <text data-detail="context" x="530" y="174.4" class="t-muted" font-size="7" text-anchor="middle">/api/chats, settings, tools…</text>
         </g>
 
-        <g id="node-legacyApi" data-node-id="legacyApi" data-node-label="Legacy site API" tabindex="0" role="button" aria-label="Focus Legacy site API, /api/dashboard, library… unchanged, 03 / APIs" aria-pressed="false" data-node-kind="backend" data-node-sublabel="/api/dashboard, library… unchanged" data-node-context="03 / APIs">
-          <title>Legacy site API · /api/dashboard, library… unchanged · 03 / APIs</title>
-          <rect x="454.5" y="242" width="151" height="58" rx="6" class="c-mask"/>
-          <rect x="454.5" y="242" width="151" height="58" rx="6" class="c-backend" data-animate="node" style="--step:4" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(460.5 248) scale(0.6875)">
+        <g id="node-legacyApi" data-node-id="legacyApi" data-node-label="Legacy site API" tabindex="0" role="button" aria-label="Focus Legacy site API, Host owner service via core proxy, 03 / APIs" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Host owner service via core proxy" data-node-context="03 / APIs">
+          <title>Legacy site API · Host owner service via core proxy · 03 / APIs</title>
+          <rect x="456.5" y="242" width="147" height="58" rx="6" class="c-mask"/>
+          <rect x="456.5" y="242" width="147" height="58" rx="6" class="c-backend" data-animate="node" style="--step:4" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(462.5 248) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="518.5" y="263" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Legacy site API</text>
-          <text data-detail="context" x="530" y="279" class="t-muted" font-size="7" text-anchor="middle">/api/dashboard, library… unchanged</text>
+          <text data-node-label="" data-detail-anchor="" x="530" y="275" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Legacy site API</text>
+          <text data-detail="context" x="530" y="288.4" class="t-muted" font-size="7" text-anchor="middle">Host owner service via core proxy</text>
         </g>
 
         <g id="node-sqlite" data-node-id="sqlite" data-node-label="SQLite" tabindex="0" role="button" aria-label="Focus SQLite, chats, settings, turns, 04 / Stores" aria-pressed="false" data-node-kind="database" data-node-sublabel="chats, settings, turns" data-node-context="04 / Stores">
@@ -172,20 +172,20 @@
 
         <!-- Flow labels -->
         <g data-detail="context" data-edge-from="chats" data-edge-to="coreClient" data-edge-label="reads and writes" data-edge-key="0">
-          <rect x="162.3" y="136" width="90.4" height="16" rx="4" class="c-mask"/>
-          <text x="207.5" y="147" class="t-edge-default" font-size="8" text-anchor="middle">reads and writes</text>
+          <rect x="160.8" y="136" width="90.4" height="16" rx="4" class="c-mask"/>
+          <text x="206" y="147" class="t-edge-default" font-size="8" text-anchor="middle">reads and writes</text>
         </g>
-        <g data-detail="context" data-edge-from="coreClient" data-edge-to="coreApi" data-edge-label="Bearer aira-site-token" data-edge-key="1">
-          <rect x="359.1" y="108" width="119.8" height="16" rx="4" class="c-mask"/>
-          <text x="419" y="119" class="t-edge-security" font-size="8" text-anchor="middle">Bearer aira-site-token</text>
+        <g data-detail="context" data-edge-from="coreClient" data-edge-to="coreApi" data-edge-label="Private core /api" data-edge-key="1">
+          <rect x="372.85" y="136" width="95.3" height="16" rx="4" class="c-mask"/>
+          <text x="420.5" y="147" class="t-edge-security" font-size="8" text-anchor="middle">Private core /api</text>
         </g>
         <g data-detail="context" data-edge-from="ownerPages" data-edge-to="legacyClient" data-edge-label="reads and writes" data-edge-key="2">
           <rect x="166.8" y="250" width="90.4" height="16" rx="4" class="c-mask"/>
           <text x="212" y="261" class="t-edge-default" font-size="8" text-anchor="middle">reads and writes</text>
         </g>
-        <g data-detail="context" data-edge-from="legacyClient" data-edge-to="legacyApi" data-edge-label="Bearer tolongai-token" data-edge-key="3">
-          <rect x="355.3" y="222" width="114.9" height="16" rx="4" class="c-mask"/>
-          <text x="412.75" y="233" class="t-edge-security" font-size="8" text-anchor="middle">Bearer tolongai-token</text>
+        <g data-detail="context" data-edge-from="legacyClient" data-edge-to="legacyApi" data-edge-label="/owner-api + token header" data-edge-key="3">
+          <rect x="346.5" y="222" width="134.5" height="16" rx="4" class="c-mask"/>
+          <text x="413.75" y="233" class="t-edge-security" font-size="8" text-anchor="middle">/owner-api + token header</text>
         </g>
         <g data-detail="context" data-edge-from="coreApi" data-edge-to="sqlite" data-edge-label="chats, settings, turns, memory" data-edge-key="4">
           <rect x="561.5" y="108" width="159" height="16" rx="4" class="c-mask"/>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Search } from 'lucide-react'
 import { get } from '@/lib/api'
 import { Field, Input, Spinner } from '@/components/ui'
@@ -27,25 +27,33 @@ export function SymbolSearch({
   const [hits, setHits] = useState<{ symbol: string; name: string; type: string; exchange: string }[]>([])
   const [busy, setBusy] = useState(false)
   const [searched, setSearched] = useState(false)
+  /* Guards the debounced remote lookup: without it a slow reply for an older
+     term overwrites the hits for what is actually typed. */
+  const reqId = useRef(0)
 
   useEffect(() => {
     const term = q.trim()
     if (term.length < 2) {
+      reqId.current += 1
       setHits([])
       setSearched(false)
       return
     }
     // Debounced: this is a live remote lookup on every keystroke otherwise.
     const h = window.setTimeout(async () => {
+      const my = ++reqId.current
       setBusy(true)
       try {
         const r = await get<{
           results: { symbol: string; name: string; type: string; exchange: string }[]
         }>(`/api/market/search?q=${encodeURIComponent(term)}` + (region ? `&region=${encodeURIComponent(region)}` : ''))
+        if (my !== reqId.current) return
         setHits(r.results ?? [])
       } catch {
+        if (my !== reqId.current) return
         setHits([])
       } finally {
+        if (my !== reqId.current) return
         setBusy(false)
         setSearched(true)
       }

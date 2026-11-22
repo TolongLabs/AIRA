@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { FileUp, Send as SendIcon, X } from 'lucide-react'
 import type { SendRecord, SendView } from '@/lib/api'
-import { postForm } from '@/lib/api'
+import { get, postForm } from '@/lib/api'
 import { toast, Toaster, useApi } from '@/lib/hooks'
 import { ago, cn } from '@/lib/utils'
 import { Shell } from '@/components/shell'
@@ -66,7 +66,7 @@ export default function SendPage() {
   const [full, setFull] = useState(true)
   const [stage, setStage] = useState<Stage>('edit')
   const [progress, setProgress] = useState(0)
-  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
+  const [result, setResult] = useState<{ ok: boolean; text: string; uncertain?: boolean } | null>(null)
   const [dragging, setDragging] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
@@ -131,6 +131,7 @@ export default function SendPage() {
     setProgress(0)
     try {
       const r = await postForm<{ recent: SendRecord[] }>('/api/send', form, setProgress)
+      if (!Array.isArray(r.recent)) throw Object.assign(new Error('Missing send acknowledgement'), { uncertain: true })
       setRecent(r.recent)
       setResult({ ok: true, text: `${picked.name} went to ${who.name}.` })
       toast('sent')
@@ -141,9 +142,27 @@ export default function SendPage() {
       setMessage('')
       if (fileInput.current) fileInput.current.value = ''
     } catch (e) {
-      const err = e as Error & { body?: { recent?: SendRecord[] } }
+      const err = e as Error & { uncertain?: boolean; body?: { recent?: SendRecord[] } }
       if (err.body?.recent) setRecent(err.body.recent)
-      setResult({ ok: false, text: err.message })
+      /* A dropped connection after upload may still have landed server-side.
+         Refresh the list so a retry is not sent blind, and say so plainly
+         instead of reporting a definite failure. */
+      const dropped = err.uncertain || /connection dropped|before the send finished/i.test(err.message)
+      if (dropped) {
+        setRecent(null)
+        try {
+          setRecent((await get<SendView>('/api/send')).recent)
+        } catch {
+          view.reload()
+        }
+      } else view.reload()
+      setResult({
+        ok: false,
+        uncertain: dropped && !err.body?.recent,
+        text: dropped
+          ? `${err.message} Check Recent sends below before retrying — the file may have gone.`
+          : err.message
+      })
     } finally {
       setStage('edit')
     }
@@ -422,11 +441,20 @@ export default function SendPage() {
                   role={result.ok ? 'status' : 'alert'}
                   className={cn(
                     'max-w-xl rounded-card border px-4 py-3 text-[0.9rem]',
-                    result.ok ? 'border-up/40 bg-up/10 text-ink' : 'border-down/40 bg-down/5 text-ink'
+                    result.ok
+                      ? 'border-up/40 bg-up/10 text-ink'
+                      : result.uncertain
+                        ? 'border-warn/40 bg-warn/5 text-ink'
+                        : 'border-down/40 bg-down/5 text-ink'
                   )}
                 >
-                  <b className={cn('font-semibold', result.ok ? 'text-up' : 'text-down')}>
-                    {result.ok ? 'Sent.' : 'Not sent.'}
+                  <b
+                    className={cn(
+                      'font-semibold',
+                      result.ok ? 'text-up' : result.uncertain ? 'text-warn' : 'text-down'
+                    )}
+                  >
+                    {result.ok ? 'Sent.' : result.uncertain ? 'Uncertain.' : 'Not sent.'}
                   </b>{' '}
                   {result.text}
                 </div>
