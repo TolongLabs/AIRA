@@ -47,6 +47,7 @@ function stack(
     slowRefusal?: boolean
     headerStall?: boolean
     thumbnail?: string
+    cover?: string
   } = {}
 ) {
   const runExtractor = vi.fn(async () => ({ reason: 'fixture' }))
@@ -69,6 +70,7 @@ function stack(
           author: { unique_id: 'example' },
           duration: 12,
           ...(options.ranges ? { wm_size: largeMp4.length } : {}),
+          ...(options.cover ? { cover: options.cover } : {}),
           wmplay: options.foreignAsset ? 'https://unrelated.example/test.mp4' : tikTokAsset
         }
       })
@@ -376,7 +378,7 @@ describe('approved mirror readers', () => {
     const { result, requests } = await watchTikTok({
       ranges: 'drop',
       etag: null,
-      lastModified: 'Sun, 22 Nov 2026 00:00:00 GMT'
+      lastModified: '"Sun, 22 Nov 2026 00:00:00 GMT"'
     })
     expect(result.links?.[0]?.reading?.description).toBe('Watched complete clip')
     expect(requests.some((headers) => headers.has('if-range'))).toBe(false)
@@ -391,12 +393,14 @@ describe('approved mirror readers', () => {
     expect(requests).toHaveLength(5)
   }, 15_000)
 
-  it.each(['""', 'W/"v1"'])('restarts a dropped part under the ETag %s', async (etag) => {
-    const { requests } = await watchTikTok({ ranges: 'drop', etag })
-    const second = Math.floor(largeMp4.length / 4)
-    const secondEnd = Math.floor(largeMp4.length / 2) - 1
-    expect(requests.filter((headers) => headers.get('range') === `bytes=${second}-${secondEnd}`)).toHaveLength(2)
-    expect(requests.some((headers) => headers.has('if-range'))).toBe(false)
+  it.each([
+    ['https://p16-sign.tiktokcdn-us.com/cover.jpg', 'https://p16-sign.tiktokcdn-us.com/cover.jpg'],
+    ['https://preview.redd.it/fixture.png', null],
+    ['https://..tiktokcdn.com/cover.jpg', null]
+  ])('keeps a TikTok mirror cover %s only on TikTok image hosts', async (cover, kept) => {
+    const { viewer } = stack({ tiktok: 'read' }, { cover })
+    const result = await viewer.lookup(parseOfficialSocialPostUrl(nativeTikTok)!)
+    expect(result.status === 'found' ? result.post.imageUrl : 'not found').toBe(kept)
   })
 
   it('keeps a Reddit archive preview only on Reddit image hosts', async () => {
@@ -422,14 +426,17 @@ describe('approved mirror readers', () => {
     expect(ranges).toHaveLength(5)
   })
 
-  it.each([null, 'W/"v1"'])('restarts a dropped part from its start without a strong validator (%s)', async (etag) => {
-    const { result, requests } = await watchTikTok({ ranges: 'drop', etag })
-    expect(result.links?.[0]?.reading?.description).toBe('Watched complete clip')
-    const second = Math.floor(largeMp4.length / 4)
-    const secondEnd = Math.floor(largeMp4.length / 2) - 1
-    expect(requests.filter((headers) => headers.get('range') === `bytes=${second}-${secondEnd}`)).toHaveLength(2)
-    expect(requests.some((headers) => headers.has('if-range'))).toBe(false)
-  })
+  it.each([null, '""', 'W/"v1"', '" "'])(
+    'restarts a dropped part from its start without a strong validator (%s)',
+    async (etag) => {
+      const { result, requests } = await watchTikTok({ ranges: 'drop', etag })
+      expect(result.links?.[0]?.reading?.description).toBe('Watched complete clip')
+      const second = Math.floor(largeMp4.length / 4)
+      const secondEnd = Math.floor(largeMp4.length / 2) - 1
+      expect(requests.filter((headers) => headers.get('range') === `bytes=${second}-${secondEnd}`)).toHaveLength(2)
+      expect(requests.some((headers) => headers.has('if-range'))).toBe(false)
+    }
+  )
 
   it.each([tikTokLink, redditLink])('discards mismatched IDs and non-native assets for %s', async (link) => {
     const target = parseOfficialSocialPostUrl(link)!

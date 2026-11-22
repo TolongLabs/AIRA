@@ -69,15 +69,17 @@ describe('isBlockedPage', () => {
 describe('createFetchPagePort redirects and cookies', () => {
   it('follows a redirect whose body cannot be cancelled', async () => {
     let calls = 0
+    let cancel: ReturnType<typeof vi.spyOn> | undefined
     const fetchFn = async () => {
       calls++
       if (calls > 1) return page('Weekly notes', LONG_PAGE)
       const res = new Response('moved', { status: 302, headers: { location: 'https://example.com/b' } })
-      vi.spyOn(res.body!, 'cancel').mockImplementation(() => Promise.reject(new Error('broken stream')))
+      cancel = vi.spyOn(res.body!, 'cancel').mockImplementation(() => Promise.reject(new Error('broken stream')))
       return res
     }
     const port = createFetchPagePort({ fetch: fetchFn as typeof fetch, lookup: publicHost })
     expect((await port.read('https://example.com/a', signal)).title).toBe('Weekly notes')
+    expect(cancel).toHaveBeenCalledOnce()
   })
 
   it('refuses a malformed address as forbidden and cancels the body of the redirect past the limit', async () => {
