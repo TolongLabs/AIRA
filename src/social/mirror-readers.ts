@@ -1,7 +1,8 @@
 import type { ReaderContext, ReaderResult, SocialReader } from './chain.js'
 import { array, base, capped, object, string } from './parsers.js'
+import type { SocialMirrorSettings } from './readers.js'
 import type { PlayableVideo, SocialPost } from './types.js'
-import { parseOfficialSocialPostUrl, type SocialPostTarget } from './urls.js'
+import { parseOfficialSocialPostUrl, type SocialPlatform, type SocialPostTarget } from './urls.js'
 
 export type MirrorPlatform = 'tiktok' | 'reddit'
 
@@ -50,6 +51,16 @@ export function mirrorAssetPlatform(value: string): 'tiktok' | 'reddit' | undefi
   if (url.hostname === TIKWM_MEDIA_HOST || isTikTokCdnHost(url.hostname)) return 'tiktok'
   if (url.hostname === 'v.redd.it' || REDDIT_PREVIEW_HOSTS.has(url.hostname)) return 'reddit'
   return undefined
+}
+
+/** Only the enabled mirror's own posts use its origin-locked download policy. */
+export function enabledMirrorAsset(
+  value: string,
+  source: SocialPlatform | undefined,
+  settings: SocialMirrorSettings
+): boolean {
+  if (source !== 'tiktok' && source !== 'reddit') return false
+  return (settings[source] ?? 'off') !== 'off' && mirrorAssetPlatform(value) === source
 }
 
 /** A mirror's preview picture, only on that platform's own image hosts. */

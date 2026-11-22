@@ -6,7 +6,9 @@ import type { PlayableVideo, SocialPost } from './types.js'
 import type { SocialPostTarget } from './urls.js'
 
 const SCRIPT = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi
-const ARTICLE_ROUTE = 'routes/$user_link_name_.$article_id'
+// A `src` attribute of its own, not `data-src`: such a script is an external file with no inline article.
+const SCRIPT_SRC = /(?:^|\s)src\s*=/i
+const ENCODED_JSON = /^%7b/i
 /** An https URL on one public subdomain of tiktokcdn.com, with no credentials, port or stray authority characters. */
 function verifiedMediaUrl(value: unknown): string | null {
   const raw = string(value)
@@ -23,12 +25,13 @@ function verifiedMediaUrl(value: unknown): string | null {
   return url.protocol === 'https:' && !url.username && !url.password && !url.port && onCdn ? raw : null
 }
 
-/** The article record at the page's exact route key, from the first inline script that is URI-encoded JSON. */
+/** Only direct loader routes can own the linked article. Related items can appear deeper in the same page. */
 function articleRecord(html: string, id: string): JsonObject | null {
+  const key = `$ArticleDetail+${id}`
   for (const match of html.matchAll(SCRIPT)) {
-    if (/\bsrc\s*=/i.test(match[1] ?? '')) continue
+    if (SCRIPT_SRC.test(match[1] ?? '')) continue
     const body = (match[2] ?? '').trim()
-    if (!body.startsWith('%7B')) continue
+    if (!ENCODED_JSON.test(body)) continue
     let root: unknown
     try {
       root = JSON.parse(decodeURIComponent(body))
@@ -36,8 +39,10 @@ function articleRecord(html: string, id: string): JsonObject | null {
       continue
     }
     const loader = object(object(root).state).loaderData
-    const record = object(object(object(loader)[ARTICLE_ROUTE])[`$ArticleDetail+${id}`])
-    if (Object.keys(record).length > 0) return record
+    for (const route of Object.values(object(loader))) {
+      const fields = object(route)
+      if (Object.hasOwn(fields, key)) return object(fields[key])
+    }
   }
   return null
 }
@@ -67,13 +72,13 @@ export function parseLemon8Page(html: string, target: SocialPostTarget, maxTextC
   } else if (detail.articleClass === 'Video') {
     const native = object(detail.video)
     const url = verifiedMediaUrl(native.url)
+    const duration = positiveFiniteNumber(native.duration)
     post.imageUrl = verifiedMediaUrl(object(detail.largeImage).url)
+    post.videoCount = 1
+    post.durationSec = duration
     if (url) {
-      const duration = positiveFiniteNumber(native.duration)
       const video: PlayableVideo = { url, bytes: null, headers: null, hasAudio: null }
       post.video = video
-      post.videoCount = 1
-      post.durationSec = duration
       post.attachments = [
         {
           kind: 'video',

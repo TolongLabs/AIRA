@@ -11,6 +11,7 @@ import { ModelError } from '../../src/models/types.js'
 import { createLogger } from '../../src/records/logger.js'
 import { createRedactor } from '../../src/records/redact.js'
 import { setSetting } from '../../src/settings/settings.js'
+import { enabledMirrorAsset } from '../../src/social/mirror-readers.js'
 import type { SocialPost, SocialPostLookup } from '../../src/social/types.js'
 import { createCommandRouter } from '../../src/tools/commands.js'
 import { registerCoreTools } from '../../src/tools/core/index.js'
@@ -1500,4 +1501,58 @@ it('keeps the attempts of a lookup that ran out of time', async () => {
     seen = event.trace
   })
   expect(seen).toEqual({ attempts: [{ readerId: 'x.fxtwitter', ok: false, reason: 'timeout', ms: 50 }] })
+})
+
+describe('lemon8 intake download policy', () => {
+  const LEMON8_IMG = 'https://p16-lemon8-cross-sign.tiktokcdn.com/tos-maliva-i-avgv0qqbbk-jp/abc123.webp'
+  const LEMON8_CLIP = 'https://v16-lemon8.tiktokcdn.com/tos-maliva-v-avgv0qqbbk-jp/clip012.mp4'
+
+  it('does not classify Lemon8 CDN bytes as a TikTok mirror asset', () => {
+    for (const url of [LEMON8_IMG, LEMON8_CLIP]) {
+      expect(enabledMirrorAsset(url, 'lemon8', { tiktok: 'read_and_group' })).toBe(false)
+      expect(enabledMirrorAsset(url, 'tiktok', { tiktok: 'read_and_group' })).toBe(true)
+      expect(enabledMirrorAsset(url, 'tiktok', { tiktok: 'off' })).toBe(false)
+    }
+  })
+
+  it('passes the source platform into the intake downloader', async () => {
+    const download = vi.fn(async () => ({ data: Buffer.from('image-bytes'), contentType: 'image/jpeg' }))
+    const post = makePost({
+      platform: 'lemon8',
+      id: '7234567890123456789',
+      canonicalUrl: 'https://www.lemon8-app.com/@sample/7234567890123456789',
+      target: makeTarget('lemon8', '7234567890123456789'),
+      photoCount: 1,
+      photoUrls: [LEMON8_IMG],
+      imageUrl: LEMON8_IMG
+    })
+    const watcher: MediaWatcher = {
+      async watch(file) {
+        return {
+          reading: { description: `Shows ${file.contentType}` },
+          usage: { inputTokens: 10, outputTokens: 5, cachedTokens: 0 },
+          costUsd: 0,
+          model: 'fake-media-model'
+        }
+      }
+    }
+    const reader = createLinkReader({
+      viewer: { lookup: async () => ({ status: 'found', post }) },
+      findTarget: fakeFindTarget,
+      watcher,
+      download,
+      model: 'fake-media-model',
+      limits: { ...DEFAULT_MEDIA_LIMITS, maxVideoSeconds: 180, maxLinkVideoSeconds: 600 }
+    })
+    const result = await reader.read(['https://x.com/testuser/status/99'], 5000, { media: true, social: true })
+    expect(result.links?.[0]?.reading?.description).toContain('Shows image/jpeg')
+    expect(download).toHaveBeenCalledWith(
+      LEMON8_IMG,
+      expect.any(AbortSignal),
+      expect.any(Number),
+      undefined,
+      undefined,
+      'lemon8'
+    )
+  })
 })

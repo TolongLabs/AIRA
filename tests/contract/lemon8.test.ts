@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { socialCapabilities, switchablePlatforms } from '../../src/social/readers.js'
 import { resolveShareLink } from '../../src/social/share.js'
-import { findSocialPostTargets, parseSocialPostUrl } from '../../src/social/urls.js'
+import { findSocialPostTargets, parseSocialPostUrl, readPolicyTarget } from '../../src/social/urls.js'
 import { SocialPostViewer } from '../../src/social/viewer.js'
 
 const ID = '7234567890123456789'
@@ -272,5 +272,125 @@ describe('lemon8 post operations', () => {
     const post = await readHtml(lemon8Html({ images: ['https://unrelated.example/image.webp', IMG_A] }))
     expect(post?.photoUrls).toEqual([IMG_A])
     expect(post?.text).toBe('A quiet morning nice')
+  })
+
+  it('retains videoCount and duration when the playable URL is rejected, advertising missing video', async () => {
+    const html = lemon8Html({ articleClass: 'Video', videoUrl: 'https://evil.example/clip.mp4', videoDuration: 48 })
+    const target = parseSocialPostUrl(DIRECT)!
+    const result = await viewer(async () => new Response(html)).lookup(target)
+    expect(result.status).toBe('found')
+    if (result.status !== 'found') throw new Error('expected found')
+    expect(result.post.videoCount).toBe(1)
+    expect(result.post.durationSec).toBe(48)
+    expect(result.post.video).toBeNull()
+    expect(result.missing ?? []).toContain('video')
+  })
+
+  it('preserves a valid original region on a direct lookup', async () => {
+    const withRegion = `${DIRECT}?region=sg`
+    const target = parseSocialPostUrl(withRegion)!
+    expect(target.canonicalUrl).toBe(DIRECT)
+    const seen: string[] = []
+    const fetcher = async (input: string | URL | Request) => {
+      seen.push(String(input))
+      return new Response(lemon8Html({}))
+    }
+    const result = await viewer(fetcher).lookup(target)
+    expect(result.status).toBe('found')
+    expect(seen[0]).toContain('region=sg')
+  })
+
+  it('preserves a valid original region through a share redirect', async () => {
+    const share = parseSocialPostUrl(SHORT_S)!
+    const region = `${DIRECT}?region=sg`
+    const seen: string[] = []
+    const fetcher = async (input: string | URL | Request) => {
+      const url = String(input)
+      seen.push(url)
+      if (url === share.canonicalUrl) {
+        return new Response(null, { status: 302, headers: { location: region } })
+      }
+      return new Response(lemon8Html({}))
+    }
+    const result = await viewer(fetcher).lookup(share)
+    expect(result.status).toBe('found')
+    expect(seen.some((url) => url.includes('region=sg') && url.startsWith('https://www.lemon8-app.com/'))).toBe(true)
+  })
+
+  it('follows a canonical-case redirect to the article', async () => {
+    const original = DIRECT.replace('@sample', '@Sample')
+    const regional = DIRECT + '?region=sg'
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      if (String(input) === original) return new Response(null, { status: 301, headers: { location: regional } })
+      if (String(input) === regional) return new Response(lemon8Html({}))
+      throw new Error('unexpected regional address')
+    })
+    const result = await viewer(fetcher).lookup(parseSocialPostUrl(original)!)
+    expect(result.status).toBe('found')
+    expect(fetcher.mock.calls.map(([input]) => String(input))).toEqual([original, regional])
+  })
+
+  it('rejects repeated redirects as redirect', async () => {
+    const target = parseSocialPostUrl(DIRECT)!
+    const region = `${DIRECT}?region=sg`
+    const fetcher = async (input: string | URL | Request) => {
+      const url = String(input)
+      if (url === DIRECT) {
+        return new Response(null, { status: 302, headers: { location: region } })
+      }
+      return new Response(null, { status: 302, headers: { location: region } })
+    }
+    const result = await viewer(fetcher).lookup(target)
+    expect(result).toMatchObject({ status: 'failed', reason: 'redirect' })
+  })
+
+  it('recognises the apex host as the same post, under the same read switch', async () => {
+    const apex = `https://lemon8-app.com/@${HANDLE}/${ID}`
+    const target = parseSocialPostUrl(apex)
+    expect(target).toMatchObject({ platform: 'lemon8', id: ID, lookupKey: `lemon8:${HANDLE.toLowerCase()}:${ID}` })
+    expect(target?.canonicalUrl).toBe(DIRECT)
+    expect(readPolicyTarget(apex)).toMatchObject({ platform: 'lemon8', id: ID })
+    const result = await viewer(async () => new Response(lemon8Html({}))).lookup(target!)
+    expect(result.status).toBe('found')
+  })
+
+  it('reads a lowercase-encoded inline payload', async () => {
+    const html = lemon8Html({}).replace('%7B', '%7b')
+    const post = await readHtml(html)
+    expect(post?.id).toBe(ID)
+  })
+
+  it('reads an inline script that carries data-src', async () => {
+    const html = lemon8Html({}).replace('<script id="__remix">', '<script id="__remix" data-src="x">')
+    const post = await readHtml(html)
+    expect(post?.id).toBe(ID)
+  })
+
+  it('reads an alternate direct route key by exact ID and never selects nested decoys', async () => {
+    const detail = {
+      groupId: ID,
+      author: { linkName: HANDLE, nickName: 'Sample' },
+      articleClass: 'Gallery',
+      title: 'A quiet morning',
+      content: '<p>nice</p>',
+      imageList: [{ url: IMG_A, width: 1080, height: 1440 }],
+      largeImage: { url: COVER }
+    }
+    const payload = {
+      state: {
+        loaderData: {
+          'routes/alternate': {
+            [`$ArticleDetail+${ID}`]: detail,
+            nested: { [`$ArticleDetail+${ID}`]: { groupId: ID, author: { linkName: 'other' } } },
+            [`$ArticleDetail+0000000000000000001`]: { groupId: '0000000000000000001' }
+          }
+        }
+      }
+    }
+    const blob = encodeURIComponent(JSON.stringify(payload))
+    const html = `<html><body><script id="__remix">${blob}</script></body></html>`
+    const post = await readHtml(html)
+    expect(post?.id).toBe(ID)
+    expect(post?.authorHandle).toBe(HANDLE)
   })
 })
