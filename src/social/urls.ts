@@ -384,9 +384,7 @@ function readPolicyUrl(value: string): URL | undefined {
   return url
 }
 
-function isLinkedInLink(value: string): boolean {
-  const url = readPolicyUrl(value)
-  if (!url) return false
+function isLinkedInLink(url: URL): boolean {
   const host = url.hostname
   if (host === 'lnkd.in' || host === 'www.lnkd.in') return LINKEDIN_SHORT_PATH.test(url.pathname)
   return (
@@ -395,9 +393,37 @@ function isLinkedInLink(value: string): boolean {
   )
 }
 
+// Rednote (Xiaohongshu) is recognised, never read: its note pages redirect to login on both deployments. Each host
+// below owns its paths, so a path there never reaches the unknown-host parsers. The two domains take apex and www
+// only. xhslink.com takes a bare code or `o/{code}`, and xhslink.cn takes `o/{code}`. A bare `o` is the route.
+const REDNOTE_NOTE_PATH = /^\/(?:explore|discovery\/item)\/[0-9a-f]{24}\/?$/i
+const XHSLINK_COM_PATH = /^\/(?!o\/?$)(?:o\/)?[a-z0-9]+\/?$/i
+const XHSLINK_CN_PATH = /^\/o\/[a-z0-9]+\/?$/i
+const REDNOTE_PATHS = new Map<string, RegExp>([
+  ['xiaohongshu.com', REDNOTE_NOTE_PATH],
+  ['www.xiaohongshu.com', REDNOTE_NOTE_PATH],
+  ['rednote.com', REDNOTE_NOTE_PATH],
+  ['www.rednote.com', REDNOTE_NOTE_PATH],
+  ['xhslink.com', XHSLINK_COM_PATH],
+  ['xhslink.cn', XHSLINK_CN_PATH]
+])
+
+function isRednoteHost(hostname: string): boolean {
+  return REDNOTE_PATHS.has(hostname.toLowerCase().replace(/\.+$/, ''))
+}
+
 /** Display name for a recognised post link with no approved read operation. */
-export function recognitionOnlyName(value: string): string | null {
-  return isLinkedInLink(value) ? 'LinkedIn' : null
+export function recognitionOnlyName(value: string): 'LinkedIn' | 'Rednote' | null {
+  const url = readPolicyUrl(value)
+  if (!url) return null
+  if (isLinkedInLink(url)) return 'LinkedIn'
+  const pattern = REDNOTE_PATHS.get(url.hostname)
+  if (!pattern) return null
+  try {
+    return pattern.test(decodeURI(url.pathname)) ? 'Rednote' : null
+  } catch {
+    return null
+  }
 }
 
 function parseUrl(value: string, officialOnly: boolean): SocialPostTarget | null {
@@ -421,7 +447,7 @@ function parseUrl(value: string, officialOnly: boolean): SocialPostTarget | null
   }
 
   const host = url.hostname.toLowerCase()
-  if (isLinkedInHost(host)) return null
+  if (isLinkedInHost(host) || isRednoteHost(host)) return null
   const platform = platformForHost(host)
   let parsed: SocialPostTarget | null = null
   if (platform) parsed = parseFor(platform, url, host, false)

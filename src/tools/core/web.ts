@@ -10,7 +10,7 @@ import type { TurnContext } from '../../turn/types.js'
 import { isForbiddenUrl, type ToolPorts } from '../ports.js'
 import { switchedOffPost } from '../read-policy.js'
 import { createSearchDepth, webSearchSchema } from '../search-depth.js'
-import type { ToolContext, ToolDefinition, ToolFailure } from '../types.js'
+import type { FailureCode, ToolContext, ToolDefinition, ToolFailure } from '../types.js'
 
 /** Recorded reason for a refused link already watched at intake. The model reads its outcome sentence. */
 export const INTAKE_REFUSAL =
@@ -75,6 +75,12 @@ const readSchema = z.strictObject({
   source: z.string().trim().regex(SOURCE_ID).optional().describe('The id of such a link, such as s1')
 })
 
+// Each recognised-only platform's refusal code. LinkedIn keeps its established code.
+const RECOGNITION_CODE: Record<NonNullable<ReturnType<typeof recognitionOnlyName>>, FailureCode> = {
+  LinkedIn: 'linkedin_recognition_only',
+  Rednote: 'rednote_recognition_only'
+}
+
 /** The address a read opens, or the refusal when the turn never saw it. Runs before any network call. */
 function resolveRead(
   args: z.infer<typeof readSchema>,
@@ -93,7 +99,7 @@ function resolveRead(
       ok: false,
       kind: 'refused',
       reason: `${name} links are recognised but never read`,
-      code: 'linkedin_recognition_only'
+      code: RECOGNITION_CODE[name]
     }
   }
   return { ok: true, ...seen }
