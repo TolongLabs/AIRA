@@ -86,13 +86,13 @@ Contract: [System Architecture](trd/system.md).
 
 ### Install Or Roll Back Autofetch On The Gateway
 
-When a group's post links should get their media back from the core, or the old plugin must answer again.
+Use this procedure when installing media delivery for opted-in groups and direct chats.
 
 1. Copy `deploy/gateway/brain/autofetch.py` and `chatflags.py` into `HERMES_HOME/scripts/brain/`, keeping backups.
-2. Run `patches.py --check`, then apply it: `autofetch-from-core` points the kept `whatsapp-autofetch` hook at
-   `brain.autofetch`.
-3. Switch `features.autofetch` on for each group, then restart the gateway.
-4. Roll back by restoring the adapter's backup: the hook loads the old core's plugin again.
+2. Back up the adapter. Run `patches.py --check`, then apply the patches. `autofetch-from-core` loads
+   `brain.autofetch`. `autofetch-dm` offers accepted direct messages to the same module.
+3. Restart `hermes-gateway` and verify the bridge reports `connected`. Chat owners can enable Post media per chat.
+4. To roll back, restore the adapter and module backups, then restart the gateway.
 
 Files: `deploy/gateway/brain/autofetch.py`, `deploy/gateway/patches.py`, `src/media/autofetch.ts`.
 
