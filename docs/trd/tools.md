@@ -377,6 +377,12 @@ documents OAuth-protected account capabilities. Record the approved fields and u
 model calls it; no command names it. A post link in a member's message is read
 at intake instead, with its media watched ([Models](models.md#post-links)). A repeat read of that URL or a
 recognised alias returns the same turn’s post and visual evidence without another provider request.
+Both media pipelines extract the same URL candidates from message text. Terminal Chinese and Japanese
+sentence punctuation and enclosing quotation marks are outside a link. An official HTTPS hostname with a
+terminal DNS dot uses the same platform parser and canonical destination as its undotted spelling.
+Decode percent-encoded unreserved ASCII characters in paths once. Keep encoded separators and the original URL
+intact. YouTube watch pages accept a trailing slash, Reddit gallery links use the post ID, and official LinkedIn
+embed links accept literal or encoded URN colons.
 Profiles and home pages use `read_page`. Direct post paths can also be recognised on an unknown host when
 their platform shape is strict. Lookups use the platform target. The unknown host is logged by hostname only.
 YouTube requires an official host. Instagram's `/p/<id>` needs an Instagram-like hostname on an unknown host.

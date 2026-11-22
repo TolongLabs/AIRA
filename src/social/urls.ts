@@ -120,7 +120,7 @@ function parseYouTube(url: URL, host: string, unknown: boolean): SocialPostTarge
   if (unknown) return null
   const id = hostMatches(host, 'youtu.be')
     ? url.pathname.match(/^\/([\w-]+)\/?$/)?.[1]
-    : url.pathname === '/watch'
+    : /^\/watch\/?$/.test(url.pathname)
       ? url.searchParams.get('v')
       : url.pathname.match(/^\/(?:shorts|live|embed)\/([\w-]+)\/?$/)?.[1]
   if (!id || !/^[\w-]+$/.test(id)) return null
@@ -179,7 +179,7 @@ function parseReddit(url: URL, host: string, unknown: boolean): SocialPostTarget
   // A comment permalink names its post, then a slug, then the comment; the comment id is not kept.
   const comments =
     url.pathname.match(/^\/r\/[\w-]+\/comments\/([a-z0-9]+)(?:\/[^/]*)?(?:\/[a-z0-9]+)?\/?$/i)?.[1] ??
-    (unknown ? undefined : url.pathname.match(/^\/comments\/([a-z0-9]+)\/?$/i)?.[1])
+    (unknown ? undefined : url.pathname.match(/^\/(?:comments|gallery)\/([a-z0-9]+)\/?$/i)?.[1])
   if (comments) return target('reddit', comments, `https://www.reddit.com/comments/${comments}/`)
   if (unknown) return null
   const share = url.pathname.match(/^\/((?:r|u)\/[\w-]+)\/s\/([\w-]+)\/?$/i)
@@ -431,7 +431,7 @@ function parseDouyin(url: URL, host: string): SocialPostTarget | null {
 // LinkedIn is read on its own hosts only. Direct posts on apex or www normalize to their canonical URN feed address.
 // Short links on lnkd.in (`/{code}` or `/p/{code}`) resolve through the guarded share resolver.
 const LINKEDIN_POST_PATH = /^\/posts\/[^/]+[-_](activity|ugcPost)-(\d{19})(?:-[a-z0-9_-]+)?\/?$/i
-const LINKEDIN_FEED_PATH = /^\/feed\/update\/urn:li:(activity|ugcPost|share):(\d+)\/?$/i
+const LINKEDIN_FEED_PATH = /^\/(?:embed\/)?feed\/update\/urn:li:(activity|ugcPost|share):(\d+)\/?$/i
 const LNKD_IN_PATH = /^\/(?!p\/?$)(?:(p)\/)?([\w-]+)\/?$/
 
 function parseLinkedIn(url: URL, host: string): SocialPostTarget | null {
@@ -442,7 +442,7 @@ function parseLinkedIn(url: URL, host: string): SocialPostTarget | null {
       const id = post[2] as string
       return target('linkedin', id, `https://www.linkedin.com/feed/update/urn:li:${kind}:${id}/`)
     }
-    const feed = url.pathname.match(LINKEDIN_FEED_PATH)
+    const feed = url.pathname.replace(/%3a/gi, ':').match(LINKEDIN_FEED_PATH)
     if (feed) {
       const [, rawKind = '', id = ''] = feed
       const kind = rawKind.toLowerCase() === 'ugcpost' ? 'ugcPost' : rawKind.toLowerCase()
@@ -533,8 +533,13 @@ function parseUrl(value: string, officialOnly: boolean): SocialPostTarget | null
     return null
   }
 
-  const host = url.hostname.toLowerCase()
-  if (isExcludedHost(host)) return null
+  const host = url.hostname.toLowerCase().replace(/\.$/, '')
+  if (isIP(host) || isExcludedHost(host)) return null
+  // Decode only unreserved path bytes. Encoded separators stay inside their original segment.
+  url.pathname = url.pathname.replace(/%[0-9a-f]{2}/gi, (encodedByte) => {
+    const char = String.fromCharCode(Number.parseInt(encodedByte.slice(1), 16))
+    return /^[a-zA-Z0-9._~-]$/.test(char) ? char : encodedByte
+  })
   const platform = platformForHost(host)
   let parsed: SocialPostTarget | null = null
   if (platform) parsed = parseFor(platform, url, host, false)
@@ -568,7 +573,7 @@ export function readPolicyTarget(value: string): SocialPostTarget | null {
 
 // A link starts at `http`, and may carry WhatsApp format marks in front of it when they are not part of a word.
 const LINK_CANDIDATE = /(?:(?<!\w)[*_~]+)?https?:\/\/[^\s<>()[\]{}]+/gi
-const TRAILING_PUNCTUATION = /[.,!?;:'"`]+$/
+const TRAILING_PUNCTUATION = /[.,!?;:'"`。，、！？；：」』”’】）]+$/
 const FORMAT_MARKS = '*_~'
 
 /** Drops trailing punctuation and the format marks that wrap a link in pairs, nested or not. */
@@ -592,11 +597,10 @@ export function linkUrls(text: string): string[] {
 /** Every supported post link in a text, in order. A link on an unknown host is reported by platform and hostname. */
 export function findSocialPostTargets(text: string, onUnknownHost?: UnknownHostReport): SocialPostTarget[] {
   const targets: SocialPostTarget[] = []
-  for (const candidate of text.match(LINK_CANDIDATE) ?? []) {
-    const link = unwrapLink(candidate)
+  for (const link of linkUrls(text)) {
     const found = parseSocialPostUrl(link)
     if (!found) continue
-    const hostname = new URL(link).hostname.toLowerCase()
+    const hostname = new URL(link).hostname.toLowerCase().replace(/\.$/, '')
     if (onUnknownHost && platformForHost(hostname) === null) onUnknownHost({ platform: found.platform, hostname })
     targets.push(found)
   }
