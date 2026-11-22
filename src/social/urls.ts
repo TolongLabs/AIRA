@@ -384,7 +384,7 @@ function parseFor(platform: SocialPlatform, url: URL, host: string, unknown: boo
 // other platform's path rules apply on its hosts. Official hosts are linkedin.com with any subdomain, and lnkd.in
 // with or without www. Profiles, articles and URN types other than activity are not posts. See
 // docs/trd/tools.md#social-post-reader.
-const LINKEDIN_POST_PATH = /^\/posts\/(?:[\w.%-]+?-)?activity-\d+(?:-[\w-]+)?\/?$/i
+const LINKEDIN_POST_PATH = /^\/posts\/(?:[\w.%-]+?-)?(?:activity|ugcPost)-\d+(?:-[\w-]+)?\/?$/i
 const LINKEDIN_UPDATE_PATH = /^\/feed\/update\/urn(?::|%3A)li(?::|%3A)activity(?::|%3A)\d+\/?$/i
 const LINKEDIN_SHORT_PATH = /^\/(?:p\/)?[\w-]+\/?$/
 
