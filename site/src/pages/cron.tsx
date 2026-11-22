@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Pause, Pencil, Play, Plus, Trash2 } from 'lucide-react'
 import type { Chat, CronArchived, CronJob } from '@/lib/api'
 import { post } from '@/lib/api'
+import { CRON_MODE_LABELS, CRON_MODES, CronJobPolicy, CronSchedule, type CronScheduleData } from '@/lib/cron-schedule'
 import { toast, Toaster, useApi } from '@/lib/hooks'
 import { DAYS, humanSchedule, midTrunc, until } from '@/lib/utils'
 import { Shell } from '@/components/shell'
@@ -20,101 +21,26 @@ import {
 } from '@/components/ui'
 import { GenerateButton } from '@/components/generate'
 
-/* Nobody writes cron syntax here. The picker composes it and reads it back in
-   the same words, so "30 8 * * *" is only ever an implementation detail. */
-
-const MODES = ['daily', 'weekly', 'monthly', 'hours', 'minutes'] as const
-type Mode = (typeof MODES)[number]
-
-const MODE_LABEL: Record<Mode, string> = {
-  daily: 'Every day',
-  weekly: 'Every week',
-  monthly: 'Every month',
-  hours: 'Every N hours',
-  minutes: 'Every N minutes'
+function handleNumericInput(raw: string, apply: (value: number) => void) {
+  if (!raw.trim()) return
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed)) return
+  apply(Math.trunc(parsed))
 }
 
-interface Sched {
-  mode: Mode
-  time: string
-  dow: number
-  dom: number
-  n: number
-}
-
-const DEFAULT_SCHED: Sched = {
-  mode: 'daily',
-  time: '08:30',
-  dow: 1,
-  dom: 1,
-  n: 2
-}
-
-/* How many runs a job has left, from Hermes's own wording: "forever",
-   "once", "7 times" or "3/7". The schedule alone read "Every day at 07:00"
-   for a reminder asked for "for the next 7 days" — the limit was set, and
-   nothing on this page said so. */
-function runsLabel(repeat?: string): string {
-  const r = (repeat ?? '').trim()
-  if (!r || r === 'forever' || r === 'once' || r === '1/1') return ''
-  const done = r.match(/^(\d+)\/(\d+)$/)
-  if (done) return `${Number(done[2]) - Number(done[1])} of ${done[2]} runs left`
-  const total = r.match(/^(\d+) times$/)
-  return total ? `${total[1]} runs, then it stops` : r
-}
-
-function parseSched(raw?: string | null): Sched | null {
-  const s = String(raw ?? '').trim()
-  const hm = (m: string, h: string) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-  let m = s.match(/^(\d{1,2}) (\d{1,2}) \* \* \*$/)
-  if (m) return { ...DEFAULT_SCHED, mode: 'daily', time: hm(m[1], m[2]) }
-  m = s.match(/^(\d{1,2}) (\d{1,2}) \* \* (\d)$/)
-  if (m)
-    return {
-      ...DEFAULT_SCHED,
-      mode: 'weekly',
-      time: hm(m[1], m[2]),
-      dow: +m[3]
-    }
-  m = s.match(/^(\d{1,2}) (\d{1,2}) (\d{1,2}) \* \*$/)
-  if (m)
-    return {
-      ...DEFAULT_SCHED,
-      mode: 'monthly',
-      time: hm(m[1], m[2]),
-      dom: +m[3]
-    }
-  m = s.match(/^0 \*\/(\d+) \* \* \*$/)
-  if (m) return { ...DEFAULT_SCHED, mode: 'hours', n: +m[1] }
-  m = s.match(/^\*\/(\d+) \* \* \* \*$/)
-  if (m) return { ...DEFAULT_SCHED, mode: 'minutes', n: +m[1] }
-  return null
-}
-
-function toCron(s: Sched): string {
-  const [h, m] = s.time.split(':').map((x) => String(Number(x)))
-  switch (s.mode) {
-    case 'daily':
-      return `${m} ${h} * * *`
-    case 'weekly':
-      return `${m} ${h} * * ${s.dow}`
-    case 'monthly':
-      return `${m} ${h} ${s.dom} * *`
-    case 'hours':
-      return `0 */${s.n} * * *`
-    case 'minutes':
-      return `*/${s.n} * * * *`
-  }
-}
-
-function SchedulePicker({ value, onChange }: { value: Sched; onChange: (s: Sched) => void }) {
-  const set = (patch: Partial<Sched>) => onChange({ ...value, ...patch })
+function SchedulePicker({ value, onChange }: { value: CronSchedule; onChange: (s: CronSchedule) => void }) {
+  const set = (patch: Partial<CronScheduleData>) => onChange(value.withPatch(patch))
   return (
     <div className="flex flex-wrap items-end gap-3">
       <Field label="how often">
         {/* Five options, which docs/DESIGN.md says is a segmented group and
             not a dropdown: every choice visible, one tap, nothing to open. */}
-        <Segmented options={MODES} value={value.mode} labels={MODE_LABEL} onChange={(m) => set({ mode: m })} />
+        <Segmented
+          options={CRON_MODES}
+          value={value.mode}
+          labels={CRON_MODE_LABELS}
+          onChange={(m) => set({ mode: m })}
+        />
       </Field>
 
       {value.mode === 'weekly' && (
@@ -138,7 +64,7 @@ function SchedulePicker({ value, onChange }: { value: Sched; onChange: (s: Sched
             min={1}
             max={28}
             value={value.dom}
-            onChange={(e) => set({ dom: +e.target.value })}
+            onChange={(e) => handleNumericInput(e.target.value, (dom) => set({ dom }))}
             className="w-24"
           />
         </Field>
@@ -149,9 +75,9 @@ function SchedulePicker({ value, onChange }: { value: Sched; onChange: (s: Sched
           <Input
             type="number"
             min={1}
-            max={59}
+            max={value.maxInterval()}
             value={value.n}
-            onChange={(e) => set({ n: +e.target.value })}
+            onChange={(e) => handleNumericInput(e.target.value, (n) => set({ n }))}
             className="w-24"
           />
         </Field>
@@ -163,7 +89,7 @@ function SchedulePicker({ value, onChange }: { value: Sched; onChange: (s: Sched
         </Field>
       )}
 
-      <p className="mb-2.5 text-[0.85rem] text-muted">→ {humanSchedule(toCron(value))}</p>
+      <p className="mb-2.5 text-[0.85rem] text-muted">→ {humanSchedule(value.toCron())}</p>
     </div>
   )
 }
@@ -217,7 +143,9 @@ function JobEditor({
   onCancel: () => void
 }) {
   const [name, setName] = useState(job?.name ?? '')
-  const [sched, setSched] = useState<Sched | null>(() => (job ? parseSched(job.schedule) : DEFAULT_SCHED))
+  const [sched, setSched] = useState<CronSchedule | null>(() =>
+    job ? CronSchedule.parse(job.schedule) : CronSchedule.default()
+  )
   const [scheduleEdited, setScheduleEdited] = useState(false)
   const [prompt, setPrompt] = useState(job?.prompt ?? job?.prompt_preview ?? '')
   const [deliver, setDeliver] = useState(job?.deliver ?? '')
@@ -228,26 +156,32 @@ function JobEditor({
       toast('a job needs a name and something to say', false)
       return
     }
+    if (!job || scheduleEdited) {
+      const scheduleError = sched?.validate()
+      if (scheduleError) {
+        toast(scheduleError, false)
+        return
+      }
+    }
     setBusy(true)
     try {
       if (job) {
-        const body: Record<string, unknown> = {
-          action: 'update',
-          job_id: job.job_id
-        }
-        if (name.trim() !== (job.name ?? '')) body.name = name.trim()
-        if (scheduleEdited && sched && toCron(sched) !== job.schedule) body.schedule = toCron(sched)
-        if (prompt !== (job.prompt ?? job.prompt_preview ?? '')) body.prompt = prompt
-        if (deliver !== (job.deliver ?? '')) body.deliver = deliver
+        const body = CronJobPolicy.buildUpdateBody(job, {
+          name,
+          schedule: sched,
+          scheduleEdited,
+          prompt,
+          deliver
+        })
         await post('/api/cron', body)
       } else {
-        await post('/api/cron', {
-          action: 'create',
-          name: name.trim(),
-          schedule: toCron(sched ?? DEFAULT_SCHED),
+        const body = CronJobPolicy.buildCreateBody({
+          name,
+          schedule: sched,
           prompt,
-          ...(deliver ? { deliver } : {})
+          deliver
         })
+        await post('/api/cron', body)
       }
       toast(job ? 'saved ✓' : 'created ✓')
       onDone()
@@ -286,7 +220,7 @@ function JobEditor({
               size="sm"
               variant="ghost"
               onClick={() => {
-                setSched(DEFAULT_SCHED)
+                setSched(CronSchedule.default())
                 setScheduleEdited(true)
               }}
             >
@@ -327,6 +261,7 @@ function JobEditor({
 
 function JobRow({ job, chats, onChanged }: { job: CronJob; chats: Chat[]; onChanged: () => void }) {
   const [editing, setEditing] = useState(false)
+  const managed = CronJobPolicy.isCoreManaged(job)
 
   async function act(body: Record<string, unknown>, said: string) {
     try {
@@ -341,7 +276,7 @@ function JobRow({ job, chats, onChanged }: { job: CronJob; chats: Chat[]; onChan
     }
   }
 
-  if (editing)
+  if (editing && !managed)
     return (
       <JobEditor
         job={job}
@@ -387,6 +322,8 @@ function JobRow({ job, chats, onChanged }: { job: CronJob; chats: Chat[]; onChan
       return `${t} — unknown, goes nowhere`
     })
 
+  const runsLeft = CronJobPolicy.runsLabel(job.repeat)
+
   return (
     <Card className={job.enabled ? 'p-5' : 'p-5 opacity-60'}>
       {/* Two groups, not one wrapping row. Everything used to sit in a single
@@ -415,33 +352,37 @@ function JobRow({ job, chats, onChanged }: { job: CronJob; chats: Chat[]; onChan
           <span className="font-mono text-[0.86rem] tabular-nums text-read" title={job.schedule ?? ''}>
             {humanSchedule(job.schedule)}
           </span>
-          {runsLabel(job.repeat) ? <span className="text-[0.82rem] text-muted">{runsLabel(job.repeat)}</span> : null}
+          {runsLeft ? <span className="text-[0.82rem] text-muted">{runsLeft}</span> : null}
           {next && job.enabled ? <span className="text-[0.82rem] text-muted">next {until(next)}</span> : null}
         </div>
 
-        <div className="flex shrink-0 gap-1">
-          <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
-            <Pencil />
-            edit
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() =>
-              void act({ action: job.enabled ? 'pause' : 'resume' }, job.enabled ? 'paused ✓' : 'resumed ✓')
-            }
-          >
-            {job.enabled ? <Pause /> : <Play />}
-            {job.enabled ? 'pause' : 'resume'}
-          </Button>
-          <ConfirmAction
-            label="remove"
-            confirmLabel="Remove"
-            icon={<Trash2 />}
-            question={`Remove ${job.name ? `“${job.name}”` : 'this job'}?`}
-            onConfirm={() => act({ action: 'remove' }, 'removed ✓')}
-          />
-        </div>
+        {managed ? (
+          <Badge>Managed by AIRA</Badge>
+        ) : (
+          <div className="flex shrink-0 gap-1">
+            <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
+              <Pencil />
+              edit
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                void act({ action: job.enabled ? 'pause' : 'resume' }, job.enabled ? 'paused ✓' : 'resumed ✓')
+              }
+            >
+              {job.enabled ? <Pause /> : <Play />}
+              {job.enabled ? 'pause' : 'resume'}
+            </Button>
+            <ConfirmAction
+              label="remove"
+              confirmLabel="Remove"
+              icon={<Trash2 />}
+              question={`Remove ${job.name ? `“${job.name}”` : 'this job'}?`}
+              onConfirm={() => act({ action: 'remove' }, 'removed ✓')}
+            />
+          </div>
+        )}
       </div>
 
       {job.prompt_preview ? (
