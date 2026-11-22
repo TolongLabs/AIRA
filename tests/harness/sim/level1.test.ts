@@ -39,10 +39,11 @@ function packWithSticker(dataDir: string): void {
   writeFileSync(moods, readFileSync(moods, 'utf8').replaceAll('    stickers: []', '    stickers:\n      - calm.webp'))
 }
 
-async function startSim(model: ModelClient) {
+async function startSim(model: ModelClient, turnDeadlineMs?: number) {
   const dataDir = tmpDir('aira-sim-e2e-')
   packWithSticker(dataDir)
   const config = testConfig((c) => {
+    if (turnDeadlineMs !== undefined) c.llm.turnDeadlineMs = turnDeadlineMs
     c.storage.minFreeMb = 2
     c.storage.criticalFreeMb = 1
   })
@@ -187,7 +188,7 @@ describe('level 1: a message through the preview API to the core and back', () =
         throw new ModelError('malformed', 'the scripted model refuses')
       }
     }
-    const { dm, send, level1 } = await startSim(refusing)
+    const { dm, send, level1 } = await startSim(refusing, 1_000)
 
     const failed = await send(dm, { sender: 'Alex', text: 'will this fail?' })
     const notes = failed.body.messages.filter((m) => m.kind === 'note')
