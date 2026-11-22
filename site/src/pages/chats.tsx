@@ -119,6 +119,10 @@ function SocialPlatforms({
           {platforms.map(({ id, name, operations }) => {
             const key = `${feature === 'features.social' ? 'social' : 'autofetch'}.platforms.${id}`
             const level = chat.settings[key]?.level ?? 'default'
+            const hint = [operations.join(', '), sourceText(level, chat.type)]
+            if (id === 'youtube' && disabled && valueOf(chat, 'features.media', true)) {
+              hint.push('Media watching still uses this setting for YouTube links.')
+            }
             return (
               <div
                 key={id}
@@ -129,7 +133,7 @@ function SocialPlatforms({
                   disabled={disabled}
                   onChange={(on) => save(key, on)}
                   label={name}
-                  hint={`${operations.join(', ')} · ${sourceText(level, chat.type)}`}
+                  hint={hint.join(' · ')}
                 />
                 {level === 'chat' && (
                   <Button size="sm" variant="ghost" disabled={disabled} onClick={() => clear(key)}>
