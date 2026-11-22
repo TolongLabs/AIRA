@@ -376,7 +376,8 @@ and [LinkedIn User Agreement](https://www.linkedin.com/legal/user-agreement).
 
 `read_post` takes one seen `url` or `source` id from [Turn Sources](#turn-sources). Only the
 model calls it; no command names it. A post link in a member's message is read
-at intake instead, with its media watched ([Models](models.md#post-links)).
+at intake instead, with its media watched ([Models](models.md#post-links)). A repeat read of that URL or a
+recognised alias returns the same turn’s post and visual evidence without another provider request.
 Profiles and home pages use `read_page`. Direct post paths can also be recognised on an unknown host when
 their platform shape is strict. Lookups use the platform target. The unknown host is logged by hostname only.
 YouTube requires an official host. Instagram's `/p/<id>` needs an Instagram-like hostname on an unknown host.
@@ -415,7 +416,7 @@ share cards, recommendations, summaries and comments. The replies operation is u
 HTTPS media from the verified CDN domain. The TikTok mirror setting does not govern first-party Lemon8 media.
 Keep the shared MIME checks, download limits, receipt cleanup
 and inherited per-chat read and fetch settings. The native video duration can omit a fractional second.
-Measure a reported 180-second video before delivery, applying the shared 180-second limit. Enable photos
+Measure a reported 300-second video before delivery, applying the shared 300-second limit. Enable photos
 and video for delivery after three successful application checks per host. There is no extractor fallback.
 
 Douyin has recognition only on both deployments. Recognise the verified video routes
@@ -435,7 +436,7 @@ leave the link out of read, intake, fetch and the capability catalog. Profiles a
 no post classification. Keep the query and short code out of logs.
 
 LinkedIn has recognition only (T0 on both deployments). Recognise official post slugs with an activity ID,
-feed update activity URNs, and single-token lnkd.in shares. A short link identifies the service only.
+feed update activity URNs, and single-token and /p/{token} lnkd.in shares. A short link identifies the service only.
 Keep these links out of intake and fetch selection. The read tools name LinkedIn and refuse a recognised URL
 before any network call. This includes HTTP links, official regional and mobile hosts, and a host with a trailing dot.
 The model sees a named refusal through the tool registry. Search and research skip recognised posts before

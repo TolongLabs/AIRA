@@ -365,7 +365,10 @@ and referrer for that video when present. A remote audio download over 600 secon
 
 An otherwise eligible linked MP4 may be downloaded up to 48 MB and compressed locally if it exceeds the
 consumer’s byte limit. Intake still requires at most 20 MB and group autofetch at most 16 MB after compression.
-Only an MP4 of up to 180 seconds can use compression. That bound limits transcoding work. Group eligibility
+A transient watch failure may retry the same downloaded asset once within the original deadline.
+Use the post or preview that was actually read. Keep duration policy internal to the character.
+
+Only an MP4 of up to 300 seconds can use compression. That bound limits transcoding work. Group eligibility
 continues to use the platform and native attachment rules in [Autofetch](system.md#autofetch).
 The core runs at most one transcode at a time. The attempt takes at most 12 seconds within the caller’s remaining
 budget. It fits the video within 960×540 at 24 frames per second without cropping, and keeps the full duration
@@ -404,7 +407,7 @@ and the shared link's own when a redirect resolved it (`src/turn/pipeline.ts`).
 | Files from one message | Code `MAX_MEDIA_PER_MESSAGE`, 3                    | Extras are skipped, never failures (`src/media/turn-media.ts`)                          |
 | Files in one turn      | Code `MAX_MEDIA_PER_TURN`, 6, newest first         | Extras are skipped (`src/media/turn-media.ts`)                                          |
 | File size              | Code default, 20,000,000 bytes, no config key      | Refused as `too large` before the file is read (`src/media/limits.ts`)                  |
-| Video length           | `media.maxVideoSeconds`, 180                       | Refused as `too long` (`src/media/limits.ts`)                                           |
+| Video length           | `media.maxVideoSeconds`, 300                       | Refused as `too long` (`src/media/limits.ts`)                                           |
 | Audio length           | Code default, 600 seconds                          | Refused as `too long`, only when the sender reported one (`src/media/limits.ts`)        |
 | One media read         | `media.timeoutMs`, 30000, at most two thirds left  | The read fails and the file is unreadable (`src/media/turn-media.ts`)                   |
 | All YouTube segments   | `media.linkWatchMs`, 12000                         | Running segments abort; answered ones still merge (`src/media/link-intake.ts`)          |
@@ -547,6 +550,6 @@ credit, about one per call, not in dollars, so its prices are 0 and it does not 
 | `media.watcher.model`                                          | `gemini-3.5-flash-lite` | The media model, on Google AI Studio. Key: `MEDIA_WATCHER_API_KEY` |
 | `media.gatewayDirs`                                            | empty                   | `host` and `container` pairs of the gateway's media folders        |
 | `media.timeoutMs`                                              | 30000                   | One media read, within two thirds of the time left in the turn     |
-| `media.maxVideoSeconds`                                        | 180                     | Longest video that is watched                                      |
+| `media.maxVideoSeconds`                                        | 300                     | Longest video that is watched                                      |
 | `media.maxLinkVideoSeconds`                                    | 600                     | Longest span watched from a YouTube link                           |
 | `YOUTUBE_API_KEY` (env)                                        | unset                   | Without it, YouTube reply lookup fails as `not_configured`         |

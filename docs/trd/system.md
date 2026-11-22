@@ -272,10 +272,10 @@ and declares them in `<hostDataDir>/gateway/chats.json`, which the gateway reads
 Exclude all YouTube URLs, including Shorts, before allocating a lookup slot. Select only typed native
 attachments owned by the resolved post, video first and photos in post order. The source response must
 prove both identity and type. Keep verified photos when a video is ineligible. Reject live streams and playlists. For a bounded video, use the native attachment's duration when
-known. Skip it before downloading if it exceeds 180 seconds. Otherwise, when the duration is missing,
+known. Skip it before downloading if it exceeds 300 seconds. Otherwise, when the duration is missing,
 download within the input cap and probe the MP4 with ffprobe before compression or delivery.
 Duration probes share a bounded worker limit and respect caller cancellation and the local processing deadline. A duration
-of exactly 180 seconds qualifies. Record `too_long` for longer videos and `unknown_duration` when the
+of exactly 300 seconds qualifies. Record `too_long` for longer videos and `unknown_duration` when the
 probe cannot establish a finite positive duration. Preserve the duration band and all eligible sibling photos.
 The watching switch governs intake independently.
 
