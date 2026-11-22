@@ -71,6 +71,7 @@ function setup(
     posts?: Record<string, Partial<SocialPost>>
     on?: boolean
     type?: 'group' | 'dm'
+    downloadShort?: AutofetchOptions['downloadShort']
     compressVideo?: AutofetchOptions['compressVideo']
     mirrors?: AutofetchOptions['mirrors']
   } = {}
@@ -108,6 +109,7 @@ function setup(
     storage,
     viewer,
     download,
+    ...(options.downloadShort ? { downloadShort: options.downloadShort } : {}),
     ...(options.compressVideo ? { compressVideo: options.compressVideo } : {}),
     ...(options.mirrors ? { mirrors: options.mirrors } : {}),
     cacheDir: join(dataDir, 'cache', 'autofetch'),
@@ -302,7 +304,21 @@ describe('autofetch', () => {
     expect(env.downloads).toEqual(['https://img.example/native.jpg'])
   })
 
-  it('keeps three lookup slots after YouTube Shorts and records policy exclusions', async () => {
+  it('fetches a Short in an opted-in DM while watch and live forms of the same ID are excluded', async () => {
+    const id = 'fixture1234'
+    const downloadShort = vi.fn(async () => ({ contentType: 'video/mp4', data: testMediaBytes('mp4', 'fixture') }))
+    const env = setup({ type: 'dm', downloadShort, posts: { ['youtube:' + id]: { durationSec: 35 } } })
+    for (const path of ['watch?v=' + id, 'live/' + id, 'embed/' + id]) {
+      expect(await env.autofetch.fetch({ chat: env.waId, text: 'https://www.youtube.com/' + path })).toEqual([])
+    }
+    expect(env.lookups).toEqual([])
+    const input = { chat: env.waId, text: 'https://www.youtube.com/shorts/' + id }
+    expect(await env.autofetch.fetch(input)).toMatchObject([{ kind: 'video' }])
+    expect(await env.autofetch.fetch(input)).toEqual([])
+    expect(downloadShort).toHaveBeenCalledTimes(1)
+    expect(env.downloads).toEqual([])
+  })
+  it('keeps three lookup slots after an invalid YouTube Shorts ID and records policy exclusions', async () => {
     const env = setup()
     const text =
       'https://youtube.com/shorts/abc_123 https://x.com/a/status/1 https://x.com/a/status/2 https://x.com/a/status/3'

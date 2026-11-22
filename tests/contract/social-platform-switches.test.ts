@@ -31,7 +31,7 @@ describe('platform sub-toggles in the settings registry', () => {
         expect(resolveSetting(storage, chat, `${feature}.platforms.${id}`)).toEqual({ value: true, level: 'default' })
       }
     }
-    expect(definitionFor('autofetch.platforms.youtube')).toBeUndefined()
+    expect(definitionFor('autofetch.platforms.youtube')).toBeDefined()
   })
 
   it('resolves global, type and chat inheritance and restores the inherited value on clear', () => {

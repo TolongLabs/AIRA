@@ -40,6 +40,7 @@ export interface SocialPostTarget {
   canonicalUrl: string
   extractorUrl: string
   profile?: string
+  youtubeShort?: true
   startSec?: number
   /** The post is readable, but its Bilibili part does not select a deliverable asset. */
   invalidPart?: true
@@ -125,7 +126,13 @@ function parseYouTube(url: URL, host: string, unknown: boolean): SocialPostTarge
       : url.pathname.match(/^\/(?:shorts|live|embed)\/([\w-]+)\/?$/)?.[1]
   if (!id || !/^[\w-]+$/.test(id)) return null
   const canonicalUrl = `https://www.youtube.com/watch?v=${id}`
-  return { ...target('youtube', id, canonicalUrl), startSec: youtubeStartSec(url) }
+  const youtubeShort =
+    /^\/shorts\/[\w-]{11}\/?$/.test(url.pathname) && ['youtube.com', 'www.youtube.com', 'm.youtube.com'].includes(host)
+  return {
+    ...target('youtube', id, canonicalUrl),
+    startSec: youtubeStartSec(url),
+    ...(youtubeShort ? { youtubeShort: true } : {})
+  }
 }
 
 function parseX(url: URL, unknown: boolean): SocialPostTarget | null {

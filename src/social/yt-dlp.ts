@@ -27,7 +27,7 @@ export function buildYtDlpArgs(url: string, timeoutMs: number, extraArgs: readon
   ]
 }
 
-function isolatedEnvironment(home: string): NodeJS.ProcessEnv {
+export function isolatedEnvironment(home: string): NodeJS.ProcessEnv {
   return {
     PATH: process.env.PATH ?? '',
     HOME: home,

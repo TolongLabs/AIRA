@@ -1111,7 +1111,7 @@ function ChatRow({
                             />
                             {postMedia && (
                               <p className="mt-2 mb-0 text-[0.8rem] text-faint">
-                                YouTube, including Shorts, is excluded.
+                                YouTube delivery is limited to verified Shorts.
                                 {chat.status !== 'active'
                                   ? ' This chat is off.'
                                   : valueOf(chat, 'muted', false)

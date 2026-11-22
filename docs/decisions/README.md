@@ -190,7 +190,7 @@ Process boundaries, the gateway contract, turns, tools, commands, models, reply 
 | ADR-0105 | 2026-11-21 | [Limit Plain Page Reads to Five Guarded Redirects][ADR-0105]                            | Accepted                                                      |
 | ADR-0106 | 2026-11-21 | [Keep Cookies per Host for One Page Lookup][ADR-0106]                                   | Accepted                                                      |
 | ADR-0107 | 2026-11-21 | [Reject Access-Block Pages as Failed Reads][ADR-0107]                                   | Accepted                                                      |
-| ADR-0108 | 2026-11-21 | [Require Verified Native Attachments for Group Autofetch][ADR-0108]                     | Accepted                                                      |
+| ADR-0108 | 2026-11-21 | [Require Verified Native Attachments for Group Autofetch][ADR-0108]                     | Partially superseded by [ADR-0180]                            |
 | ADR-0109 | 2026-11-21 | [Separate Media Handoff From Confirmed Delivery][ADR-0109]                              | Accepted                                                      |
 | ADR-0110 | 2026-11-22 | [Raise the TikWM Lookup Timeouts][ADR-0110]                                             | Accepted                                                      |
 | ADR-0111 | 2026-11-22 | [Use the First-Party Lemon8 Article Page][ADR-0111]                                     | Accepted                                                      |
@@ -205,7 +205,9 @@ Process boundaries, the gateway contract, turns, tools, commands, models, reply 
 | ADR-0120 | 2026-11-22 | [Give Autofetch Files Per-Delivery Lifetimes][ADR-0120]                                 | Accepted                                                      |
 | ADR-0121 | 2026-11-22 | [Extend Native Attachments to Verified Non-YouTube Video][ADR-0121]                     | Accepted                                                      |
 | ADR-0122 | 2026-11-22 | [Raise the Shared Short-Video Limit to 300 Seconds][ADR-0122]                           | Accepted                                                      |
+| ADR-0180 | 2026-11-23 | [Fetch Only Verified YouTube Shorts][ADR-0180]                                          | Accepted                                                      |
 
+[ADR-0180]: 0180-fetch-only-verified-youtube-shorts.md
 [ADR-0001]: 0001-build-the-core-as-a-typescript-service-on-node-24.md
 [ADR-0002]: 0002-keep-hermes-agent-as-the-pinned-whatsapp-transport.md
 [ADR-0003]: 0003-attach-the-core-through-an-openai-compatible-endpoint-on.md

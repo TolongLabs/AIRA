@@ -28,6 +28,7 @@ import { DEFAULT_MEDIA_LIMITS } from './media/limits.js'
 import { createLinkReader } from './media/link-intake.js'
 import { createTurnMedia } from './media/turn-media.js'
 import { createVideoCompressor } from './media/video-compression.js'
+import { createShortDownload } from './media/youtube-short.js'
 import { createMemoryPort } from './memory/port.js'
 import { presentLabels, recallForTurn } from './memory/recall.js'
 import type { MemoryJudge } from './memory/types.js'
@@ -417,7 +418,9 @@ export async function createApp(options: AppOptions): Promise<App> {
     )
     // Other social media files may redirect to a CDN on another origin; they still carry no cookies.
     const socialMediaDownload = sharePendingDownloads(createFetchPagePort({ cookieless: true }).download)
+    const downloadShort = createShortDownload(config.social.ytDlpPath)
     const autofetch = createAutofetch({
+      downloadShort,
       mirrors: socialMirrors,
       compressVideo,
       storage,
@@ -630,6 +633,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       media: createTurnMedia({
         ...(mediaWatcher ? { watcher: mediaWatcher } : {}),
         links: createLinkReader({
+          downloadShort,
           compressVideo,
           viewer,
           findTarget: (text) => findLinkTarget([text], (entry) => socialLog.info('social.unknown_host', entry)),

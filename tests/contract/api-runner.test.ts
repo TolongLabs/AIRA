@@ -253,6 +253,56 @@ describe('the API runner', () => {
     await expect(run(model, [lookupTool()])).rejects.toMatchObject({ kind: 'rate_limit' })
   })
 
+  it('recovers a malformed post-tool continuation without rerunning the tool', async () => {
+    const model = queueModel([
+      { toolCalls: [call('found-it')] },
+      new ModelError('malformed', 'HTTP 400'),
+      { toolCalls: [call('stale')] },
+      { text: 'Recovered answer.' }
+    ])
+    const log: { args: unknown; callId: string }[] = []
+    const runner = createApiRunner({
+      model: 'main-model',
+      clientFor: () => model,
+      limits: { maxCallsPerTurn: 1, timeBudgetMs: 15000 }
+    })
+    const result = await runner.run({
+      system,
+      messages: window,
+      tools: [lookupTool(log)],
+      context: { ...context, deadline: Date.now() + 5000 },
+      signal: new AbortController().signal
+    })
+    expect(result.text).toBe('Recovered answer.')
+    expect(result.receipts).toEqual(['r_1'])
+    expect(log).toHaveLength(1)
+    expect(model.requests).toHaveLength(4)
+    for (const recovered of model.requests.slice(2)) {
+      expect(recovered.tools).toEqual([])
+      expect(recovered.messages.at(-1)?.content).toContain('found-it')
+      expect(recovered.messages.some((m) => m.role === 'tool')).toBe(false)
+    }
+  })
+
+  it('does not schedule reply recovery past the turn deadline', async () => {
+    const model = queueModel([{ text: ' ' }])
+    const runner = createApiRunner({
+      model: 'main-model',
+      clientFor: () => model,
+      limits: { maxCallsPerTurn: 1, timeBudgetMs: 15000 }
+    })
+    await expect(
+      runner.run({
+        system,
+        messages: window,
+        tools: [],
+        context: { ...context, deadline: Date.now() + 200 },
+        signal: new AbortController().signal
+      })
+    ).rejects.toMatchObject({ kind: 'malformed' })
+    expect(model.requests).toHaveLength(1)
+  })
+
   it('treats a reply with no text and no tool call as malformed', async () => {
     await expect(run(queueModel([{ text: '   ' }]))).rejects.toMatchObject({ kind: 'malformed' })
   })

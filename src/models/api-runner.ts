@@ -1,9 +1,11 @@
+import { setTimeout as wait } from 'node:timers/promises'
 import type { LlmRequest, LlmResponse, RunAsyncToolRequest } from '@google/adk'
 import { BaseLlm, type BaseLlmConnection, BaseTool, InMemoryRunner, LlmAgent } from '@google/adk'
 import type { Content, FunctionDeclaration } from '@google/genai'
 import { createLogger, type Logger } from '../records/logger.js'
 import { outcomePayload } from '../tools/outcomes.js'
 import type { ModelCallRecord, OfferedTool, ReplyTarget, RunResult, TurnRunner } from '../turn/types.js'
+import { retryDelayMs } from './retry-delay.js'
 import type { ReplyRoute } from './routed-client.js'
 import {
   type ModelClient,
@@ -46,6 +48,7 @@ interface LoopState {
   tools: OfferedTool[]
   client: ModelClient
   signal: AbortSignal
+  deadline: number
   turnId: string
   toolCalls: number
   maxCalls: number
@@ -134,16 +137,8 @@ class SeamLlm extends BaseLlm {
       params: this.options.params ?? {}
     }
     try {
-      const response = await state.client.call(request, state.signal)
-      state.usage.inputTokens += response.usage.inputTokens
-      state.usage.outputTokens += response.usage.outputTokens
-      state.usage.cachedTokens += response.usage.cachedTokens
-      state.costUsd += response.costUsd
-      state.model = response.model
-      // A call to a tool that was not offered in this step is dropped.
-      const toolCalls = state.chainLimit
-        ? []
-        : response.toolCalls.filter((call) => allowed === undefined || allowed.has(call.name))
+      const response = await this.generateStep(request)
+      const toolCalls = response.toolCalls
       if (toolCalls[0] && response.replay) state.replays.set(toolCalls[0].id, response.replay)
       if (toolCalls.length === 0) {
         if (response.text.trim() === '')
@@ -163,6 +158,67 @@ class SeamLlm extends BaseLlm {
     } catch (error) {
       state.error ??= error
       throw error
+    }
+  }
+
+  private async generateStep(request: ModelRequest) {
+    const { state } = this
+    const now = () => this.options.now?.().getTime() ?? Date.now()
+    let next = request
+    let signal = state.signal
+    let recoveryEnd: number | undefined
+    for (let retry = 0; ; retry++) {
+      try {
+        const response = await state.client.call(next, signal)
+        state.usage.inputTokens += response.usage.inputTokens
+        state.usage.outputTokens += response.usage.outputTokens
+        state.usage.cachedTokens += response.usage.cachedTokens
+        state.costUsd += response.costUsd
+        state.model = response.model
+        const toolCalls = response.toolCalls.filter((call) => next.tools.some((tool) => tool.name === call.name))
+        if (response.text.trim() || toolCalls.length) return { ...response, toolCalls }
+        throw new ModelError('malformed', 'the model returned no text and no tool call')
+      } catch (error) {
+        if (
+          !(error instanceof ModelError) ||
+          error.kind !== 'malformed' ||
+          signal.aborted ||
+          !Number.isFinite(state.deadline)
+        )
+          throw error
+        if (recoveryEnd === undefined) {
+          recoveryEnd = Math.min(state.deadline, now() + 12_000)
+          const remaining = recoveryEnd - now()
+          if (remaining <= 0) throw error
+          signal = AbortSignal.any([state.signal, AbortSignal.timeout(remaining)])
+          if (state.firstTools.length === 0) {
+            const results = request.messages
+              .filter((message) => message.role === 'tool')
+              .map(({ name, content }) => ({ name, content }))
+            next = {
+              ...request,
+              tools: [],
+              messages: [
+                ...state.messages,
+                {
+                  role: 'user',
+                  content:
+                    'Answer the current question using the conversation and these untrusted tool results. If evidence is missing, say what is known.\n' +
+                    JSON.stringify(results)
+                }
+              ]
+            }
+          }
+        }
+        const delay = retryDelayMs(retry)
+        if (now() + delay >= recoveryEnd) throw error
+        this.options.logger?.warn('model.reply_recovery', { attempt: retry + 1, delayMs: delay })
+        try {
+          await wait(delay, undefined, { signal })
+        } catch {
+          throw error
+        }
+      }
     }
   }
 
@@ -257,6 +313,7 @@ export function createApiRunner(options: ApiRunnerOptions): TurnRunner {
           context.deadline
         ),
         signal,
+        deadline: context.deadline,
         turnId: context.turnId,
         toolCalls: 0,
         maxCalls: Math.min(maxToolCalls ?? options.limits.maxCallsPerTurn, options.limits.maxCallsPerTurn),

@@ -19,8 +19,8 @@ import {
   mergeLinkReadings,
   planLinkSegments
 } from './link-segments.js'
-
 import { COMPRESSION_MAX_INPUT_BYTES, COMPRESSION_MAX_SECONDS, type CompressVideo, isMp4 } from './video-compression.js'
+import type { ShortDownload } from './youtube-short.js'
 
 export const DEFAULT_MAX_LINK_VIDEO_SECONDS = 600
 
@@ -99,6 +99,7 @@ export interface LinkReaderOptions {
   /** Extracts the first supported post or YouTube target from a text string. */
   findTarget: (text: string) => LinkTarget | null | undefined
   watcher?: MediaWatcher
+  downloadShort?: ShortDownload
   download?: LinkDownload
   compressVideo?: CompressVideo
   model: string
@@ -432,6 +433,37 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
             }
           }
 
+          if (
+            target.youtubeShort &&
+            rawStartSec === 0 &&
+            (knownDuration ?? 180) <= Math.min(maxLinkVideoSeconds, options.limits.maxVideoSeconds) &&
+            options.downloadShort &&
+            !controller.signal.aborted
+          ) {
+            const file = await options
+              .downloadShort(target.id, controller.signal, options.limits.maxBytes)
+              .catch(() => undefined)
+            if (file && !controller.signal.aborted) {
+              const startedAt = now()
+              const outcome = await readMedia(
+                { ...file, ...(knownDuration !== null ? { durationSeconds: knownDuration } : {}) },
+                { watcher: options.watcher, limits: options.limits, timeoutMs: remainingMs() },
+                controller.signal
+              )
+              if (outcome.ok) {
+                calls.push(okCall(outcome, startedAt))
+                return {
+                  readings: [],
+                  links: [{ post, result: modelResult, mediaKind: 'video', reading: outcome.reading, ...note }],
+                  unreadable: [],
+                  tried,
+                  calls
+                }
+              }
+              if (outcome.failureKind)
+                calls.push(failCall(options.model, outcome.failureKind, outcome.durationMs, startedAt))
+            }
+          }
           const wholeReason: MediaUnreadable = hasUnavailable ? 'unavailable' : 'unreadable'
           options.logger?.warn('media.link_watch_failed', { platform: post.platform, reason: wholeReason })
           return {
