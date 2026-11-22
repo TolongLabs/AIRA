@@ -42,7 +42,8 @@ const FETCHERS: Record<SocialPlatform, ReplyFetcher> = {
   instagram: fetchInstagramReplies,
   bilibili: fetchBilibiliReplies,
   threads: fetchThreadsReplies,
-  facebook: async () => failed('facebook', 'unsupported')
+  facebook: async () => failed('facebook', 'unsupported'),
+  lemon8: async () => failed('lemon8', 'unsupported')
 }
 
 function isAbort(error: unknown): boolean {

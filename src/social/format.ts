@@ -1,18 +1,9 @@
 import type { ReplyLookup, SocialPost, SocialReply } from './types.js'
+import { PLATFORM_NAME } from './urls.js'
 
 export const SOCIAL_POST_FAILURE_MARKER = '(the linked post could not be opened)'
 
-export const PLATFORM_NAMES = {
-  x: 'X',
-  bluesky: 'Bluesky',
-  youtube: 'YouTube',
-  tiktok: 'TikTok',
-  reddit: 'Reddit',
-  instagram: 'Instagram',
-  bilibili: 'Bilibili',
-  threads: 'Threads',
-  facebook: 'Facebook'
-} as const
+export const PLATFORM_NAMES = PLATFORM_NAME
 
 export function quoted(value: string, maxLength: number): string {
   return sanitizeMediaText(value)
