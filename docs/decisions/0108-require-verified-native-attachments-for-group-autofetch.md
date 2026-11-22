@@ -1,7 +1,7 @@
 # ADR-0108: Require Verified Native Attachments for Group Autofetch
 
 - **Date:** 2026-11-21
-- **Status:** Accepted
+- **Status:** Partially superseded by [ADR-0180](0180-fetch-only-verified-youtube-shorts.md) for YouTube Shorts
 - **Group:** [Architecture](README.md#architecture)
 
 ## Decision

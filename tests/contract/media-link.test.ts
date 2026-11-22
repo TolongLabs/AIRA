@@ -252,6 +252,42 @@ describe('gemini-watcher watchUrl and readMediaUrl', () => {
 describe('createLinkReader', () => {
   const baseLimits = { ...DEFAULT_MEDIA_LIMITS, maxVideoSeconds: 180, maxLinkVideoSeconds: 600 }
 
+  it('watches verified Short bytes when the URL watcher fails', async () => {
+    const target = { ...makeTarget('youtube', 'fixture1234'), youtubeShort: true as const }
+    const post = makePost({
+      id: target.id,
+      platform: 'youtube',
+      target,
+      canonicalUrl: 'https://www.youtube.com/watch?v=fixture1234',
+      durationSec: 35
+    })
+    const watcher: MediaWatcher = {
+      watchUrl: async () => {
+        throw new ModelError('transient', 'fixture')
+      },
+      watch: async () => ({
+        reading: { description: 'Verified frames.' },
+        usage: { inputTokens: 10, outputTokens: 3, cachedTokens: 0 },
+        costUsd: 0,
+        model: 'test'
+      })
+    }
+    const reader = createLinkReader({
+      viewer: { lookup: async () => ({ status: 'found', post }) },
+      findTarget: () => target,
+      watcher,
+      model: 'test',
+      limits: baseLimits,
+      downloadShort: async () => ({ data: Buffer.from('fixture-video'), contentType: 'video/mp4' })
+    })
+    const result = await reader.read(['https://www.youtube.com/shorts/fixture1234'], 1000, {
+      media: true,
+      social: true
+    })
+    expect(result.links?.[0]).toMatchObject({ mediaKind: 'video', reading: { description: 'Verified frames.' } })
+    expect(result.calls).toHaveLength(2)
+  })
+
   it('clips longer YouTube videos at maxLinkVideoSeconds from t= start and labels the description', async () => {
     const watchUrlCalls: { url: string; startSec?: number; endSec?: number; fps?: number }[] = []
     const watcher: MediaWatcher = {

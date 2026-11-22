@@ -33,6 +33,7 @@ import {
   type ProbeVideoDuration,
   probeVideoDuration
 } from './video-compression.js'
+import type { ShortDownload } from './youtube-short.js'
 
 // A group's post links answered with the posts' own media (docs/trd/system.md#autofetch).
 
@@ -104,6 +105,7 @@ export interface AutofetchOptions {
       observe?: (trace: SocialLookupTrace) => void
     ): Promise<SocialPostLookup>
   }
+  downloadShort?: ShortDownload
   download: PagePort['download']
   compressVideo?: CompressVideo
   /** Measures a downloaded MP4 whose native duration is unknown. Defaults to ffprobe. */
@@ -201,10 +203,16 @@ function postMedia(
   durationSec?: number | null
   downloadTimeoutMs?: number
   rangeBytes?: number
+  shortId?: string
 }[] {
   const resolved = canonicalTarget(post, target)
   if (!resolved) return []
   const operations = groupOperations(resolved.platform, mirrors, chatId, inGroup)
+  if (resolved.platform === 'youtube') {
+    return target.youtubeShort && operations.includes('video')
+      ? [{ kind: 'video', url: resolved.canonicalUrl, shortId: resolved.id, durationSec: post.durationSec }]
+      : []
+  }
   const attachments = (post.attachments ?? []).filter(
     (item) => item.owner === resolved.lookupKey && operations.includes(item.kind === 'image' ? 'photos' : 'video')
   )
@@ -316,7 +324,11 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
       let skips = 0
       for (const target of targets) {
         let skip: Skip | undefined
-        if (target.invalidPart || groupOperations(target.platform, options.mirrors, chatId, inGroup).length === 0)
+        if (
+          (target.platform === 'youtube' && (!target.youtubeShort || !options.downloadShort)) ||
+          target.invalidPart ||
+          groupOperations(target.platform, options.mirrors, chatId, inGroup).length === 0
+        )
           skip = 'platform_excluded'
         else if (!platformOn(target.platform)) skip = 'platform_disabled'
         else if (selected >= AUTOFETCH_MAX_LINKS) continue
@@ -347,8 +359,9 @@ export function createAutofetch(options: AutofetchOptions): Autofetch {
       ])
       // A video may be compressed, so it may download up to the compressor's input cap.
       const cap = isVideo && options.compressVideo ? COMPRESSION_MAX_INPUT_BYTES : maxBytes
-      const file =
-        item.rangeBytes !== undefined && item.rangeBytes <= cap
+      const file = item.shortId
+        ? await options.downloadShort!(item.shortId, budget, cap)
+        : item.rangeBytes !== undefined && item.rangeBytes <= cap
           ? await options.download(item.url, budget, cap, item.headers, item.rangeBytes)
           : await options.download(item.url, budget, cap, item.headers)
       if (budget.aborted) return { downloaded }

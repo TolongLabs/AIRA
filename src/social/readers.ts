@@ -185,7 +185,7 @@ const adapters: Record<SocialPlatform, PlatformAdapter> = {
   reddit: { read: ['text', 'preview', 'video'], group: [], readers: (_, env) => redditReaders(env) },
   youtube: {
     read: ['text', 'preview', 'video'],
-    group: [],
+    group: ['video'],
     extractorRequired: true,
     readers: (_, env) => [ytDlpReader(env), youtubeOEmbedReader(env)]
   },
@@ -248,7 +248,7 @@ export function requiresExtractor(target: SocialPostTarget, mirrors?: SocialMirr
 }
 
 /** Platforms whose fetched video needs the extractor, so the catalog offers it only when yt-dlp is installed. */
-const EXTRACTOR_FETCH_VIDEO: readonly SocialPlatform[] = ['bilibili', 'facebook']
+const EXTRACTOR_FETCH_VIDEO: readonly SocialPlatform[] = ['bilibili', 'facebook', 'youtube']
 
 /**
  * The fetch operations for a platform in a chat. A mirror's `read_and_group` grant applies to both opted-in groups

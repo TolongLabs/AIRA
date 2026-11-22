@@ -188,16 +188,23 @@ The additional run uses the same model and an empty tool session.
 
 ## Failure Kinds
 
-| Kind         | Examples                        | Action                                   |
-| ------------ | ------------------------------- | ---------------------------------------- |
-| `transient`  | Timeout, 5xx, connection reset  | Retry with backoff inside the deadline   |
-| `rate_limit` | 429, subscription limit reached | Switch to fallback, open the breaker     |
-| `auth`       | 401, 403, expired login         | Switch to fallback, alert the operator   |
-| `refusal`    | The model declines              | Send the pack's refusal line             |
-| `malformed`  | Empty or unparseable reply      | One retry, then the pack's fallback line |
-| `budget`     | Monthly cap reached             | Send the pack's limit line               |
+| Kind         | Examples                        | Action                                              |
+| ------------ | ------------------------------- | --------------------------------------------------- |
+| `transient`  | Timeout, 5xx, connection reset  | Retry with backoff inside the deadline              |
+| `rate_limit` | 429, subscription limit reached | Switch to fallback, open the breaker                |
+| `auth`       | 401, 403, expired login         | Switch to fallback, alert the operator              |
+| `refusal`    | The model declines              | Send the pack's refusal line                        |
+| `malformed`  | Empty or unparseable reply      | Retry and switch route, then bounded reply recovery |
+| `budget`     | Monthly cap reached             | Send the pack's limit line                          |
 
 ## Fallback
+
+After routing, an API reply step that still returns a malformed response or no usable text or offered tool call
+can recover for up to 12 seconds within the original turn deadline. Wait 250 ms before the first recovery call
+and double the delay to a maximum of 4 seconds. The recovery asks for a final answer from the original conversation
+and completed tool results, with tools withdrawn. Required command tools that have yet to run keep their gate.
+Cancellation, refusal, authentication, spend limits and open provider breakers still apply. Each actual model
+attempt uses the normal route and accounting. Completed tools and their receipts stay in the original turn.
 
 - The fallback model answers on the same runner interface with the same prompt and tools.
 - For an API reply, retry only the failed model request, keeping any completed tool results. Transient failures

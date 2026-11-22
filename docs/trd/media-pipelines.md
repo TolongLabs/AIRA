@@ -580,7 +580,12 @@ text and image feeds remain readable.
 
 ### Selection And Eligibility
 
-Exclude all YouTube URLs, including Shorts, before allocating a lookup slot. Select only typed native
+Only an official YouTube `/shorts/{id}` link may request a YouTube attachment. Before downloading,
+require a successful first-party Shorts page with the matching canonical Shorts URL. Reject redirects to
+ordinary watch pages. The extractor must confirm the same ID, a non-live video and a positive duration
+within 180 seconds. Download a bounded MP4 with video and audio. Standard, live, embed and short-host
+watch links stay outside autofetch regardless of duration. A zero-offset Short whose URL watcher returned
+no usable segment may use the verified MP4 for a byte-based watch within the remaining turn deadline. Select only typed native
 attachments owned by the resolved post, video first and photos in post order. The source response must
 prove both identity and type. Keep verified photos when a video is ineligible. Reject live streams and playlists. For a bounded video, use the native attachment's duration when
 known. Skip it before downloading if it exceeds 300 seconds. Otherwise, when the duration is missing,
