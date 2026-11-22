@@ -401,6 +401,22 @@ policy and cannot select a delivery attachment. The fetch catalog lists extracto
 only when the extractor is installed. Live streams and playlists supply no delivery attachment.
 For file limits, duration and receipt handling see [Autofetch](system.md#autofetch).
 
+Lemon8 uses its first-party logged-out article page for reading, model processing and native photo or
+video delivery on both hosts. The owner confirmed those uses for this deployment. Parse official
+`www.lemon8-app.com/@handle/{19-digit-id}` links including the encoded at sign. Resolve alphanumeric
+`s.lemon8-app.com/s/{code}` and `v.lemon8-app.com/al/{code}` shares through the existing bounded
+resolver. Only a matching official post can supply content. Profiles, campaigns and expired shares
+supply none. The page can redirect to the same post with a region parameter.
+
+The single page reader matches the ID and author handle in its own article detail record. Read its
+title and body as plain text. A gallery supplies its own ordered images. A video supplies its own
+playable URL and a cover for preview. Bind each native rendition to the verified target. Omit avatars,
+share cards, recommendations, summaries and comments. The replies operation is unsupported. Only use
+HTTPS media from the verified CDN domain. Keep the shared MIME checks, download limits, receipt cleanup
+and inherited per-chat read and fetch settings. The native video duration can omit a fractional second.
+Measure a reported 180-second video before delivery, applying the shared 180-second limit. Enable photos
+and video for delivery after three successful application checks per host. There is no extractor fallback.
+
 Douyin has recognition only on both deployments. Recognise the verified video routes
 `www.douyin.com/video/{id}` and `www.iesdouyin.com/share/video/{id}` with a 19-digit post ID.
 A single alphanumeric share code on `v.douyin.com` names the platform without resolving the destination.
