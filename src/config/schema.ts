@@ -259,7 +259,7 @@ export const configSchema = z.strictObject({
           redditGroupChatIds: z.array(z.string().regex(/^c_[0-9a-f]{12}$/)).optional()
         })
         .prefault({}),
-      timeoutMs: ms.default(6000),
+      timeoutMs: ms.default(12000),
       // Limits per HTTP reader and per extractor, each clipped to the lookup's deadline (docs/trd/tools.md).
       httpReaderTimeoutMs: ms.default(2500),
       ytDlpTimeoutMs: ms.default(4500),

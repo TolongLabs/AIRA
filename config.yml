@@ -126,7 +126,7 @@ social:
     tiktok: off
     reddit: off
     # redditGroupChatIds: [] # Optional scope for Reddit group attachments
-  timeoutMs: 6000
+  timeoutMs: 12000
   httpReaderTimeoutMs: 2500
   ytDlpTimeoutMs: 4500
   cacheTtlMs: 900000
