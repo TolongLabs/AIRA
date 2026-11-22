@@ -394,7 +394,8 @@ function isLinkedInLink(url: URL): boolean {
 }
 
 // Rednote (Xiaohongshu) is recognised, never read: its note pages redirect to login on both deployments. Each host
-// below owns its paths, so a path there never reaches the unknown-host parsers. The two domains take apex and www
+// below owns its paths, so a path there never reaches the unknown-host parsers. Every subdomain of the four
+// domains is reserved the same way. Only the listed hosts are recognised: the two domains take apex and www
 // only. xhslink.com takes a bare code or `o/{code}`, and xhslink.cn takes `o/{code}`. A bare `o` is the route.
 const REDNOTE_NOTE_PATH = /^\/(?:explore|discovery\/item)\/[0-9a-f]{24}\/?$/i
 const XHSLINK_COM_PATH = /^\/(?!o\/?$)(?:o\/)?[a-z0-9]+\/?$/i
@@ -409,7 +410,13 @@ const REDNOTE_PATHS = new Map<string, RegExp>([
 ])
 
 function isRednoteHost(hostname: string): boolean {
-  return REDNOTE_PATHS.has(hostname.toLowerCase().replace(/\.+$/, ''))
+  const host = hostname.toLowerCase().replace(/\.+$/, '')
+  return (
+    hostMatches(host, 'xiaohongshu.com') ||
+    hostMatches(host, 'rednote.com') ||
+    hostMatches(host, 'xhslink.com') ||
+    hostMatches(host, 'xhslink.cn')
+  )
 }
 
 /** Display name for a recognised post link with no approved read operation. */
