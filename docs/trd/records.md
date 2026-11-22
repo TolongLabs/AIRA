@@ -50,6 +50,7 @@ For eligible group platforms, core records the verified video duration in one of
 over 60 through 120, over 120 through 180, above 180 seconds, or unknown. Boundaries use unrounded seconds. These bands measure
 the effect that proposed limits would have on candidate videos.
 
+A duration-policy skip records its reason and does not increment the failed-file count.
 Group selection and download counts are distinct from the returned slots and their gateway confirmations.
 A file counts as delivered only after the adapter reports success. Missing reports and legacy `sent` outcomes
 leave delivery unknown. Core stores ordered slot kinds and acknowledgements in `autofetch_delivery` and

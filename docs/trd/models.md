@@ -371,7 +371,7 @@ Use the post or preview that was actually read. Keep duration policy internal to
 Only an MP4 of up to 300 seconds can use compression. That bound limits transcoding work. Group eligibility
 continues to use the platform and native attachment rules in [Autofetch](system.md#autofetch).
 The core runs at most one transcode at a time. The attempt takes at most 12 seconds within the caller’s remaining
-budget. It fits the video within 960×540 at 24 frames per second without cropping, and keeps the full duration
+budget. It fits the video within 960×540 at up to 24 frames per second without cropping, and keeps the full duration
 and an audio track when one is present. If the source or output fails validation,
 intake can still use its preview and group autofetch omits the failed attachment.
 
@@ -381,8 +381,8 @@ own call under the link's time limit. One answer enters block 4 as it is; severa
 (`video`, `photo 2`, `earlier post, photo 1`), and the merged text names how many photos were not watched or could
 not be read. When nothing was read, the reader falls back to the post's one picture (a video's thumbnail or the link
 card's image), and then to its text only (`src/media/link-intake.ts`). The prompt labels a fallback
-picture as a preview. For a video post without a successful watch, the prompt states that video and audio
-were unavailable. Only successful video watches can supply a transcript for a linked post.
+picture as a preview. Without a successful watch the character uses the post or still image and does
+not invent playback, sound, or a technical explanation. Only successful video watches can supply a transcript for a linked post.
 
 When intake reads a social post and successfully watches its video in the same turn, both the configured
 `media_post` and `media_video` labels enter the [tool footer](prompt-engine.md#tool-footer).
@@ -394,8 +394,8 @@ count and canonical URL. The earlier posts of its thread come first, each with i
 
 A failed social link attempted at intake is recorded for this turn under its original and resolved URL when
 available. Either page or post reading returns the same plain refusal if the model asks for that failed link.
-A link whose video or image intake watched is not opened again in the same turn: `read_post` and `read_page` refuse
-its canonical URL with kind `refused`, and the refusal tells the model the content is already in its context. A link
+For a link whose video or image intake watched, `read_post` and `read_page` return the saved post and visual
+evidence as a successful read without fetching it again. A link
 intake read as text only, or whose watch failed, stays open, so the model may fetch the post's replies and media;
 the footer then shows that read as well. The turn records the URL so the tools know it: the post's canonical URL,
 and the shared link's own when a redirect resolved it (`src/turn/pipeline.ts`).

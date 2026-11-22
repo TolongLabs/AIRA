@@ -730,7 +730,7 @@ Every key the audits found: its kind, its default, and the TRD module that owns 
 | `media.watcher.model`                                                                | config.yml   | gemini-3.5-flash-lite                     | [Models](trd/models.md)                 |
 | `media.gatewayDirs`                                                                  | config.yml   | empty                                     | [Models](trd/models.md)                 |
 | `media.timeoutMs`                                                                    | config.yml   | 30000                                     | [Models](trd/models.md)                 |
-| `media.maxVideoSeconds`                                                              | config.yml   | 180                                       | [Models](trd/models.md)                 |
+| `media.maxVideoSeconds`                                                              | config.yml   | 300                                       | [Models](trd/models.md)                 |
 | `media.maxLinkVideoSeconds`                                                          | config.yml   | 600                                       | [Models](trd/models.md)                 |
 | `media.maxBytes`                                                                     | config.yml   | 20000000                                  | undocumented                            |
 | `media.maxAudioSeconds`                                                              | config.yml   | 600                                       | undocumented                            |
