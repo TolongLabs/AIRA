@@ -291,10 +291,6 @@ const RANGE_RESUMES = 2
 /** A response that is not the requested range of the same file. It ends the batch without a resume. */
 class InvalidRange extends Error {}
 
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')
-}
-
 /** A strong ETag names one exact version of a file. A weak ETag or a Last-Modified date does not. */
 function strongValidator(version: string | null | undefined): version is string {
   return typeof version === 'string' && /^"[\x21\x23-\x7e\x80-\xff]+"$/.test(version)
@@ -436,24 +432,23 @@ export function createFetchPagePort(
       }
       const idle = new AbortController()
       const attemptSignal = AbortSignal.any([batchSignal, idle.signal])
-      let timer = setTimeout(() => idle.abort(), RANGE_IDLE_MS)
+      // The idle timer starts with the body: a CDN may answer ranges one at a time, so waiting for headers is not a
+      // stall, and the caller's deadline bounds that wait.
+      let timer: ReturnType<typeof setTimeout> | undefined
       const touch = () => {
         clearTimeout(timer)
         timer = setTimeout(() => idle.abort(), RANGE_IDLE_MS)
       }
       let streaming = false
-      let requesting = false
       let fail = () => {}
       try {
         const from = start + received
-        requesting = true
         const { res, url: finalUrl } = await fetchChecked(url, attemptSignal, {
           ...headers,
           Range: `bytes=${from}-${end}`,
           'Accept-Encoding': 'identity',
           ...(received > 0 && first?.etag ? { 'If-Range': first.etag } : {})
         })
-        requesting = false
         const mime = res.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase()
         // Only an ETag can prove a resumed range is the same file; Last-Modified still guards parts against each other.
         // Only a well-formed entity tag counts as an ETag; otherwise Last-Modified identifies the version. The kind is
@@ -506,10 +501,9 @@ export function createFetchPagePort(
       } catch (error) {
         // A stall, or a drop or early end after a valid range began, resumes. A refusal, a policy error, a wrong
         // response or the caller's deadline does not.
-        // While the request is open, only an abort the idle timer caused resumes; a refusal or policy error after the
-        // timer fired still stops the batch.
-        const idleAbort = idle.signal.aborted && requesting && isAbortError(error)
-        const resumable = !(error instanceof InvalidRange) && (idleAbort || streaming)
+        // Only a stall, drop or early end once the body began resumes. A refusal, a policy error, a wrong response or
+        // the caller's deadline stops the batch.
+        const resumable = streaming && !(error instanceof InvalidRange)
         if (resumable && !batchSignal.aborted && attempt < RANGE_RESUMES) continue
         throw error
       } finally {

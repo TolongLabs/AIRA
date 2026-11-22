@@ -411,10 +411,10 @@ does not. A feed that gives only an image post's thumbnail still lets the mirror
 duration and timeout limits apply, including linked MP4 compression. Mirror lookup endpoints disallow redirects,
 and asset downloads keep redirects on the original origin. Other social media downloads may redirect to a
 CDN on another origin, carry no cookies, and send forwarded headers only to the first origin. The watch path downloads a verified TikWM watermarked
-MP4 from `v16m.tiktokcdn-us.com` in four parallel byte ranges when its declared size is at least 8 MB and within
+MP4 from a TikTok CDN host (`*.tiktokcdn-us.com` or `*.tiktokcdn.com`, which rotate) in four parallel byte ranges when its declared size is at least 8 MB and within
 the intake download cap; group autofetch uses the same ranges for a verified TikWM video, and every verified
 mirror video gets 25 s to download. Each response must be a matching MP4 range of the declared total. Reassembly must
-produce the complete file before watch or compression. A part that sends nothing for 4 s, drops or ends early
+produce the complete file before watch or compression. A part whose body sends nothing for 4 s, drops or ends early
 resumes from its last byte, up to twice. A resume sends the part's strong, quoted, non-empty ETag as `If-Range`;
 without one, including when only Last-Modified is sent, the part starts over. A refusal that arrives after the idle
 timer fired still stops the batch. An invalid, refused or redirected part stops the batch at once. The watch

@@ -23,8 +23,8 @@ function positive(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
 }
 
-const TIKTOK_RANGE_HOST = 'v16m.tiktokcdn-us.com'
-const TIKTOK_VIDEO_HOSTS = new Set([TIKTOK_RANGE_HOST, 'www.tikwm.com'])
+/** TikWM's own media host. TikTok's CDN hosts rotate (`v16m`, `v19`, ...), so they are matched by domain. */
+const TIKWM_MEDIA_HOST = 'www.tikwm.com'
 
 export function mirrorVideoRangeBytes(video: PlayableVideo): number | undefined {
   if (
@@ -32,7 +32,7 @@ export function mirrorVideoRangeBytes(video: PlayableVideo): number | undefined 
     video.bytes !== null &&
     video.bytes >= 8_000_000 &&
     Number.isSafeInteger(video.bytes) &&
-    httpsUrl(video.url)?.hostname === TIKTOK_RANGE_HOST
+    isTikTokCdnHost(httpsUrl(video.url)?.hostname ?? '')
   ) {
     return video.bytes
   }
@@ -47,7 +47,7 @@ function isTikTokCdnHost(host: string): boolean {
 export function mirrorAssetPlatform(value: string): 'tiktok' | 'reddit' | undefined {
   const url = httpsUrl(value)
   if (!url) return undefined
-  if (TIKTOK_VIDEO_HOSTS.has(url.hostname) || isTikTokCdnHost(url.hostname)) return 'tiktok'
+  if (url.hostname === TIKWM_MEDIA_HOST || isTikTokCdnHost(url.hostname)) return 'tiktok'
   if (url.hostname === 'v.redd.it' || REDDIT_PREVIEW_HOSTS.has(url.hostname)) return 'reddit'
   return undefined
 }
@@ -103,7 +103,7 @@ function tikTokPost(document: unknown, target: SocialPostTarget, maxChars: numbe
   post.videoCount = 1
   const raw = string(postData.wmplay)
   const url = httpsUrl(raw.startsWith('//') ? `https:${raw}` : raw.startsWith('/') ? `${TIKWM}${raw}` : raw)
-  if (url && TIKTOK_VIDEO_HOSTS.has(url.hostname)) {
+  if (url && (url.hostname === TIKWM_MEDIA_HOST || isTikTokCdnHost(url.hostname))) {
     setVideo(
       post,
       { url: url.href, mirror: 'tiktok', bytes: positive(postData.wm_size), hasAudio: null, headers: null },
