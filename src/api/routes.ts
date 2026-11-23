@@ -11,6 +11,7 @@ import type { Storage } from '../storage/database.js'
 import type { DataPaths } from '../storage/startup.js'
 import type { ToolRegistry } from '../tools/registry.js'
 import type { ToolMode } from '../tools/types.js'
+import { getStudioFooter, StudioPackError } from './studio-packs.js'
 
 // Read handlers for the core's site API (docs/trd/site.md#read-routes).
 // All reads go through storage.read or the verified snapshot/archive report. Nothing here writes.
@@ -298,8 +299,30 @@ function handleCharacters(deps: SiteApiDeps): RouteResult {
   return ok({ characters, faults, footerKinds: footerKindsFor(deps.registry) })
 }
 
+function handleFooter(deps: SiteApiDeps, rawId: string): RouteResult {
+  let id: string
+  try {
+    id = decodeURIComponent(rawId)
+  } catch {
+    return error(400, 'invalid_character_id')
+  }
+  try {
+    const read = getStudioFooter(deps, id)
+    return ok({ id: read.id, revision: read.revision, toolFooter: read.toolFooter })
+  } catch (err) {
+    if (err instanceof StudioPackError) {
+      if (err.code === 'invalid_id') return error(404, 'not_found')
+      if (err.code === 'not_found') return error(404, 'not_found')
+      if (err.code === 'pack_unparseable') return error(409, 'pack_unparseable')
+      return error(err.status, err.code)
+    }
+    throw err
+  }
+}
+
 const TURN_BY_ID = /^\/api\/turns\/([^/]+)$/
 const FEEDBACK_BY_ID = /^\/api\/feedback\/([^/]+)$/
+const CHARACTER_FOOTER_GET = /^\/api\/characters\/([^/]+)\/footer$/
 const STATIC_ROUTES = new Set([
   '/api/health',
   '/api/chats',
@@ -312,7 +335,12 @@ const STATIC_ROUTES = new Set([
 ])
 
 export function isKnownRoute(pathname: string): boolean {
-  return STATIC_ROUTES.has(pathname) || TURN_BY_ID.test(pathname) || FEEDBACK_BY_ID.test(pathname)
+  return (
+    STATIC_ROUTES.has(pathname) ||
+    TURN_BY_ID.test(pathname) ||
+    FEEDBACK_BY_ID.test(pathname) ||
+    CHARACTER_FOOTER_GET.test(pathname)
+  )
 }
 
 export async function dispatchGet(deps: SiteApiDeps, url: URL, dashboard = false): Promise<RouteResult> {
@@ -338,5 +366,7 @@ export async function dispatchGet(deps: SiteApiDeps, url: URL, dashboard = false
   if (path === '/api/report') return handleReport(deps)
   if (path === '/api/memory') return handleMemory(deps, url.searchParams)
   if (path === '/api/characters') return handleCharacters(deps)
+  const footerMatch = CHARACTER_FOOTER_GET.exec(path)
+  if (footerMatch?.[1] !== undefined) return handleFooter(deps, footerMatch[1])
   return error(404, 'not_found')
 }

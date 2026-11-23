@@ -6,10 +6,20 @@ import { isDeepStrictEqual } from 'node:util'
 import { isMap, parse, parseDocument, stringify } from 'yaml'
 import type { z } from 'zod'
 import { loadPack, PackError } from '../character/loader.js'
-import { cardSchema, linesSchema, moodsSchema, PACK_ID, STICKER_FILE } from '../character/schema.js'
+import {
+  cardSchema,
+  footerEmojiSchema,
+  footerLabelSchema,
+  linesSchema,
+  moodsSchema,
+  PACK_ID,
+  STICKER_FILE
+} from '../character/schema.js'
 import { readWebpInfo, stickerFault } from '../character/webp.js'
+import { DEFAULT_TOOL_LABELS } from '../format/footer.js'
 import { isoNow } from '../storage/database.js'
 import { syncDir, writeFileAtomic } from '../storage/files.js'
+import type { ToolRegistry } from '../tools/registry.js'
 import type { SiteApiDeps } from './routes.js'
 import { type StudioExpressionStore, StudioExpressionStoreError } from './studio-expression-routes.js'
 
@@ -75,7 +85,10 @@ export class StudioPackError extends Error {
       | 'pack_unparseable'
       | 'conflict'
       | 'stale_revision'
+      | 'revision_required'
       | 'invalid_body'
+      | 'invalid_footer'
+      | 'unknown_footer_kind'
       | 'too_large'
       | 'busy',
     message: string,
@@ -1100,6 +1113,165 @@ export function updateStudioPack(
   }
 }
 
+export type StudioFooterDeps = Pick<SiteApiDeps, 'storage' | 'paths' | 'packs' | 'registry'> & {
+  now?: () => Date
+}
+
+export interface StudioFooterUpdateInput {
+  expectedRevision: string
+  icon?: string | null
+  labels?: Record<string, string | null>
+}
+
+export interface StudioFooterWriteResult {
+  id: string
+  revision: string
+  toolFooter: { icon?: string; labels?: Record<string, string> }
+  changed: boolean
+}
+
+export interface StudioFooterRead {
+  id: string
+  revision: string
+  toolFooter: { icon?: string; labels?: Record<string, string> }
+  writable: boolean
+  source: 'repository' | 'data'
+}
+
+function knownFooterKinds(registry: ToolRegistry): Set<string> {
+  const kinds = new Set<string>(Object.keys(DEFAULT_TOOL_LABELS))
+  for (const tool of registry.all()) kinds.add(tool.name)
+  return kinds
+}
+
+function toolFooterOf(card: StudioCard): { icon?: string; labels?: Record<string, string> } {
+  return card.toolFooter ?? {}
+}
+
+/** Reads one pack's footer with its opaque revision for the owner preview flow. */
+export function getStudioFooter(deps: ReadDeps, id: string): StudioFooterRead {
+  const pack = getStudioPack(deps, id)
+  return {
+    id: pack.id,
+    revision: pack.revision,
+    toolFooter: toolFooterOf(pack.card),
+    writable: pack.writable,
+    source: pack.source
+  }
+}
+
+/**
+ * Edits a data pack's `toolFooter` through the existing atomic pack writer.
+ * Validation mirrors `CharacterFooterWriter`: unknown kinds are 400
+ * `unknown_footer_kind`, bad icon or label values are 400 `invalid_footer`,
+ * a missing revision is 428 `revision_required`, and a stale revision is 409
+ * `stale_revision` with no write. A patch that changes nothing returns
+ * `changed: false` with the current revision and writes no audit row.
+ * A change publishes once with a single redacted `setting_change` row.
+ */
+export function updateStudioFooter(
+  deps: StudioFooterDeps,
+  id: string,
+  input: StudioFooterUpdateInput
+): StudioFooterWriteResult {
+  assertPackId(id)
+  if (!isPlainObject(input)) throw new StudioPackError('invalid_body', 'invalid footer body', 400)
+  const expectedRevision = (input as { expectedRevision?: unknown }).expectedRevision
+  if (expectedRevision === undefined || expectedRevision === null || expectedRevision === '') {
+    throw new StudioPackError('revision_required', 'expectedRevision is required', 428)
+  }
+  if (typeof expectedRevision !== 'string') {
+    throw new StudioPackError('invalid_body', 'expectedRevision must be a revision string', 400)
+  }
+  assertRevisionFormat(expectedRevision)
+  const rawIcon = (input as { icon?: unknown }).icon
+  const rawLabels = (input as { labels?: unknown }).labels
+  if (rawIcon !== undefined && rawIcon !== null && typeof rawIcon !== 'string') {
+    throw new StudioPackError('invalid_body', 'icon must be a string or null', 400)
+  }
+  if (rawLabels !== undefined) {
+    if (!isPlainObject(rawLabels)) throw new StudioPackError('invalid_body', 'labels must be an object', 400)
+    for (const [kind, value] of Object.entries(rawLabels as Record<string, unknown>)) {
+      if (value !== null && typeof value !== 'string') {
+        throw new StudioPackError('invalid_body', `label "${kind}" must be a string or null`, 400)
+      }
+    }
+  }
+  const icon = rawIcon as string | null | undefined
+  const labels = rawLabels as Record<string, string | null> | undefined
+
+  const knownKinds = knownFooterKinds(deps.registry)
+  if (labels) {
+    for (const kind of Object.keys(labels)) {
+      if (!knownKinds.has(kind)) throw new StudioPackError('unknown_footer_kind', `unknown footer kind "${kind}"`, 400)
+    }
+    for (const [kind, value] of Object.entries(labels)) {
+      if (value === null) continue
+      if (!footerLabelSchema.safeParse(value).success) {
+        throw new StudioPackError('invalid_footer', `invalid label for "${kind}"`, 400)
+      }
+    }
+  }
+  if (typeof icon === 'string' && !footerEmojiSchema.safeParse(icon).success) {
+    throw new StudioPackError('invalid_footer', 'invalid footer icon', 400)
+  }
+
+  const current = getStudioFooter(deps, id)
+  if (!current.writable) throw new StudioPackError('pack_read_only', 'repository packs are read-only', 409)
+  if (current.revision !== expectedRevision) {
+    throw new StudioPackError('stale_revision', 'the pack changed since it was read', 409)
+  }
+
+  const beforeIcon = current.toolFooter.icon
+  const beforeLabels = current.toolFooter.labels ?? {}
+  let iconChanged = false
+  if (icon !== undefined) {
+    const nextIcon = icon === null ? undefined : icon
+    iconChanged = nextIcon !== beforeIcon
+  }
+  const labelPatch: Record<string, string | null> = {}
+  let labelsChanged = false
+  if (labels) {
+    for (const [kind, value] of Object.entries(labels)) {
+      const had = Object.hasOwn(beforeLabels, kind)
+      const prev = had ? beforeLabels[kind] : undefined
+      if (value === null) {
+        if (had) {
+          labelPatch[kind] = null
+          labelsChanged = true
+        }
+        continue
+      }
+      if (prev !== value) {
+        labelPatch[kind] = value
+        labelsChanged = true
+      }
+    }
+  }
+  if (!iconChanged && !labelsChanged) {
+    return { id, revision: current.revision, toolFooter: current.toolFooter, changed: false }
+  }
+
+  const toolFooterPatch: { icon?: string | null; labels?: Record<string, string | null> } = {}
+  if (iconChanged) toolFooterPatch.icon = icon as string | null
+  if (labelsChanged) toolFooterPatch.labels = labelPatch
+
+  let published: StudioPackWriteResult
+  try {
+    published = updateStudioPack(deps, id, { expectedRevision, card: { toolFooter: toolFooterPatch } })
+  } catch (error) {
+    if (error instanceof StudioPackError && error.code === 'invalid_body') {
+      throw new StudioPackError('invalid_footer', 'invalid footer value', 400)
+    }
+    throw error
+  }
+  const reread = getStudioFooter(deps, id)
+  if (reread.revision !== published.revision) {
+    throw new StudioPackError('pack_unparseable', 'footer readback mismatch', 409)
+  }
+  return { id, revision: published.revision, toolFooter: reread.toolFooter, changed: published.changed }
+}
+
 /** A pending tree stays unavailable to turns until a complete publish or explicit reconciliation. */
 export function pendingStudioPacks(paths: RecoverDeps['paths']): Set<string> {
   const root = stageRootOf(paths)
@@ -1153,7 +1325,16 @@ export function studioExpressionStore(deps: StudioDeps): StudioExpressionStore {
     try {
       return fn()
     } catch (error) {
-      if (error instanceof StudioPackError) throw new StudioExpressionStoreError(error.code, error.status)
+      if (error instanceof StudioPackError) {
+        if (
+          error.code === 'invalid_footer' ||
+          error.code === 'unknown_footer_kind' ||
+          error.code === 'revision_required'
+        ) {
+          throw new StudioExpressionStoreError('invalid_body', error.status)
+        }
+        throw new StudioExpressionStoreError(error.code, error.status)
+      }
       throw error
     }
   }

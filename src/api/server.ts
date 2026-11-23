@@ -345,6 +345,12 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
         (!read.body || typeof read.body !== 'object' || !('expectedRevision' in read.body))
       )
         return json(response, 428, { error: 'revision_required' })
+      if (
+        dashboard &&
+        /^\/api\/characters\/[^/]+\/footer$/.test(url.pathname) &&
+        (!read.body || typeof read.body !== 'object' || !('expectedRevision' in read.body))
+      )
+        return json(response, 428, { error: 'revision_required' })
       const result = dispatchWrite(options, request.method ?? '', url.pathname, read.body)
       if (result.status === 200) log.info('site_api.write', { route: writeRouteName(url.pathname) })
       json(response, result.status, result.body)
