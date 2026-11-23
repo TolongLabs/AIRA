@@ -68,13 +68,56 @@ The protected core writer validates and publishes data packs. The simulator cons
 ## Deployment configuration
 
 `config.yml` is validated at start-up against `src/config/schema.ts`. An
-unknown key or wrong type stops start-up. The dashboard shows sanitized
-effective and applied revisions. Secrets stay on the host in `.env` and are
-never printed or committed.
+unknown key or wrong type stops start-up. The owner dashboard shows only
+opaque revision tokens for the startup-applied and currently valid file
+revisions, plus status and timestamps. Secrets stay on the host in `.env` and
+are never printed or committed. No dashboard writer edits deployment files.
 
-| Field                                                                                                                                                                                                                                                                                                   | Authority and source                                      | Mutability                                  | Writer, revision, audit                                                                              | Applies | Conflict or pending gate                                                                                                                              | Tests                                                                                                                           |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Deployment groups `prompt`, `judge`, `format`, `tools`, `owner`, `search`, `links`, `identify`, `lessons`, `mcp`, `memory`, `embeddings`, `llm`, `media`, `social`, `render`, `turn`, `shutdown`, `alerts`, `records`, `log`, `gateway`, `storage`, `backup`, `archive`, `site`, `feedback`, `research` | Versioned `config.yml`, startup schema, installed process | Deploy or restart only; no dashboard writer | A reviewed commit; revert through the deployment runner and verify the installed revision and health | Restart | Startup refuses unknown keys and wrong types with a clear message; timer and path values that disagree with the install are reconciled at deploy time | Unverified in this change; nearest suites `tests/gates` and `tests/restart` per [traceability](traceability.md) (NFR-7 Partial) |
+`GET /owner-api/core/config` is the exact readback endpoint. It requires the
+existing protected owner credential, `Host` and `Origin` checks, and answers
+with `no-store` and a generated `X-Request-Id`. It returns only
+`{ appliedRevision, currentRevision, status, checkedAt, appliedAt }`, where
+each revision is the SHA-256 hex of the canonicalized parsed config
+(post-normalization, as parsed at start-up), or `null` when there is no valid
+revision to report. No config value, secret or path is returned. Any non-`GET`
+method gets `405`. The same path without the protected prefix is not a public
+route and gets `404`. Access without the owner credential gets `401`.
+
+| Field                                                                                                                                                                                                                                                                                                   | Authority and source                                      | Mutability                                  | Writer, revision, audit                                                                              | Applies | Conflict or pending gate                                                                                                                              | Tests                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Deployment groups `prompt`, `judge`, `format`, `tools`, `owner`, `search`, `links`, `identify`, `lessons`, `mcp`, `memory`, `embeddings`, `llm`, `media`, `social`, `render`, `turn`, `shutdown`, `alerts`, `records`, `log`, `gateway`, `storage`, `backup`, `archive`, `site`, `feedback`, `research` | Versioned `config.yml`, startup schema, installed process | Deploy or restart only; no dashboard writer | A reviewed commit; revert through the deployment runner and verify the installed revision and health | Restart | Startup refuses unknown keys and wrong types with a clear message; timer and path values that disagree with the install are reconciled at deploy time | `tests/contract/dashboard-config.test.ts` (synthetic file-backed revisions, invalid and missing source, restart adoption, access denial) |
+
+### Deployment activation readback
+
+- **Startup-applied revision.** `appliedRevision` is captured from exactly the
+  `Config` object parsed at start-up, including normalization (ignored-key
+  stripping), as `revisionForConfig` in `src/config/status.ts`. It never
+  changes for the life of the process.
+- **Currently valid file revision.** Every `GET` rereads the same authoritative
+  config path the process started from (`AIRA_CONFIG` or `config.yml`) with a
+  plain file read, which is safe against an atomic rename writer, then parses
+  it with the same `parseConfig` and hashes it the same way. A valid file
+  yields `currentRevision`; anything else yields `null`.
+- **Missing or malformed file fault.** An unreadable source (missing file,
+  permission denial, read error) reports `status: "inaccessible"`. Unparseable
+  YAML or a schema failure reports `status: "invalid"`. Both keep
+  `appliedRevision` intact, return `200`, and never expose the file error text,
+  path or contents: the fault is named only by its status. A malformed file
+  never changes what the running process applies.
+- **Restart semantics.** `status: "current"` means the file still parses to the
+  applied revision. `status: "pending_restart"` means the file parses to a
+  different valid revision that applies only after a restart. Restarting on a
+  valid edit adopts it as the new `appliedRevision`. Restarting on an invalid
+  file fails start-up as before, so the invalid edit is never adopted.
+- **In-memory config.** When the running config was injected without a source
+  file (tests, harness), there is no path to reread. The endpoint reports
+  `status: "memory_only"` with `currentRevision: null` and the in-memory
+  applied revision, labelling that the file state cannot be checked.
+- **Health UI.** The System Health page reads this endpoint on load and refocus
+  and renders one of: running revision (`current`), pending restart
+  (`pending_restart` with both tokens), invalid file (`invalid`, applied intact)
+  or inaccessible source (`inaccessible`, applied intact). It shows only the
+  opaque tokens and timestamps.
 
 ## Host settings, routines, notices, markets, and files
 
