@@ -74,3 +74,12 @@ These figures cover the synthetic Overview journey only.
 A local preview measurement at the same viewport and with the same seven-run fixture produced medians of 109 ms
 for load, 280 ms for the service summary, 281,509 decoded JavaScript bytes and 17 ms for the scrolling frame interval.
 Repeat against the integrated release candidate before switching the private entry.
+
+## Interaction changes
+
+| Owner task                      | Classic entry                                               | Dashboard preview                                                                                | Why                                                                      |
+| ------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| Select a chat                   | Open the chat-management page and find a target.            | Search and page through chats. Review the selected target before confirming a text submission.   | An owner can verify the recipient separately from the message.           |
+| Check an uncertain submission   | Reopening the composer loses the immediate request outcome. | The status view looks up the submission ID after refresh. An unknown outcome stays visible.      | A lost acknowledgment requires reconciliation before another submission. |
+| Navigate on a phone             | Open a destination through the legacy page navigation.      | Open the navigation drawer, choose a destination, or dismiss it and return focus to the trigger. | Keyboard users can return to the control that opened the drawer.         |
+| Follow a stale routine bookmark | Open the schedule and search for the linked routine.        | Re-read the schedule before reporting removal. Show Retry when the service is unavailable.       | Owners can distinguish a removed routine from a temporary host failure.  |
