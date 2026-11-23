@@ -191,3 +191,23 @@ copy, it removes offline snapshots older than 14 days.
 The timer skips a `sha-*` installation managed by main-branch CI. A version-tagged installation follows releases.
 An unreachable owner console records `owner_console_failed`. An isolated turn failure records `synthetic_turn_failed`.
 Install the release timer in the gateway owner’s systemd user manager so its checks use that owner’s site token.
+
+### Dashboard entry recovery
+
+The dashboard preview is available under `/app/preview/` before the entry switch. On an installation that runs
+the candidate image, set only `AIRA_DASHBOARD_ENTRY=dashboard` in the deployment environment file and recreate
+the existing service from its Compose directory with `docker compose up -d --no-deps --force-recreate aira`.
+Removing that setting and recreating the same service restores the classic entry. Keep the installed image
+selector, data volume, owner socket and private bind intact. A process restart alone does not reread an env file.
+
+Record the running image ID, service health, private entry responses and snapshot identifier before changing
+the entry. Revert the switch on an owner lockout or authorization failure, incorrect state readback, ambiguous
+duplicate submission, failed health or cold-link checks, or sustained regression beyond the
+[measured limits](dashboard-routes.md#legacy-performance-baseline). Recheck health and the classic routes.
+Keep the current database and packs. Open snapshot copies separately to investigate or reconcile a failed write.
+
+On 2026-11-24 the previous image passed an isolated dev2 recovery rehearsal at schema 17. The test used the
+bundled example character, image configuration and synthetic chat rows. The verified online SQLite snapshot
+contained one pre-snapshot row. Reopening the working database retained both rows, including a later write.
+Restoring the copied pack card and configuration reproduced their original bytes. The temporary container
+had no network or production mounts. Repeat the rehearsal on the installed candidate before cutover.
