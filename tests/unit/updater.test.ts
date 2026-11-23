@@ -481,6 +481,27 @@ describe('createRealOps', () => {
     expect(await opsVersion.runningVersion()).toBe('1.2.3')
 
     const id = 'a'.repeat(64)
+    const tags: string[][] = []
+    const otherRepo = createRealOps(
+      baseOptions({
+        run: async (_cmd, args) => {
+          if (args[1] === 'tag') tags.push([...args])
+          return {
+            code: 0,
+            stderr: '',
+            stdout: args.includes('images')
+              ? '[{"Repository":"local-fixture","Tag":"1.2.3"}]'
+              : args.includes('inspect')
+                ? 'sha256:' + id
+                : args.includes('ps')
+                  ? 'container'
+                  : ''
+          }
+        }
+      })
+    )
+    expect(await otherRepo.runningVersion()).toBe('rollback-' + id.slice(0, 16))
+    expect(tags).toContainEqual(['image', 'tag', 'sha256:' + id, 'ghcr.io/tolonglabs/aira:rollback-' + id.slice(0, 16)])
     const opsStable = createRealOps(
       baseOptions({
         run: async (_command, args) => ({

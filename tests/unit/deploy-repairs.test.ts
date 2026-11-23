@@ -1,5 +1,5 @@
 import { chmod, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   applyHostConfigKeys,
@@ -15,6 +15,7 @@ import {
   acquireDeployLock,
   createRealOps,
   deployLockPath,
+  resolveCoreUrl,
   resolveSiteUrl,
   waitForDeployLock
 } from '../../scripts/updater/ops.js'
@@ -159,22 +160,26 @@ describe('site health (D2)', () => {
     await writeFile(siteTokenFile, token)
     const siteUrl = 'http://127.0.0.1:9890'
     for (const canonical of [false, true]) {
+      const composeFile = join(tmpDir(), 'compose.yml')
+      await writeFile(join(dirname(composeFile), '.env'), canonical ? 'AIRA_DASHBOARD_ENTRY=dashboard' : '')
       const fetcher = (async (input, init) => {
         const url = new URL(String(input))
         if (url.origin !== siteUrl) return Response.json({ status: 'ready', activeTurns: 0 })
         if (url.pathname === '/app/')
           return canonical
             ? new Response(null, { status: 302, headers: { location: '/overview' } })
-            : new Response('/app/assets/classic.js')
-        if (url.pathname === '/overview') return new Response('/app/assets/preview.js')
+            : new Response('<script src="/app/assets/classic.js"></script>')
+        if (url.pathname === '/overview') return new Response('<script src="/app/assets/preview.js"></script>')
+        if (url.pathname.startsWith('/app/assets/'))
+          return new Response('void 0', { headers: { 'content-type': 'application/javascript' } })
         const authorized = new Headers(init?.headers).get('x-tolongai-token') === token
         if (canonical && !authorized) return new Response(null, { status: 401 })
         if (url.pathname === '/api/health') return Response.json({ status: 'ready' })
-        if (url.pathname === '/api/chats') return Response.json({ chats: [] })
+        if (url.pathname === (canonical ? '/owner-api/core/chats' : '/api/chats')) return Response.json({ chats: [] })
         if (url.pathname === '/owner-api/dashboard' && authorized) return Response.json({ services: {}, recent: [] })
         throw new Error('Unexpected probe path')
       }) as typeof fetch
-      const ops = createRealOps(baseOptions({ siteUrl, siteTokenFile, fetch: fetcher }))
+      const ops = createRealOps(baseOptions({ composeFile, siteUrl, siteTokenFile, fetch: fetcher }))
       expect(await ops.healthy()).toBe(true)
       expect(await ops.ownerConsole?.()).toBe(true)
     }
@@ -371,6 +376,9 @@ describe('fetch timeouts and local images (D9)', () => {
 
 describe('site URL resolution (D2)', () => {
   it('defaults to loopback and honours env and .env', async () => {
+    const gatewayInstall = tmpDir()
+    await writeFile(join(gatewayInstall, '.env'), 'AIRA_PORT=9901\n')
+    expect(await resolveCoreUrl(gatewayInstall, {})).toBe('http://127.0.0.1:9901')
     expect(await resolveSiteUrl(tmpDir(), {})).toBe('http://127.0.0.1:9890')
     expect(await resolveSiteUrl(tmpDir(), { AIRA_SITE_URL: 'https://site.example:9898' })).toBe(
       'https://site.example:9898'
