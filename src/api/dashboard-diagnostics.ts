@@ -19,6 +19,7 @@ export const DASHBOARD_ROUTES = [
   'character_footer',
   'chat_status',
   'chat_label',
+  'config',
   'owner_messages',
   'owner_message_by_id',
   'owner_cron',

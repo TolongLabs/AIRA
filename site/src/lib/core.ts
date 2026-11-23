@@ -47,6 +47,14 @@ export interface CoreToolFeature {
   tools: { name: string; mode: 'implicit' | 'explicit' | 'both'; commands: string[] }[]
 }
 
+export interface CoreConfigStatus {
+  appliedRevision: string | null
+  currentRevision: string | null
+  status: 'current' | 'pending_restart' | 'invalid' | 'inaccessible' | 'memory_only'
+  checkedAt: string
+  appliedAt: string
+}
+
 export type SocialCapabilityKey = 'features.social' | 'features.autofetch'
 
 export interface CoreToolCatalog {
@@ -121,7 +129,9 @@ export const core = {
   getFooter: (id: string) =>
     call<{ id: string; revision: string; toolFooter: ToolFooterConfig }>(
       `/api/characters/${encodeURIComponent(id)}/footer`
-    )
+    ),
+  /** Deployment activation readback: opaque revisions and status only, no values or paths. */
+  config: () => call<CoreConfigStatus>('/api/config')
 }
 
 /** A reason code in plain words, for a toast. */

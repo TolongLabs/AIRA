@@ -38,6 +38,8 @@ export interface SiteApiServerOptions extends SiteApiDeps {
   allowedOrigins: readonly string[]
   /** The built site, served under /app/ (docs/trd/site.md#serving-the-site). Absent: no pages are served. */
   siteDir?: string
+  /** Deployment activation readback (docs/trd/dashboard-state.md#deployment-activation-readback). */
+  configStatus?: () => import('../config/status.js').ConfigStatusSnapshot
 }
 
 const TYPES: Record<string, string> = {
@@ -253,6 +255,22 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
     }
     const path = target.split('?')[0] ?? '/'
     if (dashboard) {
+      if (path === '/api/config') {
+        if (request.method !== 'GET') return json(response, 405, { error: 'method_not_allowed' })
+        const snapshot =
+          options.configStatus?.() ??
+          (() => {
+            const at = new Date().toISOString()
+            return {
+              appliedRevision: null,
+              currentRevision: null,
+              status: 'memory_only' as const,
+              checkedAt: at,
+              appliedAt: at
+            }
+          })()
+        return json(response, 200, snapshot)
+      }
       const expression = /^\/api\/characters\/([^/]+)\/expressions(?:\/([^/]+))?$/.exec(path)
       if (expression?.[1])
         return handleStudioExpressions(request, response, studioExpressionStore(options), {
