@@ -254,3 +254,32 @@ Serve the candidate from /app/preview/overview. A direct GET or HEAD on a regist
 the candidate document. Keep the nine legacy documents and / redirect until cutover. Resolve fingerprinted
 assets under /app/assets/ and local font and glyph assets under /app/dashboard/. An unknown page or file
 returns 404. The preview uses the same API origin and credential controls as the installed console.
+
+### Protected core queries and scoped settings
+
+Preview clients address core queries and writes via /owner-api/core/ followed by the relative core API route.
+The listener checks Host, Origin and the existing protected owner settings read on each request before dispatch.
+All responses on this path use no-store. The compatibility /api/ surface retains its legacy behavior during preview.
+At cutover, private owner data and mutations require the protected boundary on every reachable route.
+
+A scoped settings query returns raw overrides, effective values with source, and an opaque revision. The revision
+covers the rows eligible at that scope, including applicable inherited rows. Protected settings writes require an
+expectedRevision obtained on read. Compare it under the write transaction before storing either the row or its audit.
+A missing revision returns 428. A stale revision returns 409 and leaves the draft available for comparison.
+
+### Character Studio operation contract
+
+The protected core prefix exposes GET characters/:id/studio, POST characters and PUT characters/:id/studio.
+GET returns id, source, writable, revision and the validated card, moods and lines documents. A repository card
+supports creating an editable copy with a distinct id. POST accepts id and the three typed documents, or a
+sourceId and new id for a copy. An existing id, including a repository id, is a conflict. PUT requires an
+expectedRevision and a patch of document fields. Preserve comments and unchanged fields in the source YAML.
+A failed parse returns a sanitized fault with no write. Persist no prompt or file bytes in the audit.
+The simulator opens in a separate tab, takes the current draft and never invokes a delivery transport.
+
+Canonical trees are data/characters/:id. Reject symlinks, unknown file names, paths outside the pack root
+and active media. Stage on the same filesystem, verify all assets, validate the complete staged pack under
+its intended id and compare its source revision before publish. Keep a recoverable intent and prior version
+across the multi-file publish and audit. Recover before serving reads or turns after restart. Only one owner
+writer can publish a pack at a time. Uncoordinated external editors must refetch and apply through the
+coordinated writer for strict concurrency. An invalid external change remains available to the owner for repair.
