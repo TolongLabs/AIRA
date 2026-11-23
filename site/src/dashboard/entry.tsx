@@ -15,7 +15,7 @@ import {
   Sun
 } from 'lucide-react'
 import { DashboardContext } from './context'
-import { applyLegacyBookmark } from './legacy-bookmarks'
+import { translateLegacyBookmark } from './legacy-bookmarks'
 import { dashboardHref, destinations, previewMount } from './navigation'
 import Appearance, { Backdrop } from './appearance'
 import { Overview } from './overview'
@@ -72,6 +72,24 @@ const themeKey = 'tolongai-theme'
 // Legacy `#…` bookmarks resolve to canonical routes before the router parses
 // the path (docs/trd/dashboard-routes.md#legacy-bookmarks-and-operations).
 // Replace-only, so the legacy URL never enters history.
+/** Resolve a legacy fragment on first load, before the router parses the path.
+ *  Replace-only: the legacy URL never enters history, so back cannot loop.
+ *  Returns true when the URL was rewritten. No-op outside a browser. */
+function applyLegacyBookmark(): boolean {
+  try {
+    if (typeof window === 'undefined' || !window.location || !window.history?.replaceState) return false
+    const { pathname, search, hash } = window.location
+    const target = translateLegacyBookmark({ pathname, search, hash }, previewMount)
+    if (!target) return false
+    const url = target.path + target.search + target.hash
+    if (url === pathname + search + hash) return false
+    window.history.replaceState(null, '', url)
+    return true
+  } catch {
+    return false
+  }
+}
+
 applyLegacyBookmark()
 
 function Dashboard() {
@@ -81,6 +99,16 @@ function Dashboard() {
   const section = path.split('/')[0]
   const title = destinations.find(([key]) => key === section)?.[1] ?? 'Page unavailable'
   const drawer = useRef<HTMLDialogElement>(null)
+  useEffect(() => {
+    const phone = window.matchMedia('(max-width: 760px)')
+    function resize() {
+      if (phone.matches || !drawer.current?.open) return
+      drawer.current.close()
+      document.getElementById('workspace')?.focus()
+    }
+    phone.addEventListener('change', resize)
+    return () => phone.removeEventListener('change', resize)
+  }, [])
   const [compact, setCompact] = useState(preference('aira-compact-rail') === 'true')
   const [theme, setTheme] = useState(() => {
     const saved = preference(themeKey)

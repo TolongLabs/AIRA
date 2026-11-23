@@ -1,5 +1,3 @@
-import { previewMount } from './navigation'
-
 /* Legacy bookmark fragments, resolved by the preview/canonical router.
  *
  * The server only sees the path and query — a fragment never leaves the
@@ -266,23 +264,5 @@ export function translateLegacyBookmark(source: LegacyBookmark, mount: string): 
       return made('automations/notices', search, hash)
     default:
       return made('overview', search, hash)
-  }
-}
-
-/** Resolve a legacy fragment on first load, before the router parses the path.
- *  Replace-only: the legacy URL never enters history, so back cannot loop.
- *  Returns true when the URL was rewritten. No-op outside a browser. */
-export function applyLegacyBookmark(): boolean {
-  try {
-    if (typeof window === 'undefined' || !window.location || !window.history?.replaceState) return false
-    const { pathname, search, hash } = window.location
-    const target = translateLegacyBookmark({ pathname, search, hash }, previewMount)
-    if (!target) return false
-    const url = target.path + target.search + target.hash
-    if (url === pathname + search + hash) return false
-    window.history.replaceState(null, '', url)
-    return true
-  } catch {
-    return false
   }
 }

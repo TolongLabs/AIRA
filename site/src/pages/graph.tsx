@@ -353,8 +353,9 @@ function GraphCanvas({ focusId }: { focusId?: string } = {}) {
     const wx = (x: number) => (x - W / 2) / s.view.s + s.view.cx
     const wy = (y: number) => (y - H / 2) / s.view.s + s.view.cy
 
+    const motion = window.matchMedia('(prefers-reduced-motion: reduce)')
     function step() {
-      if (s.alpha > 0.02) integrate(s)
+      if (!motion.matches && s.alpha > 0.02) integrate(s)
       draw()
       s.raf = requestAnimationFrame(step)
     }

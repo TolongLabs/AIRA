@@ -37,6 +37,9 @@ copied is specified in [Persistence](storage.md). This module owns what the tabl
 
 ![The data model: every table by domain, with columns, keys and foreign keys](../diagrams/data-erd.svg)
 
+Open the [full-size schema diagram](../diagrams/data-erd.svg) to inspect individual columns and foreign keys.
+The table descriptions below give the same domains in reading order.
+
 ### Chats And Identities
 
 Record tables and logs never hold a WhatsApp id. Code maps each one to an internal id at the door.

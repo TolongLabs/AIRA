@@ -110,7 +110,7 @@
   margin-top: 2px;
   font-family: 'Geist Mono', monospace;
   font-size: 0.7rem;
-  opacity: 0.6;
+  color: var(--text);
 }
 
 .dashboard-shell .automations-detail-title {

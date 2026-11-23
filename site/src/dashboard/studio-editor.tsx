@@ -429,6 +429,7 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
                   JSON only, up to 256 KB. The file is parsed as data and validated — never run.
                 </p>
                 <input
+                  aria-label="Upload a typed pack document"
                   type="file"
                   accept="application/json,.json"
                   onChange={(e) => {
@@ -532,6 +533,25 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
                     key={key}
                     type="button"
                     role="tab"
+                    tabIndex={key === activeMood ? 0 : -1}
+                    onKeyDown={(event) => {
+                      const index = moodKeys.indexOf(key)
+                      const target = {
+                        Home: 0,
+                        End: moodKeys.length - 1,
+                        ArrowLeft: (index + moodKeys.length - 1) % moodKeys.length,
+                        ArrowRight: (index + 1) % moodKeys.length
+                      }[event.key]
+                      if (target === undefined) return
+                      event.preventDefault()
+                      const next = moodKeys[target]
+                      if (!next) return
+                      setSelectedMood(next)
+                      setRenameKey(next)
+                      event.currentTarget.parentElement
+                        ?.querySelectorAll<HTMLButtonElement>('[role=tab]')
+                        [target]?.focus()
+                    }}
                     aria-selected={key === activeMood}
                     className={key === activeMood ? 'studio-tab-on' : undefined}
                     onClick={() => {
