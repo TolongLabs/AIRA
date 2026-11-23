@@ -8,7 +8,7 @@ import {
   rebaseLeaves,
   validateDraft,
   type StudioDraft
-} from './studio-client'
+} from '../src/dashboard/studio-client'
 
 /* Synthetic fixtures only: an invented pack no real person uses. No model, no network. */
 
