@@ -149,7 +149,7 @@ function safeReadFile(dir: string, name: string, maxBytes: number): Buffer {
   return readFileSync(full)
 }
 
-function scanStickersGuard(dir: string): void {
+function scanStickersGuard(dir: string, repository: boolean): void {
   const stickersDir = join(dir, 'stickers')
   let entries: Dirent<string>[] = []
   try {
@@ -179,7 +179,7 @@ function scanStickersGuard(dir: string): void {
   }
   const unknown: string[] = []
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name === 'stickers') continue
+    if (entry.name === 'stickers' || (repository && entry.name === 'README.md' && entry.isFile())) continue
     if (!(STUDIO_FILES as readonly string[]).includes(entry.name)) unknown.push(entry.name)
   }
   if (unknown.length > 0) {
@@ -189,11 +189,11 @@ function scanStickersGuard(dir: string): void {
 
 type TreeBytes = Record<StudioFile, Buffer>
 
-function readTreeBytes(dir: string): TreeBytes {
+function readTreeBytes(dir: string, repository = false): TreeBytes {
   const dirStat = lstatSync(dir)
   if (dirStat.isSymbolicLink()) throw new StudioPackError('invalid_body', 'pack must not be a symlink', 400)
   if (!dirStat.isDirectory()) throw new StudioPackError('pack_unparseable', 'pack is not a directory', 409)
-  scanStickersGuard(dir)
+  scanStickersGuard(dir, repository)
   return {
     'card.yml': safeReadFile(dir, 'card.yml', MAX_YAML_BYTES),
     'moods.yml': safeReadFile(dir, 'moods.yml', MAX_YAML_BYTES),
@@ -453,7 +453,7 @@ function restoreBackup(backupDir: string, targetDir: string): void {
 /** Reads the authoritative tree and derives its opaque revision. Throws when the pack is missing or invalid. */
 export function getStudioPack(deps: ReadDeps, id: string): StudioPackRead {
   const located = locatePack(deps, id)
-  const tree = readTreeBytes(located.dir)
+  const tree = readTreeBytes(located.dir, located.source === 'repository')
   const docs = parseTree(id, tree)
   return {
     id,
@@ -506,7 +506,7 @@ export function createStudioPack(deps: StudioDeps, input: StudioCreateInput): St
     if (isCopy) {
       assertPackId(input.sourceId)
       const source = locatePack(deps, input.sourceId)
-      const sourceTree = readTreeBytes(source.dir)
+      const sourceTree = readTreeBytes(source.dir, source.source === 'repository')
       // A copy validates the source before it moves any bytes.
       parseTree(input.sourceId, sourceTree)
       copyStickersForPublish(source.dir, stagingDir)

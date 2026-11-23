@@ -4,6 +4,7 @@ import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { join } from 'node:path'
 import { createSiteApiServer } from './api/server.js'
+import {recoverStudioPacks} from './api/studio-packs.js'
 import { loadPacks, type PackSet } from './character/loader.js'
 import { writeUnavailableLine } from './character/unavailable.js'
 import { ConfigError } from './config/loader.js'
@@ -202,6 +203,8 @@ export async function createApp(options: AppOptions): Promise<App> {
   const closers: (() => void | Promise<void>)[] = []
   try {
     for (const turnId of started.recovery.interruptedTurns) alerter.raise('turn_interrupted', { turnId })
+
+    recoverStudioPacks({paths,storage,now})
 
     // Step 5: character packs and bindings. A fault in one pack or one chat disables that pack or chat only.
     const packs = () =>
