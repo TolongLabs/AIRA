@@ -14,6 +14,26 @@ One install lives in `~/aira/`: the compose file, `.env` (mode 600), `config.yml
 
 ![The host units, what triggers them and what they run](diagrams/host-units.svg)
 
+## Dashboard release checks
+
+1. Run `bun install --frozen-lockfile` at the repository root. Run `bun install --frozen-lockfile` inside
+   `site/`. From the root run `bun run --cwd site build`.
+2. Install the browser engines and Linux dependencies with `bunx playwright install --with-deps chromium firefox webkit`.
+   Run `bun run test:dashboard`. This exercises the production UI through the core listener with synthetic packs,
+   temporary storage and a loopback host. Message tests use a fake gateway.
+3. In the install directory run `docker compose ps aira`. Record the running image and health without printing
+   its environment:
+
+   ```sh
+   docker inspect --format '{{.Config.Image}} {{.Image}} {{.State.Health.Status}}' "$(docker compose ps -q aira)"
+   ```
+
+4. Open the preview at `/app/preview/overview` on the private site. Check the current owner login and each
+   [destination](trd/dashboard-routes.md). Use the isolated fixture suite for actions that would send a message,
+   change a real character or restart a host service.
+5. Follow the [entry switch and rollback procedure](trd/deployment.md#dashboard-entry-recovery). Record the
+   installed image, snapshot identifier, observed window and readback results. Retain writes made since the switch.
+
 ## Install
 
 Follow [`docs/trd/deployment.md`](trd/deployment.md#install). Confirm each step that changes the host first.

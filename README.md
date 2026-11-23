@@ -110,7 +110,7 @@ The [operator runbook](docs/RUNBOOK.md) and [deployment contract](docs/trd/deplo
 | [Technical Requirements](docs/TRD.md)                     | Canonical index of contracts, decisions and cross-module |
 | [Architecture decision records](docs/decisions/README.md) | Lasting architectural and product choices                |
 | [Conventions](docs/CONVENTIONS.md)                        | Repository rules, code style and commit rules            |
-| [Runbook](docs/RUNBOOK.md)                                | Operations skeleton pointing to TRD modules              |
+| [Runbook](docs/RUNBOOK.md)                                | Host operations, dashboard checks and recovery           |
 | [TRD Modules](docs/trd/system.md)                         | Subsystem contracts under `docs/trd/`                    |
 
 ## Licence
