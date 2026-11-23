@@ -46792,7 +46792,7 @@
       "node_kind": "heading",
       "norm_label": "backups",
       "source_file": "docs/RUNBOOK.md",
-      "source_location": "L72"
+      "source_location": "L73"
     },
     {
       "id": "docs_runbook_common_failures",
@@ -46804,7 +46804,7 @@
       "node_kind": "heading",
       "norm_label": "common failures",
       "source_file": "docs/RUNBOOK.md",
-      "source_location": "L127"
+      "source_location": "L128"
     },
     {
       "id": "docs_runbook_configure",
@@ -46828,7 +46828,7 @@
       "node_kind": "heading",
       "norm_label": "cutover",
       "source_file": "docs/RUNBOOK.md",
-      "source_location": "L112"
+      "source_location": "L113"
     },
     {
       "id": "docs_runbook_dashboard_release_checks",
@@ -46852,7 +46852,7 @@
       "node_kind": "heading",
       "norm_label": "deploy",
       "source_file": "docs/RUNBOOK.md",
-      "source_location": "L51"
+      "source_location": "L52"
     },
     {
       "id": "docs_runbook_health_check",
@@ -46864,7 +46864,7 @@
       "node_kind": "heading",
       "norm_label": "health check",
       "source_file": "docs/RUNBOOK.md",
-      "source_location": "L65"
+      "source_location": "L66"
     },
     {
       "id": "docs_runbook_host_layout",
@@ -46900,7 +46900,7 @@
       "node_kind": "heading",
       "norm_label": "read a turn record",
       "source_file": "docs/RUNBOOK.md",
-      "source_location": "L122"
+      "source_location": "L123"
     },
     {
       "id": "docs_runbook_restore_from_the_off_host_copy",
@@ -46912,7 +46912,7 @@
       "node_kind": "heading",
       "norm_label": "restore from the off-host copy",
       "source_file": "docs/RUNBOOK.md",
-      "source_location": "L83"
+      "source_location": "L84"
     },
     {
       "id": "docs_runbook_rollback",
@@ -46924,7 +46924,7 @@
       "node_kind": "heading",
       "norm_label": "rollback",
       "source_file": "docs/RUNBOOK.md",
-      "source_location": "L117"
+      "source_location": "L118"
     },
     {
       "id": "docs_runbook_runbook",
@@ -51103,18 +51103,6 @@
       "source_location": "L17"
     },
     {
-      "id": "docs_decisions_0067_replace_make_report_with_doc",
-      "label": "0067-replace-make-report-with-doc.md",
-      "_origin": "ast",
-      "community": 172,
-      "community_name": "decisions/README.md",
-      "file_type": "document",
-      "node_kind": "page",
-      "norm_label": "0067-replace-make-report-with-doc.md",
-      "source_file": "docs/decisions/0067-replace-make-report-with-doc.md",
-      "source_location": "L1"
-    },
-    {
       "id": "docs_decisions_0080_name_what_intake_read_in_the_footer",
       "label": "0080-name-what-intake-read-in-the-footer.md",
       "_origin": "ast",
@@ -51389,6 +51377,54 @@
       "norm_label": "0119-deliver-autofetch-media-in-active-dms-and-groups.md",
       "source_file": "docs/decisions/0119-deliver-autofetch-media-in-active-dms-and-groups.md",
       "source_location": "L1"
+    },
+    {
+      "id": "docs_decisions_0119_deliver_autofetch_media_in_active_dms_and_groups_adr_0119_deliver_autofetch_media_in_active_dms_and_groups",
+      "label": "ADR-0119: Deliver Autofetch Media in Active DMs and Groups",
+      "_origin": "ast",
+      "community": 172,
+      "community_name": "decisions/README.md",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "adr-0119: deliver autofetch media in active dms and groups",
+      "source_file": "docs/decisions/0119-deliver-autofetch-media-in-active-dms-and-groups.md",
+      "source_location": "L1"
+    },
+    {
+      "id": "docs_decisions_0119_deliver_autofetch_media_in_active_dms_and_groups_decision",
+      "label": "Decision",
+      "_origin": "ast",
+      "community": 172,
+      "community_name": "decisions/README.md",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "decision",
+      "source_file": "docs/decisions/0119-deliver-autofetch-media-in-active-dms-and-groups.md",
+      "source_location": "L8"
+    },
+    {
+      "id": "docs_decisions_0119_deliver_autofetch_media_in_active_dms_and_groups_rationale",
+      "label": "Rationale",
+      "_origin": "ast",
+      "community": 172,
+      "community_name": "decisions/README.md",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "rationale",
+      "source_file": "docs/decisions/0119-deliver-autofetch-media-in-active-dms-and-groups.md",
+      "source_location": "L13"
+    },
+    {
+      "id": "docs_decisions_0119_deliver_autofetch_media_in_active_dms_and_groups_source",
+      "label": "Source",
+      "_origin": "ast",
+      "community": 172,
+      "community_name": "decisions/README.md",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "source",
+      "source_file": "docs/decisions/0119-deliver-autofetch-media-in-active-dms-and-groups.md",
+      "source_location": "L17"
     },
     {
       "id": "docs_decisions_0126_keep_sqlite_as_the_system_of_record_and_duckdb_for_analysis",
@@ -62509,71 +62545,11 @@
       "source_location": "L18"
     },
     {
-      "id": "deploy_readme_at_a_glance",
-      "label": "At a Glance",
-      "_origin": "ast",
-      "community": 328,
-      "community_name": "Deployment",
-      "file_type": "document",
-      "node_kind": "heading",
-      "norm_label": "at a glance",
-      "source_file": "deploy/README.md",
-      "source_location": "L5"
-    },
-    {
-      "id": "deploy_readme_deployment",
-      "label": "Deployment",
-      "_origin": "ast",
-      "community": 328,
-      "community_name": "Deployment",
-      "file_type": "document",
-      "node_kind": "heading",
-      "norm_label": "deployment",
-      "source_file": "deploy/README.md",
-      "source_location": "L1"
-    },
-    {
-      "id": "deploy_readme_files_in_this_folder",
-      "label": "Files In This Folder",
-      "_origin": "ast",
-      "community": 328,
-      "community_name": "Deployment",
-      "file_type": "document",
-      "node_kind": "heading",
-      "norm_label": "files in this folder",
-      "source_file": "deploy/README.md",
-      "source_location": "L16"
-    },
-    {
-      "id": "deploy_readme_main_branch_deployment",
-      "label": "Main-branch deployment",
-      "_origin": "ast",
-      "community": 328,
-      "community_name": "Deployment",
-      "file_type": "document",
-      "node_kind": "heading",
-      "norm_label": "main-branch deployment",
-      "source_file": "deploy/README.md",
-      "source_location": "L25"
-    },
-    {
-      "id": "deploy_readme_release_driven_updater",
-      "label": "Release-driven updater",
-      "_origin": "ast",
-      "community": 328,
-      "community_name": "Deployment",
-      "file_type": "document",
-      "node_kind": "heading",
-      "norm_label": "release-driven updater",
-      "source_file": "deploy/README.md",
-      "source_location": "L36"
-    },
-    {
       "id": "docs_decisions_0109_separate_media_handoff_from_confirmed_delivery",
       "label": "0109-separate-media-handoff-from-confirmed-delivery.md",
       "_origin": "ast",
       "community": 328,
-      "community_name": "Deployment",
+      "community_name": "ADR-0109: Separate Media Handoff From Confirmed Delivery",
       "file_type": "document",
       "node_kind": "page",
       "norm_label": "0109-separate-media-handoff-from-confirmed-delivery.md",
@@ -62585,7 +62561,7 @@
       "label": "ADR-0109: Separate Media Handoff From Confirmed Delivery",
       "_origin": "ast",
       "community": 328,
-      "community_name": "Deployment",
+      "community_name": "ADR-0109: Separate Media Handoff From Confirmed Delivery",
       "file_type": "document",
       "node_kind": "heading",
       "norm_label": "adr-0109: separate media handoff from confirmed delivery",
@@ -62597,7 +62573,7 @@
       "label": "Decision",
       "_origin": "ast",
       "community": 328,
-      "community_name": "Deployment",
+      "community_name": "ADR-0109: Separate Media Handoff From Confirmed Delivery",
       "file_type": "document",
       "node_kind": "heading",
       "norm_label": "decision",
@@ -62609,7 +62585,7 @@
       "label": "Rationale",
       "_origin": "ast",
       "community": 328,
-      "community_name": "Deployment",
+      "community_name": "ADR-0109: Separate Media Handoff From Confirmed Delivery",
       "file_type": "document",
       "node_kind": "heading",
       "norm_label": "rationale",
@@ -62621,7 +62597,7 @@
       "label": "Source",
       "_origin": "ast",
       "community": 328,
-      "community_name": "Deployment",
+      "community_name": "ADR-0109: Separate Media Handoff From Confirmed Delivery",
       "file_type": "document",
       "node_kind": "heading",
       "norm_label": "source",
@@ -64076,54 +64052,6 @@
       "norm_label": "source",
       "source_file": "docs/decisions/0139-commit-a-reminder-row-before-the-schedule-call.md",
       "source_location": "L16"
-    },
-    {
-      "id": "docs_decisions_0119_deliver_autofetch_media_in_active_dms_and_groups_adr_0119_deliver_autofetch_media_in_active_dms_and_groups",
-      "label": "ADR-0119: Deliver Autofetch Media in Active DMs and Groups",
-      "_origin": "ast",
-      "community": 347,
-      "community_name": "ADR-0119: Deliver Autofetch Media in Active DMs and Groups",
-      "file_type": "document",
-      "node_kind": "heading",
-      "norm_label": "adr-0119: deliver autofetch media in active dms and groups",
-      "source_file": "docs/decisions/0119-deliver-autofetch-media-in-active-dms-and-groups.md",
-      "source_location": "L1"
-    },
-    {
-      "id": "docs_decisions_0119_deliver_autofetch_media_in_active_dms_and_groups_decision",
-      "label": "Decision",
-      "_origin": "ast",
-      "community": 347,
-      "community_name": "ADR-0119: Deliver Autofetch Media in Active DMs and Groups",
-      "file_type": "document",
-      "node_kind": "heading",
-      "norm_label": "decision",
-      "source_file": "docs/decisions/0119-deliver-autofetch-media-in-active-dms-and-groups.md",
-      "source_location": "L8"
-    },
-    {
-      "id": "docs_decisions_0119_deliver_autofetch_media_in_active_dms_and_groups_rationale",
-      "label": "Rationale",
-      "_origin": "ast",
-      "community": 347,
-      "community_name": "ADR-0119: Deliver Autofetch Media in Active DMs and Groups",
-      "file_type": "document",
-      "node_kind": "heading",
-      "norm_label": "rationale",
-      "source_file": "docs/decisions/0119-deliver-autofetch-media-in-active-dms-and-groups.md",
-      "source_location": "L13"
-    },
-    {
-      "id": "docs_decisions_0119_deliver_autofetch_media_in_active_dms_and_groups_source",
-      "label": "Source",
-      "_origin": "ast",
-      "community": 347,
-      "community_name": "ADR-0119: Deliver Autofetch Media in Active DMs and Groups",
-      "file_type": "document",
-      "node_kind": "heading",
-      "norm_label": "source",
-      "source_file": "docs/decisions/0119-deliver-autofetch-media-in-active-dms-and-groups.md",
-      "source_location": "L17"
     },
     {
       "id": "docs_decisions_0141_make_forget_a_barrier_for_pending_memory_work",
@@ -73783,6 +73711,66 @@
       "source_location": "L1"
     },
     {
+      "id": "deploy_readme_at_a_glance",
+      "label": "At a Glance",
+      "_origin": "ast",
+      "community": 85,
+      "community_name": "TRD.md",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "at a glance",
+      "source_file": "deploy/README.md",
+      "source_location": "L5"
+    },
+    {
+      "id": "deploy_readme_deployment",
+      "label": "Deployment",
+      "_origin": "ast",
+      "community": 85,
+      "community_name": "TRD.md",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "deployment",
+      "source_file": "deploy/README.md",
+      "source_location": "L1"
+    },
+    {
+      "id": "deploy_readme_files_in_this_folder",
+      "label": "Files In This Folder",
+      "_origin": "ast",
+      "community": 85,
+      "community_name": "TRD.md",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "files in this folder",
+      "source_file": "deploy/README.md",
+      "source_location": "L16"
+    },
+    {
+      "id": "deploy_readme_main_branch_deployment",
+      "label": "Main-branch deployment",
+      "_origin": "ast",
+      "community": 85,
+      "community_name": "TRD.md",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "main-branch deployment",
+      "source_file": "deploy/README.md",
+      "source_location": "L25"
+    },
+    {
+      "id": "deploy_readme_release_driven_updater",
+      "label": "Release-driven updater",
+      "_origin": "ast",
+      "community": 85,
+      "community_name": "TRD.md",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "release-driven updater",
+      "source_file": "deploy/README.md",
+      "source_location": "L36"
+    },
+    {
       "id": "docs_conventions",
       "label": "CONVENTIONS.md",
       "_origin": "ast",
@@ -73792,6 +73780,18 @@
       "node_kind": "page",
       "norm_label": "conventions.md",
       "source_file": "docs/CONVENTIONS.md",
+      "source_location": "L1"
+    },
+    {
+      "id": "docs_decisions_0067_replace_make_report_with_doc",
+      "label": "0067-replace-make-report-with-doc.md",
+      "_origin": "ast",
+      "community": 85,
+      "community_name": "TRD.md",
+      "file_type": "document",
+      "node_kind": "page",
+      "norm_label": "0067-replace-make-report-with-doc.md",
+      "source_file": "docs/decisions/0067-replace-make-report-with-doc.md",
       "source_location": "L1"
     },
     {
@@ -224533,7 +224533,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/RUNBOOK.md",
-      "source_location": "L83",
+      "source_location": "L84",
       "weight": 1.0
     },
     {
@@ -224544,7 +224544,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/RUNBOOK.md",
-      "source_location": "L112",
+      "source_location": "L113",
       "weight": 1.0
     },
     {
@@ -224555,7 +224555,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/RUNBOOK.md",
-      "source_location": "L117",
+      "source_location": "L118",
       "weight": 1.0
     },
     {
@@ -224566,7 +224566,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/RUNBOOK.md",
-      "source_location": "L122",
+      "source_location": "L123",
       "weight": 1.0
     },
     {
@@ -224577,7 +224577,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/RUNBOOK.md",
-      "source_location": "L127",
+      "source_location": "L128",
       "weight": 1.0
     },
     {
@@ -224621,7 +224621,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/RUNBOOK.md",
-      "source_location": "L51",
+      "source_location": "L52",
       "weight": 1.0
     },
     {
@@ -224632,7 +224632,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/RUNBOOK.md",
-      "source_location": "L65",
+      "source_location": "L66",
       "weight": 1.0
     },
     {
@@ -224643,7 +224643,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/RUNBOOK.md",
-      "source_location": "L72",
+      "source_location": "L73",
       "weight": 1.0
     },
     {
@@ -272555,7 +272555,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/RUNBOOK.md",
-      "source_location": "L125",
+      "source_location": "L126",
       "weight": 1.0
     },
     {
@@ -272566,7 +272566,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/RUNBOOK.md",
-      "source_location": "L129",
+      "source_location": "L130",
       "weight": 1.0
     },
     {
@@ -272599,7 +272599,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/RUNBOOK.md",
-      "source_location": "L48",
+      "source_location": "L49",
       "weight": 1.0
     },
     {
@@ -272610,7 +272610,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/RUNBOOK.md",
-      "source_location": "L68",
+      "source_location": "L69",
       "weight": 1.0
     },
     {
@@ -272632,7 +272632,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/RUNBOOK.md",
-      "source_location": "L75",
+      "source_location": "L76",
       "weight": 1.0
     },
     {
@@ -273293,6 +273293,17 @@
       "confidence_score": 1.0,
       "source_file": "docs/trd/site.md",
       "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "docs_trd_site",
+      "target": "site_readme",
+      "relation": "references",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/trd/site.md",
+      "source_location": "L178",
       "weight": 1.0
     },
     {
@@ -278138,5 +278149,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "e12729dfec334c6ad1e1f0eb4a63721776d19970"
+  "built_at_commit": "e4b3c91a91ef409d0b8a09ed08eeb660e23b1e64"
 }
