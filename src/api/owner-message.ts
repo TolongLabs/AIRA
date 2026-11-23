@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Logger } from '../records/logger.js'
 import type { Storage } from '../storage/database.js'
 import { isoNow } from '../storage/database.js'
+import {authorizeOwner} from './owner-auth.js'
 import { ownerCronTransport } from './owner-cron.js'
 import { hostAllowed, originAllowed } from './writes.js'
 
@@ -100,25 +101,6 @@ function resolveTarget(storage: Storage, chatId: string): string | undefined {
     const count = db.prepare('SELECT count(*) FROM chat WHERE wa_id IN (?,?)').pluck().get(bare, target)
     return count === 1 ? target : undefined
   })
-}
-
-async function authorizeOwner(
-  deps: OwnerMessageDeps,
-  token: string
-): Promise<{ ok: true } | { ok: false; status: number; code: string }> {
-  const origin = deps.ownerApiOrigin ?? 'http://owner.internal'
-  try {
-    const call = ownerCronTransport(origin, deps.ownerApiSocket, token, '/api/settings')
-    const result = await call()
-    if (result.status === 401) return { ok: false, status: 401, code: 'Owner token required' }
-    if (result.status !== 200) return { ok: false, status: 502, code: 'owner_service_unavailable' }
-    const markets = result.body.markets
-    if (!markets || typeof markets !== 'object' || Array.isArray(markets))
-      return { ok: false, status: 502, code: 'owner_service_unavailable' }
-    return { ok: true }
-  } catch {
-    return { ok: false, status: 502, code: 'owner_service_unavailable' }
-  }
 }
 
 async function dispatchIntro(

@@ -100,6 +100,8 @@ COPY --from=ytdlp /opt/yt-dlp /opt/yt-dlp
 RUN ln -s /opt/yt-dlp/yt-dlp /usr/local/bin/yt-dlp
 COPY --from=typst /usr/local/bin/typst /usr/local/bin/typst
 COPY --from=restic /usr/local/bin/restic /usr/local/bin/restic
+ARG AIRA_BUILD_SHA=unknown
+ENV AIRA_BUILD_SHA=$AIRA_BUILD_SHA
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=prod-deps /repo/node_modules ./node_modules
