@@ -240,7 +240,9 @@ internal newlines and accept 1–4,000 Unicode code points. The client allocates
 
 Before calling the existing host send transport, commit a reservation with the internal target, submission ID,
 request fingerprint, timestamp and outcome unknown. Only the caller that creates the reservation may dispatch.
-The host transport submits plain text with stamp false. Never invoke a model or change chat settings. A duplicate
+The host transport submits plain text with stamp false and one validated whatsapp-prefixed target.
+The host returns 200 with the exact target, text and null sent_at after gateway success. Compare the entire
+acknowledgement before recording it, and omit text and target from the response and logs. Never invoke a model or change chat settings. A duplicate
 with matching content returns the recorded outcome. Reuse with different content or target returns 409.
 A confirmed acknowledgement changes the record to acknowledged. A definite pre-dispatch refusal returns refused.
 An interrupted call, ambiguous response or crash leaves unknown until positive evidence permits reconciliation.
