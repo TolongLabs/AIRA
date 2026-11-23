@@ -438,7 +438,7 @@ export type HeroToken = { n?: string | number; t?: string; tone?: 'down' }
 function Hero({ tokens, title }: { tokens: HeroToken[]; title: string }) {
   return (
     <h1
-      className="m-0 max-w-4xl text-balance font-serif text-[2.6rem] leading-[1.12] font-medium tracking-[-0.02em] lg:text-[3.2rem]"
+      className="m-0 max-w-4xl [overflow-wrap:anywhere] text-balance font-serif text-[2.6rem] leading-[1.12] font-medium tracking-[-0.02em] lg:text-[3.2rem]"
       aria-label={title}
     >
       {tokens.map((tok, i) =>
@@ -533,7 +533,7 @@ function LegacyShell({ page, title, hero, dek, actions, children, wide, full }: 
               </span>
             </div>
 
-            <div className="flex shrink-0 items-center gap-4">
+            <div className="flex max-w-full flex-wrap items-center gap-4">
               <ClientClock timezone={env.timezone} />
               <ThemeButton />
             </div>
