@@ -4,6 +4,7 @@ import { extname, resolve, sep } from 'node:path'
 import type { Logger } from '../records/logger.js'
 import { changeOwnerJob, ownerCronTransport } from './owner-cron.js'
 import { changeOwnerMarkets } from './owner-markets.js'
+import { handleOwnerMessageGet, handleOwnerMessagePost, isOwnerMessagePost, ownerMessageIdOf } from './owner-message.js'
 import { proxyOwnerApi } from './owner-proxy.js'
 import { dispatchGet, isKnownRoute, type SiteApiDeps } from './routes.js'
 import { dispatchWrite, hostAllowed, isWriteRoute, originAllowed } from './writes.js'
@@ -91,6 +92,13 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const path = (request.url ?? '/').split('?')[0] ?? '/'
+    if (path === '/owner-api/messages' || path.startsWith('/owner-api/messages/')) {
+      response.setHeader('cache-control', 'no-store')
+      if (isOwnerMessagePost(path, request.method)) return handleOwnerMessagePost(request, response, options)
+      const id = ownerMessageIdOf(path, request.method)
+      if (id) return handleOwnerMessageGet(request, response, options, id)
+      return json(response, 405, { error: 'method_not_allowed' })
+    }
     if ((path === '/owner-api/cron' || path === '/owner-api/settings/markets') && request.method === 'POST') {
       if (
         !hostAllowed(request.headers.host) ||
