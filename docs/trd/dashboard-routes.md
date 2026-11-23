@@ -83,3 +83,19 @@ Repeat against the integrated release candidate before switching the private ent
 | Check an uncertain submission   | Reopening the composer loses the immediate request outcome. | The status view looks up the submission ID after refresh. An unknown outcome stays visible.      | A lost acknowledgment requires reconciliation before another submission. |
 | Navigate on a phone             | Open a destination through the legacy page navigation.      | Open the navigation drawer, choose a destination, or dismiss it and return focus to the trigger. | Keyboard users can return to the control that opened the drawer.         |
 | Follow a stale routine bookmark | Open the schedule and search for the linked routine.        | Re-read the schedule before reporting removal. Show Retry when the service is unavailable.       | Owners can distinguish a removed routine from a temporary host failure.  |
+
+After keyboard graph access, bookmark translation and the conflict editors were integrated, the same seven-run
+fixture at `dbf4f33` measured 84 ms for load, 235 ms for the service summary, 286,099 decoded JavaScript bytes
+and 17 ms for the p95 scrolling interval. All four medians passed the limits above.
+
+### Accessibility evidence
+
+Production-browser journeys cover keyboard navigation, review and edit focus, drawer dismissal on Escape and
+resize, browser history, mixed selection and a keyboard-operated graph inspector across Chromium, Firefox and
+WebKit. A separate Chromium sweep exercised 23 synthetic routes and states at 320 CSS pixels. The graph was
+also checked with a focused inspector. At 320 px its search and inspector fit on screen and Tab, arrows,
+Enter and Escape operate the graph without a pointer.
+
+Orca 46.1 in headed Chromium announced the skip link, Overview heading and chat search field. The session used
+a private display, accessibility bus and fixture service. The check inspected Orca's generated speech text.
+Audible pronunciation and physical assistive devices were outside this run.
