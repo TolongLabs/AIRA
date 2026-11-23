@@ -3,10 +3,7 @@ import { promisify } from 'node:util'
 import { deflateSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { readWebpInfo } from '../../src/character/webp.js'
-import {
-  convertExpression, 
-  STUDIO_OUTPUT_LIMIT_BYTES
-} from '../../src/media/studio-expression.js'
+import { convertExpression, STUDIO_OUTPUT_LIMIT_BYTES } from '../../src/media/studio-expression.js'
 
 // Contract tests for the bounded static expression converter (issue #368).
 // Every fixture is synthetic and generated in this file: solid-colour PNGs

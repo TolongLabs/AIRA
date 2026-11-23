@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Logger } from '../records/logger.js'
 import type { Storage } from '../storage/database.js'
 import { isoNow } from '../storage/database.js'
-import {authorizeOwner} from './owner-auth.js'
+import { authorizeOwner } from './owner-auth.js'
 import { ownerCronTransport } from './owner-cron.js'
 import { hostAllowed, originAllowed } from './writes.js'
 
