@@ -34,7 +34,12 @@ function attachmentMedia(story: JsonObject): JsonObject[] {
 }
 
 /** The linked post from its logged-out page, or null when the page holds no post or the post is a video. */
-export function parseFacebookPage(html: string, target: SocialPostTarget, maxTextChars: number): SocialPost | null {
+export function parseFacebookPage(
+  html: string,
+  target: SocialPostTarget,
+  maxTextChars: number,
+  videoIds?: Set<string>
+): SocialPost | null {
   const found = stories(html)
   const photoLink = target.lookupKey.startsWith('facebook:photo:')
   const story = found.find((item) =>
@@ -44,6 +49,11 @@ export function parseFacebookPage(html: string, target: SocialPostTarget, maxTex
   )
   if (!story) return null
   const media = attachmentMedia(story)
+  if (target.facebookGroup && videoIds) {
+    for (const asset of media) {
+      if (asset.__typename === 'Video' && typeof asset.id === 'string' && /^\d+$/.test(asset.id)) videoIds.add(asset.id)
+    }
+  }
   const videoCount = media.filter((item) => item.__typename === 'Video').length
 
   const photos = photoList(

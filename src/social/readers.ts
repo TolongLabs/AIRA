@@ -179,8 +179,11 @@ const adapters: Record<SocialPlatform, PlatformAdapter> = {
   facebook: {
     read: ['text', 'preview', 'photos', 'video'],
     group: ['photos', 'video'],
-    readers: (target, env) =>
-      isFacebookPost(target) ? [facebookPageReader(env), ytDlpReader(env)] : [ytDlpReader(env)]
+    readers: (target, env) => {
+      if (!isFacebookPost(target)) return [ytDlpReader(env)]
+      const videoIds = new Set<string>()
+      return [facebookPageReader(env, videoIds), ytDlpReader(env, undefined, videoIds)]
+    }
   },
   reddit: { read: ['text', 'preview', 'video'], group: [], readers: (_, env) => redditReaders(env) },
   youtube: {
@@ -462,7 +465,7 @@ function instagramPageReader(env: ReaderEnv): SocialReader {
 }
 
 /** A Facebook post's or photo's logged-out page, after a share's one redirect. */
-function facebookPageReader(env: ReaderEnv): SocialReader {
+function facebookPageReader(env: ReaderEnv, videoIds: Set<string>): SocialReader {
   return {
     id: 'facebook.page',
     kind: 'page_meta',
@@ -477,7 +480,12 @@ function facebookPageReader(env: ReaderEnv): SocialReader {
           await fetched.response.body?.cancel()
           return { ok: false, reason: `http_${fetched.response.status}` }
         }
-        const post = parseFacebookPage(await fetched.response.text(), fetched.page, ctx.maxTextChars)
+        const post = parseFacebookPage(
+          await fetched.response.text(),
+          fetched.page,
+          ctx.maxTextChars,
+          fetched.page.canonicalUrl === target.canonicalUrl ? videoIds : undefined
+        )
         return post ? { ok: true, post } : { ok: false, reason: 'no_post_data' }
       } catch {
         return { ok: false, reason: ctx.signal.aborted ? 'timeout' : 'network_error' }
@@ -608,7 +616,11 @@ function redditFeedReader(env: ReaderEnv, onRefused: () => void): SocialReader {
 }
 
 /** yt-dlp's metadata. Without the extractor it fails at once, as the platform has no other reader then. */
-function ytDlpReader(env: ReaderEnv, isConfigured: () => boolean = () => true): SocialReader {
+function ytDlpReader(
+  env: ReaderEnv,
+  isConfigured: () => boolean = () => true,
+  facebookVideoIds?: ReadonlySet<string>
+): SocialReader {
   return {
     id: 'yt_dlp',
     kind: 'yt_dlp',
@@ -625,7 +637,7 @@ function ytDlpReader(env: ReaderEnv, isConfigured: () => boolean = () => true): 
       if (declared && !declared.needsRedirect && declared.lookupKey !== expected?.lookupKey) {
         return { ok: false, reason: 'identity_mismatch' }
       }
-      return { ok: true, post: parseYtDlpMetadata(result.metadata, target, ctx.maxTextChars) }
+      return { ok: true, post: parseYtDlpMetadata(result.metadata, target, ctx.maxTextChars, facebookVideoIds) }
     }
   }
 }

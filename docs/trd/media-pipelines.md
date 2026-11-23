@@ -379,7 +379,9 @@ search results must respect host exclusions before retrieving or passing content
   refused), yt-dlp reads it. Reddit is read through its RSS feed first: a refused feed (403 or 429) is reported, and
   a feed with no video is returned without calling yt-dlp. A Facebook post link is read from its logged-out page:
   the post's text, author, date and photos (`all_subattachments`, each photo's `viewer_image`); when the page holds
-  no post, or the post is a video, yt-dlp reads it. Facebook video links, Bilibili and YouTube use yt-dlp. YouTube can fall back to oEmbed for title and author.
+  no post, or the post is a video, yt-dlp reads it. For an official group permalink, T0 keeps the group and post
+  identity after resolving a share. A video with a different ID is deliverable only when the matching story lists
+  that native video attachment and the extractor reports the same group permalink. Evidence is local to one lookup. Facebook video links, Bilibili and YouTube use yt-dlp. YouTube can fall back to oEmbed for title and author.
   Lemon8 uses its logged-out article page. See [Platform Mirrors And Readers](#platform-mirrors-and-readers)
   for the TikTok, Reddit, Rednote, Douyin and LinkedIn chains.
 - **Photos.** A post keeps every photo of its own, in order, up to `MAX_POST_PHOTOS` (20): X's photos, Bluesky's
