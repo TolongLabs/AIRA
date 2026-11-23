@@ -2,6 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Bot, Cpu, FileText, HousePlug, Mic, Plus, Save, Trash2, TrendingUp, X } from 'lucide-react'
 import type { Chat, Settings } from '@/lib/api'
 import { get, post } from '@/lib/api'
+import {
+  HOST_WRITE_SPECS,
+  checkBeforeSave,
+  checkReadback,
+  parseSettingsPayload,
+  type HostWriteTarget,
+  type SettingsLike
+} from '@/lib/host-settings-conflict'
 import { toast, Toaster, useApi } from '@/lib/hooks'
 import { cn } from '@/lib/utils'
 import { Shell } from '@/components/shell'
@@ -236,6 +244,175 @@ function ChatWatchlists({ chats, regions }: { chats: Chat[]; regions: { value: s
   )
 }
 
+/* ── host conflict guard ──────────────────────────────────────────────
+ *
+ * Host settings have no host-side compare-and-swap: no revision, no `expected`
+ * field, no 409. Every `POST` below last-write-wins against any other writer,
+ * and this guard does not change that — it only notices before overwriting and
+ * proves after that what was sent is what the host now holds. Owned by
+ * docs/trd/dashboard-state.md (host settings rows).
+ *
+ * Per save: the local draft stays untouched until the readback passes; a fresh
+ * `GET /api/settings` is compared against the base snapshot on the affected
+ * public keys only (stale keeps the draft and names the moved keys); the
+ * `POST` carries only affected keys, never read-only keys or unrelated stale
+ * fields, and never a write-only credential next to its flag; a second `GET`
+ * must show the sent values (the home token is checked by its masked
+ * `token_set` flag only, never read back). A failed read is offline, not
+ * stale: the write may have landed, so the draft stays and nothing is claimed.
+ * A no-op draft sends no `POST`. Residual window, stated plainly: the fresh
+ * `GET` and the `POST` are not one atomic host transaction, so two writers
+ * inside that window still last-write-win. */
+
+type HostNotice = {
+  kind: 'stale' | 'offline' | 'mismatch' | 'unsupported'
+  text: string
+}
+
+function HostNoticeLine({ notice, onReload }: { notice: HostNotice | null; onReload?: () => void }) {
+  if (!notice) return null
+  return (
+    <p role="status" className="mt-3 mb-0 max-w-prose text-[0.85rem] text-amber">
+      {notice.text}{' '}
+      {notice.kind === 'stale' && onReload && (
+        <Button variant="ghost" size="sm" onClick={onReload}>
+          Load theirs
+        </Button>
+      )}
+    </p>
+  )
+}
+
+function useHostGuard(target: HostWriteTarget, settings: Settings) {
+  const spec = HOST_WRITE_SPECS[target]
+  const baseRef = useRef<SettingsLike | null>(null)
+  const startedRef = useRef(false)
+  const [notice, setNotice] = useState<HostNotice | null>(null)
+  const [checking, setChecking] = useState(false)
+
+  /* The base advances only on our own verified save or an explicit reload —
+     never by following a prop refresh, or another session's write would become
+     the base and the stale check would go blind. */
+  useEffect(() => {
+    if (!startedRef.current && settings) {
+      baseRef.current = settings as unknown as SettingsLike
+      startedRef.current = true
+    }
+  }, [settings])
+
+  async function saveGuarded(opts: {
+    intended: Record<string, unknown>
+    endpoint: string
+    hasWriteOnlyChange?: boolean
+    bodyFrom: (fresh: SettingsLike) => Record<string, unknown>
+  }): Promise<SettingsLike | null> {
+    const base = baseRef.current ?? (settings as unknown as SettingsLike)
+    /* Intended keys must stay inside the target's affected public set: a
+       read-only, write-only-flag or unknown key is refused before any `GET`. */
+    const outside = Object.keys(opts.intended).filter((key) => !spec.affected.includes(key))
+    if (outside.length) {
+      toast(`unsupported field — nothing sent (${outside.join(', ')})`, false)
+      return null
+    }
+    setChecking(true)
+    try {
+      let fresh: SettingsLike
+      try {
+        fresh = parseSettingsPayload(await get('/api/settings'), '/api/settings')
+      } catch {
+        setNotice({
+          kind: 'offline',
+          text: 'The host did not answer, so nothing was sent and the draft is kept. Retry when it is back.'
+        })
+        toast('host did not answer — draft kept', false)
+        return null
+      }
+      const before = checkBeforeSave(base, fresh, opts.intended, Object.keys(opts.intended), opts.hasWriteOnlyChange)
+      if (before.kind === 'unsupported') {
+        setNotice({
+          kind: 'unsupported',
+          text: 'The host did not return ' + before.missing.join(', ') + '. Your draft is kept.'
+        })
+        return null
+      }
+      if (before.kind === 'noop') {
+        baseRef.current = fresh
+        toast('already saved ✓')
+        return fresh
+      }
+      if (before.kind === 'stale') {
+        setNotice({
+          kind: 'stale',
+          text: `Changed in another session (${before.changed.join(', ')}) — the draft is kept. Load theirs to compare before saving again.`
+        })
+        toast('changed in another session — draft kept', false)
+        return null
+      }
+      try {
+        await post(opts.endpoint, opts.bodyFrom(fresh))
+      } catch (e) {
+        toast((e as Error).message, false)
+        return null
+      }
+      let back: SettingsLike
+      try {
+        back = parseSettingsPayload(await get('/api/settings'), '/api/settings')
+      } catch {
+        setNotice({
+          kind: 'offline',
+          text: 'Saved, but the readback failed, so it is kept as a draft until the host answers again.'
+        })
+        toast('saved, but the readback failed — draft kept', false)
+        return null
+      }
+      const { mismatched, unsupported } = checkReadback(back, opts.intended)
+      if (unsupported.length) {
+        setNotice({
+          kind: 'unsupported',
+          text: `The host did not return ${unsupported.join(', ')} — unsupported there. The draft is kept.`
+        })
+        toast('host did not return that field — draft kept', false)
+        return null
+      }
+      if (mismatched.length) {
+        setNotice({
+          kind: 'mismatch',
+          text: `The host shows a different value for ${mismatched.join(', ')} — the draft is kept.`
+        })
+        toast('host shows a different value — draft kept', false)
+        return null
+      }
+      baseRef.current = back
+      setNotice(null)
+      return back
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  async function reloadTheirs(apply?: (fresh: SettingsLike) => void): Promise<void> {
+    try {
+      const fresh = parseSettingsPayload(await get('/api/settings'), '/api/settings')
+      baseRef.current = fresh
+      apply?.(fresh)
+      setNotice(null)
+    } catch {
+      toast('host did not answer — draft kept', false)
+    }
+  }
+
+  return { notice, setNotice, checking, saveGuarded, reloadTheirs }
+}
+
+function ollamaFrom(fresh: SettingsLike): { enabled: boolean; endpoint: string; fallback: string } {
+  const ollama = (fresh as unknown as Settings)?.models?.ollama
+  return {
+    enabled: ollama?.enabled ?? false,
+    endpoint: ollama?.endpoint ?? '',
+    fallback: ollama?.fallback ?? ''
+  }
+}
+
 /* ── markets ──────────────────────────────────────────────────────────── */
 
 /* Adding an instrument and arming an alert both moved to the Markets page,
@@ -306,6 +483,7 @@ function ProviderStatus({
 function SearchSection({ settings, onChanged }: { settings: Settings; onChanged: () => void }) {
   const s = settings.search
   const [busy, setBusy] = useState(false)
+  const guard = useHostGuard('search', settings)
   if (!s) return null
   const modes = s.modes ?? []
   const current = modes.find((x) => x.id === s.mode)
@@ -321,14 +499,17 @@ function SearchSection({ settings, onChanged }: { settings: Settings; onChanged:
   const searches = s.usage?.searches
 
   async function save(id: string) {
-    if (busy || id === s?.mode) return
+    if (busy || guard.checking || id === s?.mode) return
     setBusy(true)
     try {
-      await post('/api/settings/search', { mode: id })
+      const back = await guard.saveGuarded({
+        intended: { 'search.mode': id },
+        endpoint: '/api/settings/search',
+        bodyFrom: () => ({ mode: id })
+      })
+      if (!back) return
       toast('saved ✓')
       onChanged()
-    } catch (e) {
-      toast((e as Error).message, false)
     } finally {
       setBusy(false)
     }
@@ -347,6 +528,7 @@ function SearchSection({ settings, onChanged }: { settings: Settings; onChanged:
         onChange={(id) => void save(id)}
       />
       {current?.note && <p className="mt-2 mb-0 max-w-prose text-[0.82rem] text-muted">{current.note}</p>}
+      <HostNoticeLine notice={guard.notice} onReload={() => void guard.reloadTheirs().then(onChanged)} />
       {!s.exa_key && s.mode !== 'ddgs' ? (
         <p className="mt-3 mb-0 max-w-prose text-[0.85rem] text-amber">
           No Exa key is set, so every search uses DDGS. Add <code>EXA_API_KEY</code> to <code>~/.hermes/.env</code>.
@@ -388,6 +570,7 @@ function SearchSection({ settings, onChanged }: { settings: Settings; onChanged:
 function LearningSection({ settings, onChanged }: { settings: Settings; onChanged: () => void }) {
   const l = settings.learning
   const [busy, setBusy] = useState(false)
+  const guard = useHostGuard('learning', settings)
   if (!l) return null
   const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
   const kept = l.chats
@@ -402,14 +585,17 @@ function LearningSection({ settings, onChanged }: { settings: Settings; onChange
   const resets = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1))
 
   async function save(value: 'on' | 'off') {
-    if (busy || value === l?.learning) return
+    if (busy || guard.checking || value === l?.learning) return
     setBusy(true)
     try {
-      await post('/api/settings/learning', { learning: value })
+      const back = await guard.saveGuarded({
+        intended: { 'learning.learning': value },
+        endpoint: '/api/settings/learning',
+        bodyFrom: () => ({ learning: value })
+      })
+      if (!back) return
       toast('saved ✓')
       onChanged()
-    } catch (e) {
-      toast((e as Error).message, false)
     } finally {
       setBusy(false)
     }
@@ -433,6 +619,7 @@ function LearningSection({ settings, onChanged }: { settings: Settings; onChange
           ? `What she learned could not be read (${l.error}).`
           : `${l.calls_today} of ${l.day_cap} grading calls used today · ${kept}`}
       </p>
+      <HostNoticeLine notice={guard.notice} onReload={() => void guard.reloadTheirs().then(onChanged)} />
       {l.env_off ? (
         <p className="mt-3 mb-0 max-w-prose text-[0.85rem] text-amber">
           <code>AIRA_LEARN=0</code> is set, so learning stays off whatever is chosen here. Remove it from{' '}
@@ -495,6 +682,8 @@ function LessonsSection({ settings }: { settings: Settings }) {
   )
 }
 
+const FIELD_PATH: Record<string, string> = { chat: 'models.chat', agent: 'models.agent', effort: 'models.effort' }
+
 function ModelsTab({ settings, onChanged }: { settings: Settings; onChanged: () => void }) {
   const m = settings.models ?? {}
   const cat = m.catalogue ?? []
@@ -505,15 +694,48 @@ function ModelsTab({ settings, onChanged }: { settings: Settings; onChanged: () 
     tags: string[]
   } | null>(null)
   const [busy, setBusy] = useState(false)
+  const guard = useHostGuard('models', settings)
 
-  async function save(patch: Record<string, unknown>) {
+  async function saveField(patch: Record<string, unknown>) {
+    const intended = Object.fromEntries(
+      Object.entries(patch)
+        .filter(([key]) => key in FIELD_PATH)
+        .map(([key, value]) => [FIELD_PATH[key], value])
+    )
+    if (!Object.keys(intended).length) {
+      toast('unsupported field — nothing sent', false)
+      return
+    }
     setBusy(true)
     try {
-      await post('/api/settings/models', patch)
+      const back = await guard.saveGuarded({
+        intended,
+        endpoint: '/api/settings/models',
+        bodyFrom: () => patch
+      })
+      if (!back) return
       toast('saved ✓')
       onChanged()
-    } catch (e) {
-      toast((e as Error).message, false)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /* The object is rebuilt from the fresh read on every save: spreading the
+     displayed `ollama` over a stale snapshot would resend endpoint and
+     fallback values another session already changed. */
+  async function saveOllama(change: { enabled?: boolean; endpoint?: string; fallback?: string }) {
+    const intended = Object.fromEntries(Object.entries(change).map(([key, value]) => [`models.ollama.${key}`, value]))
+    setBusy(true)
+    try {
+      const back = await guard.saveGuarded({
+        intended,
+        endpoint: '/api/settings/models',
+        bodyFrom: (fresh) => ({ ollama: { ...ollamaFrom(fresh), ...change } })
+      })
+      if (!back) return
+      toast('saved ✓')
+      onChanged()
     } finally {
       setBusy(false)
     }
@@ -565,7 +787,7 @@ function ModelsTab({ settings, onChanged }: { settings: Settings; onChanged: () 
           searchPlaceholder="type a model name…"
           value={value}
           disabled={busy}
-          onChange={(v) => save({ [role]: v })}
+          onChange={(v) => void saveField({ [role]: v })}
           options={[
             ...(value && !known ? [{ value, label: value, hint: 'set, not in the catalogue' }] : []),
             // The note belongs in the LABEL, not the hint: a hint only shows
@@ -617,7 +839,7 @@ function ModelsTab({ settings, onChanged }: { settings: Settings; onChanged: () 
             value={(m.efforts ?? []).find((e) => e.id === (m.effort ?? ''))?.label ?? ''}
             onChange={(label) => {
               const hit = (m.efforts ?? []).find((e) => e.label === label)
-              if (hit) void save({ effort: hit.id })
+              if (hit) void saveField({ effort: hit.id })
             }}
           />
           <p className="mt-2 mb-0 max-w-prose text-[0.82rem] text-muted">
@@ -631,6 +853,7 @@ function ModelsTab({ settings, onChanged }: { settings: Settings; onChanged: () 
             Applies to her replies from the next message. Delegated coding is unaffected.
           </p>
         </div>
+        <HostNoticeLine notice={guard.notice} onReload={() => void guard.reloadTheirs().then(onChanged)} />
       </Section>
 
       <SearchSection settings={settings} onChanged={onChanged} />
@@ -650,7 +873,7 @@ function ModelsTab({ settings, onChanged }: { settings: Settings; onChanged: () 
             type="checkbox"
             checked={ollama.enabled}
             disabled={busy}
-            onChange={(e) => save({ ollama: { ...ollama, enabled: e.target.checked } })}
+            onChange={(e) => void saveOllama({ enabled: e.target.checked })}
           />
           Use a local endpoint
         </label>
@@ -669,7 +892,7 @@ function ModelsTab({ settings, onChanged }: { settings: Settings; onChanged: () 
           <Button
             variant="ghost"
             disabled={busy || endpoint === ollama.endpoint}
-            onClick={() => save({ ollama: { ...ollama, endpoint } })}
+            onClick={() => void saveOllama({ endpoint })}
           >
             <Save /> Save
           </Button>
@@ -692,7 +915,7 @@ function ModelsTab({ settings, onChanged }: { settings: Settings; onChanged: () 
           searchPlaceholder="type a model name…"
           value={ollama.fallback}
           disabled={busy || !ollama.enabled}
-          onChange={(v) => save({ ollama: { ...ollama, fallback: v } })}
+          onChange={(v) => void saveOllama({ fallback: v })}
           options={[
             { value: '', label: 'None — show an error instead' },
             ...cat.filter((c) => c.kind === 'local').map((c) => ({ value: c.label, label: c.label }))
@@ -703,6 +926,7 @@ function ModelsTab({ settings, onChanged }: { settings: Settings; onChanged: () 
             That endpoint is not responding, so there are no local models to choose from.
           </p>
         )}
+        <HostNoticeLine notice={guard.notice} onReload={() => void guard.reloadTheirs().then(onChanged)} />
       </Section>
     </>
   )
@@ -876,16 +1100,19 @@ function MarketsTab({ settings, onChanged }: { settings: Settings; onChanged: ()
 
 function AvatarTab({ settings, onChanged }: { settings: Settings; onChanged: () => void }) {
   const [model, setModel] = useState(settings.avatar?.model ?? '')
+  const guard = useHostGuard('avatar', settings)
   const mirror = !!settings.avatar?.mirror
 
-  async function save(patch: Record<string, unknown>) {
-    try {
-      await post('/api/settings/avatar', patch)
-      toast('saved ✓')
-      onChanged()
-    } catch (e) {
-      toast((e as Error).message, false)
-    }
+  async function save(patch: { model?: string; mirror?: boolean }) {
+    const intended = Object.fromEntries(Object.entries(patch).map(([key, value]) => [`avatar.${key}`, value]))
+    const back = await guard.saveGuarded({
+      intended,
+      endpoint: '/api/settings/avatar',
+      bodyFrom: () => patch
+    })
+    if (!back) return
+    toast('saved ✓')
+    onChanged()
   }
 
   return (
@@ -907,6 +1134,14 @@ function AvatarTab({ settings, onChanged }: { settings: Settings; onChanged: () 
         <div className="mt-5">
           <Toggle checked={mirror} label="Mirror the model horizontally" onChange={(v) => void save({ mirror: v })} />
         </div>
+        <HostNoticeLine
+          notice={guard.notice}
+          onReload={() =>
+            void guard
+              .reloadTheirs((fresh) => setModel((fresh as unknown as Settings)?.avatar?.model ?? ''))
+              .then(onChanged)
+          }
+        />
       </Card>
     </Section>
   )
@@ -920,6 +1155,9 @@ function AvatarTab({ settings, onChanged }: { settings: Settings; onChanged: () 
  * beats every per-chat choice instead of merely seeding them. */
 function VoiceTab({ settings, onChanged }: { settings: Settings; onChanged: () => void }) {
   const [busy, setBusy] = useState(false)
+  const guardMute = useHostGuard('tts', settings)
+  const guardProvider = useHostGuard('tts_provider', settings)
+  const guardLang = useHostGuard('tts_lang', settings)
   const on = settings.tts?.enabled !== false
   const speaking = settings.tts?.speaking ?? 0
   const silenced = settings.tts?.silenced ?? 0
@@ -937,13 +1175,17 @@ function VoiceTab({ settings, onChanged }: { settings: Settings; onChanged: () =
   const providers = settings.tts?.providers ?? []
 
   async function saveProvider(next: string) {
+    if (busy || guardProvider.checking) return
     setBusy(true)
     try {
-      await post('/api/settings/tts_provider', { provider: next })
+      const back = await guardProvider.saveGuarded({
+        intended: { 'tts.provider': next },
+        endpoint: '/api/settings/tts_provider',
+        bodyFrom: () => ({ provider: next })
+      })
+      if (!back) return
       toast('voice changed \u2713')
       onChanged()
-    } catch (e) {
-      toast((e as Error).message, false)
     } finally {
       setBusy(false)
     }
@@ -952,27 +1194,35 @@ function VoiceTab({ settings, onChanged }: { settings: Settings; onChanged: () =
   const langOverrides = settings.tts?.lang_overrides ?? 0
 
   async function saveLang(next: string) {
+    if (busy || guardLang.checking) return
     setBusy(true)
     try {
-      await post('/api/settings/tts_lang', { lang: next })
+      const back = await guardLang.saveGuarded({
+        intended: { 'tts.lang': next },
+        endpoint: '/api/settings/tts_lang',
+        bodyFrom: () => ({ lang: next })
+      })
+      if (!back) return
       toast('saved \u2713')
       onChanged()
-    } catch (e) {
-      toast((e as Error).message, false)
     } finally {
       setBusy(false)
     }
   }
 
   async function save(enabled: boolean) {
+    if (busy || guardMute.checking) return
     setBusy(true)
     try {
-      await post('/api/settings/tts', { enabled })
+      const back = await guardMute.saveGuarded({
+        intended: { 'tts.enabled': enabled },
+        endpoint: '/api/settings/tts',
+        bodyFrom: () => ({ enabled })
+      })
+      if (!back) return
       // No restart: the script that reads the marker runs once per request.
       toast(enabled ? 'voice notes on ✓' : 'voice notes off everywhere ✓')
       onChanged()
-    } catch (e) {
-      toast((e as Error).message, false)
     } finally {
       setBusy(false)
     }
@@ -1028,6 +1278,7 @@ function VoiceTab({ settings, onChanged }: { settings: Settings; onChanged: () =
             so they appear on no row. They are still in force; change them on disk.
           </p>
         )}
+        <HostNoticeLine notice={guardMute.notice} onReload={() => void guardMute.reloadTheirs().then(onChanged)} />
       </Card>
 
       {providers.length > 1 && (
@@ -1051,6 +1302,10 @@ function VoiceTab({ settings, onChanged }: { settings: Settings; onChanged: () =
           <p className="mt-4 mb-0 max-w-prose text-[0.85rem] text-muted">
             {VOICE_NOTES[provider] ?? 'Configured under tts.providers in config.yaml.'}
           </p>
+          <HostNoticeLine
+            notice={guardProvider.notice}
+            onReload={() => void guardProvider.reloadTheirs().then(onChanged)}
+          />
         </Card>
       )}
 
@@ -1105,6 +1360,7 @@ function VoiceTab({ settings, onChanged }: { settings: Settings; onChanged: () =
             </>
           )}
         </p>
+        <HostNoticeLine notice={guardLang.notice} onReload={() => void guardLang.reloadTheirs().then(onChanged)} />
       </Card>
     </Section>
   )
@@ -1136,6 +1392,7 @@ const LANG_LABELS: Record<string, string> = {
 function HomeTab({ settings, onChanged }: { settings: Settings; onChanged: () => void }) {
   const [ip, setIp] = useState(settings.home?.ip ?? '')
   const [token, setToken] = useState('')
+  const guard = useHostGuard('home', settings)
 
   return (
     <Section title="Home Assistant">
@@ -1160,24 +1417,47 @@ function HomeTab({ settings, onChanged }: { settings: Settings; onChanged: () =>
           </Field>
           <Button
             variant="primary"
+            disabled={guard.checking}
             onClick={async () => {
-              try {
-                await post('/api/settings/home', {
-                  ip,
-                  ...(token ? { token } : {})
+              /* The token is write-only: it is sent when present but never part
+                 of the readback. The readback checks the public address plus the
+                 masked `token_set` flag, and the field is cleared on success so
+                 the hidden value lives nowhere in state. */
+              const back = await guard.saveGuarded({
+                intended: { 'home.ip': ip },
+                endpoint: '/api/settings/home',
+                hasWriteOnlyChange: Boolean(token),
+                bodyFrom: () => ({ ip, ...(token ? { token } : {}) })
+              })
+              if (!back) return
+              if (token && (back as unknown as Settings)?.home?.token_set !== true) {
+                guard.setNotice({
+                  kind: 'mismatch',
+                  text: 'The host did not confirm the token — the address is kept as a draft.'
                 })
-                setToken('')
-                toast('saved ✓')
-                onChanged()
-              } catch (e) {
-                toast((e as Error).message, false)
+                toast('host did not confirm the token — draft kept', false)
+                return
               }
+              setToken('')
+              toast('saved ✓')
+              onChanged()
             }}
           >
             <Save />
             Save
           </Button>
         </div>
+        <HostNoticeLine
+          notice={guard.notice}
+          onReload={() =>
+            void guard
+              .reloadTheirs((fresh) => {
+                setIp((fresh as unknown as Settings)?.home?.ip ?? '')
+                setToken('')
+              })
+              .then(onChanged)
+          }
+        />
       </Card>
     </Section>
   )
@@ -1200,6 +1480,7 @@ function FilesTab({ settings, onChanged, active }: { settings: Settings; onChang
   const pendingName = pending && pending.kind === kind ? pending.name : null
   const [ready, setReady] = useState<{ kind: string; name: string } | null>(null)
   const [loadError, setLoadError] = useState('')
+  const [fileNotice, setFileNotice] = useState<HostNotice | null>(null)
   const [readAttempt, setReadAttempt] = useState(0)
   const lastKind = useRef(kind)
 
@@ -1289,27 +1570,86 @@ function FilesTab({ settings, onChanged, active }: { settings: Settings; onChang
     if (!editable || !target) return
     setBusy(true)
     try {
-      const receipt = await post<{ kind: string; name: string; bytes: number }>('/api/settings/file', {
-        kind: target.kind,
-        ...(target.name ? { name: target.name } : {}),
-        text
-      })
+      /* A pending name exists nowhere on the host yet, so there is nothing to
+         conflict with. Anything already on disk is re-read first: saving over
+         text another session changed keeps the draft instead. */
+      const isNew = !!pendingName && target.name === pendingName
+      if (!isNew) {
+        let freshText: string
+        try {
+          const f = await get<{ kind: string; name: string; text: string }>(
+            `/api/settings/file?kind=${encodeURIComponent(target.kind)}${target.name ? `&name=${encodeURIComponent(target.name)}` : ''}`
+          )
+          if (f.kind !== target.kind || f.name !== target.name || typeof f.text !== 'string')
+            throw new Error('Invalid profile file response')
+          freshText = f.text
+        } catch (e) {
+          setFileNotice({
+            kind: 'offline',
+            text: 'The host file could not be re-read, so nothing was written and the draft is kept.'
+          })
+          toast((e as Error).message, false)
+          return
+        }
+        if (freshText !== loaded) {
+          setFileNotice({
+            kind: 'stale',
+            text: 'Changed in another session — the draft is kept. Load theirs to compare before saving again.'
+          })
+          toast('changed in another session — draft kept', false)
+          return
+        }
+      }
+      let receipt: { kind: string; name: string; bytes: number }
+      try {
+        receipt = await post<{ kind: string; name: string; bytes: number }>('/api/settings/file', {
+          kind: target.kind,
+          ...(target.name ? { name: target.name } : {}),
+          text
+        })
+      } catch (e) {
+        toast((e as Error).message, false)
+        return
+      }
       if (
         receipt.kind !== target.kind ||
         receipt.name !== target.name ||
         receipt.bytes !== new TextEncoder().encode(text).length
-      )
-        throw new Error('Invalid file save acknowledgement. Reload to check the saved text.')
+      ) {
+        setFileNotice({
+          kind: 'mismatch',
+          text: 'The host acknowledgement did not match this file — the draft is kept. Reload to check the saved text.'
+        })
+        toast('Invalid file save acknowledgement. Reload to check the saved text.', false)
+        return
+      }
       setLoaded(text)
+      setFileNotice(null)
       // The name is claimed by the save, not by the dialog. Pending clears in
       // the select effect once the reloaded list contains the new file —
       // clearing it here would snap the editor back to the default first.
       onChanged()
       toast('Owner profile file saved.')
-    } catch (e) {
-      toast((e as Error).message, false)
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function reloadTheirsFile() {
+    const target = ready
+    if (!target) return
+    try {
+      const f = await get<{ kind: string; name: string; text: string }>(
+        `/api/settings/file?kind=${encodeURIComponent(target.kind)}${target.name ? `&name=${encodeURIComponent(target.name)}` : ''}`
+      )
+      if (f.kind !== target.kind || f.name !== target.name || typeof f.text !== 'string')
+        throw new Error('Invalid profile file response')
+      setText(f.text)
+      setLoaded(f.text)
+      setFileNotice(null)
+      onChanged()
+    } catch (e) {
+      toast((e as Error).message, false)
     }
   }
 
@@ -1336,7 +1676,7 @@ function FilesTab({ settings, onChanged, active }: { settings: Settings; onChang
     function onKey(e: KeyboardEvent) {
       if (active && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault()
-        if (dirty) void save()
+        if (dirty && !loadError) void save()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -1435,6 +1775,7 @@ function FilesTab({ settings, onChanged, active }: { settings: Settings; onChang
             {loadError} <Button onClick={() => setReadAttempt((n) => n + 1)}>Retry load</Button>
           </div>
         )}
+        <HostNoticeLine notice={fileNotice} onReload={() => void reloadTheirsFile()} />
         <Textarea
           disabled={!editable}
           value={text}
@@ -1460,7 +1801,7 @@ function FilesTab({ settings, onChanged, active }: { settings: Settings; onChang
           <Button variant="ghost" disabled={busy} onClick={() => setText(loaded)}>
             Revert
           </Button>
-          <Button variant="primary" disabled={busy} onClick={() => void save()}>
+          <Button variant="primary" disabled={busy || !!loadError} onClick={() => void save()}>
             {busy ? <Spinner /> : <Save />}
             Save
           </Button>
