@@ -270,8 +270,8 @@ The core decides the bubbles. The gateway only delivers them.
 
 ## Stickers
 
-- A sticker is a WebP image, 512 by 512 pixels, within WhatsApp's sticker size limit. The site converts uploaded
-  images to this format when a pack is saved.
+- A sticker is a WebP image, 512 by 512 pixels, within WhatsApp's sticker size limit. The authenticated Studio expression upload converts
+  static PNG, JPEG or WebP to this format. Saving the card validates existing assets.
 - Stickers attach only for packs loaded from the data volume. Every file must be exactly 512 by 512 pixels, at
   most 100,000 bytes still or 500,000 bytes animated. The loader rejects anything else (`src/character/webp.ts`).
 - Sticker load, selection, path and state-write errors are caught. The cleaned text goes out unchanged, with no

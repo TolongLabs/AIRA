@@ -18,16 +18,17 @@ is copied off the host and brought back.
 
 ## Stores
 
-| Store               | Holds                                                          | Written By                     | Lost If It Is Lost                      |
-| ------------------- | -------------------------------------------------------------- | ------------------------------ | --------------------------------------- |
-| `aira.db`           | Every durable fact: memory, settings, records, jobs, reminders | The core, one write connection | Everything since the last off-host copy |
-| `files/`            | Stickers, studio packs, kept media                             | The core                       | Those files                             |
-| `snapshots/`        | Verified copies of `aira.db`                                   | The backup job                 | Nothing; they are copies                |
-| `archive/`          | Parquet exports of pruned records, by month                    | The archive job                | Old statistics only                     |
-| `cache/`            | Fetched pages and media awaiting a turn                        | Tools and media intake         | Nothing; it is rebuilt                  |
-| Off-host repository | Encrypted history of `snapshots/`, `files/` and `archive/`     | The backup job                 | Nothing; it is a copy                   |
+| Store               | Holds                                                           | Written By                     | Lost If It Is Lost                      |
+| ------------------- | --------------------------------------------------------------- | ------------------------------ | --------------------------------------- |
+| `aira.db`           | Transactional state: memory, settings, records, jobs, reminders | The core, one write connection | Everything since the last off-host copy |
+| `files/`            | Kept media and generated files                                  | The core                       | Files since the latest off-host backup  |
+| `characters/`       | Writable character packs and their stickers                     | Studio or the pack operator    | Pack edits since the last pack archive  |
+| `snapshots/`        | Verified copies of `aira.db`                                    | The backup job                 | Nothing; they are copies                |
+| `archive/`          | Parquet exports of pruned records, by month                     | The archive job                | Old statistics only                     |
+| `cache/`            | Fetched pages and media awaiting a turn                         | Tools and media intake         | Nothing; it is rebuilt                  |
+| Off-host repository | Encrypted history of `snapshots/`, `files/` and `archive/`      | The backup job                 | Nothing; it is a copy                   |
 
-- No durable state lives in process memory, in a text or JSON file, or in a temporary folder.
+- SQLite stores runtime facts. Writable character packs remain authoritative in `characters/`; their YAML and media files survive a restart.
 - `cache/` has a size cap and is the first thing emptied when space runs low. Nothing reads it as a source of truth.
   The disk guard enforces the cap on each check: when `cache/` holds more than `storage.cacheMaxMb`, it deletes the
   oldest files first until it is under 90% of the cap, and logs `storage.cache_trimmed` with the bytes freed.
@@ -176,6 +177,9 @@ Free space is checked at start-up and every `storage.checkEveryMin` minutes.
   holds verified snapshots and nothing else: the recovery pass removes every other entry.
 - **Keep.** Verified snapshots are kept for `backup.keepDays` days on the data volume. The newest verified snapshot
   is never removed.
+- **Character packs.** The routine off-host backup excludes `characters/`. The dashboard entry switch
+  archives the pack directory and deployment configuration locally; preserve a separate copy for host loss.
+  See [dashboard entry recovery](deployment.md#dashboard-entry-recovery).
 - **Ship.** After each verified snapshot, the backup job runs `restic backup` of that snapshot, `files/` and
   `archive/` into the repository named by `backup.offsite.repository`. restic encrypts and deduplicates on the host,
   so the destination never sees plain data. The repository password is `AIRA_BACKUP_PASSWORD` in `.env`; the

@@ -194,7 +194,7 @@ Install the release timer in the gateway owner’s systemd user manager so its c
 
 ### Dashboard entry recovery
 
-The preview at `/app/preview/` serves the candidate before the switch. From a checkout of the candidate on
+The preview at `/app/preview/overview` serves the candidate before the switch. From a checkout of the candidate on
 the deployment host, record the installed image ID and use the entry switch helper:
 
 ```sh

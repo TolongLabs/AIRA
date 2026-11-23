@@ -287,7 +287,8 @@ descriptions. An authenticated item GET returns static image/webp and no-store. 
 description, MIME type, base64 data and expectedRevision. Conversion accepts static PNG, JPEG or WebP, at most
 4 MiB compressed, 4096 pixels per dimension and 16 million pixels decoded. Publish at most 50 expressions per
 writable pack, comparing version and capacity again after conversion under the pack writer. A published sticker
-is 512 by 512 pixels and at most 100 KiB. See the [WhatsApp sticker requirements](https://github.com/WhatsApp/stickers).
+is 512 by 512 pixels. Conversion caps the encoded result at 100 KiB; the pack loader enforces
+the stricter 100,000-byte limit for a static sticker before publication. See the [WhatsApp sticker requirements](https://github.com/WhatsApp/stickers).
 
 Every protected dashboard response carries a generated X-Request-Id. The listener records request ID, build
 identifier, timestamp, fixed route category, HTTP method, status, elapsed time and a fixed reason code. A bounded
