@@ -107,6 +107,11 @@ inheritance still come from `GET /api/chats` and writes use the existing setting
 | `PUT /api/settings`              | `{ "level", "scope", "key", "value" }`; `value: null` clears the row        | `level`, `scope`, `key`, `value`, `changed`     |
 | `PUT /api/characters/:id/footer` | `{ "icon"?, "labels"?: { "<kind>": string or null } }`; `null` clears a key | `id`, `toolFooter`, `changed`                   |
 
+The dashboard footer editor reads `GET /owner-api/core/characters/:id/footer` for `id`, `toolFooter` and
+the full pack `revision`. Its `PUT` to the same path includes `expectedRevision`. A missing revision returns 428. A stale revision returns 409 and preserves the local draft until the owner chooses to reload. The Studio
+writer verifies the resulting pack and returns the saved footer, revision and `changed`. A no-op leaves the
+revision and audit count intact. The classic direct API still accepts its original request shape.
+
 - The footer route edits `toolFooter` in a data pack's `card.yml` in place, keeping its comments. A repository pack
   gets 409 `pack_read_only`; a card that does not parse or validate gets 409 `pack_unparseable`, and nothing is
   written. A label or icon that breaks the footer rule ([Prompt Engine](prompt-engine.md#tool-footer)) gets 400
