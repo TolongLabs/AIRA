@@ -1,0 +1,247 @@
+.appearance {
+  display: grid;
+  gap: 16px;
+  max-width: 880px;
+  font-family: Outfit, sans-serif;
+  color: var(--text, #102725);
+}
+
+.appearance-back {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: inherit;
+}
+
+.appearance h2 {
+  font-size: 24px;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.appearance-lede {
+  margin: 0;
+  max-width: 62ch;
+  font-size: 14px;
+}
+
+.appearance-group {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.appearance-group legend {
+  font-size: 12px;
+  padding: 0;
+  margin-bottom: 8px;
+}
+
+.appearance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.appearance-card {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  background: var(--tile, #ffffffb8);
+  border: 1px solid var(--edge, #ffffffbf);
+  border-radius: 16px;
+  padding: 16px;
+  cursor: pointer;
+  backdrop-filter: blur(18px);
+}
+
+.appearance-card:has(input:checked) {
+  border-color: #00877a;
+}
+
+.appearance-card input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: #00877a;
+}
+
+.appearance :focus-visible {
+  outline: 3px solid #00877a;
+  outline-offset: 2px;
+}
+
+.appearance-swatch {
+  display: block;
+  height: 72px;
+  border-radius: 12px;
+  border: 1px solid rgb(16 39 37 / 0.12);
+  pointer-events: none;
+}
+
+.appearance-swatch--plain {
+  background: #eef3f1;
+}
+
+.appearance-swatch--lattice {
+  background-color: #eef3f1;
+  background-image:
+    repeating-linear-gradient(0deg, rgb(16 39 37 / 0.1) 0 1px, transparent 1px 12px),
+    repeating-linear-gradient(90deg, rgb(16 39 37 / 0.1) 0 1px, transparent 1px 12px);
+}
+
+.appearance-swatch--stipple {
+  background-color: #eef3f1;
+  background-image: radial-gradient(rgb(16 39 37 / 0.16) 1px, transparent 1.2px);
+  background-size: 10px 10px;
+}
+
+.appearance-swatch--shader-gradient {
+  background:
+    radial-gradient(ellipse at 18% 12%, #d9f4ee 0, transparent 55%),
+    radial-gradient(ellipse at 85% 88%, #93cfc5 0, transparent 62%),
+    linear-gradient(155deg, #f2f8f6 0%, #d3e6e2 58%, #bcd8d3 100%);
+}
+
+.appearance-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.appearance-name {
+  font-weight: 600;
+}
+
+.appearance-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #102725;
+  color: #ffffff;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.25);
+}
+
+.appearance-hint {
+  font-size: 12px;
+}
+
+.appearance-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.appearance-actions button {
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.appearance-actions button:last-child {
+  background: var(--active, #d6f5ef);
+  border-color: transparent;
+}
+
+.appearance-actions button:disabled {
+  opacity: 0.6;
+}
+
+.appearance-state,
+.appearance-notice {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* Mount <Backdrop /> as the first child of .dashboard-shell: it paints the base
+   plane while the shell cards sit above it. It never captures pointer events. */
+.dashboard-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.dashboard-backdrop--plain {
+  background: #e8edeb;
+}
+
+.dashboard-backdrop--lattice {
+  background-color: #e8edeb;
+  background-image:
+    repeating-linear-gradient(0deg, rgb(16 39 37 / 0.08) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(90deg, rgb(16 39 37 / 0.08) 0 1px, transparent 1px 16px);
+}
+
+.dashboard-backdrop--stipple {
+  background-color: #e8edeb;
+  background-image: radial-gradient(rgb(16 39 37 / 0.12) 1px, transparent 1.3px);
+  background-size: 14px 14px;
+}
+
+.dashboard-backdrop--shader-gradient {
+  background:
+    radial-gradient(ellipse at 15% 8%, #cdeee7 0, transparent 52%),
+    radial-gradient(ellipse at 88% 92%, #9fd3c9 0, transparent 60%),
+    linear-gradient(160deg, #eef5f3 0%, #d2e4e0 55%, #bcd8d3 100%);
+}
+
+[data-theme='dark'] .dashboard-backdrop--plain {
+  background: #0c1111;
+}
+
+[data-theme='dark'] .dashboard-backdrop--lattice {
+  background-color: #0e1515;
+  background-image:
+    repeating-linear-gradient(0deg, rgb(255 255 255 / 0.06) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(90deg, rgb(255 255 255 / 0.06) 0 1px, transparent 1px 16px);
+}
+
+[data-theme='dark'] .dashboard-backdrop--stipple {
+  background-color: #0e1515;
+  background-image: radial-gradient(rgb(255 255 255 / 0.08) 1px, transparent 1.3px);
+}
+
+[data-theme='dark'] .dashboard-backdrop--shader-gradient {
+  background:
+    radial-gradient(ellipse at 15% 8%, #164f47 0, transparent 55%),
+    radial-gradient(ellipse at 88% 92%, #0f3330 0, transparent 60%),
+    linear-gradient(160deg, #101a19 0%, #0c1111 100%);
+}
+
+@media (max-width: 760px) {
+  .appearance-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (hover: none), (prefers-reduced-motion: reduce) {
+  .dashboard-backdrop,
+  .appearance-swatch {
+    animation: none;
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .dashboard-backdrop,
+  .appearance-swatch {
+    background: Canvas;
+  }
+  .appearance-card,
+  .appearance-actions button {
+    border: 1px solid ButtonText;
+  }
+  .appearance-badge {
+    border: 1px solid ButtonText;
+    box-shadow: none;
+  }
+}

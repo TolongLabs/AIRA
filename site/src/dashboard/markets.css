@@ -1,0 +1,342 @@
+/* Markets dashboard view. Every rule stays inside .dashboard-shell so the
+   legacy /app/markets.html document never sees it. Tokens come from
+   shell.css (--tile, --glass, --active, --text, --edge) with fallbacks. */
+.dashboard-shell .mkd {
+  display: grid;
+  gap: 16px;
+}
+.dashboard-shell .mkd-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.dashboard-shell .mkd-tab {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
+  opacity: 0.72;
+}
+.dashboard-shell .mkd-tab[aria-current='page'] {
+  background: var(--active, #d6f5ef);
+  opacity: 1;
+  font-weight: 600;
+}
+.dashboard-shell .mkd-panel:focus {
+  outline: none;
+}
+.dashboard-shell .mkd-panel:focus-visible {
+  outline: 3px solid #00877a;
+  outline-offset: 2px;
+}
+.dashboard-shell .mkd-grid {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 16px;
+  align-items: start;
+}
+.dashboard-shell .mkd-stack {
+  display: grid;
+  gap: 16px;
+}
+.dashboard-shell .mkd-card {
+  background: var(--tile, #ffffffb8);
+  border-radius: 16px;
+  padding: 20px;
+  min-width: 0;
+}
+.dashboard-shell .mkd-h {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+.dashboard-shell .mkd-h-sub {
+  font-weight: 400;
+  opacity: 0.72;
+}
+.dashboard-shell .mkd-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.dashboard-shell .mkd-gap {
+  margin-top: 16px;
+  display: grid;
+  gap: 12px;
+}
+.dashboard-shell .mkd-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.dashboard-shell .mkd-select {
+  background: var(--glass, #eff4f3c9);
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  color: inherit;
+  padding: 10px;
+  min-height: 44px;
+}
+.dashboard-shell .mkd-list {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  max-height: 420px;
+  overflow-y: auto;
+  border-radius: 8px;
+}
+.dashboard-shell .mkd-opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.dashboard-shell .mkd-opt[aria-selected='true'] {
+  background: var(--active, #d6f5ef);
+  font-weight: 600;
+}
+.dashboard-shell .mkd-opt-main {
+  display: grid;
+  min-width: 0;
+}
+.dashboard-shell .mkd-sym {
+  font-family: 'Geist Mono', monospace;
+  font-size: 13px;
+}
+.dashboard-shell .mkd-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  opacity: 0.72;
+}
+.dashboard-shell .mkd-nums {
+  display: flex;
+  gap: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.dashboard-shell .mkd-quote {
+  font-size: 15px;
+  margin: 0 0 4px;
+}
+.dashboard-shell .mkd-quote-price {
+  font-size: 28px;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.dashboard-shell .mkd-up {
+  color: #0a7a5c;
+}
+.dashboard-shell .mkd-down {
+  color: #b23b3b;
+}
+[data-theme='dark'] .dashboard-shell .mkd-up {
+  color: #5fd6b5;
+}
+[data-theme='dark'] .dashboard-shell .mkd-down {
+  color: #f09696;
+}
+.dashboard-shell .mkd-range {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 10px 12px;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
+}
+.dashboard-shell .mkd-range[aria-pressed='true'] {
+  background: var(--active, #d6f5ef);
+  font-weight: 600;
+}
+.dashboard-shell .mkd-chart {
+  margin-top: 12px;
+}
+.dashboard-shell .mkd-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.dashboard-shell .mkd-news-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.dashboard-shell .mkd-news-head .mkd-h {
+  margin: 0;
+  margin-right: auto;
+}
+.dashboard-shell .mkd-news {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+.dashboard-shell .mkd-story {
+  padding: 12px 0;
+  border-top: 1px solid var(--edge, #ffffffbf);
+}
+.dashboard-shell .mkd-story:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.dashboard-shell .mkd-day {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.72;
+  margin: 0 0 8px;
+}
+.dashboard-shell .mkd-title {
+  color: inherit;
+  font-size: 16px;
+  line-height: 1.4;
+}
+.dashboard-shell .mkd-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  opacity: 0.72;
+  margin-top: 4px;
+}
+.dashboard-shell .mkd-src {
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+.dashboard-shell .mkd-muted {
+  font-size: 14px;
+  opacity: 0.72;
+}
+.dashboard-shell .mkd-error {
+  color: #b23b3b;
+}
+[data-theme='dark'] .dashboard-shell .mkd-error {
+  color: #f09696;
+}
+.dashboard-shell .mkd-link {
+  background: none;
+  border: 0;
+  padding: 10px 4px;
+  min-height: 44px;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.dashboard-shell .mkd-conflict {
+  background: var(--tile, #ffffffb8);
+  border-radius: 12px;
+  padding: 12px 20px;
+  margin: 0;
+}
+.dashboard-shell .mkd-chats {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+.dashboard-shell .mkd-chat {
+  border-top: 1px solid var(--edge, #ffffffbf);
+  padding-top: 12px;
+}
+.dashboard-shell .mkd-chat:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.dashboard-shell .mkd-chat-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+.dashboard-shell .mkd-chat-head .mkd-link {
+  margin-left: auto;
+}
+.dashboard-shell .mkd-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.dashboard-shell .mkd-tag,
+.dashboard-shell .mkd-tag-dim {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 6px 6px 6px 14px;
+  font-family: 'Geist Mono', monospace;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+.dashboard-shell .mkd-tag-dim {
+  opacity: 0.72;
+  padding-right: 14px;
+}
+.dashboard-shell .mkd-x {
+  display: inline-grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  background: none;
+  border: 0;
+  border-radius: 999px;
+  color: inherit;
+  cursor: pointer;
+}
+.dashboard-shell .mkd-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+.dashboard-shell .mkd-check input {
+  min-width: 44px;
+  min-height: 44px;
+  accent-color: #00877a;
+}
+.dashboard-shell .mkd :focus-visible {
+  outline: 3px solid #00877a;
+  outline-offset: 2px;
+}
+@media (max-width: 900px) {
+  .dashboard-shell .mkd-grid {
+    grid-template-columns: 1fr;
+  }
+  .dashboard-shell .mkd-tabs {
+    justify-content: flex-start;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-shell .mkd * {
+    scroll-behavior: auto;
+  }
+}
+@media (forced-colors: active) {
+  .dashboard-shell .mkd-tab,
+  .dashboard-shell .mkd-range,
+  .dashboard-shell .mkd-select,
+  .dashboard-shell .mkd-opt {
+    border: 1px solid ButtonText;
+  }
+}

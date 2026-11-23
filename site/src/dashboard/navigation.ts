@@ -12,3 +12,13 @@ export const destinations = [
 export function dashboardHref(path: string) {
   return previewMount + '/' + path
 }
+
+export function chatHref(path:string){
+  const query=new URLSearchParams()
+  const current=new URLSearchParams(location.search)
+  for(const key of ['search','status','page']){
+    const value=current.get(key)
+    if(value)query.set(key,value)
+  }
+  return dashboardHref(path)+(query.size?'?'+query:'')
+}

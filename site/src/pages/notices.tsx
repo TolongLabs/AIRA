@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useContext, useEffect, useMemo, useState } from 'react'
 import { Shell } from '@/components/shell'
 import { get, post } from '@/lib/api'
+import { DashboardContext } from '@/dashboard/context'
+import { dashboardHref } from '@/dashboard/navigation'
+import '@/dashboard/automations.css'
 import { toast, Toaster, useApi } from '@/lib/hooks'
-import { Badge, Button, Card, ConfirmAction, Empty, Field, Picker, Section, Segmented, Toggle } from '@/components/ui'
+import { Badge, Button, Card, ConfirmAction, Empty, Field, Input, Picker, Section, Segmented, Toggle } from '@/components/ui'
 
 /* Who gets told when a Claude session finishes, and on which machine.
  *
@@ -120,6 +123,47 @@ export default function NoticesPage() {
   const targets = data?.targets ?? []
   const quiet = data?.quiet ?? []
   const live = useMemo(() => routes.filter((r: Route) => r.enabled).length, [routes])
+  const inDashboard = useContext(DashboardContext)
+  /* Dashboard filter (?q=) so a return from a cold link keeps the same route
+   * list. Sessions, routes, quiet chats, add-a-route and machine reports all
+   * read the same /api/notices payload — no fictional data. */
+  const [filter, setFilter] = useState(() =>
+    typeof window === 'undefined' ? '' : (new URLSearchParams(window.location.search).get('q') ?? '')
+  )
+  const visibleRoutes = useMemo(() => {
+    const needle = filter.trim().toLowerCase()
+    if (!needle) return routes
+    return routes.filter((r: Route) =>
+      `${r.machine} ${r.target} ${r.label ?? ''}`.toLowerCase().includes(needle)
+    )
+  }, [routes, filter])
+  const noticesSelfHref = useMemo(() => {
+    const qs = filter ? `?q=${encodeURIComponent(filter)}` : ''
+    return dashboardHref('automations/notices') + qs
+  }, [filter])
+
+  useEffect(() => {
+    if (!inDashboard || typeof window === 'undefined') return
+    const saved = Number(sessionStorage.getItem('aira-automations-notices-scroll') ?? '')
+    if (Number.isFinite(saved) && saved > 0) window.scrollTo({ top: saved })
+  }, [inDashboard])
+
+  function changeFilter(next: string) {
+    setFilter(next)
+    if (typeof window === 'undefined') return
+    const url = new URL(window.location.href)
+    if (next) url.searchParams.set('q', next)
+    else url.searchParams.delete('q')
+    history.replaceState(null, '', url)
+  }
+
+  function rememberNoticesScroll() {
+    try {
+      sessionStorage.setItem('aira-automations-notices-scroll', String(window.scrollY))
+    } catch {
+      /* private mode: the list simply starts at the top on return */
+    }
+  }
 
   /* A route stores "whatsapp:<jid>"; targets are keyed on the bare jid. Passing
      the whole thing in missed every lookup and fell through to printing the
@@ -173,6 +217,256 @@ export default function NoticesPage() {
       setBusy('')
     }
   }
+
+  /* Dashboard (Figma 30:1557): the same five sections as the legacy page —
+   * current activity, routes, quiet chats, add-a-route and machine reports —
+   * in one stacked view. Shell passes children through in the dashboard, so
+   * the legacy MPA below stays byte-identical. Refused drafts keep their
+   * pickers (cleared only on success); saves reload and verify the persisted
+   * route before toasting. */
+  if (inDashboard)
+    return (
+      <Shell page="notices" title="Session Notices">
+        <div className="automations-wrap" onClick={rememberNoticesScroll}>
+          <Toaster />
+          <div className="automations-panel">
+            <p className="automations-kicker">Current activity</p>
+            {!sessions.length ? (
+              <p className="mt-2 mb-0 text-[0.9rem] text-muted">
+                No Claude session has touched this machine recently.
+              </p>
+            ) : (
+              <ul className="automations-rows">
+                {sessions.map((x: Session, i: number) => (
+                  <li key={`${x.project}-${i}`} className="automations-row" aria-current={undefined}>
+                    <span className="automations-row-name">
+                      {x.project}
+                      {x.branch ? ` · ${x.branch}` : ''}
+                    </span>
+                    <span className="automations-row-meta">
+                      {x.turns.toLocaleString()} turns · {x.active ? 'active' : 'idle'}
+                      {x.tools.length > 0 ? ` · ${x.tools.join(' · ')}` : ''}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {api.error ? (
+              <div className="automations-alert mt-3" role="alert">
+                <p className="m-0 text-[0.9rem]">Could not load activity: {String(api.error)}</p>
+                <div className="automations-actions">
+                  <Button size="sm" variant="outline" onClick={() => void api.reload()}>
+                    Retry
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="automations-panel">
+            <div className="automations-list-head">
+              <p className="automations-kicker">
+                Routes · {live} delivering, {routes.length - live} paused
+              </p>
+            </div>
+            <Field label="Filter routes">
+              <Input
+                type="search"
+                value={filter}
+                placeholder="machine, chat or label…"
+                aria-label="Filter routes"
+                onChange={(e) => changeFilter(e.target.value)}
+              />
+            </Field>
+            {!visibleRoutes.length ? (
+              <p className="mt-3 mb-0 text-[0.9rem] text-muted">
+                {routes.length ? 'Nothing matches this filter.' : 'Nothing is routed yet, so nothing is sent.'}
+              </p>
+            ) : (
+              <div className="mt-3 flex flex-col gap-3">
+                {visibleRoutes.map((r: Route, i: number) => {
+                  const key = `${r.machine}|${r.target}`
+                  const known = machines.some((m: Machine) => m.machine === r.machine)
+                  return (
+                    <Card key={`${key}|${i}`} className="p-4">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+                        <span className="text-[0.92rem] text-muted">When</span>
+                        <code className="rounded-card border border-line-2 bg-sunk px-2 py-1 font-mono text-[0.78rem]">
+                          {r.machine}
+                        </code>
+                        <span className="text-[0.92rem] text-muted">finishes a session, tell</span>
+                        <b className="font-semibold">{nameOf(r.target)}</b>
+                        <Badge>{r.enabled ? 'on' : 'paused'}</Badge>
+                        <div className="ml-auto flex items-center gap-2">
+                          <Toggle
+                            checked={r.enabled}
+                            disabled={busy === key}
+                            onChange={(v) => void save({ ...r, enabled: v }).catch(() => {})}
+                            label={r.enabled ? 'on' : 'off'}
+                          />
+                          <ConfirmAction
+                            label="remove"
+                            confirmLabel="Remove"
+                            question={`Remove the route telling ${nameOf(r.target)} about ${r.machine}?`}
+                            onConfirm={() => save({ ...r, remove: true })}
+                          />
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <span className="text-[0.82rem] text-muted">sends</span>
+                        <Segmented
+                          options={['a summary', 'the whole reply'] as const}
+                          value={r.mode === 'full' ? 'the whole reply' : 'a summary'}
+                          disabled={busy === key}
+                          onChange={(v) =>
+                            void save({ ...r, mode: v === 'the whole reply' ? 'full' : 'summary' }).catch(() => {})
+                          }
+                        />
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span className="text-[0.82rem] text-muted">tell them</span>
+                        <Segmented
+                          options={['after every reply', 'only when it closes'] as const}
+                          value={r.when === 'session_end' ? 'only when it closes' : 'after every reply'}
+                          disabled={busy === key}
+                          onChange={(v) =>
+                            void save({ ...r, when: v === 'only when it closes' ? 'session_end' : 'every_turn' }).catch(
+                              () => {}
+                            )
+                          }
+                        />
+                      </div>
+                      {!known ? (
+                        <p className="mt-2 mb-0 text-[0.82rem] text-down">
+                          No machine calling itself <b>{r.machine}</b> has ever reported here.{' '}
+                          <a href={`${noticesSelfHref}#machines`}>Check the name below</a>.
+                        </p>
+                      ) : null}
+                    </Card>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="automations-panel">
+            <p className="automations-kicker">Quiet chats</p>
+            {!quiet.length ? (
+              <p className="mt-2 mb-0 text-[0.9rem] text-muted">No chat has asked for quiet.</p>
+            ) : (
+              <div className="mt-2 flex flex-col gap-2">
+                {quiet.map((q: QuietChat) => (
+                  <div
+                    key={q.target}
+                    className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line-2 py-3 first:border-t-0"
+                  >
+                    <b className="font-semibold">{q.label || q.target}</b>
+                    {q.held ? <Badge>held until they ask</Badge> : <Badge>quiet {q.minutes}m</Badge>}
+                    <div className="ml-auto">
+                      <ConfirmAction
+                        label="release"
+                        confirmLabel="Release"
+                        disabled={busy !== ''}
+                        question={`Release ${q.label || q.target}?`}
+                        onConfirm={() => release(q)}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="automations-panel">
+            <p className="automations-kicker">Add a route</p>
+            <div className="grid items-start gap-4 sm:grid-cols-[1fr_1fr_auto]">
+              <Field
+                label="when this machine finishes"
+                hint={machines.length ? 'listed once a machine has reported' : 'none yet — install the hook first'}
+              >
+                <Picker
+                  ariaLabel="which machine"
+                  placeholder="pick a machine…"
+                  searchPlaceholder="type a machine name…"
+                  value={machine}
+                  onChange={setMachine}
+                  options={machines.map((m: Machine) => ({
+                    value: m.machine,
+                    label: m.machine,
+                    hint: `last reported ${ago(m.last_seen)}`
+                  }))}
+                />
+              </Field>
+              <Field label="tell this chat">
+                <Picker
+                  ariaLabel="which chat"
+                  placeholder="pick a chat…"
+                  searchPlaceholder="type a name or number…"
+                  value={target}
+                  onChange={setTarget}
+                  options={targets
+                    .filter((t: Target) => /^\d{5,}@/.test(String(t.jid ?? '')))
+                    .map((t: Target) => ({
+                      value: `whatsapp:${t.jid}`,
+                      label: t.label,
+                      hint: `${t.kind} · ${String(t.jid).split('@')[0]}`
+                    }))}
+                />
+              </Field>
+              <Button
+                className="sm:mt-6"
+                disabled={!machine || !target || busy !== ''}
+                onClick={() =>
+                  void save({ machine, target, enabled: false })
+                    .then(() => {
+                      setMachine('')
+                      setTarget('')
+                    })
+                    .catch(() => {})
+                }
+              >
+                Add
+              </Button>
+            </div>
+            <p className="mt-3 mb-0 max-w-prose text-[0.82rem] text-muted">A new route is added paused. Turn it on when you mean it.</p>
+          </div>
+
+          <div className="automations-panel" id="machines">
+            <p className="automations-kicker">Machines that have reported</p>
+            {!machines.length ? (
+              <p className="mt-2 mb-0 text-[0.9rem] text-muted">
+                Nothing has reported yet. A machine appears here the first time a session finishes on it.
+              </p>
+            ) : (
+              <table className="mt-2 w-full border-collapse text-[0.9rem]">
+                <thead>
+                  <tr className="text-left text-muted">
+                    <th className="py-1 font-medium">machine</th>
+                    <th className="py-1 font-medium">last reported</th>
+                    <th className="py-1 font-medium">routed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {machines.map((m: Machine) => (
+                    <tr key={m.machine} className="border-t border-line-2">
+                      <td className="py-2 font-mono text-[0.82rem]">{m.machine}</td>
+                      <td className="py-2 text-muted">{ago(m.last_seen)}</td>
+                      <td className="py-2">
+                        {m.routed ? (
+                          <span className="text-accent">yes</span>
+                        ) : (
+                          <span className="text-faint">{m.paused ? 'routed, but paused' : 'nobody is told'}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </Shell>
+    )
 
   return (
     <Shell

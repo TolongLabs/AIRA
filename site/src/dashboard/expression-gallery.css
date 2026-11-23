@@ -1,0 +1,198 @@
+/* Expression gallery. Shared dashboard tokens only: --tile, --glass, --active, --text. */
+
+.expression-gallery {
+  display: grid;
+  gap: 16px;
+}
+
+.expression-gallery-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.expression-gallery-title {
+  margin: 0;
+  font-size: 24px;
+}
+
+.expression-gallery-subtitle {
+  margin: 0;
+  font-size: 18px;
+}
+
+.expression-gallery-count {
+  margin: 4px 0 0;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.expression-gallery-note {
+  background: var(--tile);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.expression-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 16px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.expression-gallery-card {
+  display: grid;
+  gap: 8px;
+  background: var(--tile);
+  border-radius: 16px;
+  padding: 12px;
+  align-content: start;
+}
+
+.expression-gallery-thumb {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  object-fit: cover;
+  background: var(--glass);
+}
+
+span.expression-gallery-thumb {
+  display: grid;
+  place-items: center;
+  font-size: 44px;
+  font-weight: 600;
+}
+
+.expression-gallery-name {
+  font-family: 'Geist Mono', monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.expression-gallery-description {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.expression-gallery-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 10px 18px;
+  border-radius: 8px;
+  background: var(--active);
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+}
+
+.expression-gallery-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.expression-gallery-button:focus-visible,
+.expression-gallery-field input:focus-visible {
+  outline: 3px solid #00877a;
+  outline-offset: 2px;
+}
+
+/* Native dialog: dimmed and blurred backdrop, actions right with Cancel first. */
+.expression-gallery-dialog {
+  border: none;
+  border-radius: 16px;
+  background: var(--tile);
+  color: inherit;
+  padding: 0;
+  width: min(480px, calc(100vw - 32px));
+}
+
+.expression-gallery-dialog::backdrop {
+  background: #101b1c70;
+  backdrop-filter: blur(6px);
+}
+
+.expression-gallery-form {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+}
+
+.expression-gallery-hint {
+  font-size: 12px;
+  opacity: 0.75;
+  margin: 0;
+}
+
+.expression-gallery-field {
+  display: grid;
+  gap: 6px;
+}
+
+.expression-gallery-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.expression-gallery-field input {
+  background: var(--glass);
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  padding: 10px;
+  color: inherit;
+  width: 100%;
+  font: inherit;
+}
+
+.expression-gallery-errors {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 20px;
+  font-size: 12px;
+}
+
+.expression-gallery-error {
+  font-size: 12px;
+  color: #b3261e;
+  margin: 0;
+}
+
+[data-theme='dark'] .expression-gallery-error {
+  color: #f2a8a2;
+}
+
+.expression-gallery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 760px) {
+  .expression-gallery-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .expression-gallery * {
+    scroll-behavior: auto;
+  }
+}
+
+@media (forced-colors: active) {
+  .expression-gallery-card,
+  .expression-gallery-button {
+    border: 1px solid ButtonText;
+  }
+}

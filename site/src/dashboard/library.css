@@ -1,0 +1,132 @@
+/* Library dashboard (preview) — two columns ~45/55, stacked on phones.
+   Legacy /app/library.html keeps its own styles; these classes are only used
+   when DashboardContext is true. Uses design tokens so light/dark follow. */
+
+.lib-dash-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.lib-dash-toolbar a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 1rem;
+  border-radius: var(--radius-card, 10px);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.lib-dash-toolbar a[aria-current='page'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.lib-dash-cols {
+  display: grid;
+  grid-template-columns: 45fr 55fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+.lib-dash-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card, 12px);
+  padding: 1rem;
+  min-width: 0;
+}
+
+.lib-dash-card h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+}
+
+.lib-dash-searchrow {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.lib-dash-searchrow input,
+.lib-dash-searchrow select {
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--sunk, var(--card));
+  color: var(--ink);
+  padding: 0 0.75rem;
+  font-size: 0.9rem;
+}
+
+.lib-dash-searchrow input {
+  flex: 1;
+  min-width: 0;
+}
+
+.lib-dash-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.lib-dash-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.lib-dash-row[aria-current='true'] {
+  border-color: var(--accent);
+}
+
+.lib-dash-row b {
+  display: block;
+  font-weight: 600;
+}
+
+.lib-dash-row span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.lib-dash-facts {
+  margin: 0.5rem 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.lib-dash-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 760px) {
+  .lib-dash-cols {
+    grid-template-columns: 1fr;
+  }
+
+  .lib-dash-rows {
+    max-height: none;
+  }
+}

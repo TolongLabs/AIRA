@@ -82,7 +82,7 @@ export function requestToken(
   return asking
 }
 
-function authHeaders(base: Record<string, string> = {}) {
+export function authHeaders(base: Record<string, string> = {}) {
   const t = localStorage.getItem(TOKEN_KEY)
   return t ? { ...base, 'X-TolongAI-Token': t } : base
 }
@@ -90,6 +90,10 @@ function authHeaders(base: Record<string, string> = {}) {
 export function ownerPath(path: string): string {
   if (!path.startsWith('/api/')) throw new Error('Invalid owner API path')
   return '/owner-api/' + path.slice('/api/'.length)
+}
+
+export class OwnerRequestError extends Error {
+  constructor(readonly status:number,message:string){super(message)}
 }
 
 export async function get<T = unknown>(path: string): Promise<T> {
@@ -100,7 +104,7 @@ export async function get<T = unknown>(path: string): Promise<T> {
     await requestToken()
     r = await go()
   }
-  if (!r.ok) throw new Error(`GET ${path} failed (${r.status})`)
+  if (!r.ok) throw new OwnerRequestError(r.status,`Owner request failed (${r.status})`)
   const value: unknown = await r.json()
   checkOwnerResponse(path, value, 'GET')
   return value as T
@@ -127,7 +131,7 @@ export async function post<T = unknown>(path: string, body: unknown): Promise<T>
     } catch {
       /* keep the status line */
     }
-    throw new Error(message)
+    throw new OwnerRequestError(r.status,message)
   }
   const value: unknown = await r.json()
   checkOwnerResponse(path, value, 'POST')
