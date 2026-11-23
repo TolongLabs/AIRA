@@ -42,6 +42,12 @@ async function siteFile(siteDir: string, pathname: string): Promise<{ body: Buff
   } catch {
     return undefined
   }
+  if (
+    /^preview\/(?:overview|chats(?:\/(?:files|c_[a-zA-Z0-9_-]+\/(?:settings|send)))?|characters|library(?:\/graph)?|automations(?:\/(?:routines|notices))?|markets|system(?:\/(?:health|settings))?)$/.test(
+      relative
+    )
+  )
+    relative = 'preview.html'
   if (relative === '' || relative.endsWith('/')) relative += 'index.html'
   const root = resolve(siteDir)
   const file = resolve(root, relative)
