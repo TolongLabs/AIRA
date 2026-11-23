@@ -153,6 +153,33 @@ describe('site health (D2)', () => {
     }) as typeof fetch
   }
 
+  it('checks both dashboard entries and answers the canonical owner challenge', async () => {
+    const token = 'fixture-owner'
+    const siteTokenFile = join(tmpDir(), 'fixture-token')
+    await writeFile(siteTokenFile, token)
+    const siteUrl = 'http://127.0.0.1:9890'
+    for (const canonical of [false, true]) {
+      const fetcher = (async (input, init) => {
+        const url = new URL(String(input))
+        if (url.origin !== siteUrl) return Response.json({ status: 'ready', activeTurns: 0 })
+        if (url.pathname === '/app/')
+          return canonical
+            ? new Response(null, { status: 302, headers: { location: '/overview' } })
+            : new Response('/app/assets/classic.js')
+        if (url.pathname === '/overview') return new Response('/app/assets/preview.js')
+        const authorized = new Headers(init?.headers).get('x-tolongai-token') === token
+        if (canonical && !authorized) return new Response(null, { status: 401 })
+        if (url.pathname === '/api/health') return Response.json({ status: 'ready' })
+        if (url.pathname === '/api/chats') return Response.json({ chats: [] })
+        if (url.pathname === '/owner-api/dashboard' && authorized) return Response.json({ services: {}, recent: [] })
+        throw new Error('Unexpected probe path')
+      }) as typeof fetch
+      const ops = createRealOps(baseOptions({ siteUrl, siteTokenFile, fetch: fetcher }))
+      expect(await ops.healthy()).toBe(true)
+      expect(await ops.ownerConsole?.()).toBe(true)
+    }
+  })
+
   it('is healthy only when the core and the site are both ready', async () => {
     const bothReady = createRealOps(baseOptions({ siteUrl: 'http://127.0.0.1:9890', fetch: healthFetch('ready') }))
     expect(await bothReady.healthy()).toBe(true)

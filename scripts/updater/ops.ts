@@ -36,6 +36,7 @@ export interface RealOpsOptions {
   coreUrl: string
   /** The site API base URL. When set, healthy() also requires the site to be ready. */
   siteUrl?: string
+  siteTokenFile?: string
   recordFile: string
   run?: (
     command: string,
@@ -234,13 +235,18 @@ export async function verifyOwnerConsole(
   const base = site.replace(/\/+$/, '')
   const load = (path: string, headers: Record<string, string> = {}) =>
     fetcher(base + path, { headers, signal: AbortSignal.timeout(HEALTH_FETCH_TIMEOUT_MS), redirect: 'error' })
-  const page = await load('/app/')
+  const entry = await fetcher(base + '/app/', {
+    redirect: 'manual',
+    signal: AbortSignal.timeout(HEALTH_FETCH_TIMEOUT_MS)
+  })
+  const page = entry.status === 302 && entry.headers.get('location') === '/overview' ? await load('/overview') : entry
   if (!page.ok || !(await page.text()).includes('/app/assets/')) return false
-  const chats = await load('/api/chats')
-  if (!chats.ok || !Array.isArray(((await chats.json()) as { chats?: unknown }).chats)) return false
   const token = (await readFile(tokenFile, 'utf8')).trim()
   if (!token) return false
-  const dash = await load('/owner-api/dashboard', { 'X-TolongAI-Token': token })
+  const headers = { 'X-TolongAI-Token': token }
+  const chats = await load('/api/chats', headers)
+  if (!chats.ok || !Array.isArray(((await chats.json()) as { chats?: unknown }).chats)) return false
+  const dash = await load('/owner-api/dashboard', headers)
   if (!dash.ok) return false
   const data = (await dash.json()) as { services?: unknown; recent?: unknown }
   return typeof data.services === 'object' && data.services !== null && Array.isArray(data.recent)
@@ -393,9 +399,17 @@ export function createRealOps(options: RealOpsOptions): UpdaterOps {
       if (health?.status !== 'ready') return false
       if (siteUrl === undefined || siteUrl === '') return true
       try {
-        const res = await fetchFn(`${siteUrl.replace(/\/+$/, '')}/api/health`, {
-          signal: AbortSignal.timeout(HEALTH_FETCH_TIMEOUT_MS)
-        })
+        const url = siteUrl.replace(/\/+$/, '') + '/api/health'
+        const probe = (headers?: Record<string, string>) =>
+          fetchFn(url, { headers, redirect: 'error', signal: AbortSignal.timeout(HEALTH_FETCH_TIMEOUT_MS) })
+        let res = await probe()
+        if (res.status === 401) {
+          const token = (
+            await readFile(options.siteTokenFile ?? join(homedir(), '.hermes', 'brain', '.site-token'), 'utf8')
+          ).trim()
+          if (!token) return false
+          res = await probe({ 'X-TolongAI-Token': token })
+        }
         if (!res.ok) return false
         const data = (await res.json()) as unknown
         return typeof data === 'object' && data !== null && (data as { status?: unknown }).status === 'ready'
@@ -405,7 +419,7 @@ export function createRealOps(options: RealOpsOptions): UpdaterOps {
     },
 
     async ownerConsole(): Promise<boolean> {
-      return !siteUrl || verifyOwnerConsole(siteUrl, fetchFn)
+      return !siteUrl || verifyOwnerConsole(siteUrl, fetchFn, options.siteTokenFile)
     },
 
     async syntheticTurn(): Promise<boolean> {

@@ -200,6 +200,10 @@ the existing service from its Compose directory with `docker compose up -d --no-
 Removing that setting and recreating the same service restores the classic entry. Keep the installed image
 selector, data volume, owner socket and private bind intact. A process restart alone does not reread an env file.
 
+The deployment probe accepts the classic HTML response or the exact same-site redirect to `/overview`. It verifies
+chat and host dashboard responses with the owner header. A private site health challenge requires the same owner
+credential. The probe sends credentials only to the configured site and refuses further redirects.
+
 Record the running image ID, service health, private entry responses and snapshot identifier before changing
 the entry. Revert the switch on an owner lockout or authorization failure, incorrect state readback, ambiguous
 duplicate submission, failed health or cold-link checks, or sustained regression beyond the
