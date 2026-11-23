@@ -431,6 +431,7 @@ describe('runDeployHost', () => {
       run: async (_command, args, env, options) => {
         if (args.includes('dist/scripts/deploy-turn-probe.js')) {
           checkedTimeout = options?.timeoutMs ?? 0
+          if (upVersions.at(-1) === 'sha-0000001') return { code: 0, stdout: 'deploy-turn-ok', stderr: '' }
           throw new Error('synthetic turn timed out')
         }
         if (args.includes('images')) {
