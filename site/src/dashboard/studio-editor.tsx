@@ -234,7 +234,7 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
         lines: body.lines
       })
       setStatus(`Created ${answer.id}.`)
-      setPackId(answer.id)
+      location.assign(studioHref(studioPaths.edit(answer.id)))
     } catch (e) {
       setStatus(e instanceof StudioError ? `Create failed (${e.code}).` : 'Create failed.')
     } finally {
