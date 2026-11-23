@@ -99,3 +99,7 @@ Enter and Escape operate the graph without a pointer.
 Orca 46.1 in headed Chromium announced the skip link, Overview heading and chat search field. The session used
 a private display, accessibility bus and fixture service. The check inspected Orca's generated speech text.
 Audible pronunciation and physical assistive devices were outside this run.
+
+The acceptance build with configuration readback and workspace recovery measured 88 ms for load, 243 ms
+for the service summary, 287,444 decoded JavaScript bytes and 17 ms for the p95 scrolling interval
+with the same seven-run fixture. All four medians met the budgets.

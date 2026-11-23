@@ -1,11 +1,11 @@
-import { renameSync, writeFileSync } from 'node:fs'
+import { closeSync, openSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { parse, stringify } from 'yaml'
 import { type App, createApp } from '../../src/app.js'
 import { loadConfig } from '../../src/config/loader.js'
-import { revisionForConfig } from '../../src/config/status.js'
+import { createConfigStatus, revisionForConfig } from '../../src/config/status.js'
 import { createLogger } from '../../src/records/logger.js'
 import { queueModel } from '../support/app.js'
 import { testConfig } from '../support/core.js'
@@ -112,6 +112,25 @@ describe('deployment activation readback', () => {
     expect(body.currentRevision).toMatch(HEX64)
     expect(body.currentRevision).not.toBe(body.appliedRevision)
     expect(JSON.stringify(body)).not.toMatch(/bubbleMaxChars|3801|host|path|\/host/i)
+  })
+
+  it.runIf(process.platform === 'linux')('reports an unlinked mount as inaccessible', () => {
+    const path = join(tmpDir('aira-config-'), 'config.yml')
+    writeConfigFile(path)
+    const config = loadConfig(path)
+    const fd = openSync(path, 'r')
+    try {
+      const status = createConfigStatus({ config, configPath: '/proc/self/fd/' + fd })
+      expect(status.read().status).toBe('current')
+      unlinkSync(path)
+      expect(status.read()).toMatchObject({
+        status: 'inaccessible',
+        appliedRevision: revisionForConfig(config),
+        currentRevision: null
+      })
+    } finally {
+      closeSync(fd)
+    }
   })
 
   it('reports invalid on a malformed file and leaves the applied revision intact', async () => {

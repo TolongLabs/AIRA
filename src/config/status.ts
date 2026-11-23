@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { closeSync, fstatSync, openSync, readFileSync } from 'node:fs'
 import { parseConfig } from './loader.js'
 import type { Config } from './schema.js'
 
@@ -68,7 +68,15 @@ export function createConfigStatus(options: ConfigStatusOptions): ConfigStatus {
       }
       let source: string
       try {
-        source = readFileSync(configPath, 'utf8')
+        const fd = openSync(configPath, 'r')
+        try {
+          source = readFileSync(fd, 'utf8')
+          if (fstatSync(fd).nlink === 0) {
+            return { appliedRevision, currentRevision: null, status: 'inaccessible', checkedAt, appliedAt }
+          }
+        } finally {
+          closeSync(fd)
+        }
       } catch {
         return { appliedRevision, currentRevision: null, status: 'inaccessible', checkedAt, appliedAt }
       }

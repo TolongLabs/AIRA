@@ -18,7 +18,7 @@ function configMessage(status: CoreConfigStatus): string {
     case 'invalid':
       return 'File is invalid. Running revision stays applied; fix the file, then restart.'
     case 'inaccessible':
-      return 'Source cannot be read. Running revision stays applied.'
+      return 'Source unavailable. Check the file and its permissions. If the mounted file was replaced, recreate the container.'
     case 'memory_only':
       return 'Running from injected config with no source file to check.'
   }
