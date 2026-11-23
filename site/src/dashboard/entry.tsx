@@ -15,6 +15,7 @@ import {
   Sun
 } from 'lucide-react'
 import { DashboardContext } from './context'
+import { applyLegacyBookmark } from './legacy-bookmarks'
 import { dashboardHref, destinations, previewMount } from './navigation'
 import Appearance, { Backdrop } from './appearance'
 import { Overview } from './overview'
@@ -67,6 +68,12 @@ function persist(key: string, value: string) {
   }
 }
 const themeKey = 'tolongai-theme'
+
+// Legacy `#…` bookmarks resolve to canonical routes before the router parses
+// the path (docs/trd/dashboard-routes.md#legacy-bookmarks-and-operations).
+// Replace-only, so the legacy URL never enters history.
+applyLegacyBookmark()
+
 function Dashboard() {
   const path = location.pathname.startsWith(previewMount + '/')
     ? location.pathname.slice(previewMount.length + 1)
