@@ -251,3 +251,10 @@ rewrites the user's service unit.
 
 Before cutover, the harness's request format is fed from production: real gateway requests are copied to the new
 core, which runs the full turn and records it but returns nothing to WhatsApp. See [Deployment](deployment.md).
+
+## Dashboard browser checks
+
+Build the production site, install the browsers with `bunx playwright install --with-deps chromium firefox webkit`
+and run `bun run test:dashboard` from the repository root. Each engine opens a new browser context pointed at a
+loopback core listener, temporary SQLite data, and a controlled owner service. The smoke journey checks summary
+values, navigation, refresh, phone drawer focus, 320-pixel reflow and automated accessibility rules.
