@@ -44,9 +44,10 @@ Point `gateway.hostDataDir` at the data folder's absolute path. When the install
 
 Configuration files, secrets, character packs and chat settings are specified in
 [`docs/trd/data.md`](trd/data.md). Change chat settings through the Chats page: each write validates like
-start-up, commits with a `setting_change` row, and applies on the next turn. To change the token, port or allowed
-origins, see the maintainer steps in [`docs/trd/site.md`](trd/site.md#write-routes). To allow a browser write from
-another origin, add it to `site.allowedOrigins`; a write with no `Origin` needs only the token.
+start-up, commits with a `setting_change` row, and applies on the next turn. The owner enters the site credential in the browser. The browser sends it in the
+`X-TolongAI-Token` header, and the core verifies it through the host owner service. The listener checks the request host and any supplied origin.
+See [protected core queries](trd/site.md#protected-core-queries-and-scoped-settings) for the authorization
+and revision checks. After changing deployment configuration, use System Health to verify its applied revision.
 
 ## Deploy
 
