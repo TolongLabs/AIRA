@@ -7,7 +7,7 @@ The existing owner site, revamped as the chatbot's console, with a character stu
 | Item            | Value                                                                                       |
 | --------------- | ------------------------------------------------------------------------------------------- |
 | Front End       | The existing React app, kept, in `site/`                                                    |
-| Design Contract | The site's own `DESIGN.md`. It wins over code for anything visual                           |
+| Design Contract | [The AIRA web design contract](../DESIGN.md)                                                |
 | Reach           | Private network only (loopback or Tailscale)                                                |
 | Chatbot Data    | Read and written through the core's API                                                     |
 | Owner-Tool Data | Host service through the same-origin owner API, with core-managed market and routine writes |
@@ -223,3 +223,25 @@ Renaming a routine preserves its full stored prompt even when the host returns o
 Core-managed owner mutations require the same owner token as a protected settings read. A credential refusal returns HTTP 401.
 The core uses the host’s scoped WhatsApp key for each chat watchlist and reads older bare-ID entries.
 Alert delivery retains the destination ID supplied by the gateway.
+
+## Dashboard command boundary
+
+The dashboard uses typed same-origin core queries and commands. The core resolves authority and validates each
+operation. See [route parity](dashboard-routes.md) and [state ownership](dashboard-state.md). The approved visual
+contract is [the AIRA web design contract](../DESIGN.md).
+
+### Confirmed owner text
+
+POST /owner-api/messages accepts a submissionId (UUID), chatId (internal core ID) and text. GET
+/owner-api/messages/:submissionId returns the recorded outcome. Both operations verify the private Host, allowed
+Origin and the owner credential through the existing protected host settings read. Responses use no-store.
+Resolve exactly one known DM or group. Reject invalid input before dispatch. Trim outer whitespace, preserve
+internal newlines and accept 1–4,000 Unicode code points. The client allocates the UUID once per confirmation.
+
+Before calling the existing host send transport, commit a reservation with the internal target, submission ID,
+request fingerprint, timestamp and outcome unknown. Only the caller that creates the reservation may dispatch.
+The host transport submits plain text with stamp false. Never invoke a model or change chat settings. A duplicate
+with matching content returns the recorded outcome. Reuse with different content or target returns 409.
+A confirmed acknowledgement changes the record to acknowledged. A definite pre-dispatch refusal returns refused.
+An interrupted call, ambiguous response or crash leaves unknown until positive evidence permits reconciliation.
+Return the submission ID and outcome only. A lookup miss returns 404. No retry dispatches an unknown reservation.

@@ -423,6 +423,7 @@ The owner site: its front end, write protection, hosting and footer editing. 7 r
 | ADR-0162 | 2026-11-23 | [Abolish `SITE_TOKEN`][ADR-0162]                                      | Accepted |
 | ADR-0182 | 2026-11-23 | [Enforce Site Binding, Footer, and Cron Guards][ADR-0182]             | Accepted |
 | ADR-0183 | 2026-11-23 | [Route Owner Actions Through the Core Site][ADR-0183]                 | Accepted |
+| ADR-0184 | 2026-11-24 | [Use typed core commands for the dashboard][ADR-0184]                 | Accepted |
 
 [ADR-0157]: 0157-keep-the-react-front-end-and-design-contract.md
 [ADR-0158]: 0158-require-a-literal-host-and-allowed-origin-for-site-writes.md
@@ -431,6 +432,7 @@ The owner site: its front end, write protection, hosting and footer editing. 7 r
 [ADR-0161]: 0161-show-up-to-three-tool-footer-labels.md
 [ADR-0162]: 0162-abolish-site-token.md
 [ADR-0183]: 0183-route-owner-actions-through-the-core-site.md
+[ADR-0184]: 0184-use-typed-dashboard-commands.md
 [ADR-0182]: 0182-enforce-site-binding-footer-and-cron-guards.md
 
 ## Deployment
