@@ -108,10 +108,19 @@ export const core = {
   setSetting: (level: SettingLevel, scope: string, key: string, value: unknown, expectedRevision?: string) =>
     put<{ changed: boolean }>('/api/settings', { level, scope, key, value, expectedRevision }),
   /** `null` removes an icon or label key so the code default applies again. */
-  setFooter: (id: string, patch: { icon?: string | null; labels?: Record<string, string | null> }) =>
-    put<{ id: string; toolFooter: ToolFooterConfig; changed: boolean }>(
+  setFooter: (
+    id: string,
+    patch: { icon?: string | null; labels?: Record<string, string | null> },
+    expectedRevision?: string
+  ) =>
+    put<{ id: string; revision?: string; toolFooter: ToolFooterConfig; changed: boolean }>(
       `/api/characters/${encodeURIComponent(id)}/footer`,
-      patch
+      expectedRevision === undefined ? patch : { ...patch, expectedRevision }
+    ),
+  /** One pack's footer with its opaque revision for the owner preview flow. */
+  getFooter: (id: string) =>
+    call<{ id: string; revision: string; toolFooter: ToolFooterConfig }>(
+      `/api/characters/${encodeURIComponent(id)}/footer`
     )
 }
 
@@ -120,6 +129,7 @@ export function reasonText(error: unknown): string {
   if (!(error instanceof CoreError)) return 'The core did not answer.'
   const words: Record<string, string> = {
     stale_revision: 'Settings changed in another session. Reload to compare before saving again.',
+    revision_required: 'This form needs a fresh revision. Reload to compare before saving again.',
     invalid_setting: 'That value is not allowed for this setting.',
     unknown_character: 'That character is not loaded.',
     missing_character: 'An active chat requires a loaded character.',

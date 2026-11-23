@@ -1438,28 +1438,57 @@ function PackFooterPanel({
   const readOnly = pack.source !== 'data'
   const [open, setOpen] = useState(!readOnly)
   const [busy, setBusy] = useState(false)
-  const packIcon = pack.toolFooter?.icon
+  const [current, setCurrent] = useState<Awaited<ReturnType<typeof core.getFooter>> | null>(null)
+  const [issue, setIssue] = useState('')
+  const [reload, setReload] = useState(0)
+  const shownFooter = current?.toolFooter ?? pack.toolFooter
+  const packIcon = shownFooter?.icon
   const [iconDraft, setIconDraft] = useState(packIcon ?? '')
+  const locked = busy || (!readOnly && (!current || Boolean(issue)))
 
   useEffect(() => {
-    setIconDraft(packIcon ?? '')
-  }, [packIcon])
+    let live = true
+    setCurrent(null)
+    setIssue('')
+    if (!readOnly) {
+      core.getFooter(pack.id).then(
+        (state) => {
+          if (!live) return
+          setCurrent(state)
+          setIconDraft(state.toolFooter.icon ?? '')
+        },
+        () => {
+          if (live) setIssue('The current footer could not be read.')
+        }
+      )
+    }
+    return () => {
+      live = false
+    }
+  }, [pack.id, readOnly, reload])
 
   const boundChats = useMemo(
     () => chats.filter((c) => new ChatSettingsViewModel(c, [pack]).effectiveCharacterId === pack.id),
     [chats, pack]
   )
 
-  const overrideCount = (packIcon !== undefined ? 1 : 0) + Object.keys(pack.toolFooter?.labels ?? {}).length
+  const overrideCount = (packIcon !== undefined ? 1 : 0) + Object.keys(shownFooter?.labels ?? {}).length
 
   async function savePatch(patch: { icon?: string | null; labels?: Record<string, string | null> }, msg: string) {
+    if (!current || locked) return false
     setBusy(true)
     try {
-      const res = await core.setFooter(pack.id, patch)
+      const res = await core.setFooter(pack.id, patch, current.revision)
+      if (!res.revision) throw new Error('Footer readback unavailable')
+      setCurrent({ id: pack.id, revision: res.revision, toolFooter: res.toolFooter })
+      if ('icon' in patch) setIconDraft(res.toolFooter.icon ?? '')
       toast(res.changed ? msg : 'Nothing changed.')
       onChanged()
       return true
     } catch (error) {
+      if (error instanceof CoreError && (error.code === 'stale_revision' || error.code === 'revision_required')) {
+        setIssue('The pack changed. Your draft is still here. Reload the saved footer to review the current values.')
+      }
       toast(reasonText(error), false)
       return false
     } finally {
@@ -1499,6 +1528,14 @@ function PackFooterPanel({
 
       {open && (
         <div className="border-t border-line">
+          {issue && (
+            <div role="alert">
+              <p>{issue}</p>
+              <Button variant="outline" size="sm" onClick={() => setReload((n) => n + 1)}>
+                Reload footer and discard draft
+              </Button>
+            </div>
+          )}
           <div className="flex flex-col gap-2 border-b border-line-2 px-4 py-4">
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <span className="font-mono text-[0.68rem] font-medium tracking-[0.14em] text-muted uppercase">
@@ -1512,7 +1549,7 @@ function PackFooterPanel({
               <Input
                 value={iconDraft}
                 readOnly={readOnly}
-                disabled={readOnly || busy}
+                disabled={readOnly || locked}
                 placeholder="🛠️"
                 aria-label={`${pack.id} footer icon`}
                 autoComplete="off"
@@ -1537,7 +1574,7 @@ function PackFooterPanel({
               <Button
                 size="sm"
                 variant="ghost"
-                disabled={readOnly || busy || packIcon === undefined}
+                disabled={readOnly || locked || packIcon === undefined}
                 onClick={() => void savePatch({ icon: null }, 'Cleared footer icon.')}
               >
                 Clear
@@ -1573,13 +1610,13 @@ function PackFooterPanel({
           <div className="px-4 py-2">
             {footerKinds.map((entry) => (
               <FooterLabelRow
-                key={entry.kind}
+                key={pack.id + reload + entry.kind}
                 packId={pack.id}
                 kind={entry.kind}
                 defaultLabel={entry.defaultLabel}
-                packValue={pack.toolFooter?.labels?.[entry.kind]}
+                packValue={shownFooter?.labels?.[entry.kind]}
                 readOnly={readOnly}
-                busy={busy}
+                busy={locked}
                 onSave={(kind, value) =>
                   savePatch(
                     { labels: { [kind]: value } },

@@ -6,6 +6,7 @@ import { SettingError, scopeSnapshot, setSetting, unsetSetting } from '../settin
 import { ChatBindingPolicy } from './binding-policy.js'
 import { CharacterFooterWriter } from './footer-writer.js'
 import type { RouteResult, SiteApiDeps } from './routes.js'
+import { StudioPackError, updateStudioFooter } from './studio-packs.js'
 
 // The site API's write routes (docs/trd/site.md#write-routes). Each write is one transaction with a change record.
 
@@ -127,6 +128,19 @@ export function dispatchWrite(deps: SiteApiDeps, method: string, path: string, b
       id = decodeURIComponent(footerMatch[1])
     } catch {
       return { status: 400, body: { error: 'invalid_character_id' } }
+    }
+    if (typeof body === 'object' && body !== null && 'expectedRevision' in body) {
+      try {
+        const result = updateStudioFooter(
+          deps,
+          id,
+          body as { expectedRevision: string; icon?: string | null; labels?: Record<string, string | null> }
+        )
+        return { status: 200, body: result }
+      } catch (err) {
+        if (err instanceof StudioPackError) return { status: err.status, body: { error: err.code } }
+        throw err
+      }
     }
     return new CharacterFooterWriter(deps).write(id, body)
   }
