@@ -15,56 +15,56 @@
   "messages": [
     {
       "from": "browser",
-      "label": "GET /api/chats",
+      "label": "GET /owner-api/core/chats",
       "note": "Core reads are served on the private listener. Owner-tool calls use a separate route and token.",
       "to": "server",
       "y": 180
     },
     {
       "from": "server",
-      "label": "dispatchGet",
+      "label": "Authorize owner, dispatch query",
       "note": "An unknown path gets 404 not_found. A non-GET gets 405 method_not_allowed.",
       "to": "routes",
       "y": 244
     },
     {
       "from": "routes",
-      "label": "storage.read",
+      "label": "Read chats and settings revisions",
       "note": "Reads only. The report reads the newest snapshot instead of the live file.",
       "to": "storage",
       "y": 308
     },
     {
       "from": "routes",
-      "label": "200 JSON",
+      "label": "200 JSON, no-store",
       "to": "browser",
       "variant": "return",
       "y": 372
     },
     {
       "from": "browser",
-      "label": "PUT /api/settings + Host, Origin, JSON up to 16 KB",
+      "label": "PUT scoped setting + expected revision",
       "note": "Over 16 KB gets 413 body_too_large. A non-JSON type gets 415.",
       "to": "server",
       "y": 452
     },
     {
       "from": "server",
-      "label": "hostAllowed + originAllowed",
+      "label": "Check owner, origin and body",
       "note": "A bad host gets 403 host_refused. A foreign origin gets 403 origin_refused.",
       "to": "writes",
       "y": 516
     },
     {
       "from": "writes",
-      "label": "one tx: setSetting + setting_change row",
+      "label": "Compare revision and audit in one transaction",
       "note": "Null clears the row. A global character also rewrites the unavailable line.",
       "to": "storage",
       "y": 580
     },
     {
       "from": "writes",
-      "label": "200 + changed flag",
+      "label": "200 changed or 409 stale",
       "to": "browser",
       "variant": "return",
       "y": 644
@@ -77,7 +77,7 @@
     "repository": {
       "url": "https://github.com/TolongLabs/AIRA",
       "provider": "github",
-      "revision": "163a320e5dfeaf636ffe3e4e4c389470d9567d35"
+      "revision": "6a509db22138d3a8a6926e0c5c7ed412277f9c95"
     }
   },
   "participants": [

@@ -8,7 +8,7 @@
     },
     {
       "from": "coreClient",
-      "label": "Private core /api",
+      "label": "/owner-api/core + token",
       "to": "coreApi",
       "variant": "security"
     },
@@ -36,13 +36,13 @@
     "repository": {
       "url": "https://github.com/TolongLabs/AIRA",
       "provider": "github",
-      "revision": "163a320e5dfeaf636ffe3e4e4c389470d9567d35"
+      "revision": "6a509db22138d3a8a6926e0c5c7ed412277f9c95"
     }
   },
   "nodes": [
     {
       "id": "chats",
-      "label": "ChatsPage",
+      "label": "Chats and Studio",
       "row": 0,
       "sources": [
         {
@@ -50,23 +50,23 @@
         }
       ],
       "stage": 0,
-      "sublabel": "rebuilt on the core",
+      "sublabel": "Scoped settings and packs",
       "type": "frontend"
     },
     {
       "id": "ownerPages",
-      "label": "Owner-tool pages",
+      "label": "Owner dashboard",
       "row": 1,
       "sources": [
         {
-          "path": "site/src/pages/dashboard.tsx"
+          "path": "site/src/dashboard/entry.tsx"
         },
         {
           "path": "site/src/pages/cron.tsx"
         }
       ],
       "stage": 0,
-      "sublabel": "Dashboard, Settings, Library…",
+      "sublabel": "Overview, Library and operations",
       "type": "frontend"
     },
     {
@@ -108,12 +108,12 @@
         }
       ],
       "stage": 2,
-      "sublabel": "/api/chats, settings, tools…",
+      "sublabel": "Protected core operations",
       "type": "backend"
     },
     {
       "id": "legacyApi",
-      "label": "Legacy site API",
+      "label": "Owner service",
       "row": 1,
       "sources": [
         {
@@ -121,7 +121,7 @@
         }
       ],
       "stage": 2,
-      "sublabel": "Host owner service via core proxy",
+      "sublabel": "Authorized host operations",
       "type": "backend"
     },
     {

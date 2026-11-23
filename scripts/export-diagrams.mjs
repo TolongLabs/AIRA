@@ -7,9 +7,11 @@ const SOURCES = 'docs/diagrams/src'
 const RENDERED = '.archify'
 const OUTPUT = 'docs/diagrams'
 
+const outfit = readFileSync('site/public/dashboard/fonts/outfit.woff2').toString('base64')
 const STYLE = `
-  svg { --ink: #1f2937; --muted: #5b6475; --faint: #9aa3b5; --line: #d5dbe6; --card: #ffffff;
-    --blue: #4a67c0; --green: #17916a; --violet: #7a5cd6; --amber: #b9770f; --red: #bd3149;
+  @font-face { font-family: Outfit; font-weight: 100 900; src: url(data:font/woff2;base64,${outfit}) format('woff2'); }
+  svg { --ink: #102725; --muted: #445c59; --faint: #637976; --line: #a2b6b2; --card: #ffffff;
+    --blue: #00665e; --green: #24643b; --violet: #645185; --amber: #804e09; --red: #9e3043;
     --mask: var(--card); --lane-stroke: var(--line);
     --frontend-stroke: var(--blue); --backend-stroke: var(--blue); --database-stroke: var(--green);
     --cloud-stroke: var(--violet); --security-stroke: var(--amber); --messagebus-stroke: var(--muted);
@@ -23,10 +25,10 @@ const STYLE = `
     --external-fill: var(--mask);
     --text: var(--ink); --text-muted: var(--muted);
     --arrow: var(--muted); --arrow-emphasis: var(--blue);
-    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; letter-spacing: -0.01em; }
+    font-family: Outfit, Arial, sans-serif; letter-spacing: -0.01em; }
   @media (prefers-color-scheme: dark) {
-    svg { --ink: #e8ecf5; --muted: #a3acc0; --faint: #5d667a; --line: #2c3342; --card: #11141b;
-      --blue: #8aa2df; --green: #4ade80; --violet: #b58cff; --amber: #ffc247; --red: #ff6b81; } }
+    svg { --ink: #eff7f5; --muted: #b7cbc7; --faint: #879c98; --line: #4b615d; --card: #111b1a;
+      --blue: #89d8cb; --green: #8bd2a1; --violet: #c6b3df; --amber: #f1c074; --red: #ff9ba7; } }
   .c-mask { fill: var(--mask); stroke: none; }
   .c-grid { fill: none; stroke: none; }
   .c-lane, .c-security-group { fill: none; stroke: var(--lane-stroke); }
