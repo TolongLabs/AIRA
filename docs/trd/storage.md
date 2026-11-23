@@ -282,3 +282,10 @@ The Restart and Migration suites run in CI on every change. See [Test Harness](h
 
 Deployment values are validated against strict schemas in `src/config/schema.ts`, which also requires
 `storage.criticalFreeMb` below `storage.minFreeMb`.
+
+## Owner message submissions
+
+A durable SQLite reservation keyed by submission UUID prevents a second gateway dispatch across concurrent
+requests and restarts. Store the core chat reference, content fingerprint, timestamps and outcome. Exclude
+message text, gateway identifiers and credentials. Persist unknown before contacting the gateway, then update the
+same row after an authoritative acknowledgement. A failed final commit leaves the reservation intact for lookup.

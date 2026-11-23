@@ -120,8 +120,7 @@ independent Boolean settings. Each defaults to true. Chat, chat-type and global 
 hierarchy. Clearing the chat override restores the inherited value. The main feature and the server's
 available operations still determine whether a platform can run. Setting a switch cannot enable a provider.
 
-**Not built yet:** `report.defaultFormat` is not in the settings registry, so a write to it is rejected as unknown
-(`src/settings/keys.ts`).
+The dashboard uses the [state ownership matrix](dashboard-state.md) for scope, activation, audit and recovery.
 
 Each optional chat feature is one `features.*` key. A tool or behaviour names the key that enables it.
 
