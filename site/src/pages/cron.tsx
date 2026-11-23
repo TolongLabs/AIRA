@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useContext, useEffect, useMemo, useState } from 'react'
 import { Pause, Pencil, Play, Plus, Trash2 } from 'lucide-react'
 import type { Chat, CronArchived, CronJob } from '@/lib/api'
 import { get, post } from '@/lib/api'
@@ -484,8 +484,6 @@ function RoutinesDashboard({
      deletion. One in-flight check at a time, no auto-write loop. */
   const [verifiedGone, setVerifiedGone] = useState(false)
   const [verifyError, setVerifyError] = useState<string | null>(null)
-  const [verifying, setVerifying] = useState(false)
-  const verifyBusy = useRef(false)
   const selectedId = initial.selectedId
   const badId = initial.badId
   const chats = chatsApi.data?.chats ?? []
@@ -523,15 +521,11 @@ function RoutinesDashboard({
   useEffect(() => {
     setVerifiedGone(false)
     setVerifyError(null)
-    setVerifying(false)
-    verifyBusy.current = false
   }, [selectedId])
   useEffect(() => {
     if (!selectedId || badId || selected || jobsLoading || jobsError || !jobsData) return
     if (!Array.isArray(jobsData.jobs)) return
-    if (verifiedGone || verifyError || verifying || verifyBusy.current) return
-    verifyBusy.current = true
-    setVerifying(true)
+    if (verifiedGone || verifyError) return
     let live = true
     void get<{ jobs: CronJob[] }>('/api/cron')
       .then((fresh) => {
@@ -546,20 +540,14 @@ function RoutinesDashboard({
       .catch((e) => {
         if (live) setVerifyError(e instanceof Error ? e.message : 'Schedule check failed.')
       })
-      .finally(() => {
-        verifyBusy.current = false
-        if (live) setVerifying(false)
-      })
     return () => {
       live = false
     }
-  }, [selectedId, badId, selected, jobsData, jobsLoading, jobsError, jobsReload, verifiedGone, verifyError, verifying])
+  }, [selectedId, badId, selected, jobsData, jobsLoading, jobsError, jobsReload, verifiedGone, verifyError])
 
   function retryVerify() {
     setVerifyError(null)
     setVerifiedGone(false)
-    setVerifying(false)
-    verifyBusy.current = false
   }
 
   /* Scroll restoration: leaving detail returns to the list position. */
