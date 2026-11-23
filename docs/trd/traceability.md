@@ -34,12 +34,12 @@ from this page after an audit.
 
 ## Expression, Mood And Tone
 
-| ID    | Status  | Main Code Paths                                   | Test Paths     | TRD Module       | Gap                                                                                      |
-| ----- | ------- | ------------------------------------------------- | -------------- | ---------------- | ---------------------------------------------------------------------------------------- |
-| FR-11 | Shipped | src/prompt/mood.ts, src/prompt/builder.ts         | tests/contract | prompt-engine.md | None.                                                                                    |
-| FR-12 | Shipped | src/prompt/shape.ts, src/prompt/builder.ts        | tests/harness  | prompt-engine.md | Research and command bypasses apply at clean time.                                       |
-| FR-13 | Partial | src/prompt/stickers.ts, deploy/gateway/patches.py | tests/harness  | prompt-engine.md | Pack stickers are validated at load; conversion when a card is saved is deferred to #22. |
-| FR-14 | Partial | src/character/schema.ts, src/turn/pipeline.ts     | tests/harness  | prompt-engine.md | Broken bindings and storage failures can end with no line.                               |
+| ID    | Status  | Main Code Paths                                                                   | Test Paths                                              | TRD Module       | Gap                                                                                                                       |
+| ----- | ------- | --------------------------------------------------------------------------------- | ------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| FR-11 | Shipped | src/prompt/mood.ts, src/prompt/builder.ts                                         | tests/contract                                          | prompt-engine.md | None.                                                                                                                     |
+| FR-12 | Shipped | src/prompt/shape.ts, src/prompt/builder.ts                                        | tests/harness                                           | prompt-engine.md | Research and command bypasses apply at clean time.                                                                        |
+| FR-13 | Partial | src/prompt/stickers.ts, src/media/studio-expression.ts, deploy/gateway/patches.py | tests/contract/studio-expression.test.ts, tests/harness | prompt-engine.md | Studio converts uploads to 512 × 512 WebP within 100 KiB. The native sticker delivery path has separate gateway coverage. |
+| FR-14 | Partial | src/character/schema.ts, src/turn/pipeline.ts                                     | tests/harness                                           | prompt-engine.md | Broken bindings and storage failures can end with no line.                                                                |
 
 ## Reply Formatting
 

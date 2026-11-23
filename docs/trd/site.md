@@ -17,7 +17,7 @@ The existing owner site, revamped as the chatbot's console, with a character stu
 | Page                   | Change                                                                                                                                                            |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Chats                  | Rebuilt on the settings hierarchy, with resolved settings and source levels                                                                                       |
-| Studio                 | Planned, not built. No studio page or character write route exists yet (FR-41)                                                                                    |
+| Studio                 | Create and edit writable packs, manage expressions, preview the draft and select the pack in Chats (FR-41)                                                        |
 | Settings               | Edits host profiles, voice and models. Market writes use the core handler                                                                                         |
 | Dashboard              | Reads the host dashboard and checks resulting service states after actions                                                                                        |
 | Library, Graph         | Read the host graph and library. Local media requests carry the owner header                                                                                      |
@@ -32,9 +32,10 @@ added to the contract before it is used.
 
 ## Core API
 
-Served by the core on the private network, with no bearer token. Every write checks `Host` and `Origin`, goes through
-the same validation as start-up, and is logged to `setting_change`. This is every route the core serves. The only
-character write is the footer route. No sticker, preview or memory forget route exists.
+The core exposes the operations below on the private site listener. The table gives the classic route spelling.
+The dashboard calls the same handlers under `/owner-api/core/`. With the dashboard entry selected, both paths
+require the owner credential. Studio writes and configuration readback use the protected prefix exclusively.
+See the [Studio contract](#character-studio-operation-contract) and [owner text contract](#confirmed-owner-text).
 
 | Method | Path                         | Purpose                                           | Access | Handler             |
 | ------ | ---------------------------- | ------------------------------------------------- | ------ | ------------------- |
@@ -59,11 +60,10 @@ character write is the footer route. No sticker, preview or memory forget route 
 
 ### Serving The API
 
-- The core serves the API on its own port, `site.port` (default 9890), never on the gateway's port. The compose file
-  publishes it on the host's private-network address only, `AIRA_SITE_BIND`. While the new core runs beside the old
-  one, that address is loopback.
-- The core always starts the site API server on `site.port`, with no bearer token. Protection relies on private
-  loopback or Tailscale binding (`AIRA_SITE_BIND`) and the `Host` and `Origin` checks on write routes.
+- The core starts the API on `site.port` (default 9890). Compose publishes it only on the configured private
+  address. The gateway uses a separate listener.
+- The dashboard checks the owner token for API access. Host and Origin checks also apply.
+  In classic mode, legacy core operations under `/api/` retain their private-network access behavior.
 - Only the write paths accept `PUT`. A wrong method on a known route gets 405 `method_not_allowed`, and a path the API
   does not know gets 404.
 - Answers are JSON. A bad query gets 400, an unknown id 404, a body over 16 KB 413 `body_too_large`, and a write
@@ -159,48 +159,36 @@ still never hold one.
 
 ## Character Studio
 
-Planned, not built (FR-41). No studio page exists in the site build. The first pack write is the footer route: the
-Chats page edits a data pack's footer icon and labels, showing each kind's default and whether the pack sets it. The
-core has no other character write, and no sticker or preview route. The only character surface is a read: `GET /api/characters` lists each loaded pack's id, display
-name, source and languages, plus the packs that failed to load with their reasons. The Chats page uses that list
-for the character choice. What FR-41 still needs: a studio page, a pack save route with the start-up validator, a
-sticker upload route, and a prompt preview route.
+The catalogue at `/characters` lists loaded packs and reports load failures. Create a writable pack or copy
+a repository example, then edit its card, moods, lines, expressions and tool footer. The editor previews the
+draft prompt and opens a separate simulator tab. The owner can select a saved pack in Chat Settings.
+
+The [operation contract](#character-studio-operation-contract) describes validation, revisions, expression
+conversion and recovery. The [state matrix](dashboard-state.md) identifies read-only sources and activation.
 
 ## Writes That Send Or Restart
 
-Service restart buttons and message sending stay on the owner-tool side of the site with their current checks. The
-chatbot pages have no control that sends a message to a chat or restarts a service.
+The chat composer resolves one recipient and requests explicit confirmation. The core records a submission
+before handing it to the gateway. The [confirmed owner text contract](#confirmed-owner-text) defines duplicate
+and unknown outcomes. System service actions use the host owner service and verify the resulting unit state.
 
 ## Build
 
-The site builds with Vite in CI and ships inside the release image. Built output is not committed. The build is
-multi-page, not a single-page app: nine entries (`index`, `markets`, `graph`, `library`, `cron`, `chats`,
-`settings`, `notices`, `send`), one shared shell, and no studio entry. The chatbot client (`site/src/lib/core.ts`)
-exposes seven calls (`tools`, `chats`, `characters`, `setStatus`, `setLabel`, `setSetting`, `setFooter`) without a
-bearer token.
+Vite builds the dashboard entry and nine classic HTML entries into the release image. The dashboard loads its
+workspaces on demand. The [site build instructions](../../site/README.md) cover local setup and the preview.
 
 ## Serving The Site
 
-- The core serves the built site on the site API's port, under `/app/`. `/` redirects to `/app/`. Only the nine
-  built file types (`.html`, `.js`, `.css`, `.json`, `.svg`, `.png`, `.webp`, `.ico`, `.woff2`) are served, and only
-  `GET` and `HEAD` are accepted; anything else gets 404 or 405. Files under `/app/assets/` carry an immutable
-  year-long cache header; every other file is `no-cache`. Every answer carries `x-content-type-options: nosniff`
-  and `referrer-policy: no-referrer`.
-- Neither the site's static files nor the core's `/api/` routes require a bearer token.
-- The chatbot client (`site/src/lib/core.ts`) sends no token. Every owner-tool page keeps the legacy token under
-  `tolongai-token`; its first 401 asks for it once, it is kept in the browser's local storage, and it is sent on
-  legacy calls. It never goes in a URL.
-- On load the legacy client migrates an old `mirai-token` or `memento-token` into `tolongai-token`, and the shell
-  migrates `mirai-theme` into `tolongai-theme`.
-- A page calls the API on its own origin, so a browser write carries the API's own `Origin` and is accepted.
-- The Chats page is the only page on the core's API. Dashboard, Settings, Library, Graph, Cron, Markets, Notices
-  and Send reach the host owner service through the same origin under `/owner-api/`. The core strips this prefix
-  and sends the request to the corresponding `/api/` endpoint on the configured owner service. Core paths
-  such as `/api/chats` retain their independent response shapes. Owner credentials travel only in the
-  `X-TolongAI-Token` header. The proxy streams uploads and media and propagates refusal or service failure.
-  On dev2 the container connects through a private Unix socket. A systemd user socket forwards to the host's
-  bridge address only after an anonymous settings request returns 401. Using loopback here would bypass owner
-  authentication.
+- The selected dashboard entry sends `/` and `/app/` to `/overview`. Known deep links load the dashboard
+  document. Legacy HTML bookmarks map to their corresponding destinations. Selecting the classic entry restores
+  the original site under `/app/`. The [route matrix](dashboard-routes.md) lists both sets of paths.
+- Static files support GET and HEAD. Fingerprinted files under `/app/assets/` use an immutable year-long cache.
+  Other static files use `no-cache`. Unknown assets and API paths keep their error status.
+- The browser stores the owner credential under `tolongai-token` and sends it in the `X-TolongAI-Token` header.
+  A 401 prompts for the credential. Legacy token and theme migrations are scoped to their corresponding keys.
+- Dashboard core operations use `/owner-api/core/`. Host-owned operations use `/owner-api/` on the same
+  origin. The proxy streams protected media and uploads. On dev2 the core connects through a private Unix
+  socket to the host owner bridge. The bridge checks that an anonymous settings request is refused.
 - Gateway names can supply display names. Clearing an owner label keeps the stored label empty across new messages.
   Container installs expose only the gateway directory index to the core. The index refreshes after replacement. Each chat row includes the time of its latest inbound message, or null
   for a record with no inbound messages. Phone and linked-device identities remain separate unless verified.
@@ -255,8 +243,8 @@ Return the submission ID and outcome only. A lookup miss returns 404. No retry d
 
 ### Preview mount
 
-Serve the candidate from /app/preview/overview. A direct GET or HEAD on a registered preview route returns
-the candidate document. Keep the nine legacy documents and / redirect until cutover. Resolve fingerprinted
+The staging entry is `/app/preview/overview`. A direct GET or HEAD on a registered preview route returns
+the dashboard document. The classic entry preserves the original nine documents and root redirect. Resolve fingerprinted
 assets under /app/assets/ and local font and glyph assets under /app/dashboard/. An unknown page or file
 returns 404. The preview uses the same API origin and credential controls as the installed console.
 
@@ -265,7 +253,7 @@ returns 404. The preview uses the same API origin and credential controls as the
 Preview clients address core queries and writes via /owner-api/core/ followed by the relative core API route.
 The listener checks Host, Origin and the existing protected owner settings read on each request before dispatch.
 All responses on this path use no-store. The compatibility /api/ surface retains its legacy behavior during preview.
-At cutover, private owner data and mutations require the protected boundary on every reachable route.
+With the dashboard entry selected, private owner data and mutations require the protected boundary on every reachable route.
 
 A scoped settings query returns raw overrides, effective values with source, and an opaque revision. The revision
 covers the rows eligible at that scope, including applicable inherited rows. Protected settings writes require an

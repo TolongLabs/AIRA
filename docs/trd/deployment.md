@@ -239,3 +239,8 @@ zero migrations at schema 17. The verified online snapshot contained the first s
 the working database recovered both rows, including the later write. The rehearsal also restored the copied
 pack and deployment configuration byte for byte. The [cutover issue](https://github.com/TolongLabs/AIRA/issues/372)
 records the canonical-entry checks, observation window and installed release.
+
+On the [installed dashboard](https://github.com/TolongLabs/AIRA/issues/372#issuecomment-7114777151),
+the owner drill switched from dashboard to classic and back while preserving a synthetic pack revision and both
+audit rows. The [observation record](https://github.com/TolongLabs/AIRA/issues/372#issuecomment-7114993525)
+covers twelve probes over ten minutes, the installed Chrome task cycle and the isolated next-turn check.
