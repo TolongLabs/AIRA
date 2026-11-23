@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button, Card, Empty, Field, Input, Picker, Section, Segmented, Spinner, Toggle } from '@/components/ui'
 import { dashboardHref } from '@/dashboard/navigation'
 import { authHeaders, requestToken } from '@/lib/api'
@@ -501,6 +501,7 @@ function DefaultsForm({
 
   const effective = (key: string): Resolved | undefined => snapshot.effective[key]
   const valueOf = (key: string): unknown => effective(key)?.value
+  const draftKey = (key: string) => JSON.stringify([effective(key)?.level, valueOf(key)])
   const setHere = (key: string): boolean => Object.hasOwn(snapshot.values, key)
 
   async function refresh(): Promise<DefaultsSnapshot> {
@@ -631,6 +632,7 @@ function DefaultsForm({
           onClear={clear('language')}
         >
           <LanguageRow
+            key={draftKey('language')}
             current={typeof valueOf('language') === 'string' ? (valueOf('language') as string) : 'auto'}
             busy={busy}
             onSave={(v) => void save('language', v)()}
@@ -673,7 +675,12 @@ function DefaultsForm({
         </DefaultsRow>
         {toolFooterOn && (
           <DefaultsRow label="Footer emoji" {...row('footerEmoji')} busy={busy} onClear={clear('footerEmoji')}>
-            <FooterEmojiRow current={footerEmoji} busy={busy} onSave={(v) => void save('footerEmoji', v)()} />
+            <FooterEmojiRow
+              key={draftKey('footerEmoji')}
+              current={footerEmoji}
+              busy={busy}
+              onSave={(v) => void save('footerEmoji', v)()}
+            />
           </DefaultsRow>
         )}
         {groupScope && (
@@ -729,6 +736,7 @@ function DefaultsForm({
           onClear={clear('context.maxMessages')}
         >
           <NumberRow
+            key={draftKey('context.maxMessages')}
             current={asInt(valueOf('context.maxMessages'), 40)}
             min={0}
             max={100}
@@ -755,6 +763,7 @@ function DefaultsForm({
           onClear={clear('memory.pageMessages')}
         >
           <NumberRow
+            key={draftKey('memory.pageMessages')}
             current={asInt(valueOf('memory.pageMessages'), 25)}
             min={5}
             max={50}
@@ -820,7 +829,12 @@ function DefaultsForm({
           busy={busy}
           onClear={clear('quietHours')}
         >
-          <QuietHoursRow current={quietHours} busy={busy} onSave={(v) => void save('quietHours', v)()} />
+          <QuietHoursRow
+            key={draftKey('quietHours')}
+            current={quietHours}
+            busy={busy}
+            onSave={(v) => void save('quietHours', v)()}
+          />
         </DefaultsRow>
       </Section>
 
@@ -877,6 +891,8 @@ function DefaultsForm({
 
 export default function ChatDefaults({ initialScope = 'global' }: ChatDefaultsProps = {}) {
   const [scope, setScope] = useState<DefaultsScope>(initialScope)
+  const scopeVersion = useRef(0)
+  const currentVersion = scopeVersion.current
   const desc = SCOPES.find((s) => s.key === scope) ?? SCOPES[0]
   const [snapshot, setSnapshot] = useState<DefaultsSnapshot | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -892,12 +908,12 @@ export default function ChatDefaults({ initialScope = 'global' }: ChatDefaultsPr
     setError(null)
     loadDefaults(desc.level, desc.scope).then(
       (data) => {
-        if (!live) return
+        if (!live || scopeVersion.current !== currentVersion) return
         setSnapshot(data)
         setLoading(false)
       },
       (e: unknown) => {
-        if (!live) return
+        if (!live || scopeVersion.current !== currentVersion) return
         setSnapshot(null)
         setError(reasonText(e))
         setLoading(false)
@@ -906,7 +922,7 @@ export default function ChatDefaults({ initialScope = 'global' }: ChatDefaultsPr
     return () => {
       live = false
     }
-  }, [desc, reloadTick])
+  }, [desc, reloadTick, currentVersion])
 
   const all = chats.data?.chats ?? []
   const dms = all.filter((c) => c.type === 'dm').length
@@ -924,7 +940,14 @@ export default function ChatDefaults({ initialScope = 'global' }: ChatDefaultsPr
           options={['global', 'group', 'dm'] as const}
           labels={{ global: 'Global', group: 'Group defaults', dm: 'DM defaults' }}
           value={scope}
-          onChange={(v) => setScope(v)}
+          onChange={(next) => {
+            if (next === scope) return
+            scopeVersion.current++
+            setSnapshot(null)
+            setError(null)
+            setLoading(true)
+            setScope(next)
+          }}
         />
         {!chats.loading && !chats.error && (
           <p className="chat-defaults-counts">
@@ -968,7 +991,9 @@ export default function ChatDefaults({ initialScope = 'global' }: ChatDefaultsPr
             characters={packs.data?.characters ?? []}
             charactersError={packs.error ?? undefined}
             chats={all}
-            onSnapshot={setSnapshot}
+            onSnapshot={(next) => {
+              if (scopeVersion.current === currentVersion) setSnapshot(next)
+            }}
             onDiscard={() => {
               setFormKey((n) => n + 1)
               setReloadTick((n) => n + 1)

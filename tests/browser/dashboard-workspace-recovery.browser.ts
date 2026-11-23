@@ -76,7 +76,7 @@ it('dashboard workspace recovers from a missing lazy chunk', async () => {
       await page.getByRole('button', { name: 'Reload the dashboard' }).waitFor()
       await page.getByRole('link', { name: 'Back to Overview' }).waitFor()
       await page.getByRole('navigation', { name: 'Main navigation' }).waitFor()
-      const alertText = (await alert.innerText()) ?? ''
+      const alertText = (await alert.textContent()) ?? ''
       expect(alertText).not.toMatch(/Chunk|Failed to fetch|dynamically|404|assets\//)
 
       await page.waitForTimeout(750)

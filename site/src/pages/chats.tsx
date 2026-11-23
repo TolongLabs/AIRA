@@ -227,13 +227,14 @@ function QuietHours({ vm, onSave }: { vm: ChatSettingsViewModel; onSave: (value:
     <div className="flex flex-col gap-3">
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label="From">
-          <Input type="time" value={start} onChange={(e) => setStart(e.target.value)} />
+          <Input aria-label="From" type="time" value={start} onChange={(e) => setStart(e.target.value)} />
         </Field>
         <Field label="Until">
-          <Input type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
+          <Input aria-label="Until" type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
         </Field>
         <Field label="Time zone">
           <Input
+            aria-label="Time zone"
             value={zone}
             onChange={(e) => setZone(e.target.value)}
             placeholder="Asia/Kuala_Lumpur"
@@ -1239,7 +1240,7 @@ function ChatRow({
                       <ChatAccess
                         current={vm.settingValue<'all' | string[]>('allowedSenders', 'all')}
                         chatType={chat.type}
-                        inherited={!vm.canClearSetting('allowedSenders')}
+                        inherited={chat.settings.allowedSenders?.level !== 'chat'}
                         save={(value) => save('allowedSenders', value)}
                       />
                     ) : (
