@@ -2,7 +2,7 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'r
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { ArrowDown, ArrowUp, Bell, Plus, RefreshCw, TrendingDown, TrendingUp, X } from 'lucide-react'
 import type { Chat, Dashboard, History, NewsItem, Quote, Settings } from '@/lib/api'
-import { get, post } from '@/lib/api'
+import { OwnerRequestError, get, post } from '@/lib/api'
 import { toast, Toaster, useApi, useThemeColors } from '@/lib/hooks'
 import type { Async } from '@/lib/hooks'
 import { ago, price } from '@/lib/utils'
@@ -121,6 +121,134 @@ function marketTabHref(tab: MarketTab): string {
 function isConflictMessage(message: string): boolean {
   const m = message.toLowerCase()
   return m.includes('conflict') || m.includes('changed in another') || m.includes('stale') || m.includes('409')
+}
+
+/* A POST that loses a stale-write race must not vanish into a toast. The
+   banner used to watch the settings GET only, so a 409 never showed there.
+   This typed conflict keeps the requested patch as the draft, compares it
+   against fresh authority, and retries only the same fields with a fresh
+   stamp — never a full overwrite of fields changed elsewhere. */
+type MarketsPatch = {
+  watchlist?: string[]
+  alerts?: AlertRule[]
+  default_target?: string
+  news_digest?: { enabled: boolean; to: string[]; hours?: number[] }
+}
+
+interface MarketsConflict {
+  patch: MarketsPatch
+  message: string
+  fresh: Settings['markets'] | null
+  checking: boolean
+  confirmed: boolean
+  retrying: boolean
+  error: string | null
+}
+
+function isMarketsConflictError(e: unknown): boolean {
+  if (e instanceof OwnerRequestError && e.status === 409) return true
+  return e instanceof Error && isConflictMessage(e.message)
+}
+
+function formatConflictValue(key: string, value: unknown): string {
+  if (value == null) return '(empty)'
+  if (Array.isArray(value)) {
+    if (!value.length) return '(none)'
+    if (key === 'watchlist') return value.map((s) => String(s).toUpperCase()).join(', ')
+    return value
+      .map((row) => {
+        if (row && typeof row === 'object') {
+          const r = row as { symbol?: unknown; direction?: unknown; level?: unknown }
+          return `${String(r.symbol ?? '?').toUpperCase()} ${String(r.direction ?? '')} ${String(r.level ?? '')}`.trim()
+        }
+        return String(row)
+      })
+      .join(' · ')
+  }
+  if (typeof value === 'object') {
+    const v = value as { enabled?: unknown; to?: unknown }
+    const to = Array.isArray(v.to) ? v.to.map(String).join(', ') : ''
+    return `${v.enabled ? 'on' : 'off'}${to ? ` → ${to}` : ''}`
+  }
+  return String(value) || '(none)'
+}
+
+function MarketsConflictPanel({
+  conflict,
+  stale,
+  onCheckFresh,
+  onConfirm,
+  onRetry,
+  onDiscard
+}: {
+  conflict: MarketsConflict
+  stale: Settings['markets'] | null
+  onCheckFresh: () => void
+  onConfirm: (v: boolean) => void
+  onRetry: () => void
+  onDiscard: () => void
+}) {
+  const keys = Object.keys(conflict.patch)
+  const current = conflict.fresh ?? stale
+  const canRetry = conflict.fresh != null && conflict.confirmed && !conflict.checking && !conflict.retrying
+  return (
+    <div role="alert" className="mkd-conflict">
+      <p className="m-0 text-[0.9rem]">
+        <b>Settings changed elsewhere — your change was not saved.</b> {conflict.message}
+      </p>
+      <p className="mb-0 text-[0.85rem] text-muted">
+        Your draft is kept. Only {keys.length ? keys.join(', ') : 'these fields'} will be retried — nothing else
+        changes.
+      </p>
+      <ul className="mt-2 mb-0 flex flex-col gap-1 text-[0.85rem]">
+        {keys.map((key) => (
+          <li key={key}>
+            <code>{key}</code>: you asked{' '}
+            <b>{formatConflictValue(key, (conflict.patch as Record<string, unknown>)[key])}</b>
+            {' · '}now <b>{formatConflictValue(key, (current as Record<string, unknown> | null)?.[key] ?? null)}</b>
+          </li>
+        ))}
+      </ul>
+      {!conflict.fresh && (
+        <p className="mb-0 text-[0.85rem] text-muted">
+          Check the fresh values first, then confirm and retry. The draft stays until you discard it.
+        </p>
+      )}
+      <label className="mt-2 flex items-center gap-2 text-[0.85rem]">
+        <input
+          type="checkbox"
+          checked={conflict.confirmed}
+          disabled={conflict.fresh == null}
+          onChange={(e) => onConfirm(e.target.checked)}
+          className="size-4 accent-[var(--accent)]"
+        />
+        <span>I compared my draft with the current values and want to retry only these fields.</span>
+      </label>
+      {conflict.error && (
+        <p role="status" className="mb-0 text-[0.85rem] text-down">
+          {conflict.error}
+        </p>
+      )}
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
+        {!conflict.fresh && (
+          <button type="button" className="mkd-link" disabled={conflict.checking} onClick={onCheckFresh}>
+            {conflict.checking ? 'Checking…' : 'Reload and compare'}
+          </button>
+        )}
+        {conflict.fresh && (
+          <button type="button" className="mkd-link" disabled={conflict.checking} onClick={onCheckFresh}>
+            {conflict.checking ? 'Checking…' : 'Check again'}
+          </button>
+        )}
+        <button type="button" className="mkd-link" disabled={!canRetry} onClick={onRetry}>
+          {conflict.retrying ? 'Retrying…' : 'Retry with fresh values'}
+        </button>
+        <button type="button" className="mkd-link" onClick={onDiscard}>
+          Discard my draft and reload
+        </button>
+      </div>
+    </div>
+  )
 }
 
 interface AlertRule {
@@ -543,6 +671,10 @@ export default function MarketsPage() {
   const [adding, setAdding] = useState(false)
   const [mutating, setMutating] = useState(false)
   const [sort, setSort] = useState<Sort>(readSort)
+  /* A stale POST (409) keeps its requested patch here until the owner picks a
+     side. The banner never auto-reloads it away, and retry needs a fresh read
+     plus an explicit confirm — otherwise one tab silently wins over another. */
+  const [conflict, setConflict] = useState<MarketsConflict | null>(null)
   /* Quotes fetched on demand for a symbol added seconds ago, laid over the
      poller's snapshot until the next poll makes them the same thing. */
   const [live, setLive] = useState<Record<string, Quote>>({})
@@ -758,7 +890,8 @@ export default function MarketsPage() {
     return { items, fetched }
   }, [dash.data, fresh, scope, sym, watch])
 
-  async function saveMarkets(patch: { watchlist?: string[]; alerts?: AlertRule[] }) {
+  async function saveMarkets(patch: MarketsPatch) {
+    if (conflict) throw new Error('Settings changed elsewhere — resolve the conflict below before saving again')
     if (!settings.data) throw new Error('settings are still loading — try again in a moment')
     if (settings.error) throw new Error(String(settings.error))
     setMutating(true)
@@ -773,9 +906,79 @@ export default function MarketsPage() {
         )
       })
       await settings.reload()
+    } catch (e) {
+      if (isMarketsConflictError(e)) {
+        const message = e instanceof Error ? e.message : 'Market settings changed. Reload before saving.'
+        setConflict({ patch, message, fresh: null, checking: false, confirmed: false, retrying: false, error: null })
+      }
+      throw e
     } finally {
       setMutating(false)
     }
+  }
+
+  async function checkConflictFresh() {
+    if (!conflict || conflict.checking) return
+    setConflict((c) => (c ? { ...c, checking: true, error: null } : c))
+    try {
+      const freshSettings = await get<Settings>('/api/settings')
+      const freshMarkets = freshSettings?.markets ?? null
+      await settings.reload()
+      setConflict((c) => (c ? { ...c, fresh: freshMarkets, checking: false } : c))
+    } catch (e) {
+      setConflict((c) => (c ? { ...c, checking: false, error: (e as Error).message } : c))
+    }
+  }
+
+  async function retryConflict() {
+    if (!conflict || conflict.retrying || conflict.checking || !conflict.fresh || !conflict.confirmed) return
+    const patch = conflict.patch
+    setConflict((c) => (c ? { ...c, retrying: true, error: null } : c))
+    try {
+      const keys = Object.keys(patch)
+      const expected = Object.fromEntries(
+        keys.map((key) => [key, (conflict.fresh as Record<string, unknown> | undefined)?.[key] ?? null])
+      )
+      await post('/api/settings/markets', { ...patch, expected })
+      await settings.reload()
+      setConflict(null)
+      toast('saved ✓')
+      void dash.reload()
+    } catch (e) {
+      const message = (e as Error).message
+      if (isMarketsConflictError(e)) {
+        try {
+          const freshSettings = await get<Settings>('/api/settings')
+          await settings.reload()
+          setConflict((c) =>
+            c
+              ? {
+                  ...c,
+                  fresh: freshSettings?.markets ?? null,
+                  retrying: false,
+                  confirmed: false,
+                  message,
+                  error: 'Still changed elsewhere — compare again, then retry.'
+                }
+              : c
+          )
+        } catch {
+          setConflict((c) => (c ? { ...c, retrying: false, message, error: message } : c))
+        }
+      } else {
+        setConflict((c) => (c ? { ...c, retrying: false, error: message } : c))
+      }
+      toast(message, false)
+    }
+  }
+
+  function discardConflict() {
+    setConflict(null)
+    void settings.reload()
+  }
+
+  function confirmConflict(v: boolean) {
+    setConflict((c) => (c ? { ...c, confirmed: v } : c))
   }
 
   /* Append, always. The stored list is insertion order and the rail sorts a
@@ -916,390 +1119,412 @@ export default function MarketsPage() {
         addSymbol={addSymbol}
         dropSymbol={dropSymbol}
         refreshNews={refreshNews}
+        conflict={conflict}
+        onCheckFresh={() => void checkConflictFresh()}
+        onConfirmConflict={confirmConflict}
+        onRetryConflict={() => void retryConflict()}
+        onDiscardConflict={discardConflict}
       />
     ) : (
-    <Shell
-      page="markets"
-      title="Markets"
-      wide
-      /* The instrument you are looking at, said out loud. A page titled
+      <Shell
+        page="markets"
+        title="Markets"
+        wide
+        /* The instrument you are looking at, said out loud. A page titled
          "Markets" tells a reader nothing they did not know when they clicked
          Markets; the level and the move are what they came for. */
-      hero={
-        quote
-          ? [
-              { n: sym?.toUpperCase() },
-              { t: ' is at ' },
-              { n: price(quote.price, quote.currency) },
-              ...(quote.change_pct != null
-                ? ([
-                    { t: quote.change_pct >= 0 ? ', up ' : ', down ' },
-                    { n: `${Math.abs(quote.change_pct).toFixed(2)}%` },
-                    { t: ' today' }
-                  ] as const)
-                : []),
-              ...(alerts.length ? ([{ t: '. ' }, { n: String(alerts.length) }, { t: ' armed' }] as const) : [])
-            ]
-          : watch.length
-            ? [{ n: String(watch.length) }, { t: ' instruments tracked' }]
-            : [{ t: 'Nothing followed yet' }]
-      }
-    >
-      <Toaster />
+        hero={
+          quote
+            ? [
+                { n: sym?.toUpperCase() },
+                { t: ' is at ' },
+                { n: price(quote.price, quote.currency) },
+                ...(quote.change_pct != null
+                  ? ([
+                      { t: quote.change_pct >= 0 ? ', up ' : ', down ' },
+                      { n: `${Math.abs(quote.change_pct).toFixed(2)}%` },
+                      { t: ' today' }
+                    ] as const)
+                  : []),
+                ...(alerts.length ? ([{ t: '. ' }, { n: String(alerts.length) }, { t: ' armed' }] as const) : [])
+              ]
+            : watch.length
+              ? [{ n: String(watch.length) }, { t: ' instruments tracked' }]
+              : [{ t: 'Nothing followed yet' }]
+        }
+      >
+        <Toaster />
+        {conflict && (
+          <div className="mb-6">
+            <MarketsConflictPanel
+              conflict={conflict}
+              stale={settings.data?.markets ?? null}
+              onCheckFresh={() => void checkConflictFresh()}
+              onConfirm={confirmConflict}
+              onRetry={() => void retryConflict()}
+              onDiscard={discardConflict}
+            />
+          </div>
+        )}
 
-      <div className="grid items-start gap-x-8 gap-y-10 xl:grid-cols-[22rem_minmax(0,1fr)]">
-        {/* ── rail ──────────────────────────────────────────────────── */}
-        <aside className="xl:sticky xl:top-8">
-          <Section
-            title="Watchlist"
-            action={
-              <Button
-                size="sm"
-                variant={adding ? 'ghost' : 'primary'}
-                aria-expanded={adding}
-                onClick={() => setAdding((v) => !v)}
-              >
-                {adding ? <X /> : <Plus />}
-                {adding ? 'close' : 'Add'}
-              </Button>
-            }
-          >
-            <Card className="overflow-hidden p-0">
-              {adding && (
-                <div className="border-b border-line bg-sunk p-4">
-                  <SymbolSearch
-                    regions={regions}
-                    autoFocus
-                    label="add an instrument"
-                    hint="A company, an index or a ticker — DBS, Nikkei, Toyota, BTC. Local listings work: Public Bank finds 1295.KL."
-                    onPick={(s) => void addSymbol(s)}
-                  />
-                </div>
-              )}
+        <div className="grid items-start gap-x-8 gap-y-10 xl:grid-cols-[22rem_minmax(0,1fr)]">
+          {/* ── rail ──────────────────────────────────────────────────── */}
+          <aside className="xl:sticky xl:top-8">
+            <Section
+              title="Watchlist"
+              action={
+                <Button
+                  size="sm"
+                  variant={adding ? 'ghost' : 'primary'}
+                  aria-expanded={adding}
+                  onClick={() => setAdding((v) => !v)}
+                >
+                  {adding ? <X /> : <Plus />}
+                  {adding ? 'close' : 'Add'}
+                </Button>
+              }
+            >
+              <Card className="overflow-hidden p-0">
+                {adding && (
+                  <div className="border-b border-line bg-sunk p-4">
+                    <SymbolSearch
+                      regions={regions}
+                      autoFocus
+                      label="add an instrument"
+                      hint="A company, an index or a ticker — DBS, Nikkei, Toyota, BTC. Local listings work: Public Bank finds 1295.KL."
+                      onPick={(s) => void addSymbol(s)}
+                    />
+                  </div>
+                )}
 
-              {watch.length > 0 && (
-                /* This row mirrors WatchRow's box model exactly — same
+                {watch.length > 0 && (
+                  /* This row mirrors WatchRow's box model exactly — same
                    flex-1 name cell, same column widths, same padding, same
                    trailing slot for the × — so every label sits over its own
                    numbers. A header four pixels off its column undoes the one
                    thing a list buys you over a wall of cards. */
-                <div className="flex items-center border-b border-line bg-sunk">
-                  <div className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-1 pl-3">
-                    <span className="flex min-w-0 flex-1 items-center gap-0.5">
-                      <SortButton label="Added" target="added" sort={sort} onSort={setSort} className="px-1" />
-                      <SortButton label="A–Z" target="symbol" sort={sort} onSort={setSort} className="px-1" />
-                    </span>
-                    <SortButton
-                      label="Price"
-                      target="price"
-                      sort={sort}
-                      onSort={setSort}
-                      className={'justify-end ' + COL_PRICE}
-                    />
-                    <SortButton
-                      label="Move"
-                      target="change"
-                      sort={sort}
-                      onSort={setSort}
-                      className={'justify-end ' + COL_MOVE}
-                    />
+                  <div className="flex items-center border-b border-line bg-sunk">
+                    <div className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-1 pl-3">
+                      <span className="flex min-w-0 flex-1 items-center gap-0.5">
+                        <SortButton label="Added" target="added" sort={sort} onSort={setSort} className="px-1" />
+                        <SortButton label="A–Z" target="symbol" sort={sort} onSort={setSort} className="px-1" />
+                      </span>
+                      <SortButton
+                        label="Price"
+                        target="price"
+                        sort={sort}
+                        onSort={setSort}
+                        className={'justify-end ' + COL_PRICE}
+                      />
+                      <SortButton
+                        label="Move"
+                        target="change"
+                        sort={sort}
+                        onSort={setSort}
+                        className={'justify-end ' + COL_MOVE}
+                      />
+                    </div>
+                    <span className={COL_KILL} aria-hidden />
                   </div>
-                  <span className={COL_KILL} aria-hidden />
-                </div>
-              )}
+                )}
 
-              {ordered.map((s) => (
-                <WatchRow
-                  key={s}
-                  symbol={s.toUpperCase()}
-                  name={nameOf(s)}
-                  quote={quoteOf(s)}
-                  selected={s.toLowerCase() === String(sym).toLowerCase()}
-                  disabled={mutating || !settings.data || !!settings.error}
-                  onSelect={() => setSym(s)}
-                  onRemove={() => void dropSymbol(s)}
-                />
-              ))}
+                {ordered.map((s) => (
+                  <WatchRow
+                    key={s}
+                    symbol={s.toUpperCase()}
+                    name={nameOf(s)}
+                    quote={quoteOf(s)}
+                    selected={s.toLowerCase() === String(sym).toLowerCase()}
+                    disabled={mutating || !settings.data || !!settings.error || !!conflict}
+                    onSelect={() => setSym(s)}
+                    onRemove={() => void dropSymbol(s)}
+                  />
+                ))}
 
-              {/* An empty state that teaches: the thing to do next is one
+                {/* An empty state that teaches: the thing to do next is one
                   button away and named, rather than "add symbols in Settings
                   → Markets" — a sentence that sent you to another page. */}
-              {!watch.length && !adding && (
-                <div className="p-5">
-                  <CardHead title="Nothing followed yet" />
-                  <p className="mt-2 mb-3 text-[0.92rem] text-muted">
-                    Add a company, an index or a coin and its price, chart and headlines appear here. She reads this
-                    same list when you ask her how the market is doing.
-                  </p>
-                  <Button variant="primary" size="sm" onClick={() => setAdding(true)}>
-                    <Plus />
-                    Add the first one
-                  </Button>
-                </div>
-              )}
-            </Card>
-
-            {watch.length > 1 && (
-              <p className="mt-2 mb-0 text-[0.78rem] text-faint">
-                {watch.length} followed · sorted by {sort.key === 'symbol' ? 'name' : sort.key},{' '}
-                {SORT_HINT[sort.key][sort.desc ? 1 : 0]}
-              </p>
-            )}
-          </Section>
-        </aside>
-
-        {/* ── chart, alerts, news ───────────────────────────────────── */}
-        <div className="min-w-0">
-          <Section title={sym ? `${sym.toUpperCase()} — ${nameOf(sym)}` : 'Chart'}>
-            <Card className="p-5">
-              <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2">
-                <span className="tnum font-serif text-[2rem] leading-none">
-                  {price(quote?.price ?? hist?.price, quote?.currency ?? hist?.currency)}
-                </span>
-                {quote?.exchange && <span className="text-[0.82rem] text-faint">{quote.exchange}</span>}
-                {move != null && (
-                  <span
-                    className={
-                      'inline-flex items-baseline gap-1.5 font-semibold ' + (changeUp ? 'text-up' : 'text-down')
-                    }
-                  >
-                    <span className="inline-flex items-center gap-1.5">
-                      {changeUp ? (
-                        <TrendingUp className="size-4" aria-hidden />
-                      ) : (
-                        <TrendingDown className="size-4" aria-hidden />
-                      )}
-                      {Math.abs(move.pct).toFixed(2)}%
-                    </span>
-                    {/* Which window this is a percentage OF. Without it the
-                        number is just as ambiguous as when it never moved. */}
-                    <span className="text-[0.78rem] font-normal text-muted">
-                      {span === '1d' ? 'today' : `over ${SPAN_LABEL[span]}`}
-                    </span>
-                  </span>
-                )}
-                <span className="ml-auto flex gap-1" role="group" aria-label="chart range">
-                  {SPANS.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      aria-pressed={s === span}
-                      onClick={() => setSpan(s)}
-                      className={
-                        'min-h-9 min-w-12 cursor-pointer rounded-[8px] border font-mono text-[0.72rem] uppercase tracking-[0.06em] transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ' +
-                        (s === span
-                          ? 'border-accent bg-accent-soft text-accent'
-                          : 'border-line bg-transparent text-muted hover:text-ink')
-                      }
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </span>
-              </div>
-
-              <div className="relative mt-4 h-[clamp(240px,45vh,420px)]">
-                {/* A skeleton on the first load and a dimmed chart on every
-                    span change after it: a spinner over a chart you already
-                    have throws away the shape you were reading. */}
-                {loadingChart && !series.length && (
-                  <div className="absolute inset-0 z-10 animate-pulse rounded-card bg-card-2" />
-                )}
-                {chartErr && (
-                  <div role="status" className="absolute inset-0 z-10 grid place-items-center text-[0.92rem] text-down">
-                    Chart unavailable: {chartErr}
+                {!watch.length && !adding && (
+                  <div className="p-5">
+                    <CardHead title="Nothing followed yet" />
+                    <p className="mt-2 mb-3 text-[0.92rem] text-muted">
+                      Add a company, an index or a coin and its price, chart and headlines appear here. She reads this
+                      same list when you ask her how the market is doing.
+                    </p>
+                    <Button variant="primary" size="sm" onClick={() => setAdding(true)}>
+                      <Plus />
+                      Add the first one
+                    </Button>
                   </div>
                 )}
-                <div
-                  className={
-                    'h-full transition-opacity duration-200 ' +
-                    (loadingChart && series.length ? 'opacity-40' : 'opacity-100')
-                  }
-                >
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={series} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                      <defs>
-                        <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor={stroke} stopOpacity={0.28} />
-                          <stop offset="100%" stopColor={stroke} stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid vertical={false} stroke={c.line} />
-                      <XAxis
-                        dataKey="label"
-                        tickLine={false}
-                        axisLine={false}
-                        minTickGap={60}
-                        tick={{ fill: c.muted, fontSize: 11 }}
-                      />
-                      <YAxis
-                        domain={['auto', 'auto']}
-                        width={62}
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fill: c.muted, fontSize: 11 }}
-                        tickFormatter={(v: number) => price(v)}
-                      />
-                      <Tooltip
-                        cursor={{
-                          stroke: c.lineStrong,
-                          strokeDasharray: '3 3'
-                        }}
-                        content={({ active, payload }) => {
-                          const row = active ? payload?.[0]?.payload : null
-                          if (!row) return null
-                          return (
-                            <ChartTip
-                              t={row.t}
-                              v={row.v}
-                              span={span}
-                              currency={hist?.currency}
-                              first={series[0]}
-                              colors={c}
-                            />
-                          )
-                        }}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="v"
-                        stroke={stroke}
-                        strokeWidth={2}
-                        fill="url(#fill)"
-                        dot={false}
-                        isAnimationActive={false}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
+              </Card>
 
-              {series.length > 0 && (
-                <p className="mt-2 mb-0 text-[0.78rem] text-muted">
-                  {series.length} points
-                  {hist?.currency ? ` · ${hist.currency}` : ''}
+              {watch.length > 1 && (
+                <p className="mt-2 mb-0 text-[0.78rem] text-faint">
+                  {watch.length} followed · sorted by {sort.key === 'symbol' ? 'name' : sort.key},{' '}
+                  {SORT_HINT[sort.key][sort.desc ? 1 : 0]}
                 </p>
               )}
-            </Card>
-          </Section>
+            </Section>
+          </aside>
 
-          <Section title="Alerts">
-            <Alerts
-              watch={watch}
-              alerts={alerts}
-              quoteOf={quoteOf}
-              disabled={!settings.data || !!settings.error || mutating}
-              onSave={async (next) => {
-                if (!settings.data || settings.error) {
-                  toast('settings are still loading — try again in a moment', false)
-                  throw new Error('settings not ready')
-                }
-                try {
-                  await saveMarkets({ alerts: next })
-                  toast('saved ✓')
-                } catch (e) {
-                  toast((e as Error).message, false)
-                  throw e
-                }
-              }}
-            />
-          </Section>
-
-          <Section
-            title="News"
-            action={
-              <span className="flex flex-wrap items-center gap-3">
-                {/* Which pile you are reading. Defaulting to everything is what
-                    made a BTC page show Nikkei headlines with no way to tell. */}
-                <span className="flex overflow-hidden rounded-full border border-line">
-                  {(['one', 'all'] as const).map((v) => (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => setScope(v)}
-                      aria-pressed={scope === v}
+          {/* ── chart, alerts, news ───────────────────────────────────── */}
+          <div className="min-w-0">
+            <Section title={sym ? `${sym.toUpperCase()} — ${nameOf(sym)}` : 'Chart'}>
+              <Card className="p-5">
+                <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2">
+                  <span className="tnum font-serif text-[2rem] leading-none">
+                    {price(quote?.price ?? hist?.price, quote?.currency ?? hist?.currency)}
+                  </span>
+                  {quote?.exchange && <span className="text-[0.82rem] text-faint">{quote.exchange}</span>}
+                  {move != null && (
+                    <span
                       className={
-                        'cursor-pointer border-0 px-3 py-1 text-[0.78rem] focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ' +
-                        (scope === v ? 'bg-accent-soft text-accent' : 'bg-transparent text-muted')
+                        'inline-flex items-baseline gap-1.5 font-semibold ' + (changeUp ? 'text-up' : 'text-down')
                       }
                     >
-                      {v === 'one' ? (sym?.toUpperCase() ?? 'this one') : 'everything'}
-                    </button>
-                  ))}
+                      <span className="inline-flex items-center gap-1.5">
+                        {changeUp ? (
+                          <TrendingUp className="size-4" aria-hidden />
+                        ) : (
+                          <TrendingDown className="size-4" aria-hidden />
+                        )}
+                        {Math.abs(move.pct).toFixed(2)}%
+                      </span>
+                      {/* Which window this is a percentage OF. Without it the
+                        number is just as ambiguous as when it never moved. */}
+                      <span className="text-[0.78rem] font-normal text-muted">
+                        {span === '1d' ? 'today' : `over ${SPAN_LABEL[span]}`}
+                      </span>
+                    </span>
+                  )}
+                  <span className="ml-auto flex gap-1" role="group" aria-label="chart range">
+                    {SPANS.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        aria-pressed={s === span}
+                        onClick={() => setSpan(s)}
+                        className={
+                          'min-h-9 min-w-12 cursor-pointer rounded-[8px] border font-mono text-[0.72rem] uppercase tracking-[0.06em] transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ' +
+                          (s === span
+                            ? 'border-accent bg-accent-soft text-accent'
+                            : 'border-line bg-transparent text-muted hover:text-ink')
+                        }
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </span>
+                </div>
+
+                <div className="relative mt-4 h-[clamp(240px,45vh,420px)]">
+                  {/* A skeleton on the first load and a dimmed chart on every
+                    span change after it: a spinner over a chart you already
+                    have throws away the shape you were reading. */}
+                  {loadingChart && !series.length && (
+                    <div className="absolute inset-0 z-10 animate-pulse rounded-card bg-card-2" />
+                  )}
+                  {chartErr && (
+                    <div
+                      role="status"
+                      className="absolute inset-0 z-10 grid place-items-center text-[0.92rem] text-down"
+                    >
+                      Chart unavailable: {chartErr}
+                    </div>
+                  )}
+                  <div
+                    className={
+                      'h-full transition-opacity duration-200 ' +
+                      (loadingChart && series.length ? 'opacity-40' : 'opacity-100')
+                    }
+                  >
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={series} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                        <defs>
+                          <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor={stroke} stopOpacity={0.28} />
+                            <stop offset="100%" stopColor={stroke} stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid vertical={false} stroke={c.line} />
+                        <XAxis
+                          dataKey="label"
+                          tickLine={false}
+                          axisLine={false}
+                          minTickGap={60}
+                          tick={{ fill: c.muted, fontSize: 11 }}
+                        />
+                        <YAxis
+                          domain={['auto', 'auto']}
+                          width={62}
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fill: c.muted, fontSize: 11 }}
+                          tickFormatter={(v: number) => price(v)}
+                        />
+                        <Tooltip
+                          cursor={{
+                            stroke: c.lineStrong,
+                            strokeDasharray: '3 3'
+                          }}
+                          content={({ active, payload }) => {
+                            const row = active ? payload?.[0]?.payload : null
+                            if (!row) return null
+                            return (
+                              <ChartTip
+                                t={row.t}
+                                v={row.v}
+                                span={span}
+                                currency={hist?.currency}
+                                first={series[0]}
+                                colors={c}
+                              />
+                            )
+                          }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="v"
+                          stroke={stroke}
+                          strokeWidth={2}
+                          fill="url(#fill)"
+                          dot={false}
+                          isAnimationActive={false}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {series.length > 0 && (
+                  <p className="mt-2 mb-0 text-[0.78rem] text-muted">
+                    {series.length} points
+                    {hist?.currency ? ` · ${hist.currency}` : ''}
+                  </p>
+                )}
+              </Card>
+            </Section>
+
+            <Section title="Alerts">
+              <Alerts
+                watch={watch}
+                alerts={alerts}
+                quoteOf={quoteOf}
+                disabled={!settings.data || !!settings.error || mutating || !!conflict}
+                onSave={async (next) => {
+                  if (!settings.data || settings.error) {
+                    toast('settings are still loading — try again in a moment', false)
+                    throw new Error('settings not ready')
+                  }
+                  try {
+                    await saveMarkets({ alerts: next })
+                    toast('saved ✓')
+                  } catch (e) {
+                    toast((e as Error).message, false)
+                    throw e
+                  }
+                }}
+              />
+            </Section>
+
+            <Section
+              title="News"
+              action={
+                <span className="flex flex-wrap items-center gap-3">
+                  {/* Which pile you are reading. Defaulting to everything is what
+                    made a BTC page show Nikkei headlines with no way to tell. */}
+                  <span className="flex overflow-hidden rounded-full border border-line">
+                    {(['one', 'all'] as const).map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setScope(v)}
+                        aria-pressed={scope === v}
+                        className={
+                          'cursor-pointer border-0 px-3 py-1 text-[0.78rem] focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ' +
+                          (scope === v ? 'bg-accent-soft text-accent' : 'bg-transparent text-muted')
+                        }
+                      >
+                        {v === 'one' ? (sym?.toUpperCase() ?? 'this one') : 'everything'}
+                      </button>
+                    ))}
+                  </span>
+                  <span className="text-[0.82rem] text-muted">
+                    {news.fetched ? `fetched ${ago(news.fetched)}` : ''}
+                  </span>
+                  <Button size="sm" variant="ghost" disabled={refreshing || !sym} onClick={() => void refreshNews()}>
+                    {refreshing ? <Spinner /> : <RefreshCw />}
+                    {refreshing ? 'fetching…' : 'refresh'}
+                  </Button>
                 </span>
-                <span className="text-[0.82rem] text-muted">{news.fetched ? `fetched ${ago(news.fetched)}` : ''}</span>
-                <Button size="sm" variant="ghost" disabled={refreshing || !sym} onClick={() => void refreshNews()}>
-                  {refreshing ? <Spinner /> : <RefreshCw />}
-                  {refreshing ? 'fetching…' : 'refresh'}
-                </Button>
-              </span>
-            }
-          >
-            {news.items.length > 0 ? (
-              <Card className="p-0">
-                {news.items.map((it, i) => {
-                  const src = (it.source ?? '').trim() || it.domain || 'unattributed'
-                  const when = it.ts ? new Date(it.ts * 1000) : null
-                  const prev = i > 0 ? news.items[i - 1] : null
-                  const day = when ? when.toDateString() : ''
-                  const prevDay = prev?.ts ? new Date(prev.ts * 1000).toDateString() : ''
-                  const newDay = day && day !== prevDay
-                  return (
-                    <div key={`${it.title}-${i}`}>
-                      {/* Grouped by day, because "which day" is the first thing a
+              }
+            >
+              {news.items.length > 0 ? (
+                <Card className="p-0">
+                  {news.items.map((it, i) => {
+                    const src = (it.source ?? '').trim() || it.domain || 'unattributed'
+                    const when = it.ts ? new Date(it.ts * 1000) : null
+                    const prev = i > 0 ? news.items[i - 1] : null
+                    const day = when ? when.toDateString() : ''
+                    const prevDay = prev?.ts ? new Date(prev.ts * 1000).toDateString() : ''
+                    const newDay = day && day !== prevDay
+                    return (
+                      <div key={`${it.title}-${i}`}>
+                        {/* Grouped by day, because "which day" is the first thing a
                           reader wants of a headline and "14h ago" hides it. */}
-                      {newDay && (
-                        <div className="border-t border-line-2 bg-sunk px-5 py-1.5 font-mono text-[0.68rem] tracking-[0.1em] text-muted uppercase first:border-t-0">
-                          {dayLabel(when as Date)}
-                        </div>
-                      )}
-                      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-line-2 px-5 py-3">
-                        <a
-                          href={it.link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="min-w-0 flex-1 basis-full font-serif text-[1.05rem] leading-snug text-ink no-underline hover:text-accent sm:basis-auto"
-                        >
-                          {it.title || '(untitled)'}
-                        </a>
-                        {/* The publisher, always. The RSS <source> element was
+                        {newDay && (
+                          <div className="border-t border-line-2 bg-sunk px-5 py-1.5 font-mono text-[0.68rem] tracking-[0.1em] text-muted uppercase first:border-t-0">
+                            {dayLabel(when as Date)}
+                          </div>
+                        )}
+                        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-line-2 px-5 py-3">
+                          <a
+                            href={it.link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="min-w-0 flex-1 basis-full font-serif text-[1.05rem] leading-snug text-ink no-underline hover:text-accent sm:basis-auto"
+                          >
+                            {it.title || '(untitled)'}
+                          </a>
+                          {/* The publisher, always. The RSS <source> element was
                             parsed and dropped, so every story read as if it came
                             from nowhere — and "is this credible?" had no answer
                             on the page at all. */}
-                        <span className="shrink-0 font-mono text-[0.72rem] tracking-[0.06em] text-read uppercase">
-                          {src}
-                        </span>
-                        {(it.also ?? 0) > 0 && (
-                          <span className="shrink-0 text-[0.75rem] text-faint">+{it.also} more outlets</span>
-                        )}
-                        {scope === 'all' && (
-                          <span className="shrink-0 font-mono text-[0.7rem] text-muted">{it.symbol}</span>
-                        )}
-                        <span
-                          className="shrink-0 text-[0.78rem] text-muted"
-                          title={when ? when.toLocaleString() : 'no date on this story'}
-                        >
-                          {it.ts ? ago(it.ts) : 'undated'}
-                        </span>
+                          <span className="shrink-0 font-mono text-[0.72rem] tracking-[0.06em] text-read uppercase">
+                            {src}
+                          </span>
+                          {(it.also ?? 0) > 0 && (
+                            <span className="shrink-0 text-[0.75rem] text-faint">+{it.also} more outlets</span>
+                          )}
+                          {scope === 'all' && (
+                            <span className="shrink-0 font-mono text-[0.7rem] text-muted">{it.symbol}</span>
+                          )}
+                          <span
+                            className="shrink-0 text-[0.78rem] text-muted"
+                            title={when ? when.toLocaleString() : 'no date on this story'}
+                          >
+                            {it.ts ? ago(it.ts) : 'undated'}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  )
-                })}
-              </Card>
-            ) : (
-              <Card className="p-5">
-                <CardHead title={sym ? `Nothing for ${sym.toUpperCase()} this week` : 'No stories yet'} />
-                <p className="mt-2 mb-0 max-w-prose text-muted">
-                  Stories older than a week are dropped rather than shown as news. Headlines come from TickerTick, Yahoo
-                  Finance and Google News — all keyless, none billed — refreshed by the five-minute poller; “refresh”
-                  goes and asks them right now.
-                </p>
-              </Card>
-            )}
-          </Section>
+                    )
+                  })}
+                </Card>
+              ) : (
+                <Card className="p-5">
+                  <CardHead title={sym ? `Nothing for ${sym.toUpperCase()} this week` : 'No stories yet'} />
+                  <p className="mt-2 mb-0 max-w-prose text-muted">
+                    Stories older than a week are dropped rather than shown as news. Headlines come from TickerTick,
+                    Yahoo Finance and Google News — all keyless, none billed — refreshed by the five-minute poller;
+                    “refresh” goes and asks them right now.
+                  </p>
+                </Card>
+              )}
+            </Section>
+          </div>
         </div>
-      </div>
-    </Shell>
+      </Shell>
     )
   )
 }
@@ -1348,15 +1573,21 @@ interface DashProps {
   alertFor: string | null
   setAlertFor: (s: string | null) => void
   panelRef: { current: HTMLDivElement | null }
-  saveMarkets: (patch: { watchlist?: string[]; alerts?: AlertRule[] }) => Promise<void>
+  saveMarkets: (patch: MarketsPatch) => Promise<void>
   addSymbol: (s: string) => Promise<void>
   dropSymbol: (s: string) => Promise<void>
   refreshNews: () => Promise<void>
+  conflict: MarketsConflict | null
+  onCheckFresh: () => void
+  onConfirmConflict: (v: boolean) => void
+  onRetryConflict: () => void
+  onDiscardConflict: () => void
 }
 
 function DashboardMarkets(props: DashProps) {
-  const { settings, tab, selectTab, panelRef } = props
+  const { settings, tab, selectTab, panelRef, conflict } = props
   const activeLabel = MARKET_TABS.find((t) => t.key === tab)?.label ?? 'Watchlist'
+  const staleMarkets = settings.data?.markets ?? null
   return (
     <div className="mkd">
       <Toaster />
@@ -1379,13 +1610,25 @@ function DashboardMarkets(props: DashProps) {
           )
         })}
       </nav>
-      {settings.error && isConflictMessage(settings.error) && (
-        <p role="alert" className="mkd-conflict">
-          Settings changed elsewhere: {settings.error}{' '}
-          <button type="button" className="mkd-link" onClick={() => void settings.reload()}>
-            Reload and compare
-          </button>
-        </p>
+      {conflict ? (
+        <MarketsConflictPanel
+          conflict={conflict}
+          stale={staleMarkets}
+          onCheckFresh={props.onCheckFresh}
+          onConfirm={props.onConfirmConflict}
+          onRetry={props.onRetryConflict}
+          onDiscard={props.onDiscardConflict}
+        />
+      ) : (
+        settings.error &&
+        isConflictMessage(settings.error) && (
+          <p role="alert" className="mkd-conflict">
+            Settings changed elsewhere: {settings.error}{' '}
+            <button type="button" className="mkd-link" onClick={() => void settings.reload()}>
+              Reload and compare
+            </button>
+          </p>
+        )
       )}
       <div ref={panelRef} tabIndex={-1} className="mkd-panel" aria-label={activeLabel}>
         {tab === 'watchlist' && <DashWatchlist {...props} />}
@@ -1430,7 +1673,7 @@ function DashWatchlist(props: DashProps) {
     dropSymbol
   } = props
   const listRef = useRef<HTMLDivElement>(null)
-  const settingsBusy = mutating || !settings.data || !!settings.error
+  const settingsBusy = mutating || !settings.data || !!settings.error || !!props.conflict
   const sortValue = `${sort.key}:${sort.desc ? 'desc' : 'asc'}`
 
   function moveSelection(delta: number) {
@@ -1713,7 +1956,7 @@ function DashAlertsDelivery(props: DashProps) {
   const digestTo = ((digest as { to?: unknown[] }).to ?? []).map(String)
   const rawHours = (digest as { hours?: unknown }).hours
   const digestHours = Array.isArray(rawHours) ? rawHours.map(Number).filter((n) => Number.isFinite(n)) : []
-  const disabled = mutating || !settings.data || !!settings.error
+  const disabled = mutating || !settings.data || !!settings.error || !!props.conflict
 
   async function saveDelivery(patch: {
     default_target?: string
@@ -1723,8 +1966,12 @@ function DashAlertsDelivery(props: DashProps) {
       toast('settings are still loading — try again in a moment', false)
       return
     }
+    if (props.conflict) {
+      toast('Settings changed elsewhere — resolve the conflict above before saving again', false)
+      return
+    }
     try {
-      await saveMarkets(patch as { watchlist?: string[]; alerts?: AlertRule[] })
+      await saveMarkets(patch)
       toast('saved ✓')
       void dash.reload()
     } catch (e) {
@@ -1809,7 +2056,10 @@ function DashAlertsDelivery(props: DashProps) {
             }
           />
         </div>
-        <Field label="chat that receives the digest" hint="The digest is assembled locally, so it costs nothing to run.">
+        <Field
+          label="chat that receives the digest"
+          hint="The digest is assembled locally, so it costs nothing to run."
+        >
           <Picker
             ariaLabel="chat that receives the digest"
             className="w-full max-w-md"
@@ -1840,8 +2090,8 @@ function DashAlertsDelivery(props: DashProps) {
       <section aria-label="Per-chat watchlists" className="mkd-card">
         <h2 className="mkd-h">Per-chat watchlists</h2>
         <p className="mkd-muted">
-          A chat with no list of its own is answered from the default list. Give one its own and “how are our stocks”
-          in that group means their holdings, not yours.
+          A chat with no list of its own is answered from the default list. Give one its own and “how are our stocks” in
+          that group means their holdings, not yours.
         </p>
         {chats.loading && !chats.data ? (
           <p role="status" className="mkd-muted">
@@ -1952,7 +2202,9 @@ function DashChatWatchlists({ chats, regions }: { chats: Chat[]; regions: { valu
           <div key={key} className="mkd-chat">
             <div className="mkd-chat-head">
               <b>{c.label || c.name || c.jid}</b>
-              <span className="mkd-muted">{own[key] ? 'its own list' : inherit[key] ? 'follows default' : 'nothing here'}</span>
+              <span className="mkd-muted">
+                {own[key] ? 'its own list' : inherit[key] ? 'follows default' : 'nothing here'}
+              </span>
               <button type="button" className="mkd-link" onClick={() => setOpen(isOpen ? '' : key)}>
                 {isOpen ? 'done' : 'edit'}
               </button>

@@ -948,6 +948,8 @@ export interface LibraryPageProps {
   selectedId?: string
   initialSearch?: string
   initialType?: string
+  /** 1-based collection page. The route carries it as ?page=. Absent means 1. */
+  initialPage?: string | number
 }
 
 export function decodeLibraryId(encoded: string): string {
@@ -968,6 +970,17 @@ function currentQuery(): URLSearchParams {
 
 function withQuery(path: string, q: string): string {
   return q ? `${path}?${q}` : path
+}
+
+/* The collection pages 20 rows at a time. The legacy list capped at 120 with
+   no pages, so a large library read as exactly 120 matches; the dashboard
+   pages the full match list instead. */
+export const LIB_COLLECTION_PAGE_SIZE = 20
+
+function parseLibraryPage(value: string | number | null | undefined): number {
+  const n = typeof value === 'number' ? value : parseInt(String(value ?? ''), 10)
+  if (!Number.isFinite(n) || n < 1) return 1
+  return Math.floor(n)
 }
 
 export function libraryItemHref(id: string, query?: string): string {
@@ -1001,6 +1014,9 @@ function dashGoHref(to: string): string {
   if (to.includes(':')) return libraryItemHref(to)
   const qs = typeof window !== 'undefined' ? currentQuery() : new URLSearchParams()
   qs.set('type', to)
+  /* A new type is a new list, so it starts on page 1. An item hop keeps the
+     page so the return link can restore the origin search. */
+  qs.delete('page')
   return withQuery(dashboardHref('library'), qs.toString())
 }
 
@@ -1027,7 +1043,8 @@ function LibraryToolbar({ view }: { view: LibraryDashboardView }) {
 function FilingActivity({ data }: { data: LibIndex }) {
   const rows = useMemo(() => {
     const counts = new Map<string, number>()
-    for (const list of Object.values(data.items)) for (const i of list) if (i.when) counts.set(i.when, (counts.get(i.when) ?? 0) + 1)
+    for (const list of Object.values(data.items))
+      for (const i of list) if (i.when) counts.set(i.when, (counts.get(i.when) ?? 0) + 1)
     return [...counts.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1)).slice(0, 14)
   }, [data])
   if (!rows.length) return <Empty>No filing dates recorded yet.</Empty>
@@ -1060,9 +1077,7 @@ function LedgerCosts({ data }: { data: LibIndex }) {
             <b className="tnum" style={{ fontSize: '1.4rem', fontWeight: 400 }}>
               {value}
             </b>
-            <span
-              style={{ display: 'block', fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--muted)' }}
-            >
+            <span style={{ display: 'block', fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--muted)' }}>
               {label}
             </span>
           </div>
@@ -1142,6 +1157,7 @@ function DashboardSelectedItem({
       window.location.assign(withQuery(dashboardHref('library'), searchQs))
     } catch (e) {
       toast((e as Error).message, false)
+      throw e
     } finally {
       setBusy(false)
     }
@@ -1219,22 +1235,26 @@ function DashboardSelectedItem({
   )
 }
 
-function LibraryDashboard({ view, selectedId, initialSearch, initialType }: LibraryPageProps) {
+function LibraryDashboard({ view, selectedId, initialSearch, initialType, initialPage }: LibraryPageProps) {
   const idx = useApi<LibIndex>('/api/library/index')
   const decodedSelected = selectedId ? decodeLibraryId(selectedId) : undefined
   const [q, setQ] = useState(() => initialSearch ?? currentQuery().get('q') ?? '')
   const [type, setType] = useState(() => initialType ?? currentQuery().get('type') ?? 'all')
+  const [page, setPage] = useState(() => parseLibraryPage(initialPage ?? currentQuery().get('page') ?? '1'))
   const data = idx.data
   const searchQs = useMemo(() => {
     const qs = new URLSearchParams()
     if (q.trim()) qs.set('q', q.trim())
     if (type !== 'all') qs.set('type', type)
+    if (page > 1) qs.set('page', String(page))
     return qs.toString()
-  }, [q, type])
+  }, [q, type, page])
 
-  /* Keep ?q=&type= in the address bar (replace, not push) so a reload, a
-     toolbar hop, or back/forward keeps the filter. Back still works because
-     item/graph/costs hops are real navigations, not replaces. */
+  /* Keep ?q=&type=&page= in the address bar (replace, not push) so a reload,
+     a toolbar hop, or back/forward keeps the filter. Back still works because
+     item/graph/costs hops are real navigations, not replaces. Page changes
+     stay a replace too, so prev/next never pollutes history and the selected
+     item stays put. */
   useEffect(() => {
     try {
       const url = new URL(window.location.href)
@@ -1242,21 +1262,48 @@ function LibraryDashboard({ view, selectedId, initialSearch, initialType }: Libr
       else url.searchParams.delete('q')
       if (type !== 'all') url.searchParams.set('type', type)
       else url.searchParams.delete('type')
+      if (page > 1) url.searchParams.set('page', String(page))
+      else url.searchParams.delete('page')
       window.history.replaceState(null, '', url.toString())
     } catch {
       /* non-browser or blocked — links still carry searchQs */
     }
-  }, [q, type])
+  }, [q, type, page])
 
   const hits = useMemo(() => {
     if (!data) return null
     const term = q.trim().toLowerCase()
-    const pool =
-      type === 'all' ? Object.values(data.items).flat() : (data.items[type] ?? [])
-    if (!term) return { rows: pool.slice(0, 120), total: pool.length }
+    const pool = type === 'all' ? Object.values(data.items).flat() : (data.items[type] ?? [])
+    if (!term) return { rows: pool, total: pool.length }
     const found = pool.filter((i) => i.title.toLowerCase().includes(term) || i.sub.toLowerCase().includes(term))
-    return { rows: found.slice(0, 120), total: found.length }
+    return { rows: found, total: found.length }
   }, [q, type, data])
+
+  const totalPages = Math.max(1, Math.ceil((hits?.total ?? 0) / LIB_COLLECTION_PAGE_SIZE))
+  const safePage = Math.min(Math.max(1, page), totalPages)
+  const pageRows = useMemo(() => {
+    if (!hits) return []
+    const start = (safePage - 1) * LIB_COLLECTION_PAGE_SIZE
+    return hits.rows.slice(start, start + LIB_COLLECTION_PAGE_SIZE)
+  }, [hits, safePage])
+
+  /* A deletion shrinks the list behind the pager. Clamp rather than strand the
+     reader on an empty page. Waits for the index — clamping on the empty
+     loading state would throw away a deep-linked ?page=. */
+  useEffect(() => {
+    if (!hits) return
+    if (page > totalPages) setPage(totalPages)
+  }, [hits, page, totalPages])
+
+  function changeSearch(next: string) {
+    setQ(next)
+    setPage(1)
+  }
+
+  function changeType(next: string) {
+    setType(next)
+    setPage(1)
+  }
 
   return (
     <>
@@ -1264,9 +1311,7 @@ function LibraryDashboard({ view, selectedId, initialSearch, initialType }: Libr
       <LibraryToolbar view={view ?? 'items'} />
       {idx.error && (
         <p role="alert">
-          {typeof navigator !== 'undefined' && navigator.onLine === false
-            ? 'You are offline. '
-            : ''}
+          {typeof navigator !== 'undefined' && navigator.onLine === false ? 'You are offline. ' : ''}
           Could not load the library: {idx.error}{' '}
           <button type="button" onClick={() => void idx.reload()}>
             Retry
@@ -1312,9 +1357,9 @@ function LibraryDashboard({ view, selectedId, initialSearch, initialType }: Libr
                 value={q}
                 placeholder="find anything…"
                 aria-label="Search the collection"
-                onChange={(e) => setQ(e.target.value)}
+                onChange={(e) => changeSearch(e.target.value)}
               />
-              <select value={type} aria-label="Type" onChange={(e) => setType(e.target.value)}>
+              <select value={type} aria-label="Type" onChange={(e) => changeType(e.target.value)}>
                 <option value="all">all</option>
                 {data.types.map((t) => (
                   <option key={t} value={t}>
@@ -1323,9 +1368,9 @@ function LibraryDashboard({ view, selectedId, initialSearch, initialType }: Libr
                 ))}
               </select>
             </div>
-            {!hits ? null : hits.rows.length ? (
+            {!hits ? null : pageRows.length ? (
               <div className="lib-dash-rows">
-                {hits.rows.map((i) => (
+                {pageRows.map((i) => (
                   <a
                     key={i.id}
                     href={libraryItemHref(i.id, searchQs)}
@@ -1341,19 +1386,45 @@ function LibraryDashboard({ view, selectedId, initialSearch, initialType }: Libr
               <Empty>Nothing filed under that yet.</Empty>
             )}
             {hits && (
-              <p className="text-muted">
+              <p className="text-muted" aria-live="polite">
                 {hits.total} match{hits.total === 1 ? '' : 'es'}
-                {hits.total > hits.rows.length ? ` — showing ${hits.rows.length}` : ''}
+                {totalPages > 1 ? ` — page ${safePage} of ${totalPages}` : ''}
+                {hits.total > pageRows.length ? ` — showing ${pageRows.length}` : ''}
               </p>
+            )}
+            {hits && totalPages > 1 && (
+              <nav aria-label="Collection pages" className="lib-dash-actions">
+                <button
+                  type="button"
+                  disabled={safePage <= 1}
+                  aria-label="Previous page"
+                  onClick={() => setPage(safePage - 1)}
+                >
+                  Previous
+                </button>
+                <span aria-hidden="true" className="text-muted">
+                  {safePage} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={safePage >= totalPages}
+                  aria-label="Next page"
+                  onClick={() => setPage(safePage + 1)}
+                >
+                  Next
+                </button>
+              </nav>
             )}
           </div>
           {decodedSelected ? (
             <DashboardSelectedItem
               id={decodedSelected}
               searchQs={searchQs}
-              initialReviewed={Object.values(data.items)
-                .flat()
-                .find((i) => i.id === decodedSelected)?.reviewed}
+              initialReviewed={
+                Object.values(data.items)
+                  .flat()
+                  .find((i) => i.id === decodedSelected)?.reviewed
+              }
             />
           ) : (
             <div className="lib-dash-card">
@@ -1371,9 +1442,7 @@ function LibraryDashboard({ view, selectedId, initialSearch, initialType }: Libr
           )}
         </div>
       )}
-      {data && (!view || view === 'items') && idx.error && (
-        <p role="alert">Showing the last loaded values.</p>
-      )}
+      {data && (!view || view === 'items') && idx.error && <p role="alert">Showing the last loaded values.</p>}
     </>
   )
 }

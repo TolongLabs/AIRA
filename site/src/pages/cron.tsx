@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useState } from 'react'
+import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Pause, Pencil, Play, Plus, Trash2 } from 'lucide-react'
 import type { Chat, CronArchived, CronJob } from '@/lib/api'
 import { get, post } from '@/lib/api'
@@ -478,7 +478,14 @@ function RoutinesDashboard({
   const [tab, setTab] = useState<RoutinesTab>(initial.tab)
   const [query, setQuery] = useState(initial.query)
   const [adding, setAdding] = useState(false)
-  const [missingChecked, setMissingChecked] = useState(false)
+  /* A selected id missing from the first payload is not yet gone. Mark it
+     gone only after a successful complete re-read without it; a failed
+     re-read stays a transient failure with its own Retry and never claims
+     deletion. One in-flight check at a time, no auto-write loop. */
+  const [verifiedGone, setVerifiedGone] = useState(false)
+  const [verifyError, setVerifyError] = useState<string | null>(null)
+  const [verifying, setVerifying] = useState(false)
+  const verifyBusy = useRef(false)
   const selectedId = initial.selectedId
   const badId = initial.badId
   const chats = chatsApi.data?.chats ?? []
@@ -504,24 +511,56 @@ function RoutinesDashboard({
 
   /* A selected id missing from the first payload may be a stale list rather
    * than a deleted job. Re-read once before calling it unknown; if the fresh
-   * read has it, refresh the list so detail renders instead of recovery. */
+   * read has it, refresh the list so detail renders instead of recovery.
+   * Gone is decided only by a successful complete read without the id. A
+   * failed re-read keeps the transient error and offers Retry. Deps are
+   * stable values, never the whole jobsApi object, so this runs once per
+   * selected id and never loops. */
+  const jobsData = jobsApi.data
+  const jobsLoading = jobsApi.loading
+  const jobsError = jobsApi.error
+  const jobsReload = jobsApi.reload
   useEffect(() => {
-    if (!selectedId || selected || jobsApi.loading || jobsApi.error || missingChecked) return
+    setVerifiedGone(false)
+    setVerifyError(null)
+    setVerifying(false)
+    verifyBusy.current = false
+  }, [selectedId])
+  useEffect(() => {
+    if (!selectedId || badId || selected || jobsLoading || jobsError || !jobsData) return
+    if (!Array.isArray(jobsData.jobs)) return
+    if (verifiedGone || verifyError || verifying || verifyBusy.current) return
+    verifyBusy.current = true
+    setVerifying(true)
     let live = true
     void get<{ jobs: CronJob[] }>('/api/cron')
-      .then(
-        (fresh) => {
-          if (live && fresh?.jobs?.some((j) => j.job_id === selectedId)) void jobsApi.reload()
-        },
-        () => undefined
-      )
+      .then((fresh) => {
+        if (!live) return
+        if (!fresh || !Array.isArray(fresh.jobs)) {
+          setVerifyError('Schedule check did not complete — try again.')
+          return
+        }
+        if (fresh.jobs.some((j) => j.job_id === selectedId)) void jobsReload()
+        else setVerifiedGone(true)
+      })
+      .catch((e) => {
+        if (live) setVerifyError(e instanceof Error ? e.message : 'Schedule check failed.')
+      })
       .finally(() => {
-        if (live) setMissingChecked(true)
+        verifyBusy.current = false
+        if (live) setVerifying(false)
       })
     return () => {
       live = false
     }
-  }, [selectedId, selected, jobsApi, missingChecked])
+  }, [selectedId, badId, selected, jobsData, jobsLoading, jobsError, jobsReload, verifiedGone, verifyError, verifying])
+
+  function retryVerify() {
+    setVerifyError(null)
+    setVerifiedGone(false)
+    setVerifying(false)
+    verifyBusy.current = false
+  }
 
   /* Scroll restoration: leaving detail returns to the list position. */
   useEffect(() => {
@@ -687,22 +726,37 @@ function RoutinesDashboard({
                 </div>
               </div>
             ) : selectedId && !selected ? (
-              missingChecked || jobsApi.error ? (
+              jobsApi.error ? (
                 <div className="automations-alert" role="alert">
-                  <p className="m-0 text-[0.9rem]">
-                    {jobsApi.error
-                      ? `Routine unavailable: ${jobsApi.error}`
-                      : 'This routine is gone — it was removed or the link is stale.'}
-                  </p>
+                  <p className="m-0 text-[0.9rem]">Routine unavailable: {jobsApi.error}</p>
                   <div className="automations-actions">
                     <a className="automations-row" href={listHref}>
                       Back to routines
                     </a>
-                    {jobsApi.error ? (
-                      <Button size="sm" variant="outline" onClick={() => void jobsApi.reload()}>
-                        Retry
-                      </Button>
-                    ) : null}
+                    <Button size="sm" variant="outline" onClick={() => void jobsApi.reload()}>
+                      Retry
+                    </Button>
+                  </div>
+                </div>
+              ) : verifyError ? (
+                <div className="automations-alert" role="alert">
+                  <p className="m-0 text-[0.9rem]">Could not confirm this routine: {verifyError}</p>
+                  <div className="automations-actions">
+                    <a className="automations-row" href={listHref}>
+                      Back to routines
+                    </a>
+                    <Button size="sm" variant="outline" onClick={retryVerify}>
+                      Retry
+                    </Button>
+                  </div>
+                </div>
+              ) : verifiedGone ? (
+                <div className="automations-alert" role="alert">
+                  <p className="m-0 text-[0.9rem]">This routine is gone — it was removed or the link is stale.</p>
+                  <div className="automations-actions">
+                    <a className="automations-row" href={listHref}>
+                      Back to routines
+                    </a>
                   </div>
                 </div>
               ) : (

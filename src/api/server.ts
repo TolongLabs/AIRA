@@ -3,14 +3,27 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { extname, resolve, sep } from 'node:path'
 import { z } from 'zod'
 import type { Logger } from '../records/logger.js'
-import {createDashboardDiagnostics, type DashboardReason, type DashboardRoute, normalizeMethod, normalizeRoute } from './dashboard-diagnostics.js'
-import {authorizeOwner} from './owner-auth.js'
+import {
+  createDashboardDiagnostics,
+  type DashboardReason,
+  type DashboardRoute,
+  normalizeMethod,
+  normalizeRoute
+} from './dashboard-diagnostics.js'
+import { authorizeOwner } from './owner-auth.js'
 import { changeOwnerJob, ownerCronTransport } from './owner-cron.js'
 import { changeOwnerMarkets } from './owner-markets.js'
 import { handleOwnerMessageGet, handleOwnerMessagePost, isOwnerMessagePost, ownerMessageIdOf } from './owner-message.js'
 import { proxyOwnerApi } from './owner-proxy.js'
 import { dispatchGet, isKnownRoute, type SiteApiDeps } from './routes.js'
-import { createStudioPack, getStudioPack, StudioPackError, updateStudioPack } from './studio-packs.js'
+import { handleStudioExpressions } from './studio-expression-routes.js'
+import {
+  createStudioPack,
+  getStudioPack,
+  StudioPackError,
+  studioExpressionStore,
+  updateStudioPack
+} from './studio-packs.js'
 import { dispatchWrite, hostAllowed, isWriteRoute, originAllowed } from './writes.js'
 
 // The core's private HTTP API for the owner site (docs/trd/site.md#serving-the-api).
@@ -21,6 +34,7 @@ export interface SiteApiServerOptions extends SiteApiDeps {
   ownerApiOrigin?: string
   logger: Logger
   /** `site.allowedOrigins` */
+  dashboardEntry?: boolean
   allowedOrigins: readonly string[]
   /** The built site, served under /app/ (docs/trd/site.md#serving-the-site). Absent: no pages are served. */
   siteDir?: string
@@ -38,6 +52,37 @@ const TYPES: Record<string, string> = {
   '.woff2': 'font/woff2'
 }
 
+const entryAliases = new Map(
+  Object.entries({
+    '/': '/overview',
+    '/app': '/overview',
+    '/app/': '/overview',
+    '/app/index.html': '/overview',
+    '/app/chats.html': '/chats',
+    '/app/send.html': '/chats/files',
+    '/app/library.html': '/library',
+    '/app/graph.html': '/library/graph',
+    '/app/markets.html': '/markets',
+    '/app/settings.html': '/system/settings',
+    '/app/cron.html': '/automations/routines',
+    '/app/notices.html': '/automations/notices'
+  })
+)
+
+function dashboardPage(raw: string): boolean {
+  try {
+    const path = decodeURIComponent(raw)
+    if (/^\/library\/item\/[^/]{1,2048}$/.test(raw)) return true
+    // Encoded characters are valid only inside opaque record IDs.
+    if (path !== raw && !raw.startsWith('/automations/routines/')) return false
+    return /^\/(?:overview|chats(?:\/(?:files|defaults|c_[a-zA-Z0-9_-]+\/(?:settings|send)))?|characters(?:\/(?:new|import|simulator|[a-z0-9_-]+\/(?:edit|footer)))?|library(?:\/(?:graph|costs))?|automations(?:\/(?:routines(?:\/[a-zA-Z0-9_:.-]{1,160})?|notices))?|markets(?:\/(?:watchlist|alerts|news))?|system(?:\/(?:health|settings|appearance))?)$/.test(
+      path
+    )
+  } catch {
+    return false
+  }
+}
+
 /** One file of the build, or undefined. A path that leaves the build folder is never read. */
 async function siteFile(siteDir: string, pathname: string): Promise<{ body: Buffer; type: string } | undefined> {
   let relative: string
@@ -46,11 +91,7 @@ async function siteFile(siteDir: string, pathname: string): Promise<{ body: Buff
   } catch {
     return undefined
   }
-  if (
-    /^preview\/(?:overview|chats(?:\/(?:files|c_[a-zA-Z0-9_-]+\/(?:settings|send)))?|characters(?:\/(?:new|import|simulator|[a-z0-9_-]+\/(?:edit|footer)))?|library(?:\/(?:graph|costs|item\/[a-zA-Z0-9_%:.-]+))?|automations(?:\/(?:routines|notices))?|markets(?:\/(?:watchlist|alerts|news))?|system(?:\/(?:health|settings|appearance))?)$/.test(
-      relative
-    )
-  )
+  if (pathname.startsWith('/app/preview/') && dashboardPage(pathname.slice('/app/preview'.length)))
     relative = 'preview.html'
   if (relative === '' || relative.endsWith('/')) relative += 'index.html'
   const root = resolve(siteDir)
@@ -68,7 +109,10 @@ async function siteFile(siteDir: string, pathname: string): Promise<{ body: Buff
 const MAX_BODY_BYTES = 16 * 1024
 
 /** The JSON body, or a reason code. Reads at most MAX_BODY_BYTES. */
-async function readJson(request: IncomingMessage, limit = MAX_BODY_BYTES): Promise<{ body: unknown } | { error: string; status: number }> {
+async function readJson(
+  request: IncomingMessage,
+  limit = MAX_BODY_BYTES
+): Promise<{ body: unknown } | { error: string; status: number }> {
   const type = request.headers['content-type'] ?? ''
   if (!/^application\/json(\s*;|$)/i.test(type)) return { status: 415, error: 'unsupported_media_type' }
   const chunks: Buffer[] = []
@@ -86,31 +130,48 @@ async function readJson(request: IncomingMessage, limit = MAX_BODY_BYTES): Promi
 }
 
 const studioDocument = z.record(z.string(), z.unknown())
-const studioDocuments = z.strictObject({card:studioDocument,moods:studioDocument,lines:studioDocument})
-const studioCreate = z.union([studioDocuments.extend({id:z.string()}),z.strictObject({id:z.string(),sourceId:z.string()})])
-const studioChange = z.strictObject({expectedRevision:z.string().regex(/^[0-9a-f]{64}$/),patch:studioDocuments.partial()})
+const studioDocuments = z.strictObject({ card: studioDocument, moods: studioDocument, lines: studioDocument })
+const studioCreate = z.union([
+  studioDocuments.extend({ id: z.string() }),
+  z.strictObject({ id: z.string(), sourceId: z.string() })
+])
+const studioChange = z.strictObject({
+  expectedRevision: z.string().regex(/^[0-9a-f]{64}$/),
+  patch: studioDocuments.partial()
+})
 
-async function serveStudio(options:SiteApiServerOptions,request:IncomingMessage,response:ServerResponse,id?:string) {
+async function serveStudio(
+  options: SiteApiServerOptions,
+  request: IncomingMessage,
+  response: ServerResponse,
+  id?: string
+) {
   try {
-    if (id && request.method === 'GET') return json(response,200,getStudioPack(options,id))
-    if (request.method !== (id ? 'PUT' : 'POST')) return json(response,405,{error:'method_not_allowed'})
-    const data=await readJson(request,768*1024)
-    if ('error' in data) return json(response,data.status,{error:data.error})
+    if (id && request.method === 'GET') return json(response, 200, getStudioPack(options, id))
+    if (request.method !== (id ? 'PUT' : 'POST')) return json(response, 405, { error: 'method_not_allowed' })
+    const data = await readJson(request, 768 * 1024)
+    if ('error' in data) return json(response, data.status, { error: data.error })
     if (id) {
-      const result=studioChange.safeParse(data.body)
-      if (!result.success) return json(response,400,{error:'invalid_body'})
-      const saved=updateStudioPack(options,id,{expectedRevision:result.data.expectedRevision,...result.data.patch})
+      const result = studioChange.safeParse(data.body)
+      if (!result.success) return json(response, 400, { error: 'invalid_body' })
+      const saved = updateStudioPack(options, id, {
+        expectedRevision: result.data.expectedRevision,
+        ...result.data.patch
+      })
       if (saved.changed) options.onWrite?.()
-      return json(response,200,saved)
+      return json(response, 200, saved)
     }
-    const result=studioCreate.safeParse(data.body)
-    if (!result.success) return json(response,400,{error:'invalid_body'})
-    const input=result.data
-    const created=createStudioPack(options,'sourceId' in input ? {sourceId:input.sourceId,newId:input.id} : input)
+    const result = studioCreate.safeParse(data.body)
+    if (!result.success) return json(response, 400, { error: 'invalid_body' })
+    const input = result.data
+    const created = createStudioPack(
+      options,
+      'sourceId' in input ? { sourceId: input.sourceId, newId: input.id } : input
+    )
     options.onWrite?.()
-    return json(response,201,created)
+    return json(response, 201, created)
   } catch (error) {
-    if (error instanceof StudioPackError) return json(response,error.status,{error:error.code})
+    if (error instanceof StudioPackError) return json(response, error.status, { error: error.code })
     throw error
   }
 }
@@ -127,49 +188,80 @@ function writeRouteName(pathname: string): string {
   return 'chat_status'
 }
 
-function diagnosticRoute(path:string): DashboardRoute {
-  if(path==='/owner-api/messages') return 'owner_messages'
-  if(path.startsWith('/owner-api/messages/'))return 'owner_message_by_id'
-  if(path==='/owner-api/cron')return 'owner_cron'
-  if(path==='/owner-api/settings/markets')return 'owner_markets'
-  if(!path.startsWith('/owner-api/core/'))return 'owner_proxy'
-  const parts=path.slice('/owner-api/core/'.length).split('/')
-  if(parts.length===1)return normalizeRoute(parts[0])
-  if(parts[0]==='characters')return parts[2]==='footer'?'character_footer':'characters'
-  if(parts[0]==='chats')return parts[2]==='status'?'chat_status':parts[2]==='label'?'chat_label':'unknown'
-  return parts[0]==='turns'?'turn_by_id':parts[0]==='feedback'?'feedback_by_id':'unknown'
+function diagnosticRoute(path: string): DashboardRoute {
+  if (path === '/owner-api/messages') return 'owner_messages'
+  if (path.startsWith('/owner-api/messages/')) return 'owner_message_by_id'
+  if (path === '/owner-api/cron') return 'owner_cron'
+  if (path === '/owner-api/settings/markets') return 'owner_markets'
+  if (!path.startsWith('/owner-api/core/')) return 'owner_proxy'
+  const parts = path.slice('/owner-api/core/'.length).split('/')
+  if (parts.length === 1) return normalizeRoute(parts[0])
+  if (parts[0] === 'characters') return parts[2] === 'footer' ? 'character_footer' : 'characters'
+  if (parts[0] === 'chats')
+    return parts[2] === 'status' ? 'chat_status' : parts[2] === 'label' ? 'chat_label' : 'unknown'
+  return parts[0] === 'turns' ? 'turn_by_id' : parts[0] === 'feedback' ? 'feedback_by_id' : 'unknown'
 }
 
-const statusReasons:Record<number,DashboardReason>={400:'invalid_request',401:'auth_missing',403:'auth_failed',404:'not_found',405:'method_not_allowed',409:'conflict',413:'too_large',415:'unsupported_media',428:'revision_required',500:'internal',502:'unavailable',503:'unavailable'}
+const statusReasons: Record<number, DashboardReason> = {
+  400: 'invalid_request',
+  401: 'auth_missing',
+  403: 'auth_failed',
+  404: 'not_found',
+  405: 'method_not_allowed',
+  409: 'conflict',
+  413: 'too_large',
+  415: 'unsupported_media',
+  428: 'revision_required',
+  500: 'internal',
+  502: 'unavailable',
+  503: 'unavailable'
+}
 
 export function createSiteApiServer(options: SiteApiServerOptions): Server {
   const log = options.logger.child({ module: 'site_api' })
 
-  const diagnostics=createDashboardDiagnostics({logger:log,buildId:process.env.AIRA_BUILD_SHA ?? 'unknown'})
+  const diagnostics = createDashboardDiagnostics({ logger: log, buildId: process.env.AIRA_BUILD_SHA ?? 'unknown' })
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    let target=request.url??'/'
-    if(target.startsWith('/owner-api/')){
-      const active=diagnostics.begin(diagnosticRoute(target.split('?')[0]??''),normalizeMethod(request.method))
-      response.setHeader('x-request-id',active.requestId)
-      response.setHeader('cache-control','no-store')
-      response.once('finish',()=>diagnostics.finish(active,{status:response.statusCode,reason:statusReasons[response.statusCode]??(response.statusCode<400?'ok':'unknown')}))
+    let target = request.url ?? '/'
+    if (target.startsWith('/owner-api/')) {
+      const active = diagnostics.begin(diagnosticRoute(target.split('?')[0] ?? ''), normalizeMethod(request.method))
+      response.setHeader('x-request-id', active.requestId)
+      response.setHeader('cache-control', 'no-store')
+      response.once('finish', () =>
+        diagnostics.finish(active, {
+          status: response.statusCode,
+          reason: statusReasons[response.statusCode] ?? (response.statusCode < 400 ? 'ok' : 'unknown')
+        })
+      )
     }
-    const dashboard=target.startsWith('/owner-api/core/')
-    if(dashboard){
-      response.setHeader('cache-control','no-store')
-      if(!hostAllowed(request.headers.host)||!originAllowed(request.headers.origin,options.allowedOrigins,request.headers.host))return json(response,403,{error:'origin_refused'})
-      const token=request.headers['x-tolongai-token']
-      if(typeof token!=='string'||!token.trim())return json(response,401,{error:'owner_token_required'})
-      if(!options.ownerApiOrigin&&!options.ownerApiSocket)return json(response,503,{error:'owner_service_unconfigured'})
-      const auth=await authorizeOwner(options,token)
-      if(!auth.ok)return json(response,auth.status,{error:auth.code})
-      target='/api/'+target.slice('/owner-api/core/'.length)
+    const dashboard = target.startsWith('/owner-api/core/')
+    const protectedEntry = options.dashboardEntry && (target.startsWith('/api/') || target.startsWith('/owner-api/'))
+    if (dashboard || protectedEntry) {
+      response.setHeader('cache-control', 'no-store')
+      if (
+        !hostAllowed(request.headers.host) ||
+        !originAllowed(request.headers.origin, options.allowedOrigins, request.headers.host)
+      )
+        return json(response, 403, { error: 'origin_refused' })
+      const token = request.headers['x-tolongai-token']
+      if (typeof token !== 'string' || !token.trim()) return json(response, 401, { error: 'owner_token_required' })
+      if (!options.ownerApiOrigin && !options.ownerApiSocket)
+        return json(response, 503, { error: 'owner_service_unconfigured' })
+      const auth = await authorizeOwner(options, token)
+      if (!auth.ok) return json(response, auth.status, { error: auth.code })
+      if (dashboard) target = '/api/' + target.slice('/owner-api/core/'.length)
     }
-    const path=target.split('?')[0]??'/'
+    const path = target.split('?')[0] ?? '/'
     if (dashboard) {
-      const match=/^\/api\/characters\/([a-z0-9_-]+)\/studio$/.exec(path)
+      const expression = /^\/api\/characters\/([^/]+)\/expressions(?:\/([^/]+))?$/.exec(path)
+      if (expression?.[1])
+        return handleStudioExpressions(request, response, studioExpressionStore(options), {
+          id: expression[1],
+          name: expression[2]
+        })
+      const match = /^\/api\/characters\/([a-z0-9_-]+)\/studio$/.exec(path)
       if (match || (path === '/api/characters' && request.method === 'POST'))
-        return serveStudio(options,request,response,match?.[1])
+        return serveStudio(options, request, response, match?.[1])
     }
     if (path === '/owner-api/messages' || path.startsWith('/owner-api/messages/')) {
       response.setHeader('cache-control', 'no-store')
@@ -221,7 +313,7 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
     if (path.startsWith('/owner-api/'))
       return proxyOwnerApi(request, response, options.ownerApiOrigin, options.allowedOrigins, options.ownerApiSocket)
     if (!path.startsWith('/api/')) {
-      await serveSite(path, request.method, response)
+      await serveSite(path, request.method, response, target.slice(path.length))
       return
     }
 
@@ -247,7 +339,12 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
         json(response, read.status, { error: read.error })
         return
       }
-      if(dashboard && url.pathname==='/api/settings' && (!read.body || typeof read.body!=='object'||!('expectedRevision' in read.body)))return json(response,428,{error:'revision_required'})
+      if (
+        dashboard &&
+        url.pathname === '/api/settings' &&
+        (!read.body || typeof read.body !== 'object' || !('expectedRevision' in read.body))
+      )
+        return json(response, 428, { error: 'revision_required' })
       const result = dispatchWrite(options, request.method ?? '', url.pathname, read.body)
       if (result.status === 200) log.info('site_api.write', { route: writeRouteName(url.pathname) })
       json(response, result.status, result.body)
@@ -264,14 +361,27 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
       return
     }
 
-    const result = await dispatchGet(options, url,dashboard)
+    const result = await dispatchGet(options, url, dashboard)
     json(response, result.status, result.body)
   }
 
-  async function serveSite(path: string, method: string | undefined, response: ServerResponse): Promise<void> {
+  async function serveSite(
+    path: string,
+    method: string | undefined,
+    response: ServerResponse,
+    query: string
+  ): Promise<void> {
     if (method !== 'GET' && method !== 'HEAD') {
       json(response, 405, { error: 'method_not_allowed' })
       return
+    }
+    if (options.siteDir && options.dashboardEntry) {
+      const redirect = entryAliases.get(path)
+      if (redirect) {
+        response.writeHead(302, { location: redirect + query, 'cache-control': 'no-store' }).end()
+        return
+      }
+      if (dashboardPage(path)) path = '/app/preview.html'
     }
     if (path === '/' && options.siteDir) {
       response.writeHead(302, { location: '/app/' }).end()
@@ -294,8 +404,8 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
   }
 
   return createServer((request, response) => {
-    void handle(request, response).catch((error: unknown) => {
-      log.error('site_api.error', { error })
+    void handle(request, response).catch(() => {
+      log.error('site_api.error', { reason: 'internal', requestId: response.getHeader('x-request-id') })
       json(response, 500, { error: 'internal' })
     })
   })

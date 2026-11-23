@@ -4,7 +4,7 @@ import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { join } from 'node:path'
 import { createSiteApiServer } from './api/server.js'
-import {recoverStudioPacks} from './api/studio-packs.js'
+import { pendingStudioPacks, recoverStudioPacks } from './api/studio-packs.js'
 import { loadPacks, type PackSet } from './character/loader.js'
 import { writeUnavailableLine } from './character/unavailable.js'
 import { ConfigError } from './config/loader.js'
@@ -204,11 +204,12 @@ export async function createApp(options: AppOptions): Promise<App> {
   try {
     for (const turnId of started.recovery.interruptedTurns) alerter.raise('turn_interrupted', { turnId })
 
-    recoverStudioPacks({paths,storage,now})
+    recoverStudioPacks({ paths, storage, now }, (id) => alerter.raise('pack_invalid', { pack: id }))
 
     // Step 5: character packs and bindings. A fault in one pack or one chat disables that pack or chat only.
     const packs = () =>
       loadPacks({
+        excluded: pendingStudioPacks(paths),
         repositoryDir: options.repositoryCharactersDir ?? 'characters',
         dataDir: join(paths.root, 'characters')
       })
@@ -876,6 +877,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       socialMirrors,
       allowedOrigins: config.site.allowedOrigins,
       marketsPath: config.owner.marketsConfig,
+      dashboardEntry: env.AIRA_DASHBOARD_ENTRY === 'dashboard',
       ...(env.AIRA_OWNER_API_SOCKET ? { ownerApiSocket: env.AIRA_OWNER_API_SOCKET } : {}),
       ...(env.AIRA_OWNER_API_ORIGIN ? { ownerApiOrigin: env.AIRA_OWNER_API_ORIGIN } : {}),
       ...(options.channelDirectoryPath !== undefined ? { channelDirectoryPath: options.channelDirectoryPath } : {}),

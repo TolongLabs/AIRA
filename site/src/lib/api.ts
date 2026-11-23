@@ -65,6 +65,7 @@ export function requestToken(
     input.type = 'password'
     input.autocomplete = 'off'
     input.placeholder = 'site token'
+    input.setAttribute('aria-label', 'Owner site token')
     input.className = 'min-h-11 flex-1 rounded-[10px] border border-line bg-sunk px-3 text-ink'
     const btn = document.createElement('button')
     btn.type = 'button'
@@ -93,7 +94,12 @@ export function ownerPath(path: string): string {
 }
 
 export class OwnerRequestError extends Error {
-  constructor(readonly status:number,message:string){super(message)}
+  constructor(
+    readonly status: number,
+    message: string
+  ) {
+    super(message)
+  }
 }
 
 export async function get<T = unknown>(path: string): Promise<T> {
@@ -104,7 +110,7 @@ export async function get<T = unknown>(path: string): Promise<T> {
     await requestToken()
     r = await go()
   }
-  if (!r.ok) throw new OwnerRequestError(r.status,`Owner request failed (${r.status})`)
+  if (!r.ok) throw new OwnerRequestError(r.status, `Owner request failed (${r.status})`)
   const value: unknown = await r.json()
   checkOwnerResponse(path, value, 'GET')
   return value as T
@@ -131,7 +137,7 @@ export async function post<T = unknown>(path: string, body: unknown): Promise<T>
     } catch {
       /* keep the status line */
     }
-    throw new OwnerRequestError(r.status,message)
+    throw new OwnerRequestError(r.status, message)
   }
   const value: unknown = await r.json()
   checkOwnerResponse(path, value, 'POST')

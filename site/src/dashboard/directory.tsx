@@ -27,9 +27,9 @@ export default function Directory() {
   const filtered = rows
     ?.filter((c) => (status === 'all' || c.status === status) && c.label.toLowerCase().includes(query.toLowerCase()))
     .sort((a, b) => a.label.localeCompare(b.label))
-  async function changeAccess(chat:CoreChat,status:CoreChat['status']){
-    await core.setStatus(chat.chatId,status)
-    setRows(previous=>previous?.map(row=>row.chatId===chat.chatId?{...row,status}:row)??null)
+  async function changeAccess(chat: CoreChat, status: CoreChat['status']) {
+    await core.setStatus(chat.chatId, status)
+    setRows((previous) => previous?.map((row) => (row.chatId === chat.chatId ? { ...row, status } : row)) ?? null)
   }
   useEffect(() => {
     const url = new URL(location.href)
@@ -45,6 +45,7 @@ export default function Directory() {
   }, [query, status, page])
   return (
     <section className="directory">
+      <a href={chatHref('chats/defaults')}>Shared Defaults</a>
       <label>
         Search chats{' '}
         <input
@@ -77,18 +78,45 @@ export default function Directory() {
       ) : !filtered.length ? (
         <p>No matching chats.</p>
       ) : (
-        <SelectionTable rows={filtered} caption="Chat Directory" viewId={JSON.stringify([query,status])} page={page} onPageChange={setPage}
-          getKey={c=>c.chatId} getRowLabel={c=>c.label||c.chatId}
+        <SelectionTable
+          rows={filtered}
+          caption="Chat Directory"
+          viewId={JSON.stringify([query, status])}
+          page={page}
+          onPageChange={setPage}
+          getKey={(c) => c.chatId}
+          getRowLabel={(c) => c.label || c.chatId}
           columns={[
-            {id:'name',header:'Chat',render:c=><><a href={chatHref('chats/'+encodeURIComponent(c.chatId)+'/settings')}>{c.label||'Unnamed Chat'}</a><small>{c.chatId}</small></>},
-            {id:'type',header:'Type',render:c=>c.type==='group'?'Group':'Direct'},
-            {id:'status',header:'Access',render:c=>c.status}
+            {
+              id: 'name',
+              header: 'Chat',
+              render: (c) => (
+                <>
+                  <a href={chatHref('chats/' + encodeURIComponent(c.chatId) + '/settings')}>
+                    {c.label || 'Unnamed Chat'}
+                  </a>
+                  <small>{c.chatId}</small>
+                </>
+              )
+            },
+            { id: 'type', header: 'Type', render: (c) => (c.type === 'group' ? 'Group' : 'Direct') },
+            { id: 'status', header: 'Access', render: (c) => c.status }
           ]}
           bulkActions={[
-            {id:'activate',label:'Activate',confirmMessage:'Allow AIRA to respond in these selected chats under their sender policies?',run:c=>changeAccess(c,'active')},
-            {id:'pending',label:'Set Pending',confirmMessage:'Stop AIRA from answering in these selected chats?',run:c=>changeAccess(c,'pending')}
-          ]}/>
-
+            {
+              id: 'activate',
+              label: 'Activate',
+              confirmMessage: 'Allow AIRA to respond in these selected chats under their sender policies?',
+              run: (c) => changeAccess(c, 'active')
+            },
+            {
+              id: 'pending',
+              label: 'Set Pending',
+              confirmMessage: 'Stop AIRA from answering in these selected chats?',
+              run: (c) => changeAccess(c, 'pending')
+            }
+          ]}
+        />
       )}
     </section>
   )

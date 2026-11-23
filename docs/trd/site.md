@@ -294,3 +294,14 @@ is 512 by 512 pixels and at most 100 KiB. See the [WhatsApp sticker requirements
 Every protected dashboard response carries a generated X-Request-Id. The listener records request ID, build
 identifier, timestamp, fixed route category, HTTP method, status, elapsed time and a fixed reason code. A bounded
 event window limits volume. Omit URL parameters, bodies, credentials, prompt text and target identifiers.
+
+The release image supports AIRA_DASHBOARD_ENTRY=dashboard as an operator switch. An unset value serves the
+legacy entry. With the switch enabled, root and the previous HTML entries redirect to canonical dashboard paths.
+The preview and canonical mounts use the same build. Hashed assets remain under /app/assets. Unknown assets and
+API paths return a real 404. Protected data requires the owner credential on both direct and proxied API routes,
+including direct compatibility calls. Switching back uses the previous entry and preserves the current data volume.
+
+An owner can change allowedSenders from the preview Access tab for a single group or DM. The editor stages the
+registered value ("all" or an explicit sender list), shows who will be admitted after the change and requires
+confirmation. A clear uses the scoped settings operation to restore inheritance. A conflict or refusal keeps
+the draft. Admission on subsequent incoming turns uses the same resolved setting as the existing runtime.

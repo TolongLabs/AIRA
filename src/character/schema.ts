@@ -47,6 +47,15 @@ export const cardSchema = z.strictObject({
   coreIdentity: nonEmpty,
   speechRules: z.array(nonEmpty).min(1),
   defaultReplyLength: z.enum(['short', 'default', 'long']),
+  expressionDescriptions: z
+    .record(
+      z.string().regex(STICKER_FILE),
+      z
+        .string()
+        .max(300)
+        .regex(/^[^\r\n]*$/)
+    )
+    .optional(),
   /** The tool footer's icon and labels, keyed by tool name (docs/trd/prompt-engine.md#tool-footer). */
   toolFooter: z
     .strictObject({
