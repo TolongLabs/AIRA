@@ -272,6 +272,11 @@ covers the rows eligible at that scope, including applicable inherited rows. Pro
 expectedRevision obtained on read. Compare it under the write transaction before storing either the row or its audit.
 A missing revision returns 428. A stale revision returns 409 and leaves the draft available for comparison.
 
+A deployment config query returns only opaque revisions and status (see
+[state ownership](dashboard-state.md#deployment-activation-readback)). `GET /owner-api/core/config` answers
+`{ appliedRevision, currentRevision, status, checkedAt, appliedAt }` with no config value, secret or path.
+Any non-`GET` method returns `405`. The same path without the protected prefix is not a public route.
+
 ### Character Studio operation contract
 
 The protected core prefix exposes GET characters/:id/studio, POST characters and PUT characters/:id/studio.
