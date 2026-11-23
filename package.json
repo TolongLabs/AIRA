@@ -17,6 +17,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
+    "test:dashboard": "vitest run --config vitest.browser.config.ts",
     "test:restart": "vitest run tests/restart",
     "test:migration": "vitest run tests/migration",
     "test:simulator": "vitest run tests/simulator",
@@ -41,6 +42,7 @@
     "*.{md,json,yml,yaml}": "prettier --write"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@biomejs/biome": "2.6.8",
     "@commitlint/cli": "^21.2.4",
     "@commitlint/config-conventional": "^21.2.4",
@@ -48,6 +50,7 @@
     "@types/node": "^24.0.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.6.1",
+    "playwright": "^1.65.1",
     "prettier": "^3.9.10",
     "tsx": "^4.23.15",
     "typescript": "7.0.2",
