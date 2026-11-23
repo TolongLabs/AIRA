@@ -236,4 +236,7 @@ function Dashboard() {
     </DashboardContext.Provider>
   )
 }
-createRoot(document.getElementById('root')!).render(<Dashboard />)
+createRoot(document.getElementById('root')!, {
+  // A caught view error can contain owner data. Keep the workspace recovery UI and log a fixed event only.
+  onCaughtError: () => console.warn('dashboard.workspace_failed')
+}).render(<Dashboard />)

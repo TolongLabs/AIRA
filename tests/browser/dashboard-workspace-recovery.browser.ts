@@ -46,6 +46,10 @@ it('dashboard workspace recovers from a missing lazy chunk', async () => {
     const faults: string[] = []
     try {
       const page = await browser.newPage({ viewport: { width: 1440, height: 810 } })
+      const caughtWarnings: string[] = []
+      page.on('console', (event) => {
+        if (event.type() === 'warning') caughtWarnings.push(event.text())
+      })
       const seen = new Set<string>()
       let blockNewChunks = false
       await page.route('**/*', (route) => {
@@ -68,7 +72,7 @@ it('dashboard workspace recovers from a missing lazy chunk', async () => {
       const alert = page.getByRole('alert')
       await alert.waitFor()
       await page.getByRole('heading', { name: 'This view needs a refresh' }).waitFor()
-      await page.getByRole('button', { name: /reload/i }).waitFor()
+      expect(caughtWarnings).toContain('dashboard.workspace_failed')
       await page.getByRole('button', { name: 'Reload the dashboard' }).waitFor()
       await page.getByRole('link', { name: 'Back to Overview' }).waitFor()
       await page.getByRole('navigation', { name: 'Main navigation' }).waitFor()
