@@ -101,6 +101,42 @@ describe('parseFacebookPage', () => {
 })
 
 describe('SocialPostViewer on Facebook posts', () => {
+  it.each([
+    ['the linked story', '701', '701', permalink.canonicalUrl, true],
+    ['a neighbouring story', '701', '702', permalink.canonicalUrl, false],
+    ['a mismatched video', '701', '703', permalink.canonicalUrl, false],
+    ['another group', '701', '701', permalink.canonicalUrl.replace('/12345/', '/98765/'), false]
+  ] as const)(
+    'verifies the extracted video against %s after resolving a video share',
+    async (_, attached, extracted, page, allowed) => {
+      const share = parseSocialPostUrl('https://www.facebook.com/share/v/Example/')!
+      const video = (id: string) => ({ media: { __typename: 'Video', id } })
+      const viewer = buildViewer(settings, {
+        fetcher: async (input) =>
+          String(input).includes('/share/')
+            ? new Response(null, { status: 302, headers: { location: permalink.canonicalUrl } })
+            : new Response(pageWith(story(permalink.id, video(attached)), story('999', video('702')))),
+        lookup: async () => ['8.8.8.8'],
+        runExtractor: async () => ({
+          metadata: {
+            _type: 'video',
+            id: extracted,
+            extractor_key: 'Facebook',
+            webpage_url: page,
+            title: 'Fixture video',
+            duration: 49,
+            formats: [
+              { url: 'https://cdn.example/clip.mp4', ext: 'mp4', protocol: 'https', vcodec: 'h264', acodec: 'aac' }
+            ]
+          }
+        })
+      })
+      const result = await viewer.lookup(share)
+      expect(result.status).toBe('found')
+      if (result.status === 'found') expect(result.post.attachments ?? []).toHaveLength(allowed ? 1 : 0)
+    }
+  )
+
   it('follows a post share link to its permalink and reads the page, without yt-dlp', async () => {
     const share = parseSocialPostUrl('https://www.facebook.com/share/p/1FrDwJtBqj/')!
     const fetcher = vi.fn(async (input: string | URL | Request) =>

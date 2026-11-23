@@ -40,6 +40,7 @@ export interface SocialPostTarget {
   canonicalUrl: string
   extractorUrl: string
   profile?: string
+  facebookGroup?: string
   youtubeShort?: true
   startSec?: number
   /** The post is readable, but its Bilibili part does not select a deliverable asset. */
@@ -278,7 +279,7 @@ function facebookPost(url: URL, unknown: boolean): SocialPostTarget | null {
     const group = url.pathname.match(/^\/groups\/([\w.-]+)\/(?:permalink|posts)\/(\d+)\/?$/)
     if (group) {
       const [, name = '', id = ''] = group
-      return post(id, `https://www.facebook.com/groups/${name}/permalink/${id}/`, name)
+      return { ...post(id, `https://www.facebook.com/groups/${name}/permalink/${id}/`, name), facebookGroup: name }
     }
   }
   const page = url.pathname.match(/^\/([\w.-]+)\/posts\/([\w-]+)\/?$/)

@@ -317,7 +317,8 @@ function isNativeYtDlpVideo(
   data: JsonObject,
   target: SocialPostTarget,
   formats: readonly VideoCandidate[],
-  video: PlayableVideo
+  video: PlayableVideo,
+  facebookVideoIds?: ReadonlySet<string>
 ): boolean {
   if (target.invalidPart) return false
   if (!formats.some((format) => format.url === video.url && format.container === 'mp4')) return false
@@ -326,14 +327,25 @@ function isNativeYtDlpVideo(
   if (data.is_live === true || (typeof data.live_status === 'string' && data.live_status !== 'not_live')) return false
   const page = typeof data.webpage_url === 'string' ? parseOfficialSocialPostUrl(data.webpage_url) : null
   if (page === null || page.lookupKey !== target.lookupKey) return false
-  if (target.platform === 'facebook') return data.extractor_key === 'Facebook' && data.id === target.id
+  if (target.platform === 'facebook') {
+    if (data.extractor_key !== 'Facebook' || typeof data.id !== 'string') return false
+    if (data.id === target.id) return true
+    return Boolean(
+      target.facebookGroup && page.facebookGroup === target.facebookGroup && facebookVideoIds?.has(data.id)
+    )
+  }
   if (target.platform === 'bilibili') {
     return data.extractor_key === 'BiliBili' && bilibiliIdMatches(string(data.id), target)
   }
   return false
 }
 
-export function parseYtDlpMetadata(payload: unknown, target: SocialPostTarget, maxTextChars: number): SocialPost {
+export function parseYtDlpMetadata(
+  payload: unknown,
+  target: SocialPostTarget,
+  maxTextChars: number,
+  facebookVideoIds?: ReadonlySet<string>
+): SocialPost {
   const data = object(payload)
   const post = base(target)
   const title = compact(string(data.title))
@@ -367,7 +379,7 @@ export function parseYtDlpMetadata(payload: unknown, target: SocialPostTarget, m
   })
   const video = selectPlayableVideo(formats)
   post.video = video
-  if (video && isNativeYtDlpVideo(data, target, formats, video)) {
+  if (video && isNativeYtDlpVideo(data, target, formats, video, facebookVideoIds)) {
     post.attachments = [{ kind: 'video', owner: target.lookupKey, video, durationSec: post.durationSec }]
   }
   // yt-dlp gives an Instagram reel no duration, so a playable format is what marks it as a video.
