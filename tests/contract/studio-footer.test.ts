@@ -6,7 +6,7 @@ import {
   createStudioPack,
   getStudioFooter,
   getStudioPack,
-  StudioPackError, 
+  StudioPackError,
   updateStudioFooter
 } from '../../src/api/studio-packs.js'
 import { dispatchWrite } from '../../src/api/writes.js'
