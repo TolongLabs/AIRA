@@ -17,6 +17,7 @@ import {
 import { DashboardContext } from './context'
 import { translateLegacyBookmark } from './legacy-bookmarks'
 import { dashboardHref, destinations, previewMount } from './navigation'
+import { WorkspaceErrorBoundary } from './workspace-error'
 import Appearance, { Backdrop } from './appearance'
 import { Overview } from './overview'
 import '@/styles.css'
@@ -211,23 +212,25 @@ function Dashboard() {
               <a href={dashboardHref('system/appearance')}>Appearance</a>
             </nav>
           )}
-          <Suspense fallback={<p role="status">Loading…</p>}>
-            {path === 'overview' ? (
-              <Overview />
-            ) : chatRoute ? (
-              <ChatSettings selectedId={chatRoute[1]} compose={chatRoute[2] === 'send'} />
-            ) : path === 'characters/new' || path === 'characters/import' || edit ? (
-              <StudioEditor mode={edit ? 'edit' : path === 'characters/new' ? 'create' : 'import'} id={edit?.[1]} />
-            ) : footer ? (
-              <ChatSettings footerId={footer[1]} />
-            ) : item || path === 'library/costs' ? (
-              <Library selectedId={item?.[1]} view={item ? 'items' : 'costs'} />
-            ) : View ? (
-              <View />
-            ) : (
-              <p>Page unavailable.</p>
-            )}
-          </Suspense>
+          <WorkspaceErrorBoundary key={path}>
+            <Suspense fallback={<p role="status">Loading…</p>}>
+              {path === 'overview' ? (
+                <Overview />
+              ) : chatRoute ? (
+                <ChatSettings selectedId={chatRoute[1]} compose={chatRoute[2] === 'send'} />
+              ) : path === 'characters/new' || path === 'characters/import' || edit ? (
+                <StudioEditor mode={edit ? 'edit' : path === 'characters/new' ? 'create' : 'import'} id={edit?.[1]} />
+              ) : footer ? (
+                <ChatSettings footerId={footer[1]} />
+              ) : item || path === 'library/costs' ? (
+                <Library selectedId={item?.[1]} view={item ? 'items' : 'costs'} />
+              ) : View ? (
+                <View />
+              ) : (
+                <p>Page unavailable.</p>
+              )}
+            </Suspense>
+          </WorkspaceErrorBoundary>
         </main>
       </div>
     </DashboardContext.Provider>
