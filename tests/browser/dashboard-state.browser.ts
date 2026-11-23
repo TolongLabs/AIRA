@@ -87,7 +87,11 @@ for (const engine of [chromium, firefox, webkit]) {
         await pageA.getByPlaceholder('my-character').fill(COPY_ID)
         await pageA.getByRole('button', { name: 'Copy to editable pack' }).click()
         await pageA.waitForURL('**/characters/' + COPY_ID + '/edit')
-        await pageA.getByRole('navigation', { name: 'Editor sections' }).waitFor()
+        // The editor navigation appears while the protected gallery request is still loading.
+        await pageA
+          .getByRole('region', { name: 'Expression gallery' })
+          .getByText('No expressions yet.', { exact: true })
+          .waitFor()
 
         // Select the editable copy in chat settings on both contexts.
         const settingsUrl = origin + '/app/preview/chats/' + encodeURIComponent(chat.chatId) + '/settings'
