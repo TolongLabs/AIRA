@@ -27,9 +27,22 @@ it('switches the private entry with one flag, keeps old queries and protects bot
     expect(res.status, route).toBe(200)
     expect(await res.text()).toContain('Dashboard fixture')
   }
-  const old = await fetch(origin + '/app/library.html?q=fixture', { redirect: 'manual' })
-  expect(old.status).toBe(302)
-  expect(old.headers.get('location')).toBe('/library?q=fixture')
+  const bookmarks = {
+    'index.html': '/overview',
+    'chats.html': '/chats',
+    'send.html': '/chats/files',
+    'library.html': '/library',
+    'graph.html': '/library/graph',
+    'markets.html': '/markets',
+    'settings.html': '/system/settings',
+    'cron.html': '/automations/routines',
+    'notices.html': '/automations/notices'
+  }
+  for (const [entry, expected] of Object.entries(bookmarks)) {
+    const old = await fetch(origin + '/app/' + entry + '?q=fixture', { redirect: 'manual' })
+    expect(old.status, entry).toBe(302)
+    expect(old.headers.get('location'), entry).toBe(expected + '?q=fixture')
+  }
   for (const route of ['/api/chats', '/owner-api/core/chats', '/owner-api/dashboard']) {
     const res = await fetch(origin + route)
     expect(res.status, route).toBe(401)

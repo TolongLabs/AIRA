@@ -247,7 +247,10 @@ function baseState(): FixtureState {
   }
 }
 
-async function startFixture(state: FixtureState): Promise<{ origin: string; close: () => Promise<void> }> {
+async function startFixture(
+  state: FixtureState,
+  canonical = false
+): Promise<{ origin: string; close: () => Promise<void> }> {
   const host = createServer((request, response) => {
     void (async () => {
       if (request.headers['x-tolongai-token'] !== TOKEN) {
@@ -392,7 +395,10 @@ async function startFixture(state: FixtureState): Promise<{ origin: string; clos
   const address = host.address()
   if (!address || typeof address === 'string') throw new Error('Missing fixture listener')
   const { app } = await startApp(queueModel([]), {
-    env: { AIRA_OWNER_API_ORIGIN: 'http://127.0.0.1:' + address.port },
+    env: {
+      AIRA_OWNER_API_ORIGIN: 'http://127.0.0.1:' + address.port,
+      AIRA_DASHBOARD_ENTRY: canonical ? 'dashboard' : ''
+    },
     siteDir: resolve('site/dist')
   })
   const site = await app.listenSite(0, '127.0.0.1')
@@ -626,6 +632,35 @@ it('system health and appearance open on direct paths and appearance persists', 
 
     expect(faults).toEqual([])
     await context.close()
+  } finally {
+    await browser.close()
+    await fixture.close()
+  }
+})
+
+it('resolves a bookmarked Library fragment after the canonical HTTP redirect and preserves history', async () => {
+  const fixture = await startFixture(baseState(), true)
+  const browser = await chromium.launch()
+  try {
+    const page = await browser.newPage()
+    await page.route('**/*', (route) =>
+      new URL(route.request().url()).origin === fixture.origin ? route.continue() : route.abort()
+    )
+    await auth(page, fixture.origin)
+    await page.goto(fixture.origin + '/overview')
+    await page.getByRole('heading', { name: 'Overview' }).waitFor()
+    const old = fixture.origin + '/app/library.html?q=fiction#' + ENCODED_ITEM
+    const canonical = fixture.origin + '/library/item/' + ENCODED_ITEM + '?q=fiction'
+    await page.goto(old)
+    await expect(page.getByText('fiction; fantasy')).toBeVisible()
+    expect(page.url()).toBe(canonical)
+    await page.reload()
+    await expect(page.getByText('fiction; fantasy')).toBeVisible()
+    await page.goBack()
+    expect(page.url()).toBe(fixture.origin + '/overview')
+    await page.goForward()
+    await expect(page.getByText('fiction; fantasy')).toBeVisible()
+    expect(page.url()).toBe(canonical)
   } finally {
     await browser.close()
     await fixture.close()
