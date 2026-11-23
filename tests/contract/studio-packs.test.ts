@@ -208,6 +208,24 @@ describe('studio packs', () => {
     expect(foxAgain.card.displayName).toBe('Fox draft two')
   })
 
+  it('refuses an edit that would also modify another mood through a YAML alias', () => {
+    const { deps, root, storage } = setup()
+    createStudioPack(deps, { id: FOX, card: makeCard(FOX), moods: makeMoods(), lines: makeLines() })
+    const path = join(root, 'characters', FOX, 'moods.yml')
+    const linked = readFileSync(path, 'utf8').replace('  calm:', '  calm: &linked') + '  quiet: *linked\n'
+    writeFileSync(path, linked)
+    const expectedRevision = getStudioPack(deps, FOX).revision
+    const audits = revisionAudits(storage, FOX).length
+    expect(() =>
+      updateStudioPack(deps, FOX, {
+        expectedRevision,
+        moods: { moods: { calm: { tone: 'changed only here' } } }
+      })
+    ).toThrow(expect.objectContaining({ code: 'conflict' }))
+    expect(readFileSync(path, 'utf8')).toBe(linked)
+    expect(revisionAudits(storage, FOX)).toHaveLength(audits)
+  })
+
   it('preserves comments and unchanged bytes through Document editing', () => {
     const { deps, root } = setup()
     createStudioPack(deps, { id: FOX, card: makeCard(FOX), moods: makeMoods(), lines: makeLines() })

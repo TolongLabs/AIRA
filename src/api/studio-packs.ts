@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import type { Dirent } from 'node:fs'
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs'
 import { dirname, join, resolve, sep } from 'node:path'
+import { isDeepStrictEqual } from 'node:util'
 import { isMap, parse, parseDocument, stringify } from 'yaml'
 import type { z } from 'zod'
 import { loadPack, PackError } from '../character/loader.js'
@@ -409,23 +410,36 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function applyPatchToDoc(doc: ReturnType<typeof parseDocument>, patch: Record<string, unknown>): void {
+// Resolve the requested change by value so a YAML anchor shared by another
+// field cannot silently change that field too.
+function patchedValues(original: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...original }
   for (const [key, value] of Object.entries(patch)) {
     if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
       throw new StudioPackError('invalid_body', 'invalid patch key', 400)
     }
-    if (value === undefined) continue
-    if (value === null) {
-      doc.deleteIn([key])
-      continue
-    }
-    const current = doc.getIn([key], true)
-    if (isPlainObject(value) && isMap(current)) {
-      applyNested(doc, [key], value)
-      continue
-    }
-    doc.setIn([key], value)
+    if (value === null) delete result[key]
+    else if (isPlainObject(value)) result[key] = patchedValues(isPlainObject(original[key]) ? original[key] : {}, value)
+    else if (value !== undefined) result[key] = value
   }
+  return result
+}
+
+function applyPatchToDoc(doc: ReturnType<typeof parseDocument>, patch: Record<string, unknown>): boolean {
+  const original = doc.toJS() as Record<string, unknown>
+  const intended = patchedValues(original, patch)
+  if (isDeepStrictEqual(original, intended)) return false
+  applyNested(doc, [], patch)
+  let actual: unknown
+  try {
+    actual = doc.toJS()
+  } catch {
+    throw new StudioPackError('conflict', 'Edit the linked YAML values together in the source file.', 409)
+  }
+  if (!isDeepStrictEqual(actual, intended)) {
+    throw new StudioPackError('conflict', 'Edit the linked YAML values together in the source file.', 409)
+  }
+  return true
 }
 
 function applyNested(doc: ReturnType<typeof parseDocument>, path: string[], patch: Record<string, unknown>): void {
@@ -954,9 +968,9 @@ export function updateStudioPack(
     const cardDoc = parseYamlDocument(current['card.yml'])
     const moodsDoc = parseYamlDocument(current['moods.yml'])
     const linesDoc = parseYamlDocument(current['lines.yml'])
-    if (input.card !== undefined) applyPatchToDoc(cardDoc, input.card as Record<string, unknown>)
-    if (input.moods !== undefined) applyPatchToDoc(moodsDoc, input.moods as Record<string, unknown>)
-    if (input.lines !== undefined) applyPatchToDoc(linesDoc, input.lines as Record<string, unknown>)
+    const cardChanged = input.card !== undefined && applyPatchToDoc(cardDoc, input.card as Record<string, unknown>)
+    const moodsChanged = input.moods !== undefined && applyPatchToDoc(moodsDoc, input.moods as Record<string, unknown>)
+    const linesChanged = input.lines !== undefined && applyPatchToDoc(linesDoc, input.lines as Record<string, unknown>)
     const merged = {
       card: cardDoc.toJS(),
       moods: moodsDoc.toJS(),
@@ -976,9 +990,9 @@ export function updateStudioPack(
       throw new StudioPackError('invalid_body', sanitizedIssues('lines', linesChecked.error), 400)
     }
     const nextTexts: Record<StudioFile, string> = {
-      'card.yml': input.card === undefined ? current['card.yml'].toString('utf8') : cardDoc.toString(),
-      'moods.yml': input.moods === undefined ? current['moods.yml'].toString('utf8') : moodsDoc.toString(),
-      'lines.yml': input.lines === undefined ? current['lines.yml'].toString('utf8') : linesDoc.toString()
+      'card.yml': cardChanged ? cardDoc.toString() : current['card.yml'].toString('utf8'),
+      'moods.yml': moodsChanged ? moodsDoc.toString() : current['moods.yml'].toString('utf8'),
+      'lines.yml': linesChanged ? linesDoc.toString() : current['lines.yml'].toString('utf8')
     }
     const currentTexts: Record<StudioFile, string> = {
       'card.yml': current['card.yml'].toString('utf8'),
