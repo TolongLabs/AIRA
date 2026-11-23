@@ -42,9 +42,11 @@ Each diagram has a JSON source in `src/` and a committed SVG beside this file. D
 ## Change A Diagram
 
 1. Edit the JSON source in `src/`.
-2. Render it with the Archify skill's command, once per diagram:
-   `node <archify>/bin/archify.mjs finalize workflow docs/diagrams/src/<name>.json .archify/<name>.html --quality showcase`
-3. Run `bun run diagrams` to export every rendered page to an SVG here.
-4. Commit the JSON source and the SVG together.
+2. From the repository root, run `node scripts/check-diagrams.mjs` to verify the source, SVG and Markdown inventory.
+3. Run `node scripts/check-diagrams.mjs --render --archify-root <archify>` with the Archify 3.2.0 package.
+   The checker uses each source's diagram type, quality profile and repository references before exporting the SVGs.
+4. Review the SVG at its embedded width in both themes. Run the same render again and check for unintended changes.
+5. Commit the changed source and SVG together.
 
-The SVGs carry their own colours and follow the reader's light or dark theme.
+The SVGs include Outfit under its [Open Font License](../../site/public/dashboard/fonts/outfit-OFL.txt).
+The diagram background and semantic colors follow the reader's light or dark preference.

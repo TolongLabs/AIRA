@@ -11,3 +11,13 @@ cd site
 bun install
 bun run build
 ```
+
+## Dashboard assets
+
+The preview uses local Outfit, Unbounded and Geist Mono files. The corresponding SIL Open Font Licenses are in
+[the font directory](public/dashboard/fonts/). The robot glyph follows the approved AIRA design.
+
+The lattice and stipple are original repeating ASCII tiles. The TolongDesign catalogue provided the
+[ASCII pattern reference](https://ascii.rest/). The shell and selection behavior follow the
+[ObsidianUI dashboard shell](https://www.obsidianui.dev/docs/dashboard-shell) reference. Field and tab
+composition follows [shadcn/studio](https://shadcnstudio.com/). These references supplied interaction patterns.

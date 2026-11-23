@@ -1,32 +1,53 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/banner-dark.webp">
+  <img src="docs/images/banner-light.webp" alt="AIRA robot and wordmark beside layered teal glass">
+</picture>
+
 # AIRA
 
-A WhatsApp chatbot agent that plays a configured character in each chat.
+AIRA answers WhatsApp DMs and small groups as the character configured for each chat. An owner can change who receives
+replies, choose a character and inspect service health from a private dashboard on the same Linux host.
 
-## Contents
+<details>
+<summary>Contents</summary>
 
-- [What AIRA Is](#what-aira-is)
-- [Status](#status)
-- [How It Fits Together](#how-it-fits-together)
+- [Dashboard](#dashboard)
+- [How a Reply Works](#how-a-reply-works)
 - [Repository Layout](#repository-layout)
 - [Development](#development)
+- [Operations](#operations)
 - [Documentation](#documentation)
 - [Licence](#licence)
 
-## What AIRA Is
+</details>
 
-AIRA answers WhatsApp DMs and small groups on one Linux host behind the Hermes Agent WhatsApp gateway. Each chat is
-bound to one character pack and its own settings. Expression, mood, tone and reply format are chosen and enforced by
-code in one agent loop with one tool set. Memory is stored as typed records in one SQLite file, scoped strictly to each
-chat, and every turn and failure leaves a record for post-mortem review and offline testing.
+## Dashboard
 
-## Status
+The screenshots use fictional chats, temporary character data and a simulated gateway.
 
-This repository is a scaffold only. Nothing runs yet, and no feature code exists. See [Product Requirements](docs/PRD.md)
-for what AIRA must do and [Technical Requirements](docs/TRD.md) for the subsystem contracts.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-dark.webp">
+  <img src="docs/images/overview-light.webp" alt="Desktop Overview showing four online services, active and pending chats, the routine schedule and Library count">
+</picture>
 
-## How It Fits Together
+| Chat workflow                                                                                                             | Character Studio                                                                                        |
+| ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| ![Phone message review showing the fictional target and the confirmed text before sending](docs/images/chat-confirm.webp) | ![Character Studio editor for an editable copy of the built-in example](docs/images/studio-editor.webp) |
 
-![System overview: WhatsApp reaches the Hermes gateway, which calls the AIRA core; the core uses one SQLite file and the model services; the owner site calls the core's API](docs/diagrams/system-overview.svg)
+The [phone Overview](docs/images/overview-phone.webp) uses a navigation drawer. Chats controls scope and inheritance.
+Character Studio edits identity, speech, moods and fixed lines. Library shows saved items and their connections.
+Automations manages routines and notices. Markets manages watchlists and alerts. System includes host health and
+device appearance.
+
+## How a Reply Works
+
+1. The Hermes gateway receives a message and passes it to the core. Admission checks the chat and sender.
+2. The core loads the character and resolves chat overrides, group or DM defaults and global settings.
+3. The turn pipeline builds the prompt, runs permitted tools, formats the reply and records the outcome in SQLite.
+4. The gateway returns the reply to the same chat. An owner-written message uses a separate confirmed submission
+   with a stable ID so the owner can look up its outcome after a disconnect.
+
+![WhatsApp messages flow through Hermes to the core, its tools, the models and the chat-scoped database](docs/diagrams/system-overview.svg)
 
 ## Repository Layout
 
@@ -57,12 +78,29 @@ deploy/                 Dockerfile, compose file, host units
 
 ## Development
 
+Use Node 24 and Bun. The repository includes one fictional character pack. A local checkout can run the core
+contract tests and the browser suite with a temporary database, an owner-service fixture and a fake gateway.
+
 ```sh
-bun install
+bun install --frozen-lockfile
+(cd site && bun install --frozen-lockfile)
 bun run typecheck
 bun run lint
+bun run format:check
 bun run test
+bun run --cwd site build
+bunx playwright install --with-deps chromium firefox webkit
+bun run test:dashboard
 ```
+
+The core uses TypeScript, SQLite and YAML character packs. The owner site uses React and Vite.
+Vitest exercises the core and Playwright drives the built site through the private HTTP listener.
+
+## Operations
+
+Keep real packs on the data volume and credentials in the host's protected configuration.
+The runbook covers the private listener, snapshots, deployment health and rollback.
+The [operator runbook](docs/RUNBOOK.md) and [deployment contract](docs/trd/deployment.md) give the commands.
 
 ## Documentation
 
@@ -76,5 +114,8 @@ bun run test
 | [TRD Modules](docs/trd/system.md)                         | Subsystem contracts under `docs/trd/`                    |
 
 ## Licence
+
+The dashboard font licences and pattern references are in the [site notes](site/README.md#dashboard-assets).
+The README banner combines a generated background with the AIRA glyph and wordmark.
 
 Released under the MIT Licence. Copyright (c) 2026 TolongLabs.
