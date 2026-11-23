@@ -15,7 +15,8 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    # Cold ffmpeg installs can exceed ten minutes before the test suite starts.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
         with:
