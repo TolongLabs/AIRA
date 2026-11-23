@@ -9,6 +9,7 @@ import { loadPacks, type PackSet } from './character/loader.js'
 import { writeUnavailableLine } from './character/unavailable.js'
 import { ConfigError } from './config/loader.js'
 import type { Config } from './config/schema.js'
+import { createConfigStatus } from './config/status.js'
 import { expireFeedback, pruneFeedbackAnswers } from './feedback/store.js'
 import { createFeedbackSync, type FeedbackSync } from './feedback/sync.js'
 import { withAttachments } from './format/attachments.js'
@@ -113,6 +114,10 @@ export interface AppOptions {
   siteDir?: string
   /** Optional read-only gateway channel directory JSON for fallback chat names. */
   channelDirectoryPath?: string
+  /** The exact config path parsed at start-up. Absent means injected in-memory config with no source file. */
+  configPath?: string
+  /** When the running config was applied. Defaults to creation time. */
+  configAppliedAt?: Date
   logger?: Logger
   /** Model clients to use instead of the configured endpoints: recordings, fakes. */
   clients?: { main?: ModelClient; fallback?: ModelClient }
@@ -145,6 +150,8 @@ export interface App {
   siteServer: Server
   alerter: Alerter
   packs: () => PackSet
+  /** Deployment activation readback for the owner dashboard. */
+  configStatus: () => import('./config/status.js').ConfigStatusSnapshot
   listen(port: number, host: string): Promise<AddressInfo>
   listenSite(port: number, host: string): Promise<AddressInfo>
   /** Takes one verified snapshot now. */
@@ -181,6 +188,13 @@ export async function createApp(options: AppOptions): Promise<App> {
   const redactor = createRedactor({ secrets: secretsFromEnv(SECRET_NAMES, env) })
   const logger = options.logger ?? createLogger({ level: config.log.level, module: 'core', redactor })
   if (redactor.weak.length > 0) logger.warn('records.weak_secret', { keys: redactor.weak })
+  const configStatusHolder = createConfigStatus({
+    config,
+    ...(options.configPath !== undefined ? { configPath: options.configPath } : {}),
+    ...(options.configAppliedAt !== undefined ? { appliedAt: options.configAppliedAt } : {}),
+    now
+  })
+  const configStatus = () => configStatusHolder.read()
 
   // Steps 1 to 4: the data volume, the database, migrations, the recovery pass.
   let alerter = createAlerter({ minGapMs: config.alerts.minGapMs, logger, now })
@@ -889,6 +903,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       version: options.version ?? '0.0.0',
       ready: () => ready,
       activeTurns: () => turns.active(),
+      configStatus,
       roles: () => ({
         main: { configured: Boolean(mainRole) || subscription, breakerOpen: breaker.isOpen('main') },
         fallback: {
@@ -916,6 +931,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       siteServer,
       alerter,
       packs,
+      configStatus,
       refreshUnavailableLine,
       snapshot: async (reason) => {
         try {
