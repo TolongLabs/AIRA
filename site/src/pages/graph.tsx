@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Search, X } from 'lucide-react'
 import { get } from '@/lib/api'
 import { Shell } from '@/components/shell'
@@ -142,16 +142,20 @@ function integrate(s: { nodes: Node[]; edges: Edge[]; alpha: number; drag: Node 
 
 function GraphCanvas({ focusId }: { focusId?: string } = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const inspectorCloseRef = useRef<HTMLButtonElement>(null)
+  const triggerRef = useRef<'keyboard' | 'pointer' | 'link'>('pointer')
   const [lens, setLens] = useState<Lens>('all')
   const [query, setQuery] = useState('')
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [total, setTotal] = useState({ nodes: 0, edges: 0 })
+  const [announcement, setAnnouncement] = useState('')
   /* There was no loading state at all, so "no data yet" and "nothing filed"
      were the same screen — an empty state without this flashes on every mount
      and every lens switch. */
   const [loaded, setLoaded] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [selected, setSelected] = useState<{
+    id: string
     label: string
     type: string
     owner?: string
@@ -177,6 +181,27 @@ function GraphCanvas({ focusId }: { focusId?: string } = {}) {
           : `/app/library.html#${url}`,
     [dashboard]
   )
+
+  /* One place builds the inspector row so pointer, keyboard and deep links
+     show the same panel. Arrows browse in place with a live announcement;
+     Enter moves into the panel, pointer and link leave focus where it is. */
+  const selectNode = useCallback((n: Node, trigger: 'keyboard' | 'pointer' | 'link') => {
+    triggerRef.current = trigger
+    const links = sim.current.edges
+      .filter((edge) => edge.a === n || edge.b === n)
+      .map((edge) => (edge.a === n ? edge.b : edge.a))
+      .slice(0, 40)
+      .map((m) => ({ label: m.label, type: m.type, url: m.url }))
+    setSelected({ id: n.id, label: n.label, type: n.type, owner: n.owner, done: n.done, url: n.url, links })
+    setAnnouncement(`${n.label}, ${n.type}, ${links.length} connections`)
+  }, [])
+
+  const closeInspector = useCallback(() => {
+    const trigger = triggerRef.current
+    setSelected(null)
+    setAnnouncement('')
+    if (trigger === 'keyboard') canvasRef.current?.focus()
+  }, [])
 
   /* everything the simulation mutates lives here, out of React's way */
   const sim = useRef({
@@ -284,25 +309,19 @@ function GraphCanvas({ focusId }: { focusId?: string } = {}) {
     sim.current.query = query.trim().toLowerCase()
   }, [query])
 
+  /* Focus stays on the canvas while arrows browse so every node is
+     reachable without tabbing back; Enter moves into the inspector and
+     Escape or close returns to the canvas. Pointer and link selections
+     never steal focus. */
+
   /* Dashboard deep link (?focus=<encoded item id>): select that node once it
      exists, same inspector as a tap. Runs on loaded + focus change only. */
   useEffect(() => {
     if (!loaded || !decodedFocus) return
     const n = sim.current.nodes.find((m) => m.id === decodedFocus || m.url === decodedFocus)
     if (!n) return
-    setSelected({
-      label: n.label,
-      type: n.type,
-      owner: n.owner,
-      done: n.done,
-      url: n.url,
-      links: sim.current.edges
-        .filter((edge) => edge.a === n || edge.b === n)
-        .map((edge) => (edge.a === n ? edge.b : edge.a))
-        .slice(0, 40)
-        .map((m) => ({ label: m.label, type: m.type, url: m.url }))
-    })
-  }, [loaded, decodedFocus])
+    selectNode(n, 'link')
+  }, [loaded, decodedFocus, selectNode])
 
   /* ── the loop ────────────────────────────────────────────────────────── */
   useEffect(() => {
@@ -428,18 +447,7 @@ function GraphCanvas({ focusId }: { focusId?: string } = {}) {
       if (n) {
         s.drag = n
         s.alpha = Math.max(s.alpha, 0.35) // a drag wakes the layout
-        setSelected({
-          label: n.label,
-          type: n.type,
-          owner: n.owner,
-          done: n.done,
-          url: n.url,
-          links: s.edges
-            .filter((edge) => edge.a === n || edge.b === n)
-            .map((edge) => (edge.a === n ? edge.b : edge.a))
-            .slice(0, 40)
-            .map((m) => ({ label: m.label, type: m.type, url: m.url }))
-        })
+        selectNode(n, 'pointer')
       } else {
         s.pan = { x: p.x, y: p.y }
       }
@@ -492,7 +500,7 @@ function GraphCanvas({ focusId }: { focusId?: string } = {}) {
       canvas.removeEventListener('pointercancel', onUp)
       canvas.removeEventListener('wheel', onWheel)
     }
-  }, [matches])
+  }, [matches, selectNode])
 
   const legend = useMemo(
     () =>
@@ -500,6 +508,76 @@ function GraphCanvas({ focusId }: { focusId?: string } = {}) {
         .sort((a, b) => b[1] - a[1])
         .slice(0, 6),
     [counts]
+  )
+
+  /* Keyboard access to the same nodes the pointer sees. Arrows walk the
+     matching nodes in label order, Enter moves into the inspector, Escape
+     clears and returns to the canvas. Zoom keys reuse the wheel clamp. */
+  const visibleNodes = useCallback(() => {
+    const q = query.trim().toLowerCase()
+    return sim.current.nodes
+      .filter((n) => !q || n.label.toLowerCase().includes(q))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  }, [query])
+
+  const stepSelection = useCallback(
+    (dir: 1 | -1 | 'first' | 'last') => {
+      const list = visibleNodes()
+      if (!list.length) return
+      const at = list.findIndex((n) => selected && n.id === selected.id)
+      const next =
+        dir === 'first'
+          ? list[0]!
+          : dir === 'last'
+            ? list[list.length - 1]!
+            : list[(at + dir + list.length) % list.length]!
+      selectNode(next, 'keyboard')
+    },
+    [selected, selectNode, visibleNodes]
+  )
+
+  const zoomKeyboard = useCallback((factor: number) => {
+    const v = sim.current.view
+    v.s = Math.min(4, Math.max(0.15, v.s * factor))
+  }, [])
+
+  const handleCanvasKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault()
+        stepSelection(1)
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        stepSelection(-1)
+      } else if (e.key === 'Home') {
+        e.preventDefault()
+        stepSelection('first')
+      } else if (e.key === 'End') {
+        e.preventDefault()
+        stepSelection('last')
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        if (!selected) {
+          e.preventDefault()
+          stepSelection('first')
+        } else {
+          e.preventDefault()
+          triggerRef.current = 'keyboard'
+          inspectorCloseRef.current?.focus()
+        }
+      } else if (e.key === 'Escape') {
+        if (selected) {
+          e.preventDefault()
+          closeInspector()
+        }
+      } else if (e.key === '+' || e.key === '=') {
+        e.preventDefault()
+        zoomKeyboard(1.2)
+      } else if (e.key === '-' || e.key === '_') {
+        e.preventDefault()
+        zoomKeyboard(1 / 1.2)
+      }
+    },
+    [closeInspector, selected, stepSelection, zoomKeyboard]
   )
 
   return (
@@ -518,7 +596,22 @@ function GraphCanvas({ focusId }: { focusId?: string } = {}) {
       {/* The canvas is the page. Taller too — the old height left a band of
           empty paper under it at every viewport over about 900px. */}
       <div className="relative h-[calc(100vh-190px)] min-h-[560px] overflow-hidden rounded-card border border-line bg-card">
-        <canvas ref={canvasRef} className="block size-full touch-none" style={{ cursor: 'grab' }} />
+        <canvas
+          ref={canvasRef}
+          className="block size-full touch-none"
+          style={{ cursor: 'grab' }}
+          tabIndex={0}
+          role="application"
+          aria-label={`Knowledge graph, ${total.nodes} nodes. Use arrow keys to move between nodes, Enter for details, plus and minus to zoom.`}
+          aria-describedby="graph-kb-help graph-kb-status"
+          onKeyDown={handleCanvasKeyDown}
+        />
+        <p id="graph-kb-help" className="sr-only">
+          Arrow keys move between matching nodes. Enter opens details. Escape closes details. Plus and minus zoom.
+        </p>
+        <p id="graph-kb-status" aria-live="polite" className="sr-only">
+          {announcement || (loaded ? `${visibleNodes().length} nodes match` : 'Loading graph')}
+        </p>
 
         {/* Nothing draws on an empty graph, so without this the page is a
             blank rectangle with a zero in the corner. Nothing here creates
@@ -567,13 +660,14 @@ function GraphCanvas({ focusId }: { focusId?: string } = {}) {
             ))}
           </div>
 
-          <div className="pointer-events-auto relative">
-            <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
+          <div className="pointer-events-auto relative min-w-0 w-full sm:w-auto">
+            <Search aria-hidden className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
             <Input
               value={query}
               placeholder="search nodes…"
+              aria-label="Search nodes"
               onChange={(e) => setQuery(e.target.value)}
-              className="w-64 bg-card/90 pl-9 backdrop-blur"
+              className="w-full min-w-0 bg-card/90 pl-9 backdrop-blur sm:w-64"
             />
           </div>
         </div>
@@ -613,7 +707,17 @@ function GraphCanvas({ focusId }: { focusId?: string } = {}) {
         </div>
 
         {selected && (
-          <aside className="absolute top-16 right-3 max-h-[70%] w-80 overflow-auto rounded-card border border-line bg-card p-4 shadow-float">
+          <aside
+            role="dialog"
+            aria-label={`Details for ${selected.label}`}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.stopPropagation()
+                closeInspector()
+              }
+            }}
+            className="absolute top-16 right-3 max-h-[70%] w-[calc(100%-1.5rem)] max-w-80 overflow-auto rounded-card border border-line bg-card p-4 shadow-float"
+          >
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="m-0 font-mono text-[0.66rem] uppercase tracking-[0.12em] text-muted">{selected.type}</p>
@@ -635,12 +739,13 @@ function GraphCanvas({ focusId }: { focusId?: string } = {}) {
                 </div>
               </div>
               <button
+                ref={inspectorCloseRef}
                 type="button"
-                aria-label="close"
-                onClick={() => setSelected(null)}
+                aria-label={`Close ${selected.label} details`}
+                onClick={closeInspector}
                 className="cursor-pointer border-0 bg-transparent p-1 text-muted hover:text-ink"
               >
-                <X className="size-4" />
+                <X aria-hidden className="size-4" />
               </button>
             </div>
 

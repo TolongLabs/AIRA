@@ -139,7 +139,7 @@ function Dashboard() {
       <>
         <button
           className="dashboard-brand"
-          aria-label={mobile ? 'Close navigation' : compact ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={mobile ? 'AIRA, close navigation' : compact ? 'Expand sidebar' : 'AIRA, collapse sidebar'}
           onClick={() => {
             if (mobile) drawer.current?.close()
             else {
