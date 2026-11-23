@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useContext, useEffect, useMemo, useState } from 'react'
 import { Pause, Pencil, Play, Plus, Trash2 } from 'lucide-react'
 import type { Chat, CronArchived, CronJob } from '@/lib/api'
-import { post } from '@/lib/api'
+import { get, post } from '@/lib/api'
+import { DashboardContext } from '@/dashboard/context'
+import { dashboardHref } from '@/dashboard/navigation'
+import '@/dashboard/automations.css'
 import { CRON_MODE_LABELS, CRON_MODES, CronJobPolicy, CronSchedule, type CronScheduleData } from '@/lib/cron-schedule'
 import { toast, Toaster, useApi } from '@/lib/hooks'
 import { DAYS, humanSchedule, midTrunc, until } from '@/lib/utils'
@@ -17,6 +20,7 @@ import {
   Section,
   Segmented,
   Spinner,
+  Tabs,
   Textarea
 } from '@/components/ui'
 import { GenerateButton } from '@/components/generate'
@@ -417,9 +421,333 @@ function JobRow({ job, chats, onChanged }: { job: CronJob; chats: Chat[]; onChan
   )
 }
 
+type RoutinesTab = 'scheduled' | 'archive'
+
+/* Dashboard-only helpers. Legacy MPA (cron.html) keeps its inline list; the
+ * dashboard (Figma 22:1102) is a master-detail: Scheduled and Archive tabs
+ * over an Upcoming Runs list with New Routine on the left and the Routine
+ * Detail on the right, stacked on phone. All reads use the same owner models
+ * (/api/cron, /api/chats) — no fictional data. Edits reuse JobEditor, so the
+ * schedule stays byte-for-byte and the full prompt unless changed, and
+ * core-managed aira: jobs stay read-only. */
+function routinesLocation(): { tab: RoutinesTab; query: string; selectedId: string | null; badId: boolean } {
+  if (typeof window === 'undefined') return { tab: 'scheduled', query: '', selectedId: null, badId: false }
+  const params = new URLSearchParams(window.location.search)
+  const tab: RoutinesTab = params.get('tab') === 'archive' ? 'archive' : 'scheduled'
+  const query = params.get('q') ?? ''
+  const m = window.location.pathname.match(/automations\/routines\/([^/?#]+)/)
+  if (!m || m[1] == null) return { tab, query, selectedId: null, badId: false }
+  try {
+    return { tab, query, selectedId: decodeURIComponent(m[1]), badId: false }
+  } catch {
+    return { tab, query, selectedId: null, badId: true }
+  }
+}
+
+function routinesListHref(tab: RoutinesTab, query: string): string {
+  const params = new URLSearchParams()
+  if (tab === 'archive') params.set('tab', 'archive')
+  if (query) params.set('q', query)
+  const qs = params.toString()
+  return dashboardHref('automations/routines') + (qs ? `?${qs}` : '')
+}
+
+function routineDetailHref(jobId: string, tab: RoutinesTab, query: string): string {
+  const params = new URLSearchParams()
+  if (tab === 'archive') params.set('tab', 'archive')
+  if (query) params.set('q', query)
+  const qs = params.toString()
+  return dashboardHref(`automations/routines/${encodeURIComponent(jobId)}`) + (qs ? `?${qs}` : '')
+}
+
+const ROUTINES_SCROLL_KEY = 'aira-automations-routines-scroll'
+
+function RoutinesDashboard({
+  jobsApi,
+  chatsApi
+}: {
+  jobsApi: {
+    data: { jobs: CronJob[]; archive?: CronArchived[] } | null
+    error: string | null
+    loading: boolean
+    reload: () => Promise<unknown>
+  }
+  chatsApi: { data: { chats: Chat[] } | null; error: string | null; loading: boolean; reload: () => void }
+}) {
+  const initial = useMemo(routinesLocation, [])
+  const [tab, setTab] = useState<RoutinesTab>(initial.tab)
+  const [query, setQuery] = useState(initial.query)
+  const [adding, setAdding] = useState(false)
+  const [missingChecked, setMissingChecked] = useState(false)
+  const selectedId = initial.selectedId
+  const badId = initial.badId
+  const chats = chatsApi.data?.chats ?? []
+  const jobs = useMemo(() => jobsApi.data?.jobs ?? [], [jobsApi.data])
+  const archive = useMemo(() => jobsApi.data?.archive ?? [], [jobsApi.data])
+
+  /* Filtered Upcoming Runs: enabled first by next run, then the rest by name.
+   * The query stays in the URL (?q=) so a cold link and a return from detail
+   * keep the same list. */
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    const rows = needle
+      ? jobs.filter((j) => `${j.name ?? ''} ${j.job_id} ${j.schedule ?? ''}`.toLowerCase().includes(needle))
+      : [...jobs]
+    const time = (j: CronJob) => {
+      const t = j.next_run_at ? Date.parse(j.next_run_at) : NaN
+      return Number.isFinite(t) ? (t as number) : Infinity
+    }
+    return rows.sort((a, b) => time(a) - time(b) || String(a.name ?? '').localeCompare(String(b.name ?? '')))
+  }, [jobs, query])
+
+  const selected = selectedId ? (jobs.find((j) => j.job_id === selectedId) ?? null) : null
+
+  /* A selected id missing from the first payload may be a stale list rather
+   * than a deleted job. Re-read once before calling it unknown; if the fresh
+   * read has it, refresh the list so detail renders instead of recovery. */
+  useEffect(() => {
+    if (!selectedId || selected || jobsApi.loading || jobsApi.error || missingChecked) return
+    let live = true
+    void get<{ jobs: CronJob[] }>('/api/cron')
+      .then(
+        (fresh) => {
+          if (live && fresh?.jobs?.some((j) => j.job_id === selectedId)) void jobsApi.reload()
+        },
+        () => undefined
+      )
+      .finally(() => {
+        if (live) setMissingChecked(true)
+      })
+    return () => {
+      live = false
+    }
+  }, [selectedId, selected, jobsApi, missingChecked])
+
+  /* Scroll restoration: leaving detail returns to the list position. */
+  useEffect(() => {
+    if (selectedId) return
+    const saved = Number(sessionStorage.getItem(ROUTINES_SCROLL_KEY) ?? '')
+    if (Number.isFinite(saved) && saved > 0) window.scrollTo({ top: saved })
+  }, [selectedId])
+
+  useEffect(() => {
+    if (jobsApi.error) toast(jobsApi.error, false)
+  }, [jobsApi.error])
+
+  function syncUrl(nextTab: RoutinesTab, nextQuery: string) {
+    const url = new URL(window.location.href)
+    if (nextTab === 'archive') url.searchParams.set('tab', 'archive')
+    else url.searchParams.delete('tab')
+    if (nextQuery) url.searchParams.set('q', nextQuery)
+    else url.searchParams.delete('q')
+    history.replaceState(null, '', url)
+  }
+
+  function changeTab(next: RoutinesTab) {
+    setTab(next)
+    setAdding(false)
+    if (selectedId || badId) {
+      window.location.href = routinesListHref(next, query)
+      return
+    }
+    syncUrl(next, query)
+  }
+
+  function changeQuery(next: string) {
+    setQuery(next)
+    syncUrl(tab, next)
+  }
+
+  function rememberScroll() {
+    try {
+      sessionStorage.setItem(ROUTINES_SCROLL_KEY, String(window.scrollY))
+    } catch {
+      /* private mode: the list simply starts at the top on return */
+    }
+  }
+
+  const listHref = routinesListHref(tab, query)
+
+  return (
+    <div className="automations-wrap">
+      <Toaster />
+      <Tabs
+        label="Routine views"
+        value={tab}
+        onChange={changeTab}
+        tabs={[
+          { key: 'scheduled', label: 'Scheduled', count: jobs.length },
+          { key: 'archive', label: 'Archive', count: archive.length }
+        ]}
+      />
+      {tab === 'archive' ? (
+        <div className="automations-panel">
+          {jobsApi.error && !jobsApi.data ? (
+            <div className="automations-alert" role="alert">
+              <p className="m-0 text-[0.9rem]">Schedule unavailable: {jobsApi.error}</p>
+              <div className="automations-actions">
+                <Button size="sm" variant="outline" onClick={() => void jobsApi.reload()}>
+                  Retry
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <ArchiveSection rows={archive} />
+          )}
+        </div>
+      ) : (
+        <div className="automations-layout">
+          <div className="automations-list">
+            <div className="automations-list-head">
+              <p className="automations-kicker">Upcoming runs</p>
+              <Button size="sm" variant="primary" onClick={() => setAdding(true)}>
+                <Plus />
+                New routine
+              </Button>
+            </div>
+            <Field label="Filter routines">
+              <Input
+                type="search"
+                value={query}
+                placeholder="name, id or schedule…"
+                aria-label="Filter routines"
+                onChange={(e) => changeQuery(e.target.value)}
+              />
+            </Field>
+            {jobsApi.loading && !jobsApi.data ? (
+              <p role="status" className="mt-3 mb-0 flex items-center gap-2 text-muted">
+                <Spinner /> loading…
+              </p>
+            ) : jobsApi.error && !jobsApi.data ? (
+              <div className="automations-alert mt-3" role="alert">
+                <p className="m-0 text-[0.9rem]">Schedule unavailable: {jobsApi.error}</p>
+                <div className="automations-actions">
+                  <Button size="sm" variant="outline" onClick={() => void jobsApi.reload()}>
+                    Retry
+                  </Button>
+                </div>
+              </div>
+            ) : !visible.length ? (
+              <p className="mt-3 mb-0 text-[0.92rem] text-muted">
+                {jobs.length ? 'Nothing matches this filter.' : 'Nothing scheduled yet. “New routine” starts one.'}
+              </p>
+            ) : (
+              <ul className="automations-rows">
+                {visible.map((j) => {
+                  const on = selectedId === j.job_id
+                  const next = j.next_run_at ? Date.parse(j.next_run_at) / 1000 : null
+                  return (
+                    <li key={j.job_id}>
+                      <a
+                        className="automations-row"
+                        aria-current={on || undefined}
+                        href={routineDetailHref(j.job_id, tab, query)}
+                        onClick={rememberScroll}
+                      >
+                        <span className="automations-row-name">{j.name || j.job_id}</span>
+                        <span className="automations-row-meta">
+                          {humanSchedule(j.schedule)}
+                          {next && j.enabled ? ` · next ${until(next)}` : j.enabled ? '' : ' · paused'}
+                        </span>
+                        <span className="automations-row-id">{j.job_id}</span>
+                      </a>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+            {chatsApi.error ? (
+              <div className="automations-alert mt-3" role="alert">
+                <p className="m-0 text-[0.85rem] text-muted">Chat destinations unavailable. {chatsApi.error}</p>
+                <div className="automations-actions">
+                  <Button size="sm" variant="ghost" onClick={() => chatsApi.reload()}>
+                    Retry
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+          <div className="automations-detail">
+            {adding ? (
+              <JobEditor
+                chats={chats}
+                onDone={() => {
+                  setAdding(false)
+                  void jobsApi.reload()
+                }}
+                onCancel={() => setAdding(false)}
+              />
+            ) : badId ? (
+              <div className="automations-alert" role="alert">
+                <p className="m-0 text-[0.9rem]">That routine link is not a valid routine.</p>
+                <div className="automations-actions">
+                  <a className="automations-row" href={listHref}>
+                    Back to routines
+                  </a>
+                </div>
+              </div>
+            ) : selectedId && !selected ? (
+              missingChecked || jobsApi.error ? (
+                <div className="automations-alert" role="alert">
+                  <p className="m-0 text-[0.9rem]">
+                    {jobsApi.error
+                      ? `Routine unavailable: ${jobsApi.error}`
+                      : 'This routine is gone — it was removed or the link is stale.'}
+                  </p>
+                  <div className="automations-actions">
+                    <a className="automations-row" href={listHref}>
+                      Back to routines
+                    </a>
+                    {jobsApi.error ? (
+                      <Button size="sm" variant="outline" onClick={() => void jobsApi.reload()}>
+                        Retry
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : (
+                <p role="status" className="m-0 flex items-center gap-2 text-muted">
+                  <Spinner /> checking the schedule…
+                </p>
+              )
+            ) : selected ? (
+              <>
+                {chatsApi.error ? (
+                  <div className="automations-alert" role="alert">
+                    <p className="m-0 text-[0.85rem] text-muted">Chat destinations unavailable. {chatsApi.error}</p>
+                    <div className="automations-actions">
+                      <Button size="sm" variant="ghost" onClick={() => chatsApi.reload()}>
+                        Retry
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+                <JobRow job={selected} chats={chats} onChanged={() => void jobsApi.reload()} />
+                {selected.prompt_preview || selected.prompt ? (
+                  <p className="automations-detail-prompt">
+                    {CronJobPolicy.editablePrompt({
+                      prompt: selected.prompt,
+                      prompt_preview: selected.prompt_preview
+                    })}
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <Empty title="No routine selected">
+                Pick a run on the left, or start a new routine. A link straight to a routine opens it here.
+              </Empty>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function CronPage() {
   const jobs = useApi<{ jobs: CronJob[]; archive?: CronArchived[] }>('/api/cron')
   const chatsApi = useApi<{ chats: Chat[] }>('/api/chats')
+  const inDashboard = useContext(DashboardContext)
   const [adding, setAdding] = useState(false)
   const chats = chatsApi.data?.chats ?? []
 
@@ -434,6 +762,16 @@ export default function CronPage() {
     () => [...scheduled].sort((a, b) => Date.parse(a.next_run_at!) - Date.parse(b.next_run_at!))[0],
     [scheduled]
   )
+
+  /* Dashboard (Figma 22:1102, editor 35:2377): the same owner models in a
+   * master-detail. Shell passes children through in the dashboard, so this
+   * keeps the legacy MPA byte-identical below. */
+  if (inDashboard)
+    return (
+      <Shell page="cron" title="Routines">
+        <RoutinesDashboard jobsApi={jobs} chatsApi={chatsApi} />
+      </Shell>
+    )
 
   return (
     <Shell

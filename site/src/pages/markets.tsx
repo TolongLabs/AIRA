@@ -1,13 +1,29 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { ArrowDown, ArrowUp, Bell, Plus, RefreshCw, TrendingDown, TrendingUp, X } from 'lucide-react'
-import type { Dashboard, History, NewsItem, Quote, Settings } from '@/lib/api'
+import type { Chat, Dashboard, History, NewsItem, Quote, Settings } from '@/lib/api'
 import { get, post } from '@/lib/api'
 import { toast, Toaster, useApi, useThemeColors } from '@/lib/hooks'
+import type { Async } from '@/lib/hooks'
 import { ago, price } from '@/lib/utils'
 import { Shell } from '@/components/shell'
-import { Button, Card, CardHead, Empty, Field, Input, Picker, Section, Segmented, Spinner } from '@/components/ui'
+import {
+  Button,
+  Card,
+  CardHead,
+  ConfirmAction,
+  Empty,
+  Field,
+  Input,
+  Picker,
+  Section,
+  Segmented,
+  Spinner,
+  Toggle
+} from '@/components/ui'
 import { SymbolSearch } from '@/components/symbol-search'
+import { DashboardContext } from '../dashboard/context'
+import '../dashboard/markets.css'
 
 /* WHY THIS PAGE IS SHAPED LIKE THIS
    It used to be a row of wrapping pills over a chart, and the only way to add
@@ -57,6 +73,54 @@ const SPAN_LABEL: Record<Span, string> = {
   '1m': 'the past month',
   '1y': 'the past year',
   '5y': 'the past five years'
+}
+
+/* ── dashboard tabs ─────────────────────────────────────────────────────
+   The orchestrator owns routing: entry.tsx maps a preview path to this page
+   and server.ts maps it to preview.html. This page only READS the logical
+   path and keeps it in its links, so /markets, /markets/watchlist,
+   /markets/alerts and /markets/news all land here and each tab stays
+   addressable with a cold load. Legacy /app/markets.html keeps its hash
+   workflow untouched. */
+
+type MarketTab = 'watchlist' | 'alerts' | 'news'
+
+const MARKET_TABS: { key: MarketTab; label: string }[] = [
+  { key: 'watchlist', label: 'Watchlist' },
+  { key: 'alerts', label: 'Alerts and Delivery' },
+  { key: 'news', label: 'News' }
+]
+
+function parseMarketTab(): MarketTab {
+  try {
+    const m = location.pathname.match(/\/markets(?:\/(watchlist|alerts|news))?\/?$/)
+    if (m?.[1]) return m[1] as MarketTab
+    const h = location.hash.replace(/^#\/?/, '').split(/[?/]/)[0]
+    if (h === 'watchlist' || h === 'alerts' || h === 'news') return h
+    const q = new URLSearchParams(location.search).get('tab')
+    if (q === 'watchlist' || q === 'alerts' || q === 'news') return q
+  } catch {
+    /* non-browser render or private mode — the default stands */
+  }
+  return 'watchlist'
+}
+
+/* The href each tab keeps in the DOM: the logical preview path when this
+   page is served under one, otherwise the legacy hash. Cold loads, refresh
+   and history all resolve through parseMarketTab above. */
+function marketTabHref(tab: MarketTab): string {
+  try {
+    const m = location.pathname.match(/^(.*\/markets)(?:\/(?:watchlist|alerts|news))?\/?$/)
+    if (m?.[1]) return `${m[1]}/${tab}`
+  } catch {
+    /* fall through to the hash */
+  }
+  return `#${tab}`
+}
+
+function isConflictMessage(message: string): boolean {
+  const m = message.toLowerCase()
+  return m.includes('conflict') || m.includes('changed in another') || m.includes('stale') || m.includes('409')
 }
 
 interface AlertRule {
@@ -318,19 +382,27 @@ function Alerts({
   alerts,
   quoteOf,
   disabled,
-  onSave
+  onSave,
+  focusSymbol
 }: {
   watch: string[]
   alerts: AlertRule[]
   quoteOf: (s: string) => Quote | undefined
   disabled?: boolean
   onSave: (next: AlertRule[]) => Promise<void>
+  /* Dashboard only: the Watchlist "Set alert" action names a symbol before
+     navigating here. Legacy callers omit it and behave exactly as before. */
+  focusSymbol?: string | null
 }) {
   const [symbol, setSymbol] = useState('')
   const [direction, setDirection] = useState<AlertRule['direction']>('below')
   const [level, setLevel] = useState('')
   const [savingAlert, setSavingAlert] = useState(false)
   const busy = disabled || savingAlert
+
+  useEffect(() => {
+    if (focusSymbol) setSymbol(focusSymbol.toLowerCase())
+  }, [focusSymbol])
 
   /* Nothing converts anywhere: a level is compared against the provider's own
      number, in the instrument's own currency. Naming it is the difference
@@ -611,6 +683,37 @@ export default function MarketsPage() {
   const [scope, setScope] = useState<'one' | 'all'>('one')
   const [fresh, setFresh] = useState<Record<string, NewsItem[]>>({})
 
+  /* Dashboard mode only. Legacy /app/markets.html renders the rail below
+     unchanged; under DashboardContext the same host facts render as tabs.
+     The tab is read from the logical path on every navigation so a cold load
+     on /markets/alerts lands on Alerts. */
+  const inDashboard = useContext(DashboardContext)
+  const [tab, setTab] = useState<MarketTab>(() => parseMarketTab())
+  const [alertFor, setAlertFor] = useState<string | null>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!inDashboard) return
+    const route = () => setTab(parseMarketTab())
+    window.addEventListener('popstate', route)
+    window.addEventListener('hashchange', route)
+    return () => {
+      window.removeEventListener('popstate', route)
+      window.removeEventListener('hashchange', route)
+    }
+  }, [inDashboard])
+
+  function selectTab(next: MarketTab) {
+    setTab(next)
+    if (!inDashboard) return
+    try {
+      history.pushState(null, '', marketTabHref(next))
+    } catch {
+      /* private mode or non-pushState mount — the state still switched */
+    }
+    panelRef.current?.focus()
+  }
+
   const news = useMemo(() => {
     const blobs = dash.data?.markets?.news ?? {}
     const pick = (key: string) => {
@@ -771,6 +874,50 @@ export default function MarketsPage() {
   }
 
   return (
+    /* Dashboard mode: the same host facts as tabs. Legacy below is untouched. */
+    inDashboard ? (
+      <DashboardMarkets
+        settings={settings}
+        dash={dash}
+        watch={watch}
+        alerts={alerts}
+        regions={regions}
+        sym={sym}
+        setSym={setSym}
+        span={span}
+        setSpan={setSpan}
+        hist={hist}
+        loadingChart={loadingChart}
+        chartErr={chartErr}
+        refreshing={refreshing}
+        adding={adding}
+        setAdding={setAdding}
+        mutating={mutating}
+        sort={sort}
+        setSort={setSort}
+        quoteOf={quoteOf}
+        nameOf={nameOf}
+        ordered={ordered}
+        quote={quote}
+        series={series}
+        move={move}
+        changeUp={changeUp}
+        stroke={stroke}
+        colors={c}
+        scope={scope}
+        setScope={setScope}
+        news={news}
+        tab={tab}
+        selectTab={selectTab}
+        alertFor={alertFor}
+        setAlertFor={setAlertFor}
+        panelRef={panelRef}
+        saveMarkets={saveMarkets}
+        addSymbol={addSymbol}
+        dropSymbol={dropSymbol}
+        refreshNews={refreshNews}
+      />
+    ) : (
     <Shell
       page="markets"
       title="Markets"
@@ -1153,5 +1300,790 @@ export default function MarketsPage() {
         </div>
       </div>
     </Shell>
+    )
+  )
+}
+
+/* ── dashboard mode ─────────────────────────────────────────────────────
+   Same host facts as the legacy rail, laid out for the dashboard shell:
+   tabs across the top right, a 60/40 Watchlist split, Alerts with its
+   delivery wiring, and News on its own tab. Every number comes from
+   /api/dashboard or /api/market/history; nothing is invented. Writes go
+   through the same /api/settings/markets save with the expected stamp, so
+   a stale edit is refused and reloaded rather than silently winning. */
+
+interface DashProps {
+  settings: Async<Settings>
+  dash: Async<Dashboard>
+  watch: string[]
+  alerts: AlertRule[]
+  regions: { value: string; label: string }[]
+  sym: string | null
+  setSym: (s: string | null) => void
+  span: Span
+  setSpan: (s: Span) => void
+  hist: History | null
+  loadingChart: boolean
+  chartErr: string | null
+  refreshing: boolean
+  adding: boolean
+  setAdding: (v: boolean | ((v: boolean) => boolean)) => void
+  mutating: boolean
+  sort: Sort
+  setSort: (s: Sort) => void
+  quoteOf: (s: string) => Quote | undefined
+  nameOf: (s: string) => string
+  ordered: string[]
+  quote: Quote | undefined
+  series: { t: number; v: number; label: string }[]
+  move: { pct: number } | null
+  changeUp: boolean
+  stroke: string
+  colors: Record<string, string>
+  scope: 'one' | 'all'
+  setScope: (s: 'one' | 'all') => void
+  news: { items: (NewsItem & { ts: number; symbol: string })[]; fetched: number }
+  tab: MarketTab
+  selectTab: (t: MarketTab) => void
+  alertFor: string | null
+  setAlertFor: (s: string | null) => void
+  panelRef: { current: HTMLDivElement | null }
+  saveMarkets: (patch: { watchlist?: string[]; alerts?: AlertRule[] }) => Promise<void>
+  addSymbol: (s: string) => Promise<void>
+  dropSymbol: (s: string) => Promise<void>
+  refreshNews: () => Promise<void>
+}
+
+function DashboardMarkets(props: DashProps) {
+  const { settings, tab, selectTab, panelRef } = props
+  const activeLabel = MARKET_TABS.find((t) => t.key === tab)?.label ?? 'Watchlist'
+  return (
+    <div className="mkd">
+      <Toaster />
+      <nav aria-label="Markets views" className="mkd-tabs">
+        {MARKET_TABS.map((t) => {
+          const on = t.key === tab
+          return (
+            <a
+              key={t.key}
+              href={marketTabHref(t.key)}
+              aria-current={on ? 'page' : undefined}
+              onClick={(e) => {
+                e.preventDefault()
+                if (!on) selectTab(t.key)
+              }}
+              className={'mkd-tab' + (on ? ' mkd-tab-on' : '')}
+            >
+              {t.label}
+            </a>
+          )
+        })}
+      </nav>
+      {settings.error && isConflictMessage(settings.error) && (
+        <p role="alert" className="mkd-conflict">
+          Settings changed elsewhere: {settings.error}{' '}
+          <button type="button" className="mkd-link" onClick={() => void settings.reload()}>
+            Reload and compare
+          </button>
+        </p>
+      )}
+      <div ref={panelRef} tabIndex={-1} className="mkd-panel" aria-label={activeLabel}>
+        {tab === 'watchlist' && <DashWatchlist {...props} />}
+        {tab === 'alerts' && <DashAlertsDelivery {...props} />}
+        {tab === 'news' && <DashNews {...props} />}
+      </div>
+    </div>
+  )
+}
+
+/* Watchlist tab: two cards, 60/40. Left adds, sorts and lists; right shows
+   the selected instrument's actual quote, range chart and actions. */
+function DashWatchlist(props: DashProps) {
+  const {
+    settings,
+    dash,
+    watch,
+    regions,
+    sym,
+    setSym,
+    span,
+    setSpan,
+    hist,
+    loadingChart,
+    chartErr,
+    series,
+    move,
+    changeUp,
+    stroke,
+    colors,
+    sort,
+    setSort,
+    quoteOf,
+    nameOf,
+    ordered,
+    quote,
+    mutating,
+    selectTab,
+    setAlertFor,
+    setScope,
+    addSymbol,
+    dropSymbol
+  } = props
+  const listRef = useRef<HTMLDivElement>(null)
+  const settingsBusy = mutating || !settings.data || !!settings.error
+  const sortValue = `${sort.key}:${sort.desc ? 'desc' : 'asc'}`
+
+  function moveSelection(delta: number) {
+    if (!ordered.length) return
+    const at = sym ? ordered.findIndex((s) => s.toLowerCase() === sym.toLowerCase()) : -1
+    const next = ordered[(at + delta + ordered.length) % ordered.length] ?? null
+    if (next) setSym(next)
+  }
+
+  return (
+    <section aria-label="Watchlist" className="mkd-grid">
+      <div className="mkd-card">
+        <h2 className="mkd-h">Add instrument</h2>
+        <SymbolSearch regions={regions} onPick={(s) => void addSymbol(s)} />
+        <div className="mkd-row">
+          <label className="mkd-label" htmlFor="mkd-sort">
+            Sort by
+          </label>
+          <select
+            id="mkd-sort"
+            value={sortValue}
+            onChange={(e) => {
+              const [key, dir] = e.target.value.split(':')
+              setSort({ key: key as SortKey, desc: dir === 'desc' })
+            }}
+            className="mkd-select"
+          >
+            <option value="added:desc">Newest first</option>
+            <option value="added:asc">Oldest first</option>
+            <option value="symbol:asc">Name, A to Z</option>
+            <option value="symbol:desc">Name, Z to A</option>
+            <option value="price:desc">Dearest first</option>
+            <option value="price:asc">Cheapest first</option>
+            <option value="change:desc">Biggest risers first</option>
+            <option value="change:asc">Biggest fallers first</option>
+          </select>
+        </div>
+        {settings.loading && !settings.data ? (
+          <p role="status" className="mkd-muted">
+            Loading watchlist…
+          </p>
+        ) : settings.error ? (
+          <p role="alert" className="mkd-error">
+            Watchlist unavailable: {settings.error}{' '}
+            <button type="button" className="mkd-link" onClick={() => void settings.reload()}>
+              Retry
+            </button>
+          </p>
+        ) : !watch.length ? (
+          <p className="mkd-muted">
+            Nothing followed yet. Add a company, an index or a coin above and its price, chart and headlines appear
+            here.
+          </p>
+        ) : (
+          <div
+            ref={listRef}
+            role="listbox"
+            aria-label="Followed instruments"
+            aria-activedescendant={sym ? `mkd-opt-${sym.toLowerCase()}` : undefined}
+            tabIndex={0}
+            className="mkd-list"
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault()
+                moveSelection(1)
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault()
+                moveSelection(-1)
+              } else if (e.key === 'Home') {
+                e.preventDefault()
+                if (ordered[0]) setSym(ordered[0])
+              } else if (e.key === 'End') {
+                e.preventDefault()
+                if (ordered[ordered.length - 1]) setSym(ordered[ordered.length - 1])
+              }
+            }}
+          >
+            {ordered.map((s) => {
+              const q = quoteOf(s)
+              const pct = q?.change_pct
+              const on = sym?.toLowerCase() === s.toLowerCase()
+              return (
+                <button
+                  key={s}
+                  id={`mkd-opt-${s.toLowerCase()}`}
+                  type="button"
+                  role="option"
+                  aria-selected={on}
+                  onClick={() => setSym(s)}
+                  className={'mkd-opt' + (on ? ' mkd-opt-on' : '')}
+                >
+                  <span className="mkd-opt-main">
+                    <b className="mkd-sym">{s.toUpperCase()}</b>
+                    <span className="mkd-name">{nameOf(s) || '—'}</span>
+                  </span>
+                  <span className="mkd-nums">
+                    <span className="mkd-price">
+                      {q?.price != null ? price(q.price, q.currency) : <span className="mkd-muted">···</span>}
+                    </span>
+                    <span className={'mkd-pct ' + (pct == null ? 'mkd-muted' : pct >= 0 ? 'mkd-up' : 'mkd-down')}>
+                      {pct == null ? '···' : `${pct >= 0 ? '+' : '−'}${Math.abs(pct).toFixed(2)}%`}
+                    </span>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+        {dash.error && (
+          <p role="status" className="mkd-muted">
+            Quotes unavailable right now — prices may be stale.
+          </p>
+        )}
+      </div>
+
+      <div className="mkd-card">
+        {!sym ? (
+          <>
+            <h2 className="mkd-h">Instrument</h2>
+            <p className="mkd-muted">Pick an instrument on the left to see its quote and chart.</p>
+          </>
+        ) : (
+          <>
+            <h2 className="mkd-h">
+              {sym.toUpperCase()}
+              {nameOf(sym) ? <span className="mkd-h-sub"> — {nameOf(sym)}</span> : null}
+            </h2>
+            <p className="mkd-quote">
+              <b className="mkd-quote-price">{price(quote?.price ?? hist?.price, quote?.currency ?? hist?.currency)}</b>
+              {quote?.currency && <span className="mkd-muted"> {quote.currency}</span>}
+              {quote?.exchange && <span className="mkd-muted"> · {quote.exchange}</span>}
+              {move != null && (
+                <span className={changeUp ? 'mkd-up' : 'mkd-down'}>
+                  {' '}
+                  {changeUp ? '+' : '−'}
+                  {Math.abs(move.pct).toFixed(2)}% {span === '1d' ? 'today' : `over ${SPAN_LABEL[span]}`}
+                </span>
+              )}
+            </p>
+            {!quote && (
+              <p role="status" className="mkd-muted">
+                No quote for this one yet — the poller has not been round since it was added.
+              </p>
+            )}
+            <div className="mkd-row" role="group" aria-label="Chart range">
+              {SPANS.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  aria-pressed={s === span}
+                  onClick={() => setSpan(s)}
+                  className={'mkd-range' + (s === span ? ' mkd-range-on' : '')}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+            <div className="mkd-chart">
+              {loadingChart && !series.length ? (
+                <p role="status" className="mkd-muted">
+                  Loading chart…
+                </p>
+              ) : chartErr ? (
+                <p role="status" className="mkd-error">
+                  Chart unavailable: {chartErr}
+                </p>
+              ) : !series.length ? (
+                <p className="mkd-muted">No history for this range.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={240}>
+                  <AreaChart data={series} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                    <defs>
+                      <linearGradient id="mkd-fill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={stroke} stopOpacity={0.28} />
+                        <stop offset="100%" stopColor={stroke} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid vertical={false} stroke={colors.line} />
+                    <XAxis
+                      dataKey="label"
+                      tickLine={false}
+                      axisLine={false}
+                      minTickGap={60}
+                      tick={{ fill: colors.muted, fontSize: 11 }}
+                    />
+                    <YAxis
+                      domain={['auto', 'auto']}
+                      width={62}
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fill: colors.muted, fontSize: 11 }}
+                      tickFormatter={(v: number) => price(v)}
+                    />
+                    <Tooltip
+                      cursor={{ stroke: colors.lineStrong, strokeDasharray: '3 3' }}
+                      content={({ active, payload }) => {
+                        const row = active ? payload?.[0]?.payload : null
+                        if (!row) return null
+                        return (
+                          <ChartTip
+                            t={row.t}
+                            v={row.v}
+                            span={span}
+                            currency={hist?.currency}
+                            first={series[0]}
+                            colors={colors}
+                          />
+                        )
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="v"
+                      stroke={stroke}
+                      strokeWidth={2}
+                      fill="url(#mkd-fill)"
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+            {series.length > 0 && (
+              <p className="mkd-muted">
+                {series.length} points{hist?.currency ? ` · ${hist.currency}` : ''}
+              </p>
+            )}
+            <div className="mkd-actions">
+              <Button
+                size="sm"
+                variant="primary"
+                disabled={settingsBusy}
+                onClick={() => {
+                  setAlertFor(sym.toLowerCase())
+                  selectTab('alerts')
+                }}
+              >
+                <Bell />
+                Set alert
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setScope('one')
+                  selectTab('news')
+                }}
+              >
+                Instrument news
+              </Button>
+              <ConfirmAction
+                key={`unfollow-${sym}`}
+                size="sm"
+                label="Unfollow"
+                confirmLabel="Unfollow"
+                question={`Stop following ${sym.toUpperCase()}?`}
+                warning="It leaves every chat list and armed alert untouched. This only removes it from the default list."
+                disabled={settingsBusy}
+                onConfirm={() => dropSymbol(sym)}
+              />
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  )
+}
+
+/* Alerts and Delivery tab: armed alerts plus where they go and the hourly
+   digest — the wiring nobody makes while reading a chart. The per-chat
+   lists live here too, reusing the same host endpoints as Settings. */
+function DashAlertsDelivery(props: DashProps) {
+  const { settings, dash, watch, alerts, quoteOf, mutating, alertFor, saveMarkets } = props
+  const chats = useApi<{ chats: Chat[] }>('/api/chats')
+  const rows = chats.data?.chats ?? []
+  const target = String(settings.data?.markets?.default_target ?? '')
+  const digest = settings.data?.markets?.news_digest ?? {}
+  const digestOn = Boolean((digest as { enabled?: boolean }).enabled)
+  const digestTo = ((digest as { to?: unknown[] }).to ?? []).map(String)
+  const rawHours = (digest as { hours?: unknown }).hours
+  const digestHours = Array.isArray(rawHours) ? rawHours.map(Number).filter((n) => Number.isFinite(n)) : []
+  const disabled = mutating || !settings.data || !!settings.error
+
+  async function saveDelivery(patch: {
+    default_target?: string
+    news_digest?: { enabled: boolean; to: string[]; hours?: number[] }
+  }) {
+    if (!settings.data || settings.error) {
+      toast('settings are still loading — try again in a moment', false)
+      return
+    }
+    try {
+      await saveMarkets(patch as { watchlist?: string[]; alerts?: AlertRule[] })
+      toast('saved ✓')
+      void dash.reload()
+    } catch (e) {
+      toast((e as Error).message, false)
+    }
+  }
+
+  return (
+    <div className="mkd-stack">
+      <section aria-label="Armed alerts" className="mkd-card">
+        <h2 className="mkd-h">Armed alerts</h2>
+        {settings.loading && !settings.data ? (
+          <p role="status" className="mkd-muted">
+            Loading alerts…
+          </p>
+        ) : settings.error ? (
+          <p role="alert" className="mkd-error">
+            Alerts unavailable: {settings.error}{' '}
+            <button type="button" className="mkd-link" onClick={() => void settings.reload()}>
+              Retry
+            </button>
+          </p>
+        ) : (
+          <Alerts
+            watch={watch}
+            alerts={alerts}
+            quoteOf={quoteOf}
+            disabled={disabled}
+            focusSymbol={alertFor}
+            onSave={async (next) => {
+              if (!settings.data || settings.error) {
+                toast('settings are still loading — try again in a moment', false)
+                throw new Error('settings not ready')
+              }
+              try {
+                await saveMarkets({ alerts: next })
+                toast('saved ✓')
+                void dash.reload()
+              } catch (e) {
+                toast((e as Error).message, false)
+                throw e
+              }
+            }}
+          />
+        )}
+      </section>
+
+      <section aria-label="Delivery" className="mkd-card">
+        <h2 className="mkd-h">Delivery</h2>
+        <Field
+          label="chat that receives alerts armed on the Markets page"
+          hint={
+            target
+              ? 'Alerts you arm in a chat still answer that chat instead.'
+              : 'No chat chosen, so these alerts will not be delivered.'
+          }
+        >
+          <Picker
+            ariaLabel="default chat"
+            className="w-full max-w-md"
+            placeholder="pick a chat…"
+            searchPlaceholder="type a name or number…"
+            value={target}
+            onChange={(v) => void saveDelivery({ default_target: v })}
+            options={rows.map((c) => ({
+              value: c.target,
+              label: c.label || c.name || c.jid,
+              hint: String(c.jid).split('@')[0]
+            }))}
+          />
+        </Field>
+        <div className="mkd-gap">
+          <Toggle
+            checked={digestOn}
+            disabled={!digestOn && digestTo.length === 0}
+            onChange={(v) => void saveDelivery({ news_digest: { enabled: v, to: digestTo, hours: digestHours } })}
+            label="Send an hourly world-news digest"
+            hint={
+              digestTo.length === 0
+                ? 'Pick a chat below first.'
+                : 'World headlines every hour. Your instruments are only mentioned on a day they actually moved.'
+            }
+          />
+        </div>
+        <Field label="chat that receives the digest" hint="The digest is assembled locally, so it costs nothing to run.">
+          <Picker
+            ariaLabel="chat that receives the digest"
+            className="w-full max-w-md"
+            placeholder="pick a chat…"
+            searchPlaceholder="type a name or number…"
+            value={digestTo[0] ?? ''}
+            onChange={(v) => {
+              const tail = digestTo.slice(1).filter((t) => t !== v)
+              const to = v ? [v, ...tail] : tail
+              void saveDelivery({
+                news_digest: { enabled: to.length ? digestOn : false, to, hours: digestHours }
+              })
+            }}
+            options={rows.map((c) => ({
+              value: c.target,
+              label: c.label || c.name || c.jid,
+              hint: String(c.jid).split('@')[0]
+            }))}
+          />
+        </Field>
+        {chats.error && (
+          <p role="status" className="mkd-muted">
+            Chat list unavailable — delivery pickers may be empty.
+          </p>
+        )}
+      </section>
+
+      <section aria-label="Per-chat watchlists" className="mkd-card">
+        <h2 className="mkd-h">Per-chat watchlists</h2>
+        <p className="mkd-muted">
+          A chat with no list of its own is answered from the default list. Give one its own and “how are our stocks”
+          in that group means their holdings, not yours.
+        </p>
+        {chats.loading && !chats.data ? (
+          <p role="status" className="mkd-muted">
+            Loading chats…
+          </p>
+        ) : chats.error ? (
+          <p role="alert" className="mkd-error">
+            Chats unavailable: {chats.error}{' '}
+            <button type="button" className="mkd-link" onClick={() => void chats.reload()}>
+              Retry
+            </button>
+          </p>
+        ) : (
+          <DashChatWatchlists chats={rows} regions={props.regions} />
+        )}
+      </section>
+    </div>
+  )
+}
+
+/* Per-chat editor. Same host endpoints and receipt checks as Settings, kept
+   here so the dashboard never imports across pages; settings.tsx is untouched. */
+function DashChatWatchlists({ chats, regions }: { chats: Chat[]; regions: { value: string; label: string }[] }) {
+  const [open, setOpen] = useState<string>('')
+  const [rows, setRows] = useState<Record<string, string[]>>({})
+  const [own, setOwn] = useState<Record<string, boolean>>({})
+  const [inherit, setInherit] = useState<Record<string, boolean>>({})
+  const [busy, setBusy] = useState<Record<string, boolean>>({})
+  const rowsRef = useRef<Record<string, string[]>>({})
+  const chainRef = useRef<Record<string, Promise<void>>>({})
+
+  useEffect(() => {
+    const next = Object.fromEntries(chats.map((c) => [c.scope_key ?? c.jid, (c.watchlist ?? []).map(String)]))
+    rowsRef.current = next
+    setRows(next)
+    setOwn(Object.fromEntries(chats.map((c) => [c.scope_key ?? c.jid, !!c.own_watchlist])))
+    setInherit(Object.fromEntries(chats.map((c) => [c.scope_key ?? c.jid, !!c.inherits_watchlist])))
+  }, [chats])
+
+  function runSerialized(key: string, fn: () => Promise<void>): Promise<void> {
+    const prev = chainRef.current[key] ?? Promise.resolve()
+    const next = prev.then(fn)
+    chainRef.current[key] = next.catch(() => {})
+    return next
+  }
+
+  async function setFollowsDefault(chat: Chat, want: boolean) {
+    const key = chat.scope_key ?? chat.jid
+    const scopeKey = chat.scope_key ?? chat.jid
+    return runSerialized(key, async () => {
+      setBusy((was) => ({ ...was, [key]: true }))
+      try {
+        const r = await post<{ scope_key: string; inherits_default: boolean; watchlist: string[] }>(
+          '/api/settings/watchlist_inherit',
+          { scope_key: scopeKey, inherit: want }
+        )
+        if (r.scope_key !== scopeKey || r.inherits_default !== want) throw new Error('Unexpected watchlist update')
+        rowsRef.current = { ...rowsRef.current, [key]: r.watchlist }
+        setInherit((was) => ({ ...was, [key]: r.inherits_default }))
+        setRows((was) => ({ ...was, [key]: r.watchlist }))
+        if (r.inherits_default) setOwn((was) => ({ ...was, [key]: false }))
+        toast(r.inherits_default ? 'following the default list ✓' : 'no longer following it ✓')
+      } catch (e) {
+        toast((e as Error).message, false)
+      } finally {
+        setBusy((was) => ({ ...was, [key]: false }))
+      }
+    })
+  }
+
+  function mutate(chat: Chat, update: (prev: string[]) => string[]) {
+    const key = chat.scope_key ?? chat.jid
+    const scopeKey = chat.scope_key ?? chat.jid
+    return runSerialized(key, async () => {
+      const prev = rowsRef.current[key] ?? []
+      const next = update(prev)
+      setBusy((was) => ({ ...was, [key]: true }))
+      try {
+        const r = await post<{ scope_key: string; inherits_default: boolean; watchlist: string[] }>(
+          '/api/settings/watchlist',
+          { scope_key: scopeKey, symbols: next.join(' ') }
+        )
+        if (r.scope_key !== scopeKey) throw new Error('Unexpected watchlist update')
+        rowsRef.current = { ...rowsRef.current, [key]: r.watchlist }
+        setRows((was) => ({ ...was, [key]: r.watchlist }))
+        setInherit((was) => ({ ...was, [key]: r.inherits_default }))
+        setOwn((was) => ({ ...was, [key]: !r.inherits_default && r.watchlist.length > 0 }))
+        toast('saved ✓')
+      } catch (e) {
+        toast((e as Error).message, false)
+      } finally {
+        setBusy((was) => ({ ...was, [key]: false }))
+      }
+    })
+  }
+
+  const named = chats.filter((c) => !c.pending)
+  if (!named.length) return <p className="mkd-muted">No chats yet.</p>
+
+  return (
+    <div className="mkd-chats">
+      {named.map((c) => {
+        const key = c.scope_key ?? c.jid
+        const list = rows[key] ?? rowsRef.current[key] ?? []
+        const isOpen = open === key
+        const isBusy = !!busy[key]
+        return (
+          <div key={key} className="mkd-chat">
+            <div className="mkd-chat-head">
+              <b>{c.label || c.name || c.jid}</b>
+              <span className="mkd-muted">{own[key] ? 'its own list' : inherit[key] ? 'follows default' : 'nothing here'}</span>
+              <button type="button" className="mkd-link" onClick={() => setOpen(isOpen ? '' : key)}>
+                {isOpen ? 'done' : 'edit'}
+              </button>
+            </div>
+            <div className="mkd-tags">
+              {list.map((s) =>
+                own[key] ? (
+                  <span key={s} className="mkd-tag">
+                    {s}
+                    <button
+                      type="button"
+                      aria-label={`remove ${s} from ${c.label || c.name}`}
+                      disabled={isBusy}
+                      onClick={() => void mutate(c, (prev) => prev.filter((x) => x !== s))}
+                      className="mkd-x"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </span>
+                ) : (
+                  <span key={s} className="mkd-tag-dim">
+                    {s}
+                  </span>
+                )
+              )}
+              {!list.length && <span className="mkd-muted">Nothing tracked here.</span>}
+            </div>
+            {isOpen && (
+              <div className="mkd-gap">
+                <SymbolSearch regions={regions} onPick={(s) => void mutate(c, (prev) => [...new Set([...prev, s])])} />
+                <label className="mkd-check">
+                  <input
+                    type="checkbox"
+                    checked={!!inherit[key]}
+                    disabled={!!own[key] || isBusy}
+                    onChange={(e) => void setFollowsDefault(c, e.target.checked)}
+                  />
+                  <span className="mkd-muted">Follow the default list from Markets.</span>
+                </label>
+                {own[key] && (
+                  <ConfirmAction
+                    key={`clear-${key}`}
+                    size="sm"
+                    label="clear this chat’s list"
+                    confirmLabel="Clear"
+                    question={`Clear the list for ${c.label || c.name}?`}
+                    warning="The chat then follows nothing until it is given a list or follows the default."
+                    disabled={isBusy}
+                    onConfirm={() => mutate(c, () => [])}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/* News tab: the same deterministic poller stories, scoped to one instrument
+   or everything, newest first. */
+function DashNews(props: DashProps) {
+  const { dash, sym, scope, setScope, news, refreshing, refreshNews } = props
+  return (
+    <section aria-label="News" className="mkd-card">
+      <div className="mkd-news-head">
+        <h2 className="mkd-h">News</h2>
+        <div className="mkd-row" role="group" aria-label="News scope">
+          {(['one', 'all'] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              aria-pressed={scope === v}
+              onClick={() => setScope(v)}
+              className={'mkd-range' + (scope === v ? ' mkd-range-on' : '')}
+            >
+              {v === 'one' ? (sym?.toUpperCase() ?? 'this one') : 'everything'}
+            </button>
+          ))}
+        </div>
+        <span className="mkd-muted">{news.fetched ? `fetched ${ago(news.fetched)}` : ''}</span>
+        <Button size="sm" variant="ghost" disabled={refreshing || !sym} onClick={() => void refreshNews()}>
+          {refreshing ? <Spinner /> : <RefreshCw />}
+          {refreshing ? 'fetching…' : 'refresh'}
+        </Button>
+      </div>
+      {dash.loading && !dash.data ? (
+        <p role="status" className="mkd-muted">
+          Loading stories…
+        </p>
+      ) : dash.error && !news.items.length ? (
+        <p role="alert" className="mkd-error">
+          News unavailable: {dash.error}{' '}
+          <button type="button" className="mkd-link" onClick={() => void dash.reload()}>
+            Retry
+          </button>
+        </p>
+      ) : news.items.length ? (
+        <ul className="mkd-news">
+          {news.items.map((it, i) => {
+            const src = (it.source ?? '').trim() || it.domain || 'unattributed'
+            const when = it.ts ? new Date(it.ts * 1000) : null
+            const prev = i > 0 ? news.items[i - 1] : null
+            const day = when ? when.toDateString() : ''
+            const prevDay = prev?.ts ? new Date(prev.ts * 1000).toDateString() : ''
+            return (
+              <li key={`${it.title}-${i}`} className="mkd-story">
+                {day && day !== prevDay && <p className="mkd-day">{dayLabel(when as Date)}</p>}
+                <a href={it.link} target="_blank" rel="noopener noreferrer" className="mkd-title">
+                  {it.title || '(untitled)'}
+                </a>
+                <span className="mkd-meta">
+                  <span className="mkd-src">{src}</span>
+                  {(it.also ?? 0) > 0 && <span>+{it.also} more</span>}
+                  {scope === 'all' && <span>{it.symbol}</span>}
+                  <span title={when ? when.toLocaleString() : 'no date'}>{it.ts ? ago(it.ts) : 'undated'}</span>
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+      ) : (
+        <>
+          <p className="mkd-muted">{sym ? `Nothing for ${sym.toUpperCase()} this week` : 'No stories yet'}</p>
+          <p className="mkd-muted">
+            Stories older than a week are dropped rather than shown as news. Headlines come from TickerTick, Yahoo
+            Finance and Google News — all keyless, none billed.
+          </p>
+        </>
+      )}
+    </section>
   )
 }

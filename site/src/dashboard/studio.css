@@ -1,0 +1,356 @@
+/* Character Studio. Shared dashboard tokens only: --tile, --glass, --active, --text. */
+
+.studio-catalogue,
+.studio-editor,
+.studio-sim {
+  display: grid;
+  gap: 16px;
+}
+
+/* ── catalogue ── */
+
+.studio-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.studio-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.studio-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.studio-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 10px 18px;
+  border-radius: 8px;
+  background: var(--active);
+  color: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+}
+
+.studio-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.studio-primary {
+  font-weight: 700;
+}
+
+.studio-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.studio-card {
+  display: grid;
+  gap: 8px;
+  background: var(--tile);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.studio-card-link {
+  display: grid;
+  gap: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.studio-art {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 2 / 3;
+  border-radius: 12px;
+  background: var(--active);
+  font-size: 44px;
+  font-weight: 600;
+}
+
+.studio-card-name {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.studio-card-meta {
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.studio-card-id {
+  font-family: 'Geist Mono', monospace;
+  font-size: 12px;
+}
+
+.studio-source {
+  justify-self: start;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--glass);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.studio-card-links {
+  font-size: 13px;
+}
+
+.studio-faults {
+  background: var(--tile);
+  border-radius: 16px;
+  padding: 16px 20px;
+}
+
+/* ── editor ── */
+
+.studio-crumb {
+  font-size: 13px;
+}
+
+.studio-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.studio-title {
+  margin: 0;
+  font-size: 24px;
+}
+
+.studio-banner {
+  background: var(--tile);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin: 0;
+}
+
+.studio-body {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.studio-sections {
+  position: sticky;
+  top: 8px;
+  display: grid;
+  gap: 4px;
+}
+
+.studio-sections a {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.studio-sections a:hover {
+  background: var(--tile);
+}
+
+.studio-form {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.studio-section {
+  display: grid;
+  gap: 12px;
+  background: var(--tile);
+  border-radius: 16px;
+  padding: 20px;
+}
+
+.studio-section h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.studio-section h4 {
+  margin: 8px 0 0;
+  font-size: 14px;
+}
+
+.studio-field {
+  display: grid;
+  gap: 6px;
+}
+
+.studio-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.studio-hint {
+  font-size: 12px;
+  opacity: 0.75;
+  margin: 0;
+}
+
+.studio-error {
+  font-size: 12px;
+  color: #b3261e;
+}
+
+[data-theme='dark'] .studio-error {
+  color: #f2a8a2;
+}
+
+.studio-section input,
+.studio-section select,
+.studio-section textarea,
+.studio-controls input,
+.studio-controls select {
+  background: var(--glass);
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  padding: 10px;
+  color: inherit;
+  width: 100%;
+  font: inherit;
+}
+
+.studio-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.studio-row input {
+  flex: 1;
+  min-width: 140px;
+}
+
+.studio-mood-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.studio-mood-tabs button {
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--glass);
+  border: 1px solid transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.studio-tab-on {
+  border-color: currentColor;
+  font-weight: 700;
+}
+
+.studio-beats {
+  display: grid;
+  gap: 10px;
+  border: 1px solid currentColor;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.studio-pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--glass);
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 13px;
+  margin: 0;
+}
+
+.studio-errors {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+/* ── simulator phone ── */
+
+.studio-sim {
+  max-width: 480px;
+}
+
+.studio-phone {
+  display: grid;
+  gap: 8px;
+  background: var(--glass);
+  border-radius: 20px;
+  padding: 16px;
+}
+
+.studio-bubble {
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: var(--tile);
+}
+
+.studio-bubble p {
+  margin: 0 0 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.studio-bubble p:last-child {
+  margin-bottom: 0;
+}
+
+.studio-bubble small {
+  display: block;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+@media (max-width: 760px) {
+  .studio-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .studio-body {
+    grid-template-columns: 1fr;
+  }
+
+  .studio-sections {
+    position: static;
+    grid-auto-flow: column;
+    grid-template-rows: auto;
+    overflow-x: auto;
+  }
+
+  .studio-sections a {
+    white-space: nowrap;
+  }
+}

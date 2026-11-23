@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import { get } from '@/lib/api'
 import { Shell } from '@/components/shell'
 import { Input } from '@/components/ui'
 import { cn, num } from '@/lib/utils'
+import { DashboardContext } from '@/dashboard/context'
+import { dashboardHref } from '@/dashboard/navigation'
+import '@/dashboard/library.css'
 
 /* The graph is a canvas app wearing the app shell. React owns the chrome —
    lens tabs, search, inspector — and the simulation owns the pixels; they
@@ -137,7 +140,7 @@ function integrate(s: { nodes: Node[]; edges: Edge[]; alpha: number; drag: Node 
   s.alpha *= 0.985
 }
 
-export default function GraphPage() {
+function GraphCanvas({ focusId }: { focusId?: string } = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [lens, setLens] = useState<Lens>('all')
   const [query, setQuery] = useState('')
@@ -156,6 +159,20 @@ export default function GraphPage() {
     url?: string
     links: { label: string; type: string; url?: string }[]
   } | null>(null)
+  const dashboard = useContext(DashboardContext)
+  const decodedFocus = useMemo(() => {
+    if (!focusId) return ''
+    try {
+      return decodeURIComponent(focusId)
+    } catch {
+      return focusId
+    }
+  }, [focusId])
+  const libHref = useCallback(
+    (url?: string) =>
+      !url ? undefined : dashboard ? dashboardHref('library/item/' + encodeURIComponent(url)) : `/app/library.html#${url}`,
+    [dashboard]
+  )
 
   /* everything the simulation mutates lives here, out of React's way */
   const sim = useRef({
@@ -262,6 +279,26 @@ export default function GraphPage() {
   useEffect(() => {
     sim.current.query = query.trim().toLowerCase()
   }, [query])
+
+  /* Dashboard deep link (?focus=<encoded item id>): select that node once it
+     exists, same inspector as a tap. Runs on loaded + focus change only. */
+  useEffect(() => {
+    if (!loaded || !decodedFocus) return
+    const n = sim.current.nodes.find((m) => m.id === decodedFocus || m.url === decodedFocus)
+    if (!n) return
+    setSelected({
+      label: n.label,
+      type: n.type,
+      owner: n.owner,
+      done: n.done,
+      url: n.url,
+      links: sim.current.edges
+        .filter((edge) => edge.a === n || edge.b === n)
+        .map((edge) => (edge.a === n ? edge.b : edge.a))
+        .slice(0, 40)
+        .map((m) => ({ label: m.label, type: m.type, url: m.url }))
+    })
+  }, [loaded, decodedFocus])
 
   /* ── the loop ────────────────────────────────────────────────────────── */
   useEffect(() => {
@@ -604,7 +641,7 @@ export default function GraphPage() {
 
             {selected.url && (
               <a
-                href={`/app/library.html#${selected.url}`}
+                href={libHref(selected.url)}
                 className="mt-3 inline-block text-[0.9rem] text-accent no-underline hover:underline"
               >
                 open in the library →
@@ -615,7 +652,7 @@ export default function GraphPage() {
             {selected.links.map((l, i) => (
               <a
                 key={`${l.label}-${i}`}
-                href={l.url ? `/app/library.html#${l.url}` : undefined}
+                href={l.url ? libHref(l.url) : undefined}
                 className="flex items-center gap-2 border-t border-line-2 py-1.5 text-[0.9rem] text-ink no-underline first:border-t-0 hover:text-accent"
               >
                 <span
@@ -633,4 +670,46 @@ export default function GraphPage() {
       </div>
     </Shell>
   )
+}
+
+/* ── dashboard (preview) ────────────────────────────────────────────────
+   Same canvas, dashboard chrome. Orchestrator mounts:
+     /library/graph[?focus=:encodedId][?q=][&lens=] → <GraphPage focusId={decoded} />
+   focusId is the encoded item id (encodeURIComponent), decoded with fallback
+   like the library page. Crosslinks use dashboardHref in dashboard mode and
+   keep /app/library.html# aliases in legacy mode (see libHref above).
+   Hash aliases: #graph + ?lens=<all|ideas|library> is the legacy equivalent. */
+
+export interface GraphPageProps {
+  /** encoded item id to focus, e.g. song%3Alemon */
+  focusId?: string
+}
+
+function GraphDashboard({ focusId }: GraphPageProps) {
+  const qs = (() => {
+    try {
+      return new URLSearchParams(window.location.search).toString()
+    } catch {
+      return ''
+    }
+  })()
+  const withQs = (path: string) => (qs ? `${path}?${qs}` : path)
+  return (
+    <>
+      <nav aria-label="Library sections" className="lib-dash-toolbar">
+        <a href={withQs(dashboardHref('library'))}>Items</a>
+        <a href={withQs(dashboardHref('library/graph'))} aria-current="page">
+          Knowledge Graph
+        </a>
+        <a href={withQs(dashboardHref('library/costs'))}>Learning Costs</a>
+      </nav>
+      <GraphCanvas focusId={focusId} />
+    </>
+  )
+}
+
+export default function GraphPage(props: GraphPageProps = {}) {
+  const dashboard = useContext(DashboardContext)
+  if (dashboard) return <GraphDashboard {...props} />
+  return <GraphCanvas focusId={props.focusId} />
 }

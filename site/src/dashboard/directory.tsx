@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { core, type CoreChat } from '@/lib/core'
-import { dashboardHref } from './navigation'
+import { chatHref } from './navigation'
 
-const pageSize = 20
+import SelectionTable from './selection-table'
 export default function Directory() {
   const [rows, setRows] = useState<CoreChat[] | null>(null)
   const [error, setError] = useState(false)
@@ -27,8 +27,10 @@ export default function Directory() {
   const filtered = rows
     ?.filter((c) => (status === 'all' || c.status === status) && c.label.toLowerCase().includes(query.toLowerCase()))
     .sort((a, b) => a.label.localeCompare(b.label))
-  const pages = Math.max(1, Math.ceil((filtered?.length ?? 0) / pageSize))
-  const current = Math.min(page, pages)
+  async function changeAccess(chat:CoreChat,status:CoreChat['status']){
+    await core.setStatus(chat.chatId,status)
+    setRows(previous=>previous?.map(row=>row.chatId===chat.chatId?{...row,status}:row)??null)
+  }
   useEffect(() => {
     const url = new URL(location.href)
     for (const [key, value] of [
@@ -75,40 +77,18 @@ export default function Directory() {
       ) : !filtered.length ? (
         <p>No matching chats.</p>
       ) : (
-        <>
-          <table>
-            <caption>Chat Directory</caption>
-            <thead>
-              <tr>
-                <th scope="col">Chat</th>
-                <th scope="col">Type</th>
-                <th scope="col">Access</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.slice((current - 1) * pageSize, current * pageSize).map((c) => (
-                <tr key={c.chatId}>
-                  <td>
-                    <a href={dashboardHref('chats/' + encodeURIComponent(c.chatId) + '/settings')}>
-                      {c.label || 'Unnamed Chat'}
-                    </a>
-                  </td>
-                  <td>{c.type === 'group' ? 'Group' : 'Direct'}</td>
-                  <td>{c.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p>
-            {pageSize} per page · Page {current} of {pages}
-          </p>
-          <button disabled={current <= 1} onClick={() => setPage(current - 1)}>
-            Previous
-          </button>
-          <button disabled={current >= pages} onClick={() => setPage(current + 1)}>
-            Next
-          </button>
-        </>
+        <SelectionTable rows={filtered} caption="Chat Directory" viewId={JSON.stringify([query,status])} page={page} onPageChange={setPage}
+          getKey={c=>c.chatId} getRowLabel={c=>c.label||c.chatId}
+          columns={[
+            {id:'name',header:'Chat',render:c=><><a href={chatHref('chats/'+encodeURIComponent(c.chatId)+'/settings')}>{c.label||'Unnamed Chat'}</a><small>{c.chatId}</small></>},
+            {id:'type',header:'Type',render:c=>c.type==='group'?'Group':'Direct'},
+            {id:'status',header:'Access',render:c=>c.status}
+          ]}
+          bulkActions={[
+            {id:'activate',label:'Activate',confirmMessage:'Allow AIRA to respond in these selected chats under their sender policies?',run:c=>changeAccess(c,'active')},
+            {id:'pending',label:'Set Pending',confirmMessage:'Stop AIRA from answering in these selected chats?',run:c=>changeAccess(c,'pending')}
+          ]}/>
+
       )}
     </section>
   )

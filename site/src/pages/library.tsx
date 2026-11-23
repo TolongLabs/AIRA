@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, ChevronDown, ChevronUp, Pause, Play, Search } from 'lucide-react'
 import type { LibDetail, LibIndex, LibItem, SongLine } from '@/lib/api'
 import { get, post, ownerImage } from '@/lib/api'
@@ -6,6 +6,9 @@ import { toast, Toaster, useApi } from '@/lib/hooks'
 import { cn, num } from '@/lib/utils'
 import { Shell } from '@/components/shell'
 import { Button, Card, ConfirmAction, Empty, Kicker, Section, Spinner, Tabs } from '@/components/ui'
+import { DashboardContext } from '@/dashboard/context'
+import { dashboardHref } from '@/dashboard/navigation'
+import '@/dashboard/library.css'
 
 /* The library was the last surface still served as generated HTML — 335 flat
    pages that had to be restyled by hand every time the app moved. It is now
@@ -776,7 +779,7 @@ function Overview({ data, go }: { data: LibIndex; go: (to: string) => void }) {
 
 /* ── page ─────────────────────────────────────────────────────────────── */
 
-export default function LibraryPage() {
+function LibraryLegacyPage() {
   const idx = useApi<LibIndex>('/api/library/index')
   const [route, go] = useHashRoute()
   const [q, setQ] = useState('')
@@ -913,4 +916,470 @@ export default function LibraryPage() {
       )}
     </Shell>
   )
+}
+
+/* ── dashboard (preview) ────────────────────────────────────────────────
+   Orchestrator owns the router and shell. This file owns the library views:
+   it reuses the legacy components (ItemRow, ItemView, ledger markup) and the
+   actual owner endpoints (GET /api/library/index, GET /api/library/item,
+   POST /api/library) so behaviour matches the legacy page.
+
+   Required routes (orchestrator mounts these):
+     /library                    → <LibraryPage view="items" />
+     /library/item/:encodedId    → <LibraryPage view="items" selectedId={decoded} />
+                                  :encodedId = encodeURIComponent(item.id),
+                                  e.g. song:lemon → song%3Alemon
+     /library/graph              → GraphPage dashboard (site/src/pages/graph.tsx),
+                                  or <LibraryPage view="graph" /> as a teaser link
+     /library/costs              → <LibraryPage view="costs" />
+   Query preserved across all three: ?q=<search> & ?type=<type>.
+   Hash aliases (legacy /app/library.html links — orchestrator redirects):
+     #/<type>:<slug> or #<type>:<slug> → /library/item/:encodedId
+     #<type-plural> (e.g. #songs)       → /library?type=<type>
+     empty hash                         → /library
+   Decoding: decodeURIComponent with fallback to the raw string, same as
+   safeReadHash in the legacy view. */
+
+export type LibraryDashboardView = 'items' | 'graph' | 'costs'
+
+export interface LibraryPageProps {
+  view?: LibraryDashboardView
+  /** decoded item id (e.g. "song:lemon"). The route carries the encoded form. */
+  selectedId?: string
+  initialSearch?: string
+  initialType?: string
+}
+
+export function decodeLibraryId(encoded: string): string {
+  try {
+    return decodeURIComponent(encoded)
+  } catch {
+    return encoded
+  }
+}
+
+function currentQuery(): URLSearchParams {
+  try {
+    return new URLSearchParams(window.location.search)
+  } catch {
+    return new URLSearchParams()
+  }
+}
+
+function withQuery(path: string, q: string): string {
+  return q ? `${path}?${q}` : path
+}
+
+export function libraryItemHref(id: string, query?: string): string {
+  const base = dashboardHref('library/item/' + encodeURIComponent(id))
+  if (query !== undefined) return withQuery(base, query)
+  if (typeof window !== 'undefined') {
+    const qs = currentQuery().toString()
+    return withQuery(base, qs)
+  }
+  return base
+}
+
+export function libraryGraphHref(focusId?: string): string {
+  const base = dashboardHref('library/graph')
+  const qs = typeof window !== 'undefined' ? currentQuery() : new URLSearchParams()
+  if (focusId) qs.set('focus', focusId)
+  const s = qs.toString()
+  return withQuery(base, s)
+}
+
+export function libraryCostsHref(): string {
+  const base = dashboardHref('library/costs')
+  if (typeof window === 'undefined') return base
+  const qs = currentQuery().toString()
+  return withQuery(base, qs)
+}
+
+/** dashboardHref for a legacy hash go() target. "" → /library, "a:b" → item, else ?type=. */
+function dashGoHref(to: string): string {
+  if (!to) return dashboardHref('library')
+  if (to.includes(':')) return libraryItemHref(to)
+  const qs = typeof window !== 'undefined' ? currentQuery() : new URLSearchParams()
+  qs.set('type', to)
+  return withQuery(dashboardHref('library'), qs.toString())
+}
+
+function LibraryToolbar({ view }: { view: LibraryDashboardView }) {
+  const qs = typeof window !== 'undefined' ? currentQuery().toString() : ''
+  const items = withQuery(dashboardHref('library'), qs)
+  const graph = withQuery(dashboardHref('library/graph'), qs)
+  const costs = withQuery(dashboardHref('library/costs'), qs)
+  return (
+    <nav aria-label="Library sections" className="lib-dash-toolbar">
+      <a href={items} aria-current={view === 'items' ? 'page' : undefined}>
+        Items
+      </a>
+      <a href={graph} aria-current={view === 'graph' ? 'page' : undefined}>
+        Knowledge Graph
+      </a>
+      <a href={costs} aria-current={view === 'costs' ? 'page' : undefined}>
+        Learning Costs
+      </a>
+    </nav>
+  )
+}
+
+function FilingActivity({ data }: { data: LibIndex }) {
+  const rows = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const list of Object.values(data.items)) for (const i of list) if (i.when) counts.set(i.when, (counts.get(i.when) ?? 0) + 1)
+    return [...counts.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1)).slice(0, 14)
+  }, [data])
+  if (!rows.length) return <Empty>No filing dates recorded yet.</Empty>
+  return (
+    <ul className="lib-dash-facts">
+      {rows.map(([day, n]) => (
+        <li key={day}>
+          {day} · {n} filed
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function LedgerCosts({ data }: { data: LibIndex }) {
+  const led = data.ledger?.total
+  if (!led) return <Empty>No cost figures recorded yet.</Empty>
+  const k = (n?: number) => (n == null ? '—' : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
+        {[
+          ['turns', num(led.turns)],
+          ['input', k(led.billed_input)],
+          ['cached', k(led.cache_read)],
+          ['output', k(led.output)],
+          ['cost', `$${(led.cost_usd ?? 0).toFixed(2)}`]
+        ].map(([label, value]) => (
+          <div key={label}>
+            <b className="tnum" style={{ fontSize: '1.4rem', fontWeight: 400 }}>
+              {value}
+            </b>
+            <span
+              style={{ display: 'block', fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--muted)' }}
+            >
+              {label}
+            </span>
+          </div>
+        ))}
+      </div>
+      {!!data.ledger?.by_song?.length && (
+        <ul className="lib-dash-facts">
+          {data.ledger.by_song.map((r) => (
+            <li key={r.name}>
+              {r.name} · {r.turns} turns · ${r.cost_usd.toFixed(2)}
+            </li>
+          ))}
+        </ul>
+      )}
+      {!!data.ledger?.chat?.turns && (
+        <p style={{ color: 'var(--faint)', fontSize: '0.86rem' }}>
+          A further ${data.ledger.chat.cost_usd.toFixed(2)} on {data.ledger.chat.turns} turns talked about these songs
+          rather than built them.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function DashboardSelectedItem({
+  id,
+  searchQs,
+  initialReviewed
+}: {
+  id: string
+  searchQs: string
+  initialReviewed?: boolean
+}) {
+  const go = useCallback((to: string) => {
+    window.location.assign(dashGoHref(to))
+  }, [])
+  const [reviewed, setReviewed] = useState<boolean | undefined>(initialReviewed)
+  const [busy, setBusy] = useState(false)
+  const [detail, setDetail] = useState<LibDetail | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => setReviewed(initialReviewed), [initialReviewed])
+
+  useEffect(() => {
+    let live = true
+    setDetail(null)
+    setErr(null)
+    setLoading(true)
+    get<LibDetail>(`/api/library/item?id=${encodeURIComponent(id)}`)
+      .then((r) => live && setDetail(r))
+      .catch((e: Error) => live && setErr(e.message))
+      .finally(() => live && setLoading(false))
+    return () => {
+      live = false
+    }
+  }, [id])
+
+  async function toggleReview() {
+    setBusy(true)
+    try {
+      await post('/api/library', { action: 'review_node', id, reviewed: !(reviewed ?? false) })
+      setReviewed(!(reviewed ?? false))
+      toast('saved ✓')
+    } catch (e) {
+      toast((e as Error).message, false)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function forget() {
+    setBusy(true)
+    try {
+      await post('/api/library', { action: 'forget_node', id })
+      toast('removed ✓')
+      window.location.assign(withQuery(dashboardHref('library'), searchQs))
+    } catch (e) {
+      toast((e as Error).message, false)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (loading)
+    return (
+      <div className="lib-dash-card" role="status">
+        <span className="flex items-center gap-2 text-muted">
+          <Spinner /> loading…
+        </span>
+      </div>
+    )
+  if (err || !detail) {
+    const gone = /404|not found|no longer/i.test(err ?? '')
+    return (
+      <div className="lib-dash-card" role="alert">
+        <h2>{gone ? 'No longer filed' : 'Could not load this entry'}</h2>
+        <p className="text-muted">{gone ? 'This entry was removed or never existed.' : err}</p>
+        <div className="lib-dash-actions">
+          <a href={withQuery(dashboardHref('library'), searchQs)}>Back to collection</a>
+          {!gone && (
+            <button type="button" onClick={() => window.location.reload()}>
+              Retry
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  const { item, links } = detail
+  const facts = [
+    item.owner && item.owner !== 'shared library' ? item.owner : null,
+    item.type,
+    detail.position ? `${detail.position.at} of ${detail.position.of}` : null
+  ].filter(Boolean)
+  const canRemove = item.type !== 'song'
+
+  return (
+    <div className="lib-dash-card">
+      <p className="m-0 font-mono text-[0.66rem] uppercase tracking-[0.12em] text-muted">{item.type}</p>
+      <h2>{item.title}</h2>
+      {facts.length > 0 && <p className="text-muted">{facts.join(' · ')}</p>}
+      <div className="lib-dash-actions">
+        <a href={libraryItemHref(item.id, searchQs) + '#reader'}>Open Reader</a>
+        <a href={libraryGraphHref(item.id)}>View Connections</a>
+      </div>
+      <div id="reader">
+        <ItemView
+          id={item.id}
+          go={(to) => {
+            if (to.includes(':')) window.location.assign(libraryItemHref(to, searchQs))
+            else go(to)
+          }}
+        />
+      </div>
+      {links.length > 0 && (
+        <p className="text-muted">
+          {links.length} connection{links.length === 1 ? '' : 's'} — follow them in the reader or the graph.
+        </p>
+      )}
+      <div className="lib-dash-actions">
+        <span>Item Actions:</span>
+        {reviewed !== undefined && (
+          <button type="button" disabled={busy} onClick={() => void toggleReview()}>
+            {reviewed ? 'checked ✓' : 'mark checked'}
+          </button>
+        )}
+        {canRemove && (
+          <ConfirmAction label="remove" confirmLabel="Remove" question={`Remove “${item.title}”?`} onConfirm={forget} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function LibraryDashboard({ view, selectedId, initialSearch, initialType }: LibraryPageProps) {
+  const idx = useApi<LibIndex>('/api/library/index')
+  const decodedSelected = selectedId ? decodeLibraryId(selectedId) : undefined
+  const [q, setQ] = useState(() => initialSearch ?? currentQuery().get('q') ?? '')
+  const [type, setType] = useState(() => initialType ?? currentQuery().get('type') ?? 'all')
+  const data = idx.data
+  const searchQs = useMemo(() => {
+    const qs = new URLSearchParams()
+    if (q.trim()) qs.set('q', q.trim())
+    if (type !== 'all') qs.set('type', type)
+    return qs.toString()
+  }, [q, type])
+
+  /* Keep ?q=&type= in the address bar (replace, not push) so a reload, a
+     toolbar hop, or back/forward keeps the filter. Back still works because
+     item/graph/costs hops are real navigations, not replaces. */
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href)
+      if (q.trim()) url.searchParams.set('q', q.trim())
+      else url.searchParams.delete('q')
+      if (type !== 'all') url.searchParams.set('type', type)
+      else url.searchParams.delete('type')
+      window.history.replaceState(null, '', url.toString())
+    } catch {
+      /* non-browser or blocked — links still carry searchQs */
+    }
+  }, [q, type])
+
+  const hits = useMemo(() => {
+    if (!data) return null
+    const term = q.trim().toLowerCase()
+    const pool =
+      type === 'all' ? Object.values(data.items).flat() : (data.items[type] ?? [])
+    if (!term) return { rows: pool.slice(0, 120), total: pool.length }
+    const found = pool.filter((i) => i.title.toLowerCase().includes(term) || i.sub.toLowerCase().includes(term))
+    return { rows: found.slice(0, 120), total: found.length }
+  }, [q, type, data])
+
+  return (
+    <>
+      <Toaster />
+      <LibraryToolbar view={view ?? 'items'} />
+      {idx.error && (
+        <p role="alert">
+          {typeof navigator !== 'undefined' && navigator.onLine === false
+            ? 'You are offline. '
+            : ''}
+          Could not load the library: {idx.error}{' '}
+          <button type="button" onClick={() => void idx.reload()}>
+            Retry
+          </button>
+        </p>
+      )}
+      {idx.loading && !data && (
+        <p role="status" className="flex items-center gap-2 text-muted">
+          <Spinner /> loading…
+        </p>
+      )}
+      {data && view === 'costs' && (
+        <div className="lib-dash-cols">
+          <div className="lib-dash-card">
+            <h2>Filing Activity</h2>
+            <FilingActivity data={data} />
+          </div>
+          <div className="lib-dash-card">
+            <h2>Learning Costs</h2>
+            <LedgerCosts data={data} />
+          </div>
+        </div>
+      )}
+      {data && view === 'graph' && (
+        <div className="lib-dash-card">
+          <h2>Knowledge Graph</h2>
+          <p className="text-muted">
+            {num(data.edges)} connections across {num(Object.values(data.items).flat().length)} entries.
+          </p>
+          <div className="lib-dash-actions">
+            <a href={libraryGraphHref(decodedSelected ?? undefined)}>
+              Open graph{decodedSelected ? ' at this entry' : ''}
+            </a>
+          </div>
+        </div>
+      )}
+      {data && (!view || view === 'items') && (
+        <div className="lib-dash-cols">
+          <div className="lib-dash-card">
+            <h2>Collection</h2>
+            <div className="lib-dash-searchrow">
+              <input
+                value={q}
+                placeholder="find anything…"
+                aria-label="Search the collection"
+                onChange={(e) => setQ(e.target.value)}
+              />
+              <select value={type} aria-label="Type" onChange={(e) => setType(e.target.value)}>
+                <option value="all">all</option>
+                {data.types.map((t) => (
+                  <option key={t} value={t}>
+                    {typeLabel(t)} ({num(data.counts[t] ?? 0)})
+                  </option>
+                ))}
+              </select>
+            </div>
+            {!hits ? null : hits.rows.length ? (
+              <div className="lib-dash-rows">
+                {hits.rows.map((i) => (
+                  <a
+                    key={i.id}
+                    href={libraryItemHref(i.id, searchQs)}
+                    className="lib-dash-row"
+                    aria-current={decodedSelected === i.id ? 'true' : undefined}
+                  >
+                    <b>{i.title}</b>
+                    <span>{[i.sub, i.owner].filter(Boolean).join(' · ')}</span>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <Empty>Nothing filed under that yet.</Empty>
+            )}
+            {hits && (
+              <p className="text-muted">
+                {hits.total} match{hits.total === 1 ? '' : 'es'}
+                {hits.total > hits.rows.length ? ` — showing ${hits.rows.length}` : ''}
+              </p>
+            )}
+          </div>
+          {decodedSelected ? (
+            <DashboardSelectedItem
+              id={decodedSelected}
+              searchQs={searchQs}
+              initialReviewed={Object.values(data.items)
+                .flat()
+                .find((i) => i.id === decodedSelected)?.reviewed}
+            />
+          ) : (
+            <div className="lib-dash-card">
+              <h2>Selected Item</h2>
+              <Empty>Pick an entry to read it here.</Empty>
+              <div className="lib-dash-card" style={{ marginTop: '1rem' }}>
+                <h2>Filing Activity</h2>
+                <FilingActivity data={data} />
+              </div>
+              <div className="lib-dash-card" style={{ marginTop: '1rem' }}>
+                <h2>Learning Costs</h2>
+                <LedgerCosts data={data} />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {data && (!view || view === 'items') && idx.error && (
+        <p role="alert">Showing the last loaded values.</p>
+      )}
+    </>
+  )
+}
+
+export default function LibraryPage(props: LibraryPageProps = {}) {
+  const dashboard = useContext(DashboardContext)
+  if (dashboard) return <LibraryDashboard {...props} />
+  return <LibraryLegacyPage />
 }

@@ -1,5 +1,5 @@
 import Composer from '@/dashboard/composer'
-import { dashboardHref } from '@/dashboard/navigation'
+import { chatHref, dashboardHref } from '@/dashboard/navigation'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import { ChevronRight, X } from 'lucide-react'
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
@@ -702,14 +702,14 @@ function ChatRow({
   onChanged: () => void
   /** Kept by the page, so a chat that moves between On and Off stays open. */
   open: boolean
-  onToggle: () => void
+  onToggle?: () => void
   focusRequest?: { chatId: string; tab: SectionKey; seq: number } | null
 }) {
   const vm = useMemo(() => new ChatSettingsViewModel(chat, characters), [chat, characters])
   const toolFeatures = toolCatalog.data?.features ?? []
   const [tab, setTab] = useState<SectionKey>('character')
   const [busy, setBusy] = useState(false)
-  const name = chat.label || midTrunc(chat.waId, 28)
+  const name = chat.label || (onToggle ? midTrunc(chat.waId, 28) : 'Unnamed Chat')
   const character = vm.effectiveCharacterId
   const pack = vm.boundPack
 
@@ -735,9 +735,9 @@ function ChatRow({
     }
   }
   const save = (key: string, value: unknown) =>
-    run(() => core.setSetting('chat', chat.chatId, key, value), 'Saved for this chat.')
+    run(() => core.setSetting('chat', chat.chatId, key, value,chat.settingsRevision), 'Saved for this chat.')
   const clear = (key: string) =>
-    run(() => core.setSetting('chat', chat.chatId, key, null), 'This chat now inherits it.')
+    run(() => core.setSetting('chat', chat.chatId, key, null,chat.settingsRevision), 'This chat now inherits it.')
 
   const facts = [
     pack?.displayName ?? (character ? `${character} (not loaded)` : 'no character'),
@@ -748,6 +748,7 @@ function ChatRow({
     <div id={`chat-${chat.chatId}`} className="border-b border-line last:border-b-0">
       <button
         type="button"
+        disabled={!onToggle}
         aria-expanded={open}
         onClick={onToggle}
         className="flex w-full min-w-0 cursor-pointer items-center gap-3 border-0 bg-transparent px-4 py-3 text-left focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
@@ -827,13 +828,25 @@ function ChatRow({
                 'sm:w-[11rem] sm:flex-col sm:overflow-visible sm:border-r sm:border-b-0 sm:py-4'
               )}
             >
-              {SECTIONS.map((s) => {
+              {SECTIONS.map((s,index) => {
                 const on = s.key === tab
                 return (
                   <button
                     key={s.key}
                     type="button"
                     role="tab"
+                    id={chat.chatId+'-tab-'+s.key}
+                    aria-controls={chat.chatId+'-panel'}
+                    tabIndex={on?0:-1}
+                    onKeyDown={event=>{
+                      const offsets:Record<string,number>={ArrowDown:1,ArrowRight:1,ArrowUp:-1,ArrowLeft:-1}
+                      const idx=event.key==='Home'?0:event.key==='End'?SECTIONS.length-1:event.key in offsets?(index+offsets[event.key]+SECTIONS.length)%SECTIONS.length:undefined
+                      if(idx===undefined)return
+                      event.preventDefault()
+                      const next=SECTIONS[idx].key
+                      setTab(next)
+                      document.getElementById(chat.chatId+'-tab-'+next)?.focus()
+                    }}
                     aria-selected={on}
                     onClick={() => setTab(s.key)}
                     className={cn(
@@ -848,7 +861,7 @@ function ChatRow({
                 )
               })}
             </div>
-            <div role="tabpanel" className="min-w-0 flex-1 px-4 sm:px-6">
+            <div id={chat.chatId+"-panel"} aria-labelledby={chat.chatId+"-tab-"+tab} role="tabpanel" className="min-w-0 flex-1 px-4 sm:px-6">
               {tab === 'character' && (
                 <>
                   <SettingRow vm={vm} name="character" label="Character" onClear={clear}>
@@ -1543,7 +1556,7 @@ function PersonaFooter({
   )
 }
 
-export default function ChatsPage({ selectedId, compose = false }: { selectedId?: string; compose?: boolean } = {}) {
+export default function ChatsPage({ selectedId, compose = false, footerId }: { selectedId?: string; compose?: boolean; footerId?: string } = {}) {
   const chats = useCore(core.chats)
   const packs = useCore(core.characters)
   const tools = useCore(core.tools)
@@ -1568,6 +1581,12 @@ export default function ChatsPage({ selectedId, compose = false }: { selectedId?
     focusRequest
   }
 
+  if (footerId) {
+    const pack=characters.find(row=>row.id===footerId)
+    if (!pack) return <p role="status">{packs.loading?'Loading…':packs.error?'Character unavailable.':'Character no longer exists.'}</p>
+    return <><a href={dashboardHref('characters')}>Character Studio</a><h2>{pack.displayName} tool footer</h2>
+      <PackFooterPanel pack={pack} footerKinds={footerKinds} chats={all} onChanged={packs.reload} onOpenChat={id=>{location.href=dashboardHref('chats/'+encodeURIComponent(id)+'/settings')}}/><Toaster /></>
+  }
   if (selectedId) {
     const chat = all.find((row) => row.chatId === selectedId)
     if (!chat)
@@ -1577,11 +1596,13 @@ export default function ChatsPage({ selectedId, compose = false }: { selectedId?
         </p>
       )
     if (compose) return <Composer chat={chat} />
+    const persona=new ChatSettingsViewModel(chat,characters).effectiveCharacterId
     return (
       <>
-        <a href={dashboardHref('chats')}>Chat Directory</a>
+        <a href={chatHref('chats')}>Chat Directory</a>
         <h2>Chat Settings</h2>
-        <a href={dashboardHref('chats/' + encodeURIComponent(chat.chatId) + '/send')}>Send Message</a>
+        <a href={chatHref('chats/' + encodeURIComponent(chat.chatId) + '/send')}>Send Message</a>
+        {persona && <a href={dashboardHref('characters/'+encodeURIComponent(persona)+'/footer')}>Character Tool Footer</a>}
         <ChatRow
           chat={chat}
           characters={characters}
@@ -1589,7 +1610,6 @@ export default function ChatsPage({ selectedId, compose = false }: { selectedId?
           toolCatalog={tools}
           onChanged={chats.reload}
           open={true}
-          onToggle={() => {}}
         />
         <Toaster />
       </>

@@ -1,3 +1,5 @@
+import {authHeaders,requestToken} from '@/lib/api'
+import {useCoreTransport} from '@/lib/core'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
@@ -14,15 +16,29 @@ import {
 } from 'lucide-react'
 import { DashboardContext } from './context'
 import { dashboardHref, destinations, previewMount } from './navigation'
+import Appearance, { Backdrop } from './appearance'
 import { Overview } from './overview'
 import '@/styles.css'
 import './shell.css'
 
+useCoreTransport(async (path,init)=>{
+  const url=path.replace(/^\/api\//,'/owner-api/core/')
+  const load=()=>fetch(url,{...init,headers:authHeaders(Object.fromEntries(new Headers(init.headers).entries()))})
+  const result=await load()
+  if(result.status!==401)return result
+  await requestToken()
+  return load()
+})
+
 const ChatSettings = lazy(() => import('@/pages/chats'))
+const StudioEditor = lazy(() => import('./studio-editor'))
+const Library = lazy(() => import('@/pages/library'))
 const views = {
+  'characters/simulator': lazy(() => import('./studio-editor').then(m => ({default:m.StudioSimulator}))),
+  'system/appearance': Appearance,
   chats: lazy(() => import('./directory')),
   'chats/files': lazy(() => import('@/pages/send')),
-  library: lazy(() => import('@/pages/library')),
+  library: Library,
   'library/graph': lazy(() => import('@/pages/graph')),
   markets: lazy(() => import('@/pages/markets')),
   automations: lazy(() => import('@/pages/cron')),
@@ -73,7 +89,10 @@ function Dashboard() {
     document.title = title + ' · AIRA'
   }, [title])
   const chatRoute = /^chats\/(c_[a-zA-Z0-9_-]+)\/(settings|send)$/.exec(path)
-  const View = views[path as keyof typeof views]
+  const edit = /^characters\/([a-z0-9_-]+)\/edit$/.exec(path)
+  const item = /^library\/item\/([^/]+)$/.exec(path)
+  const footer = /^characters\/([a-z0-9_-]+)\/footer$/.exec(path)
+  const View = section === 'markets' ? views.markets : views[path as keyof typeof views]
   function nav(mobile: boolean) {
     return (
       <>
@@ -125,6 +144,7 @@ function Dashboard() {
         <a className="dashboard-skip" href="#workspace">
           Skip to content
         </a>
+        <Backdrop />
         <aside>{nav(false)}</aside>
         <header>
           <button aria-label="Open navigation" onClick={() => drawer.current?.showModal()}>
@@ -151,7 +171,8 @@ function Dashboard() {
           {section === 'system' && (
             <nav aria-label="System views">
               <a href={dashboardHref('system/health')}>Health</a>{' '}
-              <a href={dashboardHref('system/settings')}>Host Settings</a>
+              <a href={dashboardHref('system/settings')}>Host Settings</a>{' '}
+              <a href={dashboardHref('system/appearance')}>Appearance</a>
             </nav>
           )}
           <Suspense fallback={<p role="status">Loading…</p>}>
@@ -159,6 +180,12 @@ function Dashboard() {
               <Overview />
             ) : chatRoute ? (
               <ChatSettings selectedId={chatRoute[1]} compose={chatRoute[2] === 'send'} />
+            ) : path === 'characters/new' || path === 'characters/import' || edit ? (
+              <StudioEditor mode={edit ? 'edit' : path === 'characters/new' ? 'create' : 'import'} id={edit?.[1]} />
+            ) : footer ? (
+              <ChatSettings footerId={footer[1]} />
+            ) : item || path === 'library/costs' ? (
+              <Library selectedId={item?.[1]} view={item ? 'items' : 'costs'} />
             ) : View ? (
               <View />
             ) : (

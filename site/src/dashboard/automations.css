@@ -1,0 +1,171 @@
+/* Automations dashboard views: routines master-detail and session notices.
+ *
+ * Dashboard-only. Every selector is scoped under .dashboard-shell so the
+ * legacy MPA pages (cron.html, notices.html) are unaffected when this file
+ * loads in their bundles. Uses the dashboard tokens from shell.css
+ * (--glass, --tile, --active, --text, --edge) with legacy fallbacks, Outfit
+ * for interface text, Unbounded for the view brand mark, and Geist Mono for
+ * identifiers and raw schedules. */
+
+.dashboard-shell .automations-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.dashboard-shell .automations-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+
+.dashboard-shell .automations-list,
+.dashboard-shell .automations-detail,
+.dashboard-shell .automations-panel {
+  background: var(--tile, #ffffffb8);
+  border: 1px solid var(--edge, #ffffffbf);
+  border-radius: 16px;
+  padding: 16px;
+  min-width: 0;
+}
+
+.dashboard-shell .automations-list-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.dashboard-shell .automations-kicker {
+  margin: 0;
+  font-family: 'Geist Mono', monospace;
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text, #102725);
+  opacity: 0.7;
+}
+
+.dashboard-shell .automations-filter {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--edge, #ffffffbf);
+  background: var(--glass, #eff4f3c9);
+  color: var(--text, #102725);
+  padding: 0 12px;
+  font: inherit;
+}
+
+.dashboard-shell .automations-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dashboard-shell .automations-row {
+  display: block;
+  border-radius: 12px;
+  padding: 12px;
+  color: inherit;
+  text-decoration: none;
+  border: 1px solid transparent;
+}
+
+.dashboard-shell .automations-row:hover {
+  background: var(--glass, #eff4f3c9);
+}
+
+.dashboard-shell .automations-row[aria-current='true'] {
+  background: var(--active, #d6f5ef);
+  border-color: var(--edge, #ffffffbf);
+  font-weight: 600;
+}
+
+.dashboard-shell .automations-row-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-shell .automations-row-meta {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+
+.dashboard-shell .automations-row-id {
+  display: block;
+  margin-top: 2px;
+  font-family: 'Geist Mono', monospace;
+  font-size: 0.7rem;
+  opacity: 0.6;
+}
+
+.dashboard-shell .automations-detail-title {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.3;
+}
+
+.dashboard-shell .automations-detail-schedule {
+  margin: 8px 0 0;
+  font-family: 'Geist Mono', monospace;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-shell .automations-detail-prompt {
+  margin: 12px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+
+.dashboard-shell .automations-alert {
+  border-radius: 12px;
+  border: 1px solid var(--edge, #ffffffbf);
+  background: var(--glass, #eff4f3c9);
+  padding: 12px 14px;
+}
+
+.dashboard-shell .automations-alert[data-tone='down'] {
+  border-color: #b3261e66;
+}
+
+.dashboard-shell .automations-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.dashboard-shell .automations-brand {
+  font-family: Unbounded, sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+}
+
+/* Phone stacks: detail below the list, like the legacy page. */
+@media (max-width: 760px) {
+  .dashboard-shell .automations-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-shell .automations-row {
+    transition: none;
+  }
+}
