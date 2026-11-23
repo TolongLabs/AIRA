@@ -1,0 +1,60 @@
+.chat-defaults {
+  display: grid;
+  gap: 16px;
+  max-width: 960px;
+  align-content: start;
+}
+
+.chat-defaults h2 {
+  font-size: 24px;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.chat-defaults-lede {
+  margin: 0;
+  max-width: 72ch;
+  font-size: 14px;
+}
+
+.chat-defaults-scopes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.chat-defaults-counts {
+  margin: 0;
+  font-size: 13px;
+}
+
+.chat-defaults-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.chat-defaults-conflict {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+}
+
+.chat-defaults-conflict p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.chat-defaults-conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chat-defaults-note {
+  margin: 0;
+  font-size: 13px;
+}

@@ -18,7 +18,7 @@ import { insertFailure } from './failures.js'
 
 const TMP_SUFFIX = '.tmp'
 
-function syncDir(dir: string): void {
+export function syncDir(dir: string): void {
   const fd = openSync(dir, 'r')
   try {
     fsyncSync(fd)

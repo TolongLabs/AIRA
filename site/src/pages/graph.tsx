@@ -170,7 +170,11 @@ function GraphCanvas({ focusId }: { focusId?: string } = {}) {
   }, [focusId])
   const libHref = useCallback(
     (url?: string) =>
-      !url ? undefined : dashboard ? dashboardHref('library/item/' + encodeURIComponent(url)) : `/app/library.html#${url}`,
+      !url
+        ? undefined
+        : dashboard
+          ? dashboardHref('library/item/' + encodeURIComponent(url))
+          : `/app/library.html#${url}`,
     [dashboard]
   )
 
@@ -531,7 +535,7 @@ function GraphCanvas({ focusId }: { focusId?: string } = {}) {
                 {lens !== 'all' && ' Other lenses may have something.'}
               </p>
               <a
-                href="/app/chats.html"
+                href={dashboard ? dashboardHref('chats') : '/app/chats.html'}
                 className="inline-flex min-h-11 items-center rounded-card border border-line px-4 text-[0.9rem] text-accent"
               >
                 Go to Chats
@@ -703,7 +707,7 @@ function GraphDashboard({ focusId }: GraphPageProps) {
         </a>
         <a href={withQs(dashboardHref('library/costs'))}>Learning Costs</a>
       </nav>
-      <GraphCanvas focusId={focusId} />
+      <GraphCanvas focusId={focusId ?? encodeURIComponent(new URLSearchParams(qs).get('focus') ?? '')} />
     </>
   )
 }

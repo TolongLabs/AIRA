@@ -33,6 +33,7 @@
     radial-gradient(ellipse at 0 6%, #c9dedc 0, transparent 50%),
     radial-gradient(ellipse at 90% 90%, #b9dbd8, transparent 68%), #e8edeb;
   font-family: Outfit, sans-serif;
+  font-size: 14px;
 }
 [data-theme='dark'] .dashboard-shell {
   --glass: #202928e0;
@@ -209,6 +210,62 @@
   background: var(--glass);
   border-radius: 12px;
 }
+.overview-health {
+  position: relative;
+}
+.overview-status,
+.overview-scheduled {
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--glass);
+  font-size: 12px;
+}
+.overview-status {
+  position: absolute;
+  right: 20px;
+  top: 16px;
+}
+.overview-health [data-online]::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  background: #a9650c;
+  border-radius: 100%;
+  display: inline-block;
+  margin-right: 7px;
+}
+.overview-health [data-online='true']::before {
+  background: #247d46;
+}
+.overview-health > h2 {
+  font-size: 14px;
+  font-weight: 400;
+}
+.overview-health li {
+  min-height: 76px;
+  gap: 12px;
+  align-content: space-between;
+}
+.overview-ratio {
+  width: 100%;
+  margin-top: auto;
+}
+.overview-ratio meter {
+  display: block;
+  width: 100%;
+  height: 12px;
+  margin-top: 4px;
+  accent-color: #00695e;
+}
+.overview-scheduled {
+  margin-top: auto;
+}
+.dashboard-shell > aside {
+  background: rgb(255 255 255 / 0.38);
+}
+[data-theme='dark'] .dashboard-shell > aside {
+  background: rgb(30 38 37 / 0.43);
+}
 @media (max-width: 760px) {
   .dashboard-shell,
   .dashboard-shell[data-compact='true'] {
@@ -281,7 +338,7 @@
   padding: 20px;
 }
 .compose-card textarea,
-.directory :is(input, select) {
+.directory :is(input:not([type='checkbox']), select) {
   background: var(--glass);
   border: 1px solid currentColor;
   padding: 10px;
@@ -316,4 +373,56 @@
 .directory th {
   text-align: start;
   padding: 8px;
+}
+
+.persona-choices {
+  display: flex;
+  max-width: 100%;
+  gap: 10px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding: 4px;
+}
+.persona-choices label,
+.persona-choices a {
+  position: relative;
+  flex: 0 0 112px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 104px;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--tile);
+  scroll-snap-align: start;
+}
+.persona-choices input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+.persona-choices label:has(:checked) {
+  background: var(--active);
+  box-shadow: inset 0 0 0 2px currentColor;
+}
+.persona-choices label:focus-within {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+.persona-choices a {
+  border: 2px dotted currentColor;
+}
+.persona-initial {
+  font:
+    600 24px Outfit,
+    sans-serif;
+}
+.persona-choices small {
+  font:
+    12px 'Geist Mono',
+    monospace;
 }

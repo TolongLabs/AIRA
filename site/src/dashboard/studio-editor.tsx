@@ -188,10 +188,7 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
     setErrors(faults)
     setConflict(null)
     if (faults.length) return
-    const { patch, changed } = diffDocs(
-      { card: pristine.card, moods: pristine.moods, lines: pristine.lines },
-      draft
-    )
+    const { patch, changed } = diffDocs({ card: pristine.card, moods: pristine.moods, lines: pristine.lines }, draft)
     if (!changed.length) {
       setStatus('No changes to save.')
       return
@@ -220,12 +217,22 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
 
   async function saveNew(uploaded?: StudioDraft) {
     const body = uploaded ?? draft
-    const faults = [...validateId(packId), ...validateCard({ ...body.card, id: packId }), ...validateMoods(body.moods), ...validateLines(body.lines)]
+    const faults = [
+      ...validateId(packId),
+      ...validateCard({ ...body.card, id: packId }),
+      ...validateMoods(body.moods),
+      ...validateLines(body.lines)
+    ]
     setErrors(faults)
     if (faults.length || !packId) return
     setSaving(true)
     try {
-      const answer = await postStudio({ id: packId, card: { ...body.card, id: packId }, moods: body.moods, lines: body.lines })
+      const answer = await postStudio({
+        id: packId,
+        card: { ...body.card, id: packId },
+        moods: body.moods,
+        lines: body.lines
+      })
       setStatus(`Created ${answer.id}.`)
       setPackId(answer.id)
     } catch (e) {
@@ -246,6 +253,7 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
     try {
       const answer = await postStudio({ id: newId, sourceId: fromId })
       setStatus(`Copied as ${answer.id}.`)
+      location.assign(studioHref(studioPaths.edit(answer.id)))
     } catch (e) {
       setStatus(e instanceof StudioError ? `Copy failed (${e.code}).` : 'Copy failed.')
     } finally {
@@ -274,7 +282,12 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
       }
       const doc = raw as Record<string, unknown>
       const candidate = (doc.card && doc.moods && doc.lines ? doc : doc.pack) as Record<string, unknown> | undefined
-      if (!candidate || typeof candidate.card !== 'object' || typeof candidate.moods !== 'object' || typeof candidate.lines !== 'object') {
+      if (
+        !candidate ||
+        typeof candidate.card !== 'object' ||
+        typeof candidate.moods !== 'object' ||
+        typeof candidate.lines !== 'object'
+      ) {
         setErrors(['That file must hold typed card, moods and lines documents.'])
         return
       }
@@ -305,7 +318,8 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
   if (loading) return <p role="status">Loading…</p>
   if (loadError) return <p role="alert">{loadError}</p>
 
-  const title = mode === 'edit' ? draft.card.displayName || packId : mode === 'create' ? 'New character' : 'Import character'
+  const title =
+    mode === 'edit' ? draft.card.displayName || packId : mode === 'create' ? 'New character' : 'Import character'
   const readOnly = mode === 'edit' && pristine !== null && !pristine.writable
 
   return (
@@ -340,8 +354,8 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
       )}
       {readOnly && (
         <p className="studio-banner" role="note">
-          This is a built-in repository pack and cannot be edited here. Make an editable copy with a
-          distinct id, then edit the copy.
+          This is a built-in repository pack and cannot be edited here. Make an editable copy with a distinct id, then
+          edit the copy.
         </p>
       )}
       {readOnly ? (
@@ -440,7 +454,13 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
                   onChange={(e) =>
                     setDraft((d) => ({
                       ...d,
-                      card: { ...d.card, languages: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) }
+                      card: {
+                        ...d.card,
+                        languages: e.target.value
+                          .split(',')
+                          .map((s) => s.trim())
+                          .filter(Boolean)
+                      }
                     }))
                   }
                 />
@@ -451,7 +471,13 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
                   onChange={(e) =>
                     setDraft((d) => ({
                       ...d,
-                      card: { ...d.card, aliases: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) }
+                      card: {
+                        ...d.card,
+                        aliases: e.target.value
+                          .split(',')
+                          .map((s) => s.trim())
+                          .filter(Boolean)
+                      }
                     }))
                   }
                 />
@@ -532,7 +558,14 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
                             const moods = { ...d.moods.moods }
                             moods[next] = moods[activeMood]!
                             delete moods[activeMood]
-                            return { ...d, moods: { ...d.moods, default: d.moods.default === activeMood ? next : d.moods.default, moods } }
+                            return {
+                              ...d,
+                              moods: {
+                                ...d.moods,
+                                default: d.moods.default === activeMood ? next : d.moods.default,
+                                moods
+                              }
+                            }
                           })
                           setSelectedMood(next)
                         }}
@@ -550,7 +583,11 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
                             const rest = Object.keys(moods)
                             return {
                               ...d,
-                              moods: { ...d.moods, default: d.moods.default === activeMood ? (rest[0] ?? '') : d.moods.default, moods }
+                              moods: {
+                                ...d.moods,
+                                default: d.moods.default === activeMood ? (rest[0] ?? '') : d.moods.default,
+                                moods
+                              }
                             }
                           })
                           setSelectedMood(null)
@@ -567,10 +604,24 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
                     onChange={(patterns) => updateMood(activeMood, { ...mood, patterns })}
                   />
                   <Field label="Tone guidance">
-                    <textarea rows={3} value={mood.tone} onChange={(e) => updateMood(activeMood, { ...mood, tone: e.target.value })} />
+                    <textarea
+                      rows={3}
+                      value={mood.tone}
+                      onChange={(e) => updateMood(activeMood, { ...mood, tone: e.target.value })}
+                    />
                   </Field>
-                  <LinesEditor label="Openers" hint="Drawn about 1 reply in 3." values={mood.openers} onChange={(openers) => updateMood(activeMood, { ...mood, openers })} />
-                  <LinesEditor label="Endings" hint="Drawn about 1 reply in 4." values={mood.endings} onChange={(endings) => updateMood(activeMood, { ...mood, endings })} />
+                  <LinesEditor
+                    label="Openers"
+                    hint="Drawn about 1 reply in 3."
+                    values={mood.openers}
+                    onChange={(openers) => updateMood(activeMood, { ...mood, openers })}
+                  />
+                  <LinesEditor
+                    label="Endings"
+                    hint="Drawn about 1 reply in 4."
+                    values={mood.endings}
+                    onChange={(endings) => updateMood(activeMood, { ...mood, endings })}
+                  />
                   <LinesEditor
                     label="Faces"
                     hint="One kaomoji in round brackets per line."
@@ -583,7 +634,10 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
                       onChange={(e) =>
                         updateMood(activeMood, {
                           ...mood,
-                          faceGroups: e.target.value.split(',').map((s) => s.trim()).filter(Boolean)
+                          faceGroups: e.target.value
+                            .split(',')
+                            .map((s) => s.trim())
+                            .filter(Boolean)
                         })
                       }
                     />
@@ -628,7 +682,10 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
                     onClick={() => {
                       const key = newMoodKey.trim()
                       if (!key || moodKeys.includes(key)) return
-                      setDraft((d) => ({ ...d, moods: { ...d.moods, moods: { ...d.moods.moods, [key]: emptyMood() } } }))
+                      setDraft((d) => ({
+                        ...d,
+                        moods: { ...d.moods, moods: { ...d.moods.moods, [key]: emptyMood() } }
+                      }))
                       setSelectedMood(key)
                       setRenameKey(key)
                       setNewMoodKey('')
@@ -670,7 +727,10 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
                 ))}
                 <BeatAdder
                   onAdd={(name, line) =>
-                    setDraft((d) => ({ ...d, moods: { ...d.moods, beats: [...(d.moods.beats ?? []), { name, line }] } }))
+                    setDraft((d) => ({
+                      ...d,
+                      moods: { ...d.moods, beats: [...(d.moods.beats ?? []), { name, line }] }
+                    }))
                   }
                 />
               </fieldset>
@@ -701,7 +761,10 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
                       onChange={(e) =>
                         setDraft((d) => ({
                           ...d,
-                          moods: { ...d.moods, faceGroups: { ...(d.moods.faceGroups ?? {}), [group]: e.target.value.split('\n') } }
+                          moods: {
+                            ...d.moods,
+                            faceGroups: { ...(d.moods.faceGroups ?? {}), [group]: e.target.value.split('\n') }
+                          }
                         }))
                       }
                     />
@@ -715,7 +778,10 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
                     onClick={() => {
                       const group = newGroup.trim()
                       if (!group) return
-                      setDraft((d) => ({ ...d, moods: { ...d.moods, faceGroups: { ...(d.moods.faceGroups ?? {}), [group]: [''] } } }))
+                      setDraft((d) => ({
+                        ...d,
+                        moods: { ...d.moods, faceGroups: { ...(d.moods.faceGroups ?? {}), [group]: [''] } }
+                      }))
                       setNewGroup('')
                     }}
                   >
@@ -758,11 +824,14 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
 
             <section className="studio-section" id="studio-expressions" aria-label="Expressions">
               <h3>Expressions</h3>
-              {id && pristine ? <ExpressionGallery id={id} writable={pristine.writable} /> : <p>Save this pack to add expressions.</p>}
+              {id && pristine ? (
+                <ExpressionGallery id={id} writable={pristine.writable} />
+              ) : (
+                <p>Save this pack to add expressions.</p>
+              )}
               {moodKeys.map((key) => (
                 <p key={key}>
-                  <strong>{key}:</strong>{' '}
-                  {draft.moods.moods[key]!.stickers.filter(Boolean).join(', ') || 'text only'}
+                  <strong>{key}:</strong> {draft.moods.moods[key]!.stickers.filter(Boolean).join(', ') || 'text only'}
                 </p>
               ))}
               <p>
@@ -776,8 +845,8 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
             <section className="studio-section" id="studio-footer" aria-label="Tool footer">
               <h3>Tool Footer</h3>
               <p className="studio-hint">
-                Tool wording is owned by the footer editor so two writers never fight over one
-                file. This section shows what the draft carries.
+                Tool wording is owned by the footer editor so two writers never fight over one file. This section shows
+                what the draft carries.
               </p>
               <p>
                 Icon: {draft.card.toolFooter?.icon ?? '(code default)'} · Labels:{' '}
@@ -803,7 +872,10 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
               </Field>
               <pre className="studio-pre">{preview.text}</pre>
               <p role="status">
-                About {preview.tokens} tokens. {preview.tokens > PROMPT_CEILING ? 'Over the ceiling — shorten identity, rules or tone.' : 'Inside the ceiling.'}
+                About {preview.tokens} tokens.{' '}
+                {preview.tokens > PROMPT_CEILING
+                  ? 'Over the ceiling — shorten identity, rules or tone.'
+                  : 'Inside the ceiling.'}
               </p>
             </section>
 
@@ -819,8 +891,8 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
                   {conflict && (
                     <div className="studio-banner" role="alert">
                       <p>
-                        The server is at revision {conflict.revision}; you saved from {pristine!.revision}.
-                        Your draft is untouched.
+                        The server is at revision {conflict.revision}; you saved from {pristine!.revision}. Your draft
+                        is untouched.
                       </p>
                       <span className="studio-row">
                         <button
@@ -862,11 +934,21 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
                 </ul>
               )}
               {mode === 'edit' ? (
-                <button type="button" className="studio-button studio-primary" disabled={saving || !dirty} onClick={saveEdit}>
+                <button
+                  type="button"
+                  className="studio-button studio-primary"
+                  disabled={saving || !dirty}
+                  onClick={saveEdit}
+                >
                   {saving ? 'Saving…' : 'Save changes'}
                 </button>
               ) : (
-                <button type="button" className="studio-button studio-primary" disabled={saving} onClick={() => saveNew()}>
+                <button
+                  type="button"
+                  className="studio-button studio-primary"
+                  disabled={saving}
+                  onClick={() => saveNew()}
+                >
                   {saving ? 'Creating…' : 'Create character'}
                 </button>
               )}
@@ -895,8 +977,18 @@ function BeatAdder({ onAdd }: { onAdd: (name: string, line: string) => void }) {
   const [line, setLine] = useState('')
   return (
     <span className="studio-row">
-      <input aria-label="New beat name" value={name} placeholder="beat name" onChange={(e) => setName(e.target.value)} />
-      <input aria-label="New beat line" value={line} placeholder="one line of guidance" onChange={(e) => setLine(e.target.value)} />
+      <input
+        aria-label="New beat name"
+        value={name}
+        placeholder="beat name"
+        onChange={(e) => setName(e.target.value)}
+      />
+      <input
+        aria-label="New beat line"
+        value={line}
+        placeholder="one line of guidance"
+        onChange={(e) => setLine(e.target.value)}
+      />
       <button
         type="button"
         className="studio-button"
@@ -976,7 +1068,8 @@ export function StudioSimulator() {
     }, 15000)
     window.addEventListener('message', onMessage)
     try {
-      if (window.opener && window.opener !== window) window.opener.postMessage({ type: SIMULATOR_READY }, location.origin)
+      if (window.opener && window.opener !== window)
+        window.opener.postMessage({ type: SIMULATOR_READY }, location.origin)
       else {
         window.clearTimeout(timer)
         setWaiting(false)
@@ -996,7 +1089,10 @@ export function StudioSimulator() {
     return (
       <section className="studio-sim">
         <h2>Simulator</h2>
-        <p>No draft arrived. Open this tab with Preview Conversation from the studio editor — the draft travels tab to tab, never through a link or storage.</p>
+        <p>
+          No draft arrived. Open this tab with Preview Conversation from the studio editor — the draft travels tab to
+          tab, never through a link or storage.
+        </p>
       </section>
     )
 
@@ -1008,7 +1104,8 @@ export function StudioSimulator() {
     <section className="studio-sim" aria-label="WhatsApp simulator">
       <h2>{draft.card.displayName || 'Untitled character'}</h2>
       <p className="studio-hint">
-        Synthetic preview — no model call, no delivery. Mood rules run locally; the judge override is unavailable offline.
+        Synthetic preview — no model call, no delivery. Mood rules run locally; the judge override is unavailable
+        offline.
       </p>
       <div className="studio-phone" aria-label="Phone preview">
         <div className="studio-bubble studio-bubble-them">
@@ -1026,8 +1123,8 @@ export function StudioSimulator() {
           <div className="studio-bubble studio-bubble-me">
             <p>{renderInline(shown.openers.find((s) => s.trim()) ?? '(no opener yet)', 'opener')}</p>
             <p className="studio-hint">
-              Length ≤ {REPLY_LENGTHS[draft.card.defaultReplyLength]} chars · {shown.faces.filter(Boolean).length} faces ·{' '}
-              {Object.keys(shown.beats ?? {}).length} beats · prompt ≈ {tokens} tokens
+              Length ≤ {REPLY_LENGTHS[draft.card.defaultReplyLength]} chars · {shown.faces.filter(Boolean).length} faces
+              · {Object.keys(shown.beats ?? {}).length} beats · prompt ≈ {tokens} tokens
             </p>
           </div>
         )}

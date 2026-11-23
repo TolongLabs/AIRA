@@ -23,6 +23,8 @@ export function Overview() {
     }
   }, [])
   const units = Object.entries(host.data?.services ?? {})
+  const active = Array.isArray(chats) ? chats.filter((chat) => chat.status === 'active').length : 0
+  const pending = Array.isArray(chats) ? chats.filter((chat) => chat.status === 'pending').length : 0
   const online = units.filter(([, state]) => state === 'active').length
   const jobs = routines.data?.jobs.filter((job) => job.enabled) ?? []
   const next = jobs
@@ -42,11 +44,16 @@ export function Overview() {
           </strong>
         )}
         <h2>Service Health</h2>
+        {!hostStatus && units.length > 0 && (
+          <span className="overview-status" data-online={online === units.length}>
+            {online === units.length ? 'Healthy' : 'Needs attention'}
+          </span>
+        )}
         <ul>
           {units.map(([unit, state]) => (
             <li key={unit}>
-              <b>{unit}</b>
-              <span>{state}</span>
+              <b data-online={state === 'active'}>{unit}</b>
+              <span>{state === 'active' ? 'Online' : state}</span>
             </li>
           ))}
         </ul>
@@ -55,8 +62,16 @@ export function Overview() {
         <h2>Chats</h2>
         {Array.isArray(chats) ? (
           <>
-            <strong>{chats.filter((chat) => chat.status === 'active').length} Active</strong>
-            <span>{chats.filter((chat) => chat.status === 'pending').length} Pending</span>
+            <strong>{active} Active</strong>
+            <span>{pending} Pending</span>
+            {active + pending > 0 && (
+              <div className="overview-ratio">
+                <small>
+                  {active}:{pending} active
+                </small>
+                <meter min={0} max={active + pending} value={active} aria-label="Active share of chats" />
+              </div>
+            )}
           </>
         ) : (
           <span>{chats ? 'Unavailable' : 'Loading…'}</span>
@@ -74,7 +89,7 @@ export function Overview() {
                 : 'No upcoming run'}
         </strong>
         {next !== undefined && <span>Next Run</span>}
-        {routines.data && <span>{jobs.length} scheduled</span>}
+        {routines.data && <small className="overview-scheduled">{jobs.length} scheduled</small>}
       </a>
       <a className="overview-library" href={dashboardHref('library')}>
         <h2>Library</h2>

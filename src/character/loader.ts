@@ -161,7 +161,11 @@ export interface PackSet {
  * Loads every pack folder under the two roots. A pack on the data volume wins over one in the repository with the
  * same id. A pack that fails validation is not loaded and is reported as a fault; the other packs still load.
  */
-export function loadPacks(roots: { repositoryDir?: string; dataDir?: string }): PackSet {
+export function loadPacks(roots: {
+  repositoryDir?: string
+  dataDir?: string
+  excluded?: ReadonlySet<string>
+}): PackSet {
   const candidates = new Map<string, { dir: string; source: 'repository' | 'data' }>()
 
   const scan = (rootDir: string | undefined, source: 'repository' | 'data') => {
@@ -180,6 +184,10 @@ export function loadPacks(roots: { repositoryDir?: string; dataDir?: string }): 
   const faults: PackFault[] = []
 
   for (const [id, { dir, source }] of candidates) {
+    if (roots.excluded?.has(id)) {
+      faults.push({ id, dir, message: 'Recovery requires inspection' })
+      continue
+    }
     if (!PACK_ID.test(id)) {
       faults.push({
         id,

@@ -12,7 +12,7 @@ export interface Resolved {
 }
 
 export interface CoreChat {
-  settingsRevision?:string
+  settingsRevision?: string
   chatId: string
   waId: string
   lastInboundAt?: string | null
@@ -61,25 +61,27 @@ export interface CoreToolCatalog {
 export class CoreError extends Error {
   constructor(
     readonly status: number,
-    readonly code: string
+    readonly code: string,
+    readonly requestId?: string
   ) {
     super(code)
   }
 }
 
-type CoreTransport=(path:string,init:RequestInit)=>Promise<Response>
-let transport:CoreTransport=(path,init)=>fetch(path,init)
+type CoreTransport = (path: string, init: RequestInit) => Promise<Response>
+let transport: CoreTransport = (path, init) => fetch(path, init)
 
-export function useCoreTransport(next:CoreTransport){
-  transport=next
+export function useCoreTransport(next: CoreTransport) {
+  transport = next
 }
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
   headers.set('accept', 'application/json')
-  const res=await transport(path,{...init,headers})
+  const res = await transport(path, { ...init, headers })
   const body = (await res.json().catch(() => ({}))) as { error?: string }
-  if (!res.ok) throw new CoreError(res.status, body.error ?? `http_${res.status}`)
+  if (!res.ok)
+    throw new CoreError(res.status, body.error ?? `http_${res.status}`, res.headers.get('x-request-id') ?? undefined)
   return body as T
 }
 
@@ -103,7 +105,7 @@ export const core = {
   setLabel: (chatId: string, label: string) =>
     put<{ changed: boolean }>('/api/chats/' + encodeURIComponent(chatId) + '/label', { label }),
   /** `value: null` clears the row at that level, so the level above applies again. */
-  setSetting: (level: SettingLevel, scope: string, key: string, value: unknown, expectedRevision?:string) =>
+  setSetting: (level: SettingLevel, scope: string, key: string, value: unknown, expectedRevision?: string) =>
     put<{ changed: boolean }>('/api/settings', { level, scope, key, value, expectedRevision }),
   /** `null` removes an icon or label key so the code default applies again. */
   setFooter: (id: string, patch: { icon?: string | null; labels?: Record<string, string | null> }) =>
@@ -117,7 +119,7 @@ export const core = {
 export function reasonText(error: unknown): string {
   if (!(error instanceof CoreError)) return 'The core did not answer.'
   const words: Record<string, string> = {
-    stale_revision:'Settings changed in another session. Reload to compare before saving again.',
+    stale_revision: 'Settings changed in another session. Reload to compare before saving again.',
     invalid_setting: 'That value is not allowed for this setting.',
     unknown_character: 'That character is not loaded.',
     missing_character: 'An active chat requires a loaded character.',
@@ -133,5 +135,6 @@ export function reasonText(error: unknown): string {
     origin_refused: 'This page is not on the core’s own address.',
     host_refused: 'Open the site by its IP address, not a name.'
   }
-  return words[error.code] ?? `The core refused it (${error.code}).`
+  const message = words[error.code] ?? `The core refused it (${error.code}).`
+  return error.requestId ? message + ' Reference ' + error.requestId : message
 }

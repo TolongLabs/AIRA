@@ -1,4 +1,5 @@
-export const previewMount = '/app/preview'
+export const previewMount =
+  typeof location !== 'undefined' && location.pathname.startsWith('/app/preview/') ? '/app/preview' : ''
 export const destinations = [
   ['overview', 'Overview'],
   ['chats', 'Chats'],
@@ -13,12 +14,12 @@ export function dashboardHref(path: string) {
   return previewMount + '/' + path
 }
 
-export function chatHref(path:string){
-  const query=new URLSearchParams()
-  const current=new URLSearchParams(location.search)
-  for(const key of ['search','status','page']){
-    const value=current.get(key)
-    if(value)query.set(key,value)
+export function chatHref(path: string) {
+  const query = new URLSearchParams()
+  const current = new URLSearchParams(location.search)
+  for (const key of ['search', 'status', 'page']) {
+    const value = current.get(key)
+    if (value) query.set(key, value)
   }
-  return dashboardHref(path)+(query.size?'?'+query:'')
+  return dashboardHref(path) + (query.size ? '?' + query : '')
 }

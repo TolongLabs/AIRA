@@ -1,5 +1,5 @@
-import {authHeaders,requestToken} from '@/lib/api'
-import {useCoreTransport} from '@/lib/core'
+import { authHeaders, requestToken } from '@/lib/api'
+import { useCoreTransport } from '@/lib/core'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
@@ -21,11 +21,12 @@ import { Overview } from './overview'
 import '@/styles.css'
 import './shell.css'
 
-useCoreTransport(async (path,init)=>{
-  const url=path.replace(/^\/api\//,'/owner-api/core/')
-  const load=()=>fetch(url,{...init,headers:authHeaders(Object.fromEntries(new Headers(init.headers).entries()))})
-  const result=await load()
-  if(result.status!==401)return result
+useCoreTransport(async (path, init) => {
+  const url = path.replace(/^\/api\//, '/owner-api/core/')
+  const load = () =>
+    fetch(url, { ...init, headers: authHeaders(Object.fromEntries(new Headers(init.headers).entries())) })
+  const result = await load()
+  if (result.status !== 401) return result
   await requestToken()
   return load()
 })
@@ -34,9 +35,10 @@ const ChatSettings = lazy(() => import('@/pages/chats'))
 const StudioEditor = lazy(() => import('./studio-editor'))
 const Library = lazy(() => import('@/pages/library'))
 const views = {
-  'characters/simulator': lazy(() => import('./studio-editor').then(m => ({default:m.StudioSimulator}))),
+  'characters/simulator': lazy(() => import('./studio-editor').then((m) => ({ default: m.StudioSimulator }))),
   'system/appearance': Appearance,
   chats: lazy(() => import('./directory')),
+  'chats/defaults': lazy(() => import('./chat-defaults')),
   'chats/files': lazy(() => import('@/pages/send')),
   library: Library,
   'library/graph': lazy(() => import('@/pages/graph')),
@@ -92,7 +94,11 @@ function Dashboard() {
   const edit = /^characters\/([a-z0-9_-]+)\/edit$/.exec(path)
   const item = /^library\/item\/([^/]+)$/.exec(path)
   const footer = /^characters\/([a-z0-9_-]+)\/footer$/.exec(path)
-  const View = section === 'markets' ? views.markets : views[path as keyof typeof views]
+  const View = path.startsWith('automations/routines/')
+    ? views['automations/routines']
+    : section === 'markets'
+      ? views.markets
+      : views[path as keyof typeof views]
   function nav(mobile: boolean) {
     return (
       <>
@@ -161,11 +167,6 @@ function Dashboard() {
             <nav aria-label="Automation views">
               <a href={dashboardHref('automations/routines')}>Routines</a>{' '}
               <a href={dashboardHref('automations/notices')}>Session Notices</a>
-            </nav>
-          )}
-          {section === 'library' && (
-            <nav aria-label="Library views">
-              <a href={dashboardHref('library')}>Items</a> <a href={dashboardHref('library/graph')}>Graph</a>
             </nav>
           )}
           {section === 'system' && (

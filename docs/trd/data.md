@@ -190,3 +190,11 @@ and `quiet.json`. Measured on the production host's layout, 16 Nov 2026:
 - Character pack ids are private, so the map is given on the command line and never stored in the repository.
 - A chat in a state file with no binding is created too: the old core answered it with the defaults.
 - A value a key's schema refuses is reported and not set. The run never guesses.
+
+### Persona expression descriptions
+
+An optional expressionDescriptions map on card.yml stores one-line descriptions of sticker files. Keys are
+validated WebP basenames, values are at most 300 UTF-16 units. Older packs omit the map. Studio lists the
+validated files in stickers/ and shows an empty description for an unannotated file. Publication adds the file
+and its description to the same staged pack revision before the journaled rename. The dashboard never uses a
+description to select a recipient or authorize delivery.

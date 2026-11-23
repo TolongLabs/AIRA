@@ -5,7 +5,19 @@ import { DashboardContext } from '@/dashboard/context'
 import { dashboardHref } from '@/dashboard/navigation'
 import '@/dashboard/automations.css'
 import { toast, Toaster, useApi } from '@/lib/hooks'
-import { Badge, Button, Card, ConfirmAction, Empty, Field, Input, Picker, Section, Segmented, Toggle } from '@/components/ui'
+import {
+  Badge,
+  Button,
+  Card,
+  ConfirmAction,
+  Empty,
+  Field,
+  Input,
+  Picker,
+  Section,
+  Segmented,
+  Toggle
+} from '@/components/ui'
 
 /* Who gets told when a Claude session finishes, and on which machine.
  *
@@ -103,10 +115,31 @@ function ago(unix: number): string {
   return `${Math.round(s / 86400)} d ago`
 }
 
+/* A refused save must name the problem without leaking who it was for. Route
+   errors can carry the raw target, a JID, or a token hint — none of that
+   belongs in the page. */
+function sanitizeRouteFault(input: unknown): string {
+  const raw = input instanceof Error ? input.message : String(input ?? 'Could not save')
+  let s = raw
+    .replace(/whatsapp:[^\s,;"]+/gi, 'whatsapp:<chat>')
+    .replace(/\b\d{5,}@[^\s,;"]+/g, '<chat>')
+    .replace(/\+\d{7,}/g, '<number>')
+    .replace(/(token|secret|key)\s*[:=]\s*\S+/gi, '$1 <redacted>')
+    .trim()
+  if (!s) s = 'Could not save — please retry.'
+  if (s.length > 280) s = s.slice(0, 280) + '…'
+  return s
+}
+
 export default function NoticesPage() {
   const api = useApi<Notices>('/api/notices')
   const data = api.data
   const [busy, setBusy] = useState('')
+  /* The last attempted edit per route, kept when a save is refused so the
+     control still shows what was asked for. Cleared only on a verified save. */
+  const [pendingEdits, setPendingEdits] = useState<Record<string, Partial<Route>>>({})
+  /* Sanitized per-route save faults, shown inline under the card. */
+  const [routeFaults, setRouteFaults] = useState<Record<string, string>>({})
   /* Sessions come off transcripts on disk, so this is live without a hook or a
      subscription — it just has to be asked again. Ten seconds is under the
      time it takes to notice something changed and long enough not to matter. */
@@ -133,9 +166,7 @@ export default function NoticesPage() {
   const visibleRoutes = useMemo(() => {
     const needle = filter.trim().toLowerCase()
     if (!needle) return routes
-    return routes.filter((r: Route) =>
-      `${r.machine} ${r.target} ${r.label ?? ''}`.toLowerCase().includes(needle)
-    )
+    return routes.filter((r: Route) => `${r.machine} ${r.target} ${r.label ?? ''}`.toLowerCase().includes(needle))
   }, [routes, filter])
   const noticesSelfHref = useMemo(() => {
     const qs = filter ? `?q=${encodeURIComponent(filter)}` : ''
@@ -176,25 +207,62 @@ export default function NoticesPage() {
   async function save(r: Partial<Route> & { remove?: boolean }) {
     const key = `${r.machine}|${r.target}`
     setBusy(key)
+    /* Keep the intent visible while the write is in flight. A refused save
+       leaves it in place beside the inline fault; a verified save clears it. */
+    if (!r.remove) {
+      const attempt: Partial<Route> = {}
+      if (r.enabled !== undefined) attempt.enabled = r.enabled
+      if (r.label !== undefined) attempt.label = r.label
+      if (r.quote_prompt !== undefined) attempt.quote_prompt = r.quote_prompt
+      if (r.when !== undefined) attempt.when = r.when
+      if (r.mode !== undefined) attempt.mode = r.mode
+      if (Object.keys(attempt).length) setPendingEdits((prev) => ({ ...prev, [key]: { ...prev[key], ...attempt } }))
+      setRouteFaults((prev) => {
+        if (!(key in prev)) return prev
+        const next = { ...prev }
+        delete next[key]
+        return next
+      })
+    }
     try {
       await post('/api/settings/notice_route', r)
       const saved = await get<Notices>('/api/notices')
       const row = saved.routes?.find((row) => row.target === r.target && row.machine === r.machine)
+      /* Read back every changed field before claiming the save. quote_prompt
+         defaults to OFF when the host omits it — absent never means on. */
       if (
         r.remove
           ? row
           : !row ||
             (r.enabled !== undefined && row.enabled !== r.enabled) ||
-            (r.label !== undefined && row.label !== r.label)
+            (r.label !== undefined && row.label !== r.label) ||
+            (r.quote_prompt !== undefined && (row.quote_prompt ?? false) !== r.quote_prompt) ||
+            (r.when !== undefined && (row.when ?? 'every_turn') !== r.when) ||
+            (r.mode !== undefined && (row.mode ?? 'summary') !== r.mode)
       )
         throw new Error('The saved route does not match the requested change')
+      setPendingEdits((prev) => {
+        if (!(key in prev)) return prev
+        const next = { ...prev }
+        delete next[key]
+        return next
+      })
+      setRouteFaults((prev) => {
+        if (!(key in prev)) return prev
+        const next = { ...prev }
+        delete next[key]
+        return next
+      })
       api.reload()
       toast(r.remove ? 'route removed ✓' : 'saved ✓')
     } catch (e) {
-      toast((e as Error).message, false)
+      const fault = sanitizeRouteFault(e)
+      setRouteFaults((prev) => ({ ...prev, [key]: fault }))
+      toast(fault, false)
       /* Rethrown so ConfirmAction stays armed on a failed remove instead of
          disarming as though the row had gone. Non-confirm callers swallow
-         the rejection at their own call site. */
+         the rejection at their own call site. The pending edit stays, so the
+         control still shows what was asked for. */
       throw e
     } finally {
       setBusy('')
@@ -232,9 +300,7 @@ export default function NoticesPage() {
           <div className="automations-panel">
             <p className="automations-kicker">Current activity</p>
             {!sessions.length ? (
-              <p className="mt-2 mb-0 text-[0.9rem] text-muted">
-                No Claude session has touched this machine recently.
-              </p>
+              <p className="mt-2 mb-0 text-[0.9rem] text-muted">No Claude session has touched this machine recently.</p>
             ) : (
               <ul className="automations-rows">
                 {sessions.map((x: Session, i: number) => (
@@ -287,6 +353,13 @@ export default function NoticesPage() {
                 {visibleRoutes.map((r: Route, i: number) => {
                   const key = `${r.machine}|${r.target}`
                   const known = machines.some((m: Machine) => m.machine === r.machine)
+                  const pend = pendingEdits[key]
+                  const effEnabled = pend?.enabled ?? r.enabled
+                  const effMode = pend?.mode ?? r.mode
+                  const effWhen = pend?.when ?? r.when
+                  /* Absent means OFF: the host never sends the operator's words
+                     unless the route says so. */
+                  const effQuote = pend?.quote_prompt ?? r.quote_prompt ?? false
                   return (
                     <Card key={`${key}|${i}`} className="p-4">
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
@@ -296,13 +369,13 @@ export default function NoticesPage() {
                         </code>
                         <span className="text-[0.92rem] text-muted">finishes a session, tell</span>
                         <b className="font-semibold">{nameOf(r.target)}</b>
-                        <Badge>{r.enabled ? 'on' : 'paused'}</Badge>
+                        <Badge>{effEnabled ? 'on' : 'paused'}</Badge>
                         <div className="ml-auto flex items-center gap-2">
                           <Toggle
-                            checked={r.enabled}
+                            checked={effEnabled}
                             disabled={busy === key}
                             onChange={(v) => void save({ ...r, enabled: v }).catch(() => {})}
-                            label={r.enabled ? 'on' : 'off'}
+                            label={effEnabled ? 'on' : 'off'}
                           />
                           <ConfirmAction
                             label="remove"
@@ -316,7 +389,7 @@ export default function NoticesPage() {
                         <span className="text-[0.82rem] text-muted">sends</span>
                         <Segmented
                           options={['a summary', 'the whole reply'] as const}
-                          value={r.mode === 'full' ? 'the whole reply' : 'a summary'}
+                          value={effMode === 'full' ? 'the whole reply' : 'a summary'}
                           disabled={busy === key}
                           onChange={(v) =>
                             void save({ ...r, mode: v === 'the whole reply' ? 'full' : 'summary' }).catch(() => {})
@@ -327,7 +400,7 @@ export default function NoticesPage() {
                         <span className="text-[0.82rem] text-muted">tell them</span>
                         <Segmented
                           options={['after every reply', 'only when it closes'] as const}
-                          value={r.when === 'session_end' ? 'only when it closes' : 'after every reply'}
+                          value={effWhen === 'session_end' ? 'only when it closes' : 'after every reply'}
                           disabled={busy === key}
                           onChange={(v) =>
                             void save({ ...r, when: v === 'only when it closes' ? 'session_end' : 'every_turn' }).catch(
@@ -336,6 +409,28 @@ export default function NoticesPage() {
                           }
                         />
                       </div>
+                      {/* The one control that decides whether the operator's own
+                          typed words are quoted into somebody else's chat. */}
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Toggle
+                          checked={!!effQuote}
+                          disabled={busy === key || effMode === 'full'}
+                          onChange={(v) => void save({ ...r, quote_prompt: v }).catch(() => {})}
+                          label="quote what was asked"
+                        />
+                        <span className="text-[0.8rem] text-faint">
+                          {effMode === 'full'
+                            ? 'a full route sends the whole reply, which usually restates the request — this cannot be honoured there'
+                            : effQuote
+                              ? 'the line that started the session is included'
+                              : 'off — only what finished, never what was asked'}
+                        </span>
+                      </div>
+                      {routeFaults[key] ? (
+                        <p className="mt-2 mb-0 text-[0.82rem] text-down" role="alert">
+                          {routeFaults[key]}
+                        </p>
+                      ) : null}
                       {!known ? (
                         <p className="mt-2 mb-0 text-[0.82rem] text-down">
                           No machine calling itself <b>{r.machine}</b> has ever reported here.{' '}
@@ -428,7 +523,9 @@ export default function NoticesPage() {
                 Add
               </Button>
             </div>
-            <p className="mt-3 mb-0 max-w-prose text-[0.82rem] text-muted">A new route is added paused. Turn it on when you mean it.</p>
+            <p className="mt-3 mb-0 max-w-prose text-[0.82rem] text-muted">
+              A new route is added paused. Turn it on when you mean it.
+            </p>
           </div>
 
           <div className="automations-panel" id="machines">
@@ -555,6 +652,11 @@ export default function NoticesPage() {
           const rowKey = `${key}|${i}`
           const twin = routes.filter((o: Route) => o.machine === r.machine && o.target === r.target).length
           const known = machines.some((m: Machine) => m.machine === r.machine)
+          const pend = pendingEdits[key]
+          const effEnabled = pend?.enabled ?? r.enabled
+          const effMode = pend?.mode ?? r.mode
+          const effWhen = pend?.when ?? r.when
+          const effQuote = pend?.quote_prompt ?? r.quote_prompt ?? false
           return (
             <Card key={rowKey} className="mb-3 p-4">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
@@ -569,7 +671,7 @@ export default function NoticesPage() {
                      that tells two otherwise identical rows apart. */
                   <span className="text-[0.82rem] text-faint">“{r.label}”</span>
                 ) : null}
-                <Badge>{r.enabled ? 'on' : 'paused'}</Badge>
+                <Badge>{effEnabled ? 'on' : 'paused'}</Badge>
                 {r.quiet_held ? (
                   <Badge>held until they ask</Badge>
                 ) : (r.quiet_for_minutes ?? 0) > 0 ? (
@@ -578,10 +680,10 @@ export default function NoticesPage() {
                 {r.quiet_daily ? <Badge>nightly {r.quiet_daily}</Badge> : null}
                 <div className="ml-auto flex items-center gap-2">
                   <Toggle
-                    checked={r.enabled}
+                    checked={effEnabled}
                     disabled={busy === key}
                     onChange={(v) => void save({ ...r, enabled: v }).catch(() => {})}
-                    label={r.enabled ? 'on' : 'off'}
+                    label={effEnabled ? 'on' : 'off'}
                   />
                   {/* Deleting sat one unconfirmed click from the reversible
                       toggle beside it, and a removed route cannot be turned
@@ -602,7 +704,7 @@ export default function NoticesPage() {
                 <span className="text-[0.82rem] text-muted">sends</span>
                 <Segmented
                   options={['a summary', 'the whole reply'] as const}
-                  value={r.mode === 'full' ? 'the whole reply' : 'a summary'}
+                  value={effMode === 'full' ? 'the whole reply' : 'a summary'}
                   disabled={busy === key}
                   onChange={(v) =>
                     void save({
@@ -612,7 +714,7 @@ export default function NoticesPage() {
                   }
                 />
                 <span className="text-[0.8rem] text-faint">
-                  {r.mode === 'full'
+                  {effMode === 'full'
                     ? 'every reply in full, up to ~3,500 characters'
                     : 'files touched, tools run, and the first line'}
                 </span>
@@ -624,7 +726,7 @@ export default function NoticesPage() {
                 <span className="text-[0.82rem] text-muted">tell them</span>
                 <Segmented
                   options={['after every reply', 'only when it closes'] as const}
-                  value={r.when === 'session_end' ? 'only when it closes' : 'after every reply'}
+                  value={effWhen === 'session_end' ? 'only when it closes' : 'after every reply'}
                   disabled={busy === key}
                   onChange={(v) =>
                     void save({
@@ -634,7 +736,7 @@ export default function NoticesPage() {
                   }
                 />
                 <span className="text-[0.8rem] text-faint">
-                  {r.when === 'session_end'
+                  {effWhen === 'session_end'
                     ? 'one message when the session ends, nothing during it'
                     : 'one message each time a reply finishes'}
                 </span>
@@ -652,7 +754,7 @@ export default function NoticesPage() {
                   or when you release it under Quiet chats.
                 </p>
               ) : null}
-              {r.off_by_hold && !r.enabled ? (
+              {r.off_by_hold && !effEnabled ? (
                 <p className="mt-2 mb-0 text-[0.82rem] text-muted">
                   The chat's hold switched this route off. It comes back on when the hold is lifted.
                 </p>
@@ -675,19 +777,24 @@ export default function NoticesPage() {
                   typed words are quoted into somebody else's chat. */}
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Toggle
-                  checked={!!r.quote_prompt}
-                  disabled={busy === key || r.mode === 'full'}
+                  checked={!!effQuote}
+                  disabled={busy === key || effMode === 'full'}
                   onChange={(v) => void save({ ...r, quote_prompt: v }).catch(() => {})}
                   label="quote what was asked"
                 />
                 <span className="text-[0.8rem] text-faint">
-                  {r.mode === 'full'
+                  {effMode === 'full'
                     ? 'a full route sends the whole reply, which usually restates the request — this cannot be honoured there'
-                    : r.quote_prompt
+                    : effQuote
                       ? 'the line that started the session is included'
                       : 'off — only what finished, never what was asked'}
                 </span>
               </div>
+              {routeFaults[key] ? (
+                <p className="mt-2 mb-0 text-[0.82rem] text-down" role="alert">
+                  {routeFaults[key]}
+                </p>
+              ) : null}
               {!known && (
                 /* The silent-failure case, made loud. A route whose machine has
                    never reported will never fire, and looks identical to one
