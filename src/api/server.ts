@@ -102,16 +102,19 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
       const body = await readJson(request)
       if ('error' in body) return json(response, body.status, { error: body.error })
       const token = request.headers['x-tolongai-token']
+      if (typeof token !== 'string' || !token.trim()) return json(response, 401, { error: 'Owner token required' })
       try {
+        const authorize = ownerCronTransport(
+          options.ownerApiOrigin ?? 'http://owner.internal',
+          options.ownerApiSocket,
+          token,
+          '/api/settings'
+        )
+        const check = await authorize()
+        if (check.status !== 200) return json(response, check.status, check.body)
+        if (!check.body.markets || typeof check.body.markets !== 'object' || Array.isArray(check.body.markets))
+          return json(response, 502, { error: 'Invalid owner settings response' })
         if (path.endsWith('/markets')) {
-          const authorize = ownerCronTransport(
-            options.ownerApiOrigin ?? 'http://owner.internal',
-            options.ownerApiSocket,
-            typeof token === 'string' ? token : '',
-            '/api/settings'
-          )
-          const check = await authorize()
-          if (check.status !== 200) return json(response, check.status, check.body)
           if (!options.marketsPath || !check.body.markets)
             return json(response, 503, { error: 'Market settings unavailable' })
           const result = changeOwnerMarkets(options.marketsPath, body.body)

@@ -265,3 +265,20 @@ describe('CronJobPolicy', () => {
     expect(CronJobPolicy.runsLabel('7 times')).toBe('7 runs, then it stops')
   })
 })
+
+it('omits preview text from a routine rename', () => {
+  const job = {
+    job_id: 'fixture',
+    name: 'before',
+    prompt_preview: '[AIRA-SCHEDULED v1 kind=job id=site_' + 'a'.repeat(32) + ']\npreview only…'
+  }
+  const prompt = CronJobPolicy.editablePrompt(job)
+  expect(prompt).toBe('preview only…')
+  expect(
+    CronJobPolicy.buildUpdateBody(job, { name: 'after', prompt, schedule: null, scheduleEdited: false, deliver: '' })
+  ).toEqual({
+    action: 'update',
+    job_id: 'fixture',
+    name: 'after'
+  })
+})

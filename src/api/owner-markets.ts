@@ -1,11 +1,16 @@
 import { isDeepStrictEqual } from 'node:util'
 import { z } from 'zod'
-import { loadWatchConfig, saveWatchConfig } from '../tools/owner/watch-config.js'
+import { readWatchFields, saveWatchConfig } from '../tools/owner/watch-config.js'
 
 const target = z.string().regex(/^[a-z][a-z0-9_-]*:[^\s,]+$/)
 const symbol = z.string().regex(/^[a-z0-9^=.-]{1,15}$/i)
 const alert = z
-  .object({ symbol, direction: z.enum(['above', 'below', 'moves']), level: z.number().finite(), to: target.optional() })
+  .object({
+    symbol,
+    direction: z.enum(['above', 'below', 'moves']),
+    level: z.number().finite(),
+    to: z.union([target, z.string().regex(/^[^\s,:@]+@(?:g\.us|lid|s\.whatsapp\.net)$/), z.literal('')]).optional()
+  })
   .passthrough()
 const digest = z.object({
   enabled: z.boolean(),
@@ -29,7 +34,7 @@ export function changeOwnerMarkets(path: string, input: unknown) {
     (patch.news_digest?.enabled && !patch.news_digest.to.length)
   )
     return { status: 400, body: { error: 'Invalid alert or digest' } }
-  const current = loadWatchConfig(path, true)
+  const current = readWatchFields(path, true)
   for (const key of Object.keys(patch)) {
     if (!Object.hasOwn(expected, key) || !isDeepStrictEqual(current[key] ?? null, expected[key]))
       return { status: 409, body: { error: 'Market settings changed. Reload before saving.' } }

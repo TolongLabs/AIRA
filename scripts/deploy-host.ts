@@ -40,19 +40,19 @@ export type DeployHostResult =
       action: 'failed'
       from: string | undefined
       to: string
-      reason: 'snapshot_failed' | 'pull_failed' | 'env_failed' | 'version_failed' | 'locked'
+      reason: 'snapshot_failed' | 'pull_failed' | 'env_failed' | 'config_failed' | 'version_failed' | 'locked'
     }
   | {
       action: 'rolled_back'
       from: string | undefined
       to: string
-      reason: 'start_failed' | 'unhealthy' | 'synthetic_turn_failed'
+      reason: 'start_failed' | 'unhealthy' | 'owner_console_failed' | 'synthetic_turn_failed'
     }
   | {
       action: 'rollback_failed'
       from: string | undefined
       to: string
-      reason: 'start_failed' | 'unhealthy' | 'synthetic_turn_failed'
+      reason: 'start_failed' | 'unhealthy' | 'owner_console_failed' | 'synthetic_turn_failed'
     }
 
 function errorMessage(err: unknown): string {
@@ -296,10 +296,10 @@ async function syncConfigFile(repoDir: string | undefined, installDir: string): 
 
 async function rollback(
   ops: DeployHostOps,
-  timeouts: { healthTimeoutMs: number; pollMs: number },
+  timeouts: { healthTimeoutMs: number; pollMs: number; verifyRestoredConsole?: boolean },
   previous: string | undefined,
   target: string,
-  reason: 'start_failed' | 'unhealthy' | 'synthetic_turn_failed'
+  reason: 'start_failed' | 'unhealthy' | 'owner_console_failed' | 'synthetic_turn_failed'
 ): Promise<DeployHostResult> {
   if (previous === undefined) {
     await safeRecord(ops, {
@@ -339,7 +339,12 @@ async function rollback(
         ok: (value) => value
       }
     )
-    if (!recovered) {
+    const consoleRestored =
+      !timeouts.verifyRestoredConsole ||
+      (ops.ownerConsole &&
+        (await safeCall(ops.ownerConsole, false)) &&
+        (await safeCall(() => ops.syntheticTurn(), false)))
+    if (!recovered || !consoleRestored) {
       await safeRecord(ops, {
         at: ops.now().toISOString(),
         from: previous,
@@ -377,7 +382,7 @@ async function failBeforeStart(
   ops: DeployHostOps,
   previous: string | undefined,
   target: string,
-  reason: 'snapshot_failed' | 'pull_failed' | 'env_failed' | 'version_failed' | 'locked',
+  reason: 'snapshot_failed' | 'pull_failed' | 'env_failed' | 'config_failed' | 'version_failed' | 'locked',
   message: string
 ): Promise<DeployHostResult> {
   await safeRecord(ops, {
@@ -462,6 +467,7 @@ export async function runDeployHost(ops: DeployHostOps, config: DeployHostConfig
       )
     }
 
+    const verifyRestoredConsole = Boolean(previous && ops.ownerConsole && (await safeCall(ops.ownerConsole, false)))
     const originals = new Map<string, string | undefined>()
     async function restoreFiles() {
       for (const [path, text] of originals) {
@@ -469,7 +475,7 @@ export async function runDeployHost(ops: DeployHostOps, config: DeployHostConfig
         else if ((await readOptional(path)) !== text) await replaceYaml(path, text)
       }
     }
-    async function restore(reason: 'start_failed' | 'unhealthy' | 'synthetic_turn_failed') {
+    async function restore(reason: 'start_failed' | 'unhealthy' | 'owner_console_failed' | 'synthetic_turn_failed') {
       try {
         await restoreFiles()
       } catch {
@@ -483,8 +489,9 @@ export async function runDeployHost(ops: DeployHostOps, config: DeployHostConfig
         await safeAlert(ops, 'Rollback failed to restore the install configuration')
         return { action: 'rollback_failed' as const, from: previous, to: config.version, reason }
       }
-      return rollback(ops, timeouts, previous, config.version, reason)
+      return rollback(ops, { ...timeouts, verifyRestoredConsole }, previous, config.version, reason)
     }
+    let writingEnv = false
     try {
       if (installDir && config.syncFiles !== false) {
         for (const name of ['compose.yml', 'config.yml']) {
@@ -494,15 +501,27 @@ export async function runDeployHost(ops: DeployHostOps, config: DeployHostConfig
         await runStep(ops, 'sync-compose', () => syncComposeFile(config.repoDir, installDir))
         await runStep(ops, 'sync-config', () => syncConfigFile(config.repoDir, installDir))
       }
+      writingEnv = true
       await runStep(ops, 'env', () => ops.writeEnv(config.version), { detail: config.version })
     } catch (err) {
-      await restoreFiles()
+      const reason = writingEnv ? 'env_failed' : 'config_failed'
+      try {
+        await restoreFiles()
+      } catch (restoreError) {
+        return failBeforeStart(
+          ops,
+          previous,
+          config.version,
+          reason,
+          'Install configuration restoration failed: ' + errorMessage(restoreError)
+        )
+      }
       return failBeforeStart(
         ops,
         previous,
         config.version,
-        'env_failed',
-        `Deploy of ${config.version} aborted: .env update failed: ${errorMessage(err)}`
+        reason,
+        `Deploy of ${config.version} aborted: ${reason}: ${errorMessage(err)}`
       )
     }
 
@@ -518,6 +537,8 @@ export async function runDeployHost(ops: DeployHostOps, config: DeployHostConfig
     if (!healthy) {
       return restore('unhealthy')
     }
+
+    if (ops.ownerConsole && !(await safeCall(ops.ownerConsole, false))) return restore('owner_console_failed')
 
     const turned = await runStep(ops, 'synthetic-turn', () => safeCall(() => ops.syntheticTurn(), false), {
       ok: (value) => value

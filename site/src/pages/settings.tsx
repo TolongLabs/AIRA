@@ -520,6 +520,7 @@ function ModelsTab({ settings, onChanged }: { settings: Settings; onChanged: () 
   }
 
   async function test() {
+    setProbe(null)
     setBusy(true)
     try {
       // Probe what is typed, not what was last saved: testing after editing
@@ -660,7 +661,10 @@ function ModelsTab({ settings, onChanged }: { settings: Settings; onChanged: () 
             value={endpoint}
             disabled={busy}
             placeholder="http://127.0.0.1:11434"
-            onChange={(e) => setEndpoint(e.target.value)}
+            onChange={(e) => {
+              setProbe(null)
+              setEndpoint(e.target.value)
+            }}
           />
           <Button
             variant="ghost"

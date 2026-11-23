@@ -21,7 +21,6 @@ export const SYNTHETIC_TURN_TIMEOUT_MS = 60_000
 /** Upper bound for one health or release fetch. Polling loops must never hang past their deadline. */
 export const HEALTH_FETCH_TIMEOUT_MS = 10_000
 export const RELEASE_FETCH_TIMEOUT_MS = 10_000
-/** A lock older than this is treated as left over by a dead deploy. Past the longest deploy budget. */
 
 export interface RunOptions {
   timeoutMs?: number
@@ -405,11 +404,14 @@ export function createRealOps(options: RealOpsOptions): UpdaterOps {
       }
     },
 
+    async ownerConsole(): Promise<boolean> {
+      return !siteUrl || verifyOwnerConsole(siteUrl, fetchFn)
+    },
+
     async syntheticTurn(): Promise<boolean> {
       try {
         // A router or auxiliary canned answer cannot satisfy the check. The image must record
         // delivery from the normal model turn branch in an isolated fixture.
-        if (siteUrl && !(await verifyOwnerConsole(siteUrl, fetchFn))) return false
         const out = await execChecked(
           run,
           'docker',

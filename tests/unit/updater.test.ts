@@ -256,9 +256,8 @@ describe('runUpdate', () => {
       running: 'sha-abc1234'
     })
     const result = await runUpdate(ops, defaultConfig)
-    expect(result).toEqual({ action: 'deployed', from: 'sha-abc1234', to: '1.2.0' })
-    expect(calls).toContain('pull:v1.2.0')
-    expect(calls).toContain('pruneImages:v1.2.0:sha-abc1234')
+    expect(result).toEqual({ action: 'none', reason: 'main_managed' })
+    expect(calls).not.toContain('pull:v1.2.0')
   })
 
   it('snapshots and deploys when the running tag is stable', async () => {

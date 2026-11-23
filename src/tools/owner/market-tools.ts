@@ -4,6 +4,7 @@ import type { Headline, MarketsPort, Quote } from './markets.js'
 import {
   type AlertRule,
   chatWatchlists,
+  marketScopeKey,
   cleanSymbols,
   loadWatchConfig,
   pnl,
@@ -64,7 +65,7 @@ function indexQuotes(list: Quote[]): Record<string, Quote> {
 function alertsForChat(alerts: AlertRule[], chatKey: string): AlertRule[] {
   return alerts.filter((rule) => {
     const to = rule.to ?? ''
-    return to === '' || to === chatKey
+    return to === '' || to === chatKey || to === 'whatsapp:' + chatKey
   })
 }
 
@@ -163,7 +164,7 @@ async function handleWatchList(
   const cfg = loadWatchConfig(configPath)
   const alerts = alertsForChat(cfg.alerts, chatKey)
   const watch = watchlistFor(chatKey, cfg)
-  const own = Boolean(chatWatchlists(cfg)[chatKey])
+  const own = Boolean(chatWatchlists(cfg)[marketScopeKey(chatKey)])
   const held = positionsFor(chatKey, cfg)
 
   const out: Record<string, unknown> = {
@@ -303,7 +304,7 @@ function handleWatchAlert(
           !(
             r.symbol.toLowerCase() === sym &&
             r.direction.toLowerCase() === direction &&
-            ((r.to ?? '') === chatKey || (r.to ?? '') === '')
+            (!r.to || r.to === chatKey || r.to === 'whatsapp:' + chatKey)
           )
       )
       if (kind === 'alert') {

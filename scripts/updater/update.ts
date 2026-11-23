@@ -1,3 +1,5 @@
+import { acquireDeployLock, type DeployLock } from './ops.js'
+
 export interface Release {
   tag: string
   version: string
@@ -21,6 +23,7 @@ export interface UpdaterOps {
   /** True when the health endpoint reports ready. */
   healthy(): Promise<boolean>
   /** Sends one synthetic turn through the endpoint. True for status 200 with non-empty content. */
+  ownerConsole?(): Promise<boolean>
   syntheticTurn(): Promise<boolean>
   /** Removes every image older than the one before `current`. */
   pruneImages(current: string, previous: string | undefined): Promise<void>
@@ -29,8 +32,6 @@ export interface UpdaterOps {
   sleep(ms: number): Promise<void>
   now(): Date
 }
-
-import { acquireDeployLock, type DeployLock } from './ops.js'
 
 export interface DeployRecord {
   at: string
@@ -44,7 +45,14 @@ export type UpdateResult =
   | {
       action: 'none'
       reason:
-        'no_release' | 'up_to_date' | 'manual_release' | 'snapshot_failed' | 'pull_failed' | 'version_failed' | 'locked'
+        | 'main_managed'
+        | 'no_release'
+        | 'up_to_date'
+        | 'manual_release'
+        | 'snapshot_failed'
+        | 'pull_failed'
+        | 'version_failed'
+        | 'locked'
     }
   | { action: 'deployed'; from: string | undefined; to: string }
   | { action: 'rolled_back'; from: string | undefined; to: string; reason: string }
@@ -127,7 +135,7 @@ async function rollback(
   config: UpdaterConfig,
   previous: string | undefined,
   target: string,
-  reason: 'start_failed' | 'unhealthy' | 'synthetic_turn_failed'
+  reason: 'start_failed' | 'unhealthy' | 'owner_console_failed' | 'synthetic_turn_failed'
 ): Promise<UpdateResult> {
   const pollMs = config.pollMs ?? 2000
   if (previous === undefined) {
@@ -225,7 +233,7 @@ async function runUpdateInner(ops: UpdaterOps, config: UpdaterConfig): Promise<U
     await safeAlert(ops, `Deploy of ${release.version} aborted: running version lookup failed: ${errorMessage(err)}`)
     return { action: 'none', reason: 'version_failed' }
   }
-  // Only a versioned install can be up to date. A sha- or stable tag carries no version, so the release goes on.
+  if (previous?.startsWith('sha-')) return { action: 'none', reason: 'main_managed' }
   if (previous !== undefined && parseVersion(previous) !== undefined && !isNewer(release.version, previous)) {
     return { action: 'none', reason: 'up_to_date' }
   }
@@ -286,6 +294,10 @@ async function runUpdateInner(ops: UpdaterOps, config: UpdaterConfig): Promise<U
 
   if (!(await waitForHealthy(ops, config.healthTimeoutMs, pollMs))) {
     return rollback(ops, config, previous, release.version, 'unhealthy')
+  }
+
+  if (ops.ownerConsole && !(await safeCall(ops.ownerConsole, false))) {
+    return rollback(ops, config, previous, release.version, 'owner_console_failed')
   }
 
   if (!(await safeCall(() => ops.syntheticTurn(), false))) {
