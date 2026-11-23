@@ -4,9 +4,9 @@ import type { Headline, MarketsPort, Quote } from './markets.js'
 import {
   type AlertRule,
   chatWatchlists,
-  marketScopeKey,
   cleanSymbols,
   loadWatchConfig,
+  marketScopeKey,
   pnl,
   pnlMissing,
   positionsFor,
