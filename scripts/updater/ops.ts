@@ -34,6 +34,7 @@ export interface RealOpsOptions {
   composeFile: string
   service: string
   coreUrl: string
+
   /** The site API base URL. When set, healthy() also requires the site to be ready. */
   siteUrl?: string
   siteTokenFile?: string
@@ -198,7 +199,7 @@ function isManualBody(body: unknown): boolean {
   })
 }
 
-function parseComposeTag(stdout: string): string | undefined {
+function parseComposeImage(stdout: string): { tag: string; repository: string | undefined } | undefined {
   const trimmed = stdout.trim()
   if (trimmed.length === 0) return undefined
   let first: Record<string, unknown> | undefined
@@ -224,13 +225,15 @@ function parseComposeTag(stdout: string): string | undefined {
   if (typeof tag !== 'string' || tag.length === 0 || tag === '<none>') {
     return undefined
   }
-  return tag
+  const repository = first?.['Repository'] ?? first?.['repository']
+  return { tag, repository: typeof repository === 'string' ? repository : undefined }
 }
 
 export async function verifyOwnerConsole(
   site: string,
   fetcher: typeof fetch,
-  tokenFile = join(homedir(), '.hermes', 'brain', '.site-token')
+  tokenFile = join(homedir(), '.hermes', 'brain', '.site-token'),
+  dashboardEntry = false
 ) {
   const base = site.replace(/\/+$/, '')
   const load = (path: string, headers: Record<string, string> = {}) =>
@@ -239,12 +242,17 @@ export async function verifyOwnerConsole(
     redirect: 'manual',
     signal: AbortSignal.timeout(HEALTH_FETCH_TIMEOUT_MS)
   })
-  const page = entry.status === 302 && entry.headers.get('location') === '/overview' ? await load('/overview') : entry
-  if (!page.ok || !(await page.text()).includes('/app/assets/')) return false
+  if (dashboardEntry && (entry.status !== 302 || entry.headers.get('location') !== '/overview')) return false
+  const page = dashboardEntry ? await load('/overview') : entry
+  if (!page.ok) return false
+  const asset = (await page.text()).match(/<script\b[^>]*\bsrc=["'](\/app\/assets\/[\w.-]+\.js)["']/i)?.[1]
+  if (!asset) return false
+  const module = await load(asset)
+  if (!module.ok || !/javascript/.test(module.headers.get('content-type') ?? '')) return false
   const token = (await readFile(tokenFile, 'utf8')).trim()
   if (!token) return false
   const headers = { 'X-TolongAI-Token': token }
-  const chats = await load('/api/chats', headers)
+  const chats = await load(dashboardEntry ? '/owner-api/core/chats' : '/api/chats', headers)
   if (!chats.ok || !Array.isArray(((await chats.json()) as { chats?: unknown }).chats)) return false
   const dash = await load('/owner-api/dashboard', headers)
   if (!dash.ok) return false
@@ -301,8 +309,14 @@ export function createRealOps(options: RealOpsOptions): UpdaterOps {
         options.service
       ])
       if (!stdout.trim() || stdout.trim() === '[]') return undefined
-      const tag = parseComposeTag(stdout)
-      if (tag && /^(?:sha-[a-f0-9]+|v?\d+\.\d+\.\d+(?:[-+][\w.-]+)?|rollback-[a-f0-9]+)$/.test(tag)) return tag
+      const imageRef = parseComposeImage(stdout)
+      const tag = imageRef?.tag
+      if (
+        imageRef?.repository === options.image &&
+        tag &&
+        /^(?:sha-[a-f0-9]+|v?\d+\.\d+\.\d+(?:[-+][\w.-]+)?|rollback-[a-f0-9]+)$/.test(tag)
+      )
+        return tag
       const container = (
         await execChecked(run, 'docker', ['compose', '-f', options.composeFile, 'ps', '-a', '-q', options.service])
       ).trim()
@@ -419,7 +433,19 @@ export function createRealOps(options: RealOpsOptions): UpdaterOps {
     },
 
     async ownerConsole(): Promise<boolean> {
-      return !siteUrl || verifyOwnerConsole(siteUrl, fetchFn, options.siteTokenFile)
+      if (!siteUrl) return true
+      const installEnv = await readFile(join(dirname(options.composeFile), '.env'), 'utf8').catch(
+        (error: NodeJS.ErrnoException) => {
+          if (error.code === 'ENOENT') return ''
+          throw error
+        }
+      )
+      return verifyOwnerConsole(
+        siteUrl,
+        fetchFn,
+        options.siteTokenFile,
+        installValue(installEnv, 'AIRA_DASHBOARD_ENTRY') === 'dashboard'
+      )
     },
 
     async syntheticTurn(): Promise<boolean> {
@@ -483,7 +509,25 @@ export function deployLockPath(composeFile: string): string {
   return join(dirname(composeFile), 'deploy.lock')
 }
 
-/** The site API base URL on the host: explicit env, else the install's .env, else loopback. */
+function installValue(text: string, key: string): string | undefined {
+  const line = text.split(/\r?\n/).find((candidate) => candidate.startsWith(`${key}=`))
+  if (!line) return undefined
+  let value = line.slice(key.length + 1).trim()
+  if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1)
+  else if (value.length >= 2 && value.startsWith("'") && value.endsWith("'")) value = value.slice(1, -1)
+  return value === '' ? undefined : value
+}
+
+export async function resolveCoreUrl(dir: string, env: NodeJS.ProcessEnv = process.env): Promise<string> {
+  if (env.AIRA_CORE_URL?.trim()) return env.AIRA_CORE_URL.trim()
+  const text = await readFile(join(dir, '.env'), 'utf8').catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return ''
+    throw error
+  })
+  return 'http://127.0.0.1:' + (env.AIRA_PORT || installValue(text, 'AIRA_PORT') || '9881')
+}
+
+/** The private site listener on the host, including its published port. */
 export async function resolveSiteUrl(dir: string, env: NodeJS.ProcessEnv = process.env): Promise<string> {
   const fromEnv = env['AIRA_SITE_URL']
   if (fromEnv && fromEnv.trim() !== '') return fromEnv.trim()
@@ -493,16 +537,8 @@ export async function resolveSiteUrl(dir: string, env: NodeJS.ProcessEnv = proce
   } catch {
     text = ''
   }
-  const readKey = (key: string): string | undefined => {
-    const line = text.split(/\r?\n/).find((candidate) => candidate.startsWith(`${key}=`))
-    if (!line) return undefined
-    let value = line.slice(key.length + 1).trim()
-    if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1)
-    else if (value.length >= 2 && value.startsWith("'") && value.endsWith("'")) value = value.slice(1, -1)
-    return value === '' ? undefined : value
-  }
-  const bind = env['AIRA_SITE_BIND'] || readKey('AIRA_SITE_BIND') || '127.0.0.1'
-  const port = env['AIRA_SITE_PORT'] || readKey('AIRA_SITE_PORT') || '9890'
+  const bind = env['AIRA_SITE_BIND'] || installValue(text, 'AIRA_SITE_BIND') || '127.0.0.1'
+  const port = env['AIRA_SITE_PORT'] || installValue(text, 'AIRA_SITE_PORT') || '9890'
   return `http://${bind}:${port}`
 }
 

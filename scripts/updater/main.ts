@@ -1,5 +1,5 @@
 import { dirname, join } from 'node:path'
-import { createRealOps, deployLockPath, resolveSiteUrl } from './ops.js'
+import { createRealOps, deployLockPath, resolveCoreUrl, resolveSiteUrl } from './ops.js'
 import { runUpdate } from './update.js'
 
 const composeFile = process.env['AIRA_COMPOSE_FILE']
@@ -11,7 +11,7 @@ if (!composeFile) {
 const ops = createRealOps({
   composeFile,
   service: 'aira',
-  coreUrl: process.env['AIRA_CORE_URL'] || 'http://127.0.0.1:9881',
+  coreUrl: await resolveCoreUrl(dirname(composeFile), process.env),
   siteUrl: await resolveSiteUrl(dirname(composeFile), process.env),
   image: process.env['AIRA_IMAGE'] || 'ghcr.io/tolonglabs/aira',
   repository: process.env['AIRA_REPOSITORY'] || 'TolongLabs/AIRA',

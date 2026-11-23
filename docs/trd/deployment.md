@@ -194,11 +194,20 @@ Install the release timer in the gateway owner’s systemd user manager so its c
 
 ### Dashboard entry recovery
 
-The dashboard preview is available under `/app/preview/` before the entry switch. On an installation that runs
-the candidate image, set only `AIRA_DASHBOARD_ENTRY=dashboard` in the deployment environment file and recreate
-the existing service from its Compose directory with `docker compose up -d --no-deps --force-recreate aira`.
-Removing that setting and recreating the same service restores the classic entry. Keep the installed image
-selector, data volume, owner socket and private bind intact. A process restart alone does not reread an env file.
+The preview at `/app/preview/` serves the candidate before the switch. From a checkout of the candidate on
+the deployment host, record the installed image ID and use the entry switch helper:
+
+```sh
+release_image=$(docker inspect --format '{{.Image}}' "$(docker compose --project-directory ~/aira -f ~/aira/compose.yml ps -q aira)")
+python3 scripts/dashboard-entry.py --install ~/aira --expect-image "$release_image" dashboard
+```
+
+To restore the classic entry, pass `classic` to the same command with the recorded image ID and reopen
+`/app/`. The helper holds the deployment lock, verifies the current image and Compose selector, records
+a fresh SQLite snapshot, and saves pack/config backups under `~/aira/dashboard-recovery/`. It changes
+the entry key atomically and recreates the same service with pulling disabled. Failed health, owner or
+entry checks restore the prior environment and service. Keep writes since cutover in place.
+Use the private listener's explicit IP and port for the probe; loopback is also supported.
 
 The deployment probe accepts the classic HTML response or the exact same-site redirect to `/overview`. It verifies
 chat and host dashboard responses with the owner header. A private site health challenge requires the same owner

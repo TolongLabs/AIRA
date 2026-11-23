@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { isMap, isScalar, isSeq, parseDocument } from 'yaml'
-import { createRealOps, resolveSiteUrl, waitForDeployLock } from './updater/ops.js'
+import { createRealOps, resolveCoreUrl, resolveSiteUrl, waitForDeployLock } from './updater/ops.js'
 import type { DeployRecord, UpdaterOps } from './updater/update.js'
 
 const DEFAULT_IMAGE = 'ghcr.io/tolonglabs/aira'
@@ -609,7 +609,7 @@ async function createDeployHostOps(
     repository: process.env['AIRA_REPOSITORY'] || 'TolongLabs/AIRA',
     composeFile: join(installDir, 'compose.yml'),
     service: 'aira',
-    coreUrl: process.env['AIRA_CORE_URL'] || 'http://127.0.0.1:9881',
+    coreUrl: await resolveCoreUrl(installDir, process.env),
     siteUrl: await resolveSiteUrl(installDir, process.env),
     recordFile: process.env['AIRA_DEPLOY_LOG'] || join(installDir, 'deploys.jsonl')
   })
