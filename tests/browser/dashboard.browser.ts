@@ -134,7 +134,7 @@ for (const engine of [chromium, firefox, webkit]) {
         await page.getByRole('button', { name: /Previous/ }).click()
         expect(await selected.isChecked()).toBe(true)
         await page.getByRole('searchbox').fill('Field Notes')
-        expect(await selected.isChecked()).toBe(false)
+        await expect.poll(() => selected.isChecked()).toBe(false)
         await page.getByRole('link', { name: 'Field Notes' }).click()
         await page.getByRole('link', { name: 'Send Message' }).click()
         await page.getByLabel('Message', { exact: true }).fill('Fictional fixture message')
