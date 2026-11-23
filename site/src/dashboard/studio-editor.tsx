@@ -1,5 +1,5 @@
 import ExpressionGallery from './expression-gallery'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { core } from '@/lib/core'
 import {
   LINE_KINDS,
@@ -8,14 +8,17 @@ import {
   REPLY_LENGTHS,
   SIMULATOR_DRAFT,
   SIMULATOR_READY,
+  applyStudioPatch,
   blankDraft,
   buildPromptPreview,
+  compareDrafts,
   diffDocs,
   estimateTokens,
   getStudio,
   openStudioSimulator,
   postStudio,
   putStudio,
+  rebaseLeaves,
   studioHref,
   studioPaths,
   validateDraft,
@@ -91,6 +94,12 @@ const emptyMood = (): StudioMoodEntry => ({
   stickers: []
 })
 
+function formatLeafValue(value: unknown): string {
+  if (value === undefined) return '(removed)'
+  const text = JSON.stringify(value) ?? '(unreadable)'
+  return text.length > 140 ? text.slice(0, 139) + '…' : text
+}
+
 /* ── the editor ── */
 
 export interface StudioEditorProps {
@@ -116,6 +125,10 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
   const [newMoodKey, setNewMoodKey] = useState('')
   const [newGroup, setNewGroup] = useState('')
   const [simError, setSimError] = useState<string | null>(null)
+  const [overlap, setOverlap] = useState<{ path: string; mine: unknown; theirs: unknown }[]>([])
+  const [readbackStale, setReadbackStale] = useState(false)
+  const draftRef = useRef(draft)
+  draftRef.current = draft
 
   useEffect(() => {
     if (mode !== 'edit' || !id) return
@@ -159,6 +172,10 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
   const pristineDocs: StudioDraft | null = pristine
     ? { card: pristine.card, moods: pristine.moods, lines: pristine.lines }
     : null
+  const conflictDocs: StudioDraft | null = conflict
+    ? { card: conflict.card, moods: conflict.moods, lines: conflict.lines }
+    : null
+  const conflictSets = pristineDocs && conflictDocs ? compareDrafts(pristineDocs, draft, conflictDocs) : null
   const dirty = pristineDocs !== null && JSON.stringify(pristineDocs) !== JSON.stringify(draft)
 
   useEffect(() => {
@@ -183,35 +200,106 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
   }
 
   async function saveEdit() {
-    if (!id || !pristine) return
-    const faults = validateDraft(id, draft)
+    if (!id || !pristine || saving) return
+    const base = pristine
+    const sent = draft
+    const faults = validateDraft(id, sent)
     setErrors(faults)
-    setConflict(null)
     if (faults.length) return
-    const { patch, changed } = diffDocs({ card: pristine.card, moods: pristine.moods, lines: pristine.lines }, draft)
+    const { patch, changed } = diffDocs({ card: base.card, moods: base.moods, lines: base.lines }, sent)
     if (!changed.length) {
       setStatus('No changes to save.')
       return
     }
     setSaving(true)
     try {
-      const answer = await putStudio(id, pristine.revision, patch)
-      const next: StudioDoc = { ...pristine, ...draft, revision: answer.revision }
-      setPristine(next)
-      setStatus(`Saved ${changed.join(', ')}. Revision ${answer.revision}.`)
+      const answer = await putStudio(id, base.revision, patch)
+      // Read back the authoritative pack. Edits typed while saving are kept by
+      // replaying only their own leaves over what the server stored.
+      let fresh: StudioDoc | null = null
+      try {
+        fresh = await getStudio(id)
+      } catch {
+        fresh = null
+      }
+      const ongoing = diffDocs(sent, draftRef.current)
+      if (fresh) {
+        const authoritative: StudioDraft = { card: fresh.card, moods: fresh.moods, lines: fresh.lines }
+        setPristine(fresh)
+        setDraft(ongoing.changed.length ? applyStudioPatch(authoritative, ongoing.patch) : authoritative)
+        setReadbackStale(false)
+        setConflict(null)
+        setOverlap([])
+        setStatus(
+          ongoing.changed.length
+            ? `Saved ${changed.join(', ')}. Revision ${fresh.revision}. Your newer edits are kept above.`
+            : `Saved ${changed.join(', ')}. Revision ${fresh.revision}.`
+        )
+      } else {
+        const saved: StudioDoc = { ...base, ...sent, revision: answer.revision }
+        const savedDocs: StudioDraft = { card: saved.card, moods: saved.moods, lines: saved.lines }
+        setPristine(saved)
+        setDraft(ongoing.changed.length ? applyStudioPatch(savedDocs, ongoing.patch) : savedDocs)
+        setReadbackStale(true)
+        setConflict(null)
+        setOverlap([])
+        setStatus(
+          `Saved revision ${answer.revision}, but the fresh pack could not be read back. ` +
+            'What you see is your saved text — reload this page before editing further.'
+        )
+      }
     } catch (e) {
       if (e instanceof StudioError && (e.status === 409 || e.code === 'stale_revision')) {
         try {
           setConflict(await getStudio(id))
         } catch {
-          setConflict(pristine)
+          setConflict(base)
         }
+        setOverlap([])
         setStatus('Someone else saved first. Your draft is kept — compare below.')
       } else {
         setStatus(e instanceof StudioError ? `Save failed (${e.code}). Your draft is kept.` : 'Save failed.')
       }
     } finally {
       setSaving(false)
+    }
+  }
+
+  function rebaseOntoLatest() {
+    if (!conflict || !pristine || pristine.revision === conflict.revision) return
+    const base: StudioDraft = { card: pristine.card, moods: pristine.moods, lines: pristine.lines }
+    const latest: StudioDraft = { card: conflict.card, moods: conflict.moods, lines: conflict.lines }
+    const sets = compareDrafts(base, draft, latest)
+    setPristine(conflict)
+    setDraft(rebaseLeaves(latest, sets.localOnly))
+    setReadbackStale(false)
+    if (!sets.overlapping.length) {
+      setConflict(null)
+      setOverlap([])
+      setStatus('Now on the latest revision. Your edits are re-applied — review and save.')
+    } else {
+      setOverlap(
+        sets.overlapping.map((path) => ({
+          path,
+          mine: sets.local.find((leaf) => leaf.path === path)?.after,
+          theirs: sets.remote.find((leaf) => leaf.path === path)?.after
+        }))
+      )
+      setStatus(
+        `${sets.localOnly.length} of your edits moved onto the latest revision. ` +
+          `${sets.overlapping.length} need your call below.`
+      )
+    }
+  }
+
+  function resolveOverlap(path: string, keepMine: boolean) {
+    const row = overlap.find((entry) => entry.path === path)
+    const rest = overlap.filter((entry) => entry.path !== path)
+    if (keepMine && row) setDraft((d) => rebaseLeaves(d, [{ path, before: row.theirs, after: row.mine }]))
+    setOverlap(rest)
+    if (!rest.length) {
+      setConflict(null)
+      setStatus('All conflicts resolved — review and save.')
     }
   }
 
@@ -908,24 +996,81 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
                       ? `Changed: ${diffDocs({ card: pristine!.card, moods: pristine!.moods, lines: pristine!.lines }, draft).changed.join(', ') || 'formatting only'}.`
                       : 'No unsaved changes.'}
                   </p>
-                  {conflict && (
+                  {conflict && conflictDocs && conflictSets && (
                     <div className="studio-banner" role="alert">
                       <p>
                         The server is at revision {conflict.revision}; you saved from {pristine!.revision}. Your draft
                         is untouched.
                       </p>
+                      {pristine!.revision !== conflict.revision && (
+                        <>
+                          <p className="studio-hint">
+                            Your changes ({conflictSets.local.length}) against theirs ({conflictSets.remote.length}).
+                            Only the edits you listed move across — nothing you did not touch is replayed.
+                          </p>
+                          {conflictSets.local.length > 0 && (
+                            <ul>
+                              {conflictSets.local.map((leaf) => (
+                                <li key={'yours-' + leaf.path}>
+                                  <code>{leaf.path}</code>: {formatLeafValue(leaf.before)} →{' '}
+                                  {formatLeafValue(leaf.after)}{' '}
+                                  {conflictSets.overlapping.includes(leaf.path) && (
+                                    <strong>(also changed by them)</strong>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          {conflictSets.remote.length > 0 && (
+                            <ul>
+                              {conflictSets.remote.map((leaf) => (
+                                <li key={'theirs-' + leaf.path}>
+                                  <code>{leaf.path}</code>: {formatLeafValue(leaf.before)} →{' '}
+                                  {formatLeafValue(leaf.after)}{' '}
+                                  {conflictSets.overlapping.includes(leaf.path) && (
+                                    <strong>(also changed by you)</strong>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </>
+                      )}
+                      {overlap.length > 0 && (
+                        <>
+                          <p>Changed by both — your call on each:</p>
+                          <ul>
+                            {overlap.map((row) => (
+                              <li key={row.path}>
+                                <code>{row.path}</code> — theirs: {formatLeafValue(row.theirs)} · yours:{' '}
+                                {formatLeafValue(row.mine)}{' '}
+                                <span className="studio-row">
+                                  <button
+                                    type="button"
+                                    className="studio-button"
+                                    onClick={() => resolveOverlap(row.path, true)}
+                                  >
+                                    Use mine
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="studio-button"
+                                    onClick={() => resolveOverlap(row.path, false)}
+                                  >
+                                    Keep theirs
+                                  </button>
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
                       <span className="studio-row">
-                        <button
-                          type="button"
-                          className="studio-button"
-                          onClick={() => {
-                            setPristine(conflict)
-                            setConflict(null)
-                            setStatus('Now comparing against the latest revision. Review and save again.')
-                          }}
-                        >
-                          Compare against latest
-                        </button>
+                        {pristine!.revision !== conflict.revision && (
+                          <button type="button" className="studio-button" onClick={rebaseOntoLatest}>
+                            Rebase my edits onto latest
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="studio-button"
@@ -933,6 +1078,7 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
                             setDraft({ card: conflict.card, moods: conflict.moods, lines: conflict.lines })
                             setPristine(conflict)
                             setConflict(null)
+                            setOverlap([])
                             setErrors([])
                             setStatus('Draft replaced with the latest revision.')
                           }}
@@ -952,6 +1098,12 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
                     <li key={fault}>{fault}</li>
                   ))}
                 </ul>
+              )}
+              {readbackStale && (
+                <p className="studio-banner" role="status">
+                  Saved, but the fresh pack could not be read back. What you see is your saved text — reload this page
+                  before editing further.
+                </p>
               )}
               {mode === 'edit' ? (
                 <button
