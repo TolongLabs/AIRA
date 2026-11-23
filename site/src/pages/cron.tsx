@@ -382,7 +382,7 @@ function JobRow({ job, chats, onChanged }: { job: CronJob; chats: Chat[]; onChan
         {managed ? (
           <Badge>Managed by AIRA</Badge>
         ) : (
-          <div className="flex shrink-0 gap-1">
+          <div className="flex max-w-full flex-wrap gap-1">
             <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
               <Pencil />
               edit

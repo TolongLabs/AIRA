@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { translateLegacyBookmark } from '../../site/src/dashboard/legacy-bookmarks'
+import { translateLegacyBookmark } from '../../site/src/dashboard/legacy-bookmarks.js'
 
 // Focused unit test for the preview/canonical legacy-fragment translator.
 // Synthetic data only: every id below is invented for the test.

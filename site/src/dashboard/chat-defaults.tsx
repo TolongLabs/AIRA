@@ -400,13 +400,20 @@ function QuietHoursRow({
     <div className="flex flex-col gap-3">
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label="From">
-          <Input type="time" value={start} disabled={busy} onChange={(e) => setStart(e.target.value)} />
+          <Input
+            aria-label="From"
+            type="time"
+            value={start}
+            disabled={busy}
+            onChange={(e) => setStart(e.target.value)}
+          />
         </Field>
         <Field label="Until">
-          <Input type="time" value={end} disabled={busy} onChange={(e) => setEnd(e.target.value)} />
+          <Input aria-label="Until" type="time" value={end} disabled={busy} onChange={(e) => setEnd(e.target.value)} />
         </Field>
         <Field label="Time zone">
           <Input
+            aria-label="Time zone"
             value={zone}
             disabled={busy}
             onChange={(e) => setZone(e.target.value)}

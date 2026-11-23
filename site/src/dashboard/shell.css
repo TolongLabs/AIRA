@@ -35,6 +35,22 @@
   font-family: Outfit, sans-serif;
   font-size: 14px;
 }
+:root:not([data-theme='dark']) .dashboard-shell {
+  --accent: #4861ab;
+  --faint: #566286;
+  --song: #89500f;
+}
+.dashboard-shell nav:is([aria-label='Automation views'], [aria-label='System views']) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dashboard-shell nav:is([aria-label='Automation views'], [aria-label='System views']) a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding-inline: 8px;
+}
 [data-theme='dark'] .dashboard-shell {
   --glass: #202928e0;
   --tile: #303b3ae0;
@@ -320,6 +336,9 @@
   }
 }
 @media (forced-colors: active) {
+  .dashboard-shell nav a[aria-current='page'] {
+    border-inline-start: 4px solid Highlight;
+  }
   .dashboard-shell a,
   .dashboard-shell button {
     border: 1px solid ButtonText;
@@ -425,4 +444,10 @@
   font:
     12px 'Geist Mono',
     monospace;
+}
+
+.dashboard-shell a[href$='#reader'] {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
 }

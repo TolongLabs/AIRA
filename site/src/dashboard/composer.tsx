@@ -28,6 +28,17 @@ export default function Composer({ chat }: { chat: CoreChat }) {
   const flight = useRef(false)
   const checking = useRef(false)
   const confirmed = useRef<string | null>(null)
+  const heading = useRef<HTMLHeadingElement>(null)
+  const input = useRef<HTMLTextAreaElement>(null)
+  const receipt = useRef<HTMLParagraphElement>(null)
+  const screen = result ?? (review ? 'review' : 'draft')
+  const previousScreen = useRef(screen)
+  useEffect(() => {
+    if (previousScreen.current === screen) return
+    previousScreen.current = screen
+    const destination = screen === 'draft' ? input : screen === 'review' ? heading : receipt
+    destination.current?.focus()
+  }, [screen])
   const name = chat.label || (chat.type === 'group' ? 'Unnamed Group' : 'Unnamed Direct Chat')
   const text = draft.trim()
   const count = [...text].length
@@ -112,7 +123,9 @@ export default function Composer({ chat }: { chat: CoreChat }) {
   return (
     <section className="composer">
       <a href={back}>Chat Settings</a>
-      <h2>{review ? 'Review Message' : 'Send Message'}</h2>
+      <h2 ref={heading} tabIndex={-1}>
+        {review ? 'Review Message' : 'Send Message'}
+      </h2>
       <div className="compose-card">
         <span>To</span>
         <strong>{name}</strong>
@@ -129,6 +142,7 @@ export default function Composer({ chat }: { chat: CoreChat }) {
             <>
               <label htmlFor="message-text">Message</label>
               <textarea
+                ref={input}
                 id="message-text"
                 readOnly={confirmed.current !== null}
                 rows={7}
@@ -140,7 +154,7 @@ export default function Composer({ chat }: { chat: CoreChat }) {
               <small id="message-length">{count.toLocaleString()} / 4,000 Characters</small>
             </>
           ))}
-        <p role="status">
+        <p ref={receipt} tabIndex={-1} role="status">
           {busy
             ? 'Submitting…'
             : result === 'acknowledged'

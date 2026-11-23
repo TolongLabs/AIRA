@@ -177,7 +177,7 @@ export function Picker({
         className="w-full justify-between font-normal"
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={ariaLabel}
+        aria-label={ariaLabel ? [ariaLabel, chosen?.label ?? placeholder].join(', ') : undefined}
         disabled={disabled}
         onClick={() => setOpen((v) => !v)}
       >
