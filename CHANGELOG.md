@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.4.1](https://github.com/TolongLabs/AIRA/compare/v1.4.0...v1.4.1) (2026-11-23)
+
+
+### Bug Fixes
+
+* **deploy:** package the updater's offline snapshot helper ([1e430f0](https://github.com/TolongLabs/AIRA/commit/1e430f0ed6f03e7e63e576a4af1b671cd88a2066))
+* **settings:** preserve active bindings when clearing inherited defaults ([f3ddbd5](https://github.com/TolongLabs/AIRA/commit/f3ddbd55b9f66c0284308a60ca3ec28521637590))
+* **site:** repair owner console and deploy checks ([bf743d7](https://github.com/TolongLabs/AIRA/commit/bf743d76ec5af99abc708eb1e1b1209c02678fd2))
+* **site:** resolve owner console review findings ([9573bf6](https://github.com/TolongLabs/AIRA/commit/9573bf6efc15dcc1ec14f27e7fadd3ae94d91122))
+* **site:** verify owner save receipts and guard unloaded files ([4269b28](https://github.com/TolongLabs/AIRA/commit/4269b281a114d44fc899240207b6dab2900aff81))
+
 ## [1.4.0](https://github.com/TolongLabs/AIRA/compare/v1.3.0...v1.4.0) (2026-11-22)
 
 
