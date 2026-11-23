@@ -22,6 +22,7 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       input: {
+        preview: resolve(__dirname, 'preview.html'),
         index: resolve(__dirname, 'index.html'),
         markets: resolve(__dirname, 'markets.html'),
         graph: resolve(__dirname, 'graph.html'),

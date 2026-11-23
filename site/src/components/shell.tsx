@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { DashboardContext } from '../dashboard/context'
+import { useContext, useEffect, useRef, useState } from 'react'
 import {
   Bell,
   LayoutDashboard,
@@ -476,6 +477,18 @@ export function Shell({
    *  a 1400px cap just wastes the screen it was given. */
   full?: boolean
 }) {
+  const dashboard = useContext(DashboardContext)
+  if (dashboard)
+    return (
+      <>
+        {actions}
+        {children}
+      </>
+    )
+  return <LegacyShell {...{ page, title, hero, dek, actions, children, wide, full }} />
+}
+
+function LegacyShell({ page, title, hero, dek, actions, children, wide, full }: Parameters<typeof Shell>[0]) {
   const [dimmed, setDimmed] = useState(false)
   const env = useEnv()
 

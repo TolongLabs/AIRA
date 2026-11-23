@@ -247,3 +247,10 @@ with matching content returns the recorded outcome. Reuse with different content
 A confirmed acknowledgement changes the record to acknowledged. A definite pre-dispatch refusal returns refused.
 An interrupted call, ambiguous response or crash leaves unknown until positive evidence permits reconciliation.
 Return the submission ID and outcome only. A lookup miss returns 404. No retry dispatches an unknown reservation.
+
+### Preview mount
+
+Serve the candidate from /app/preview/overview. A direct GET or HEAD on a registered preview route returns
+the candidate document. Keep the nine legacy documents and / redirect until cutover. Resolve fingerprinted
+assets under /app/assets/ and local font and glyph assets under /app/dashboard/. An unknown page or file
+returns 404. The preview uses the same API origin and credential controls as the installed console.

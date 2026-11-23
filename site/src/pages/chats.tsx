@@ -1,3 +1,5 @@
+import Composer from '@/dashboard/composer'
+import { dashboardHref } from '@/dashboard/navigation'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import { ChevronRight, X } from 'lucide-react'
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
@@ -1541,7 +1543,7 @@ function PersonaFooter({
   )
 }
 
-export default function ChatsPage() {
+export default function ChatsPage({ selectedId, compose = false }: { selectedId?: string; compose?: boolean } = {}) {
   const chats = useCore(core.chats)
   const packs = useCore(core.characters)
   const tools = useCore(core.tools)
@@ -1566,6 +1568,33 @@ export default function ChatsPage() {
     focusRequest
   }
 
+  if (selectedId) {
+    const chat = all.find((row) => row.chatId === selectedId)
+    if (!chat)
+      return (
+        <p role="status">
+          {chats.loading ? 'Loading…' : chats.error ? 'Chat settings unavailable.' : 'Chat no longer exists.'}
+        </p>
+      )
+    if (compose) return <Composer chat={chat} />
+    return (
+      <>
+        <a href={dashboardHref('chats')}>Chat Directory</a>
+        <h2>Chat Settings</h2>
+        <a href={dashboardHref('chats/' + encodeURIComponent(chat.chatId) + '/send')}>Send Message</a>
+        <ChatRow
+          chat={chat}
+          characters={characters}
+          charactersError={packs.error}
+          toolCatalog={tools}
+          onChanged={chats.reload}
+          open={true}
+          onToggle={() => {}}
+        />
+        <Toaster />
+      </>
+    )
+  }
   return (
     <Shell
       page="chats"

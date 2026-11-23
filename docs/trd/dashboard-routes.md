@@ -12,7 +12,7 @@ routes. During preview, the core serves them under a separate mount while the ex
 | chats.html                     | Set character, reply, features, quiet hours or access               | /chats/:id/settings       | Core setting hierarchy and chat record               | 62:59096, 43:6308         | Clear override, reload, verify source and next turn                | #367       |
 | chats.html                     | Manage shared defaults                                              | /chats/defaults           | Global and type settings                             | 36:3437                   | Set a default and read effective value on a chat                   | #367       |
 | send.html                      | Choose target, attach file, reconcile recent send                   | /chats/:id/send           | Host upload and send history                         | 35:3030, 43:10290         | Retain file workflow and reconcile dropped response                | #367       |
-| New                            | Send confirmed owner text to one chat                               | /chats/:id/send           | Protected core operation and gateway acknowledgement | 43:9566, 43:9928          | Restart after lost acknowledgement and look up original submission | #360, #367 |
+| New                            | Send confirmed owner text to one chat                               | /chats/:id/send           | Protected core operation and gateway acknowledgement | 111:133187, 111:134045    | Restart after lost acknowledgement and look up original submission | #360, #367 |
 | chats.html footer editor       | Configure a persona tool label                                      | /characters/:id/footer    | Writable pack plus registered tools                  | 43:17174, 109:124266      | Save, clear, run simulated turn                                    | #368       |
 | New                            | Browse, create, import, edit or simulate a persona                  | /characters               | Pack loader and writable data packs                  | 29:1000, 35:1764, 35:1963 | Publish and select in a chat, preserve draft on preview            | #368       |
 | library.html                   | Browse items and inspect authorized media                           | /library and /library/:id | Host library and owner media                         | 22:1543                   | Open item, refresh, refuse unauthorized media                      | #369       |
@@ -51,7 +51,7 @@ item IDs through validated route parameters. Keep a target picker for a send boo
 The current navigation and build entries live in site/src/components/shell.tsx and site/vite.config.ts.
 Chats uses site/src/lib/core.ts for direct core requests. Other pages use site/src/lib/api.ts to translate
 their /api/ paths to /owner-api/. Test the two incompatible chat response types independently.
-The old site design guide lists classic paths outside /app/ that the installed core does not serve.
+Classic paths outside /app/ returned 404 on the legacy core listener, apart from the root redirect.
 
 ## Legacy performance baseline
 
