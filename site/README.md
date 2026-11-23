@@ -2,7 +2,7 @@
 
 The private AIRA dashboard uses the same owner API from both the canonical routes and the preview.
 Open `/app/preview/overview` on a staged install. With the dashboard entry enabled, `/` opens `/overview`.
-The classic site is available under `/app/`. See the [route map](../docs/trd/dashboard-routes.md),
+Selecting the classic entry restores the original site under `/app/`. See the [route map](../docs/trd/dashboard-routes.md),
 [state ownership matrix](../docs/trd/dashboard-state.md) and [design contract](../docs/DESIGN.md).
 
 Build the site from the repository root.
