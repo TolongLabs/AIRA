@@ -74,7 +74,19 @@ export interface StudioDoc extends StudioDraft {
   revision: string
 }
 
-export type StudioPatch = Partial<StudioDraft>
+/** A JSON merge-patch fragment: partial objects, `null` deletes a key, arrays replace wholesale. */
+export type MergePatch<T> = T extends readonly unknown[]
+  ? T | null
+  : T extends Record<string, unknown>
+    ? { [K in keyof T]?: MergePatch<T[K]> | null } | null
+    : T | null
+
+/** The studio save patch: only the leaves that changed, against pristine. */
+export interface StudioPatch {
+  card?: MergePatch<StudioCard>
+  moods?: MergePatch<StudioMoodsDoc>
+  lines?: Record<string, string | null>
+}
 
 export class StudioError extends Error {
   constructor(
@@ -109,7 +121,7 @@ export function getStudio(id: string): Promise<StudioDoc> {
   return studioFetch<StudioDoc>('GET', `characters/${encodeURIComponent(id)}/studio`)
 }
 
-/** PUT /owner-api/core/characters/:id/studio — full replacement docs for changed keys only. */
+/** PUT /owner-api/core/characters/:id/studio — a merge patch of the changed leaves, with `null` tombstones. */
 export function putStudio(id: string, expectedRevision: string, patch: StudioPatch): Promise<{ revision: string }> {
   return studioFetch('PUT', `characters/${encodeURIComponent(id)}/studio`, { expectedRevision, patch })
 }
@@ -272,9 +284,45 @@ export function validateDraft(id: string, draft: StudioDraft): string[] {
   ]
 }
 
-/* ── patch encoding: only changed top-level documents travel; the rest is untouched ── */
+/* ── patch encoding: a typed merge patch against pristine ──
+ *
+ * Only the leaves that changed travel. Plain objects merge key by key, `null`
+ * removes a key (a deleted mood, face group, label or optional line), and
+ * arrays and scalars replace wholesale. The server lays the patch onto the
+ * stored pack, so a save never replays a field the draft did not touch. */
+
+const isPatchObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+
+function diffValue(oldValue: unknown, newValue: unknown): { patch: unknown; changed: boolean } {
+  if (same(oldValue, newValue)) return { patch: undefined, changed: false }
+  if (isPatchObject(oldValue) && isPatchObject(newValue)) {
+    const patch: Record<string, unknown> = {}
+    let changed = false
+    for (const key of Object.keys(oldValue)) {
+      if (!Object.hasOwn(newValue, key)) {
+        patch[key] = null
+        changed = true
+        continue
+      }
+      const leaf = diffValue(oldValue[key], newValue[key])
+      if (leaf.changed) {
+        patch[key] = leaf.patch
+        changed = true
+      }
+    }
+    for (const key of Object.keys(newValue)) {
+      if (!Object.hasOwn(oldValue, key)) {
+        patch[key] = newValue[key]
+        changed = true
+      }
+    }
+    return { patch, changed }
+  }
+  return { patch: newValue, changed: true }
+}
 
 export function diffDocs(
   pristine: StudioDraft,
@@ -282,19 +330,112 @@ export function diffDocs(
 ): { patch: StudioPatch; changed: (keyof StudioDraft)[] } {
   const patch: StudioPatch = {}
   const changed: (keyof StudioDraft)[] = []
-  if (!same(pristine.card, draft.card)) {
-    patch.card = draft.card
+  const card = diffValue(pristine.card, draft.card)
+  if (card.changed) {
+    patch.card = card.patch as MergePatch<StudioCard>
     changed.push('card')
   }
-  if (!same(pristine.moods, draft.moods)) {
-    patch.moods = draft.moods
+  const moods = diffValue(pristine.moods, draft.moods)
+  if (moods.changed) {
+    patch.moods = moods.patch as MergePatch<StudioMoodsDoc>
     changed.push('moods')
   }
-  if (!same(pristine.lines, draft.lines)) {
-    patch.lines = draft.lines
+  const lines = diffValue(pristine.lines, draft.lines)
+  if (lines.changed) {
+    patch.lines = lines.patch as Record<string, string | null>
     changed.push('lines')
   }
   return { patch, changed }
+}
+
+function applyMerge(base: unknown, patch: unknown): unknown {
+  if (patch === null || patch === undefined) return undefined
+  if (isPatchObject(patch)) {
+    const next: Record<string, unknown> = isPatchObject(base) ? { ...base } : {}
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === null || value === undefined) delete next[key]
+      else next[key] = applyMerge(next[key], value)
+    }
+    return next
+  }
+  return patch
+}
+
+/** Lay a merge patch onto a draft. `null` removes the key; arrays replace. Returns a fresh object. */
+export function applyStudioPatch(base: StudioDraft, patch: StudioPatch): StudioDraft {
+  const clone = JSON.parse(JSON.stringify(base)) as StudioDraft
+  if (patch.card) clone.card = applyMerge(clone.card, patch.card) as StudioCard
+  if (patch.moods) clone.moods = applyMerge(clone.moods, patch.moods) as StudioMoodsDoc
+  if (patch.lines) clone.lines = applyMerge(clone.lines, patch.lines) as StudioLinesDoc
+  return clone
+}
+
+/** One changed leaf, addressed by a dotted path such as `moods.moods.calm.tone`. */
+export interface LeafChange {
+  path: string
+  before: unknown
+  after: unknown
+}
+
+/** Every leaf that differs between two drafts. Arrays count as one leaf; a removed key has `after: undefined`. */
+export function listLeafChanges(base: StudioDraft, next: StudioDraft): LeafChange[] {
+  const out: LeafChange[] = []
+  const walk = (oldValue: unknown, newValue: unknown, path: string): void => {
+    if (same(oldValue, newValue)) return
+    if (isPatchObject(oldValue) && isPatchObject(newValue)) {
+      for (const key of new Set([...Object.keys(oldValue), ...Object.keys(newValue)])) {
+        const child = path ? path + '.' + key : key
+        const value = Object.hasOwn(newValue, key) ? newValue[key] : undefined
+        walk(oldValue[key], value, child)
+      }
+      return
+    }
+    out.push({ path, before: oldValue, after: newValue })
+  }
+  walk(base, next, '')
+  return out
+}
+
+export interface ConflictSets {
+  /** Leaves the draft changed against pristine. */
+  local: LeafChange[]
+  /** Leaves the latest revision changed against pristine. */
+  remote: LeafChange[]
+  /** Paths changed on both sides. These need an explicit decision. */
+  overlapping: string[]
+  /** Local leaves no remote change touched. Safe to rebase automatically. */
+  localOnly: LeafChange[]
+  remoteOnly: LeafChange[]
+}
+
+/** Split the draft's intended changes from the latest revision's, by leaf path. */
+export function compareDrafts(pristine: StudioDraft, draft: StudioDraft, latest: StudioDraft): ConflictSets {
+  const local = listLeafChanges(pristine, draft)
+  const remote = listLeafChanges(pristine, latest)
+  const remotePaths = new Set(remote.map((leaf) => leaf.path))
+  const localPaths = new Set(local.map((leaf) => leaf.path))
+  return {
+    local,
+    remote,
+    overlapping: local.map((leaf) => leaf.path).filter((path) => remotePaths.has(path)),
+    localOnly: local.filter((leaf) => !remotePaths.has(leaf.path)),
+    remoteOnly: remote.filter((leaf) => !localPaths.has(leaf.path))
+  }
+}
+
+/** Build a draft from the latest revision plus exactly the given leaves. Untouched fields stay as latest. */
+export function rebaseLeaves(latest: StudioDraft, leaves: LeafChange[]): StudioDraft {
+  const patch: Record<string, unknown> = {}
+  for (const leaf of leaves) {
+    const segments = leaf.path.split('.')
+    let node = patch
+    for (const segment of segments.slice(0, -1)) {
+      if (!isPatchObject(node[segment])) node[segment] = {}
+      node = node[segment] as Record<string, unknown>
+    }
+    node[segments[segments.length - 1]!] = leaf.after === undefined ? null : leaf.after
+  }
+  return applyStudioPatch(latest, patch as StudioPatch)
 }
 
 /* ── synthetic prompt preview (no model call; randomness draws at runtime) ── */
