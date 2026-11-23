@@ -60,9 +60,12 @@ for (const engine of [chromium, firefox, webkit]) {
         // Narrow viewport: search and inspector fit, nothing scrolls sideways.
         await page.setViewportSize({ width: 320, height: 704 })
         await expect.poll(() => page.locator('html').evaluate((el) => el.scrollWidth)).toBeLessThanOrEqual(320)
-        const searchBox = (await page.getByLabel('Search nodes').boundingBox())!
-        expect(searchBox.x).toBeGreaterThanOrEqual(0)
-        expect(searchBox.x + searchBox.width).toBeLessThanOrEqual(320)
+        await expect
+          .poll(async () => {
+            const box = await page.getByLabel('Search nodes').boundingBox()
+            return box !== null && box.x >= 0 && box.x + box.width <= 320
+          })
+          .toBe(true)
 
         // Keyboard browse: arrows select, focus stays on the canvas for discovery.
         await canvas.focus()
