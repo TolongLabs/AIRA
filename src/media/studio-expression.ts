@@ -91,11 +91,7 @@ function normalizeMime(mime: string): string {
 function kindOf(bytes: Buffer): DecodedKind | undefined {
   if (bytes.length >= 3 && bytes.subarray(0, 3).equals(JPEG_MAGIC)) return 'jpeg'
   if (bytes.length >= 8 && bytes.subarray(0, 8).equals(PNG_MAGIC)) return 'png'
-  if (
-    bytes.length >= 12 &&
-    bytes.toString('latin1', 0, 4) === 'RIFF' &&
-    bytes.toString('latin1', 8, 12) === 'WEBP'
-  ) {
+  if (bytes.length >= 12 && bytes.toString('latin1', 0, 4) === 'RIFF' && bytes.toString('latin1', 8, 12) === 'WEBP') {
     return 'webp'
   }
   return undefined
@@ -166,9 +162,7 @@ function readJpegDimensions(bytes: Buffer): { width: number; height: number } | 
 }
 
 function exceedsPixelLimits(width: number, height: number): boolean {
-  return (
-    width > STUDIO_MAX_DIMENSION || height > STUDIO_MAX_DIMENSION || width * height > STUDIO_MAX_PIXELS
-  )
+  return width > STUDIO_MAX_DIMENSION || height > STUDIO_MAX_DIMENSION || width * height > STUDIO_MAX_PIXELS
 }
 
 function probeDimensions(value: unknown): { width: number; height: number; frames: number } | undefined {

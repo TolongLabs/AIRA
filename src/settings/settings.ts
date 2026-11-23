@@ -48,27 +48,39 @@ export function resolveSettings(
   chat: { chatId: string; type: 'dm' | 'group' },
   ignore?: { level: SettingLevel; key: string }
 ): Record<string, Resolved> {
-  return storage.read(db=>resolveRows(scopeRows(db,'chat',chat.chatId,chat.type),ignore))
+  return storage.read((db) => resolveRows(scopeRows(db, 'chat', chat.chatId, chat.type), ignore))
 }
 
-type ScopeRow={level:SettingLevel;key:string;value:string;updated_at:string}
+type ScopeRow = { level: SettingLevel; key: string; value: string; updated_at: string }
 
-function scopeRows(db:Db, level:SettingLevel, scope:string, chatType?:string):ScopeRow[]{
-  const type = level==='type' ? scope : level==='chat' ? chatType ?? db.prepare('SELECT type FROM chat WHERE chat_id=?').pluck().get(scope) : null
-  return db.prepare(`SELECT level,key,value,updated_at FROM setting
+function scopeRows(db: Db, level: SettingLevel, scope: string, chatType?: string): ScopeRow[] {
+  const type =
+    level === 'type'
+      ? scope
+      : level === 'chat'
+        ? (chatType ?? db.prepare('SELECT type FROM chat WHERE chat_id=?').pluck().get(scope))
+        : null
+  return db
+    .prepare(
+      `SELECT level,key,value,updated_at FROM setting
     WHERE (level='global' AND scope='') OR (level='type' AND scope=?) OR (level='chat' AND scope=?)
-    ORDER BY CASE level WHEN 'chat' THEN 1 WHEN 'type' THEN 2 ELSE 3 END,key`)
-    .all(type??null,level==='chat'?scope:null) as ScopeRow[]
+    ORDER BY CASE level WHEN 'chat' THEN 1 WHEN 'type' THEN 2 ELSE 3 END,key`
+    )
+    .all(type ?? null, level === 'chat' ? scope : null) as ScopeRow[]
 }
 
-export function scopeSnapshot(db:Db,level:SettingLevel,scope:string,chatType?:string){
-  const rows=scopeRows(db,level,scope,chatType)
-  const revision=createHash('sha256').update(JSON.stringify([level,scope,rows])).digest('hex')
-  const values=Object.fromEntries(rows.filter(row=>row.level===level).map(row=>[row.key,JSON.parse(row.value) as unknown]))
-  return {revision,values,effective:resolveRows(rows)}
+export function scopeSnapshot(db: Db, level: SettingLevel, scope: string, chatType?: string) {
+  const rows = scopeRows(db, level, scope, chatType)
+  const revision = createHash('sha256')
+    .update(JSON.stringify([level, scope, rows]))
+    .digest('hex')
+  const values = Object.fromEntries(
+    rows.filter((row) => row.level === level).map((row) => [row.key, JSON.parse(row.value) as unknown])
+  )
+  return { revision, values, effective: resolveRows(rows) }
 }
 
-function resolveRows(rows:ScopeRow[],ignore?:{level:SettingLevel;key:string}):Record<string,Resolved>{
+function resolveRows(rows: ScopeRow[], ignore?: { level: SettingLevel; key: string }): Record<string, Resolved> {
   const resolved: Record<string, Resolved> = {}
   for (const row of rows) {
     if (row.level === ignore?.level && row.key === ignore.key) continue

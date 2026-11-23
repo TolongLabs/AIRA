@@ -1,6 +1,6 @@
-import {ownerCronTransport} from './owner-cron.js'
+import { ownerCronTransport } from './owner-cron.js'
 export async function authorizeOwner(
-  deps: {ownerApiOrigin?:string;ownerApiSocket?:string},
+  deps: { ownerApiOrigin?: string; ownerApiSocket?: string },
   token: string
 ): Promise<{ ok: true } | { ok: false; status: number; code: string }> {
   const origin = deps.ownerApiOrigin ?? 'http://owner.internal'
@@ -17,4 +17,3 @@ export async function authorizeOwner(
     return { ok: false, status: 502, code: 'owner_service_unavailable' }
   }
 }
-

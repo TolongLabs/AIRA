@@ -20,7 +20,10 @@ const settingBody = z.strictObject({
   scope: z.string().max(200),
   key: z.string().min(1).max(100),
   // null clears the row and restores inheritance.
-  expectedRevision:z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  expectedRevision: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .optional(),
   value: z.unknown()
 })
 
@@ -62,23 +65,27 @@ function writeSetting(deps: SiteApiDeps, body: unknown): RouteResult {
   if (key === 'character' && value === null && !new ChatBindingPolicy(deps).canClearCharacter(level, scope)) {
     return { status: 400, body: { error: 'missing_character' } }
   }
-  let changed:boolean
-  try{
-    const result=deps.storage.tx(db=>{
-      if (parsed.data.expectedRevision && scopeSnapshot(db,level,scope).revision!==parsed.data.expectedRevision) return 'conflict' as const
-      if (value===null) return unsetSetting(deps.storage,{level,scope,key,actor:SITE_ACTOR},deps.now)
-      const current=db.prepare('SELECT value FROM setting WHERE level=? AND scope=? AND key=?').pluck().get(level,scope,key)
-      if(current===JSON.stringify(value))return false
-      setSetting(deps.storage,{level,scope,key,value,actor:SITE_ACTOR},deps.now)
+  let changed: boolean
+  try {
+    const result = deps.storage.tx((db) => {
+      if (parsed.data.expectedRevision && scopeSnapshot(db, level, scope).revision !== parsed.data.expectedRevision)
+        return 'conflict' as const
+      if (value === null) return unsetSetting(deps.storage, { level, scope, key, actor: SITE_ACTOR }, deps.now)
+      const current = db
+        .prepare('SELECT value FROM setting WHERE level=? AND scope=? AND key=?')
+        .pluck()
+        .get(level, scope, key)
+      if (current === JSON.stringify(value)) return false
+      setSetting(deps.storage, { level, scope, key, value, actor: SITE_ACTOR }, deps.now)
       return true
     })
-    if(result==='conflict')return {status:409,body:{error:'stale_revision'}}
-    changed=result
-  }catch(error){
-    if(error instanceof SettingError)return {status:400,body:{error:'invalid_setting'}}
+    if (result === 'conflict') return { status: 409, body: { error: 'stale_revision' } }
+    changed = result
+  } catch (error) {
+    if (error instanceof SettingError) return { status: 400, body: { error: 'invalid_setting' } }
     throw error
   }
-  if(!changed)return {status:200,body:{level,scope,key,value,changed:false}}
+  if (!changed) return { status: 200, body: { level, scope, key, value, changed: false } }
   if (level === 'global' && key === 'character' && typeof value === 'string') {
     const pack = deps.packs().packs.get(value)
     if (pack) writeUnavailableLine(deps.paths.root, pack)

@@ -118,14 +118,14 @@ function handleChats(deps: SiteApiDeps): RouteResult {
       directory.get(chat.waId) ||
       (chat.type === 'dm' ? displayNameFor(deps.storage, chat.waId) : undefined) ||
       ''
-    const snapshot=deps.storage.read(db=>scopeSnapshot(db,'chat',chat.chatId,chat.type))
+    const snapshot = deps.storage.read((db) => scopeSnapshot(db, 'chat', chat.chatId, chat.type))
     return {
       ...chat,
       storedLabel: chat.label,
       lastInboundAt: activity.get(chat.chatId) ?? null,
       label,
       settings: snapshot.effective,
-      settingsRevision:snapshot.revision
+      settingsRevision: snapshot.revision
     }
   })
   return ok({ chats })
@@ -149,7 +149,7 @@ function handleTools(deps: SiteApiDeps): RouteResult {
   })
 }
 
-function handleSettings(deps: SiteApiDeps, params: URLSearchParams, dashboard:boolean): RouteResult {
+function handleSettings(deps: SiteApiDeps, params: URLSearchParams, dashboard: boolean): RouteResult {
   const level = params.get('level')
   const scope = params.get('scope') ?? ''
   if (level !== 'global' && level !== 'type' && level !== 'chat') {
@@ -165,8 +165,8 @@ function handleSettings(deps: SiteApiDeps, params: URLSearchParams, dashboard:bo
     return error(400, 'invalid_scope')
   }
 
-  const snapshot=deps.storage.read(db=>scopeSnapshot(db,level,scope))
-  return ok(dashboard?{level,scope,...snapshot}:{level,scope,values:snapshot.values})
+  const snapshot = deps.storage.read((db) => scopeSnapshot(db, level, scope))
+  return ok(dashboard ? { level, scope, ...snapshot } : { level, scope, values: snapshot.values })
 }
 
 function parseLimit(raw: string | null): number | undefined {
@@ -315,12 +315,12 @@ export function isKnownRoute(pathname: string): boolean {
   return STATIC_ROUTES.has(pathname) || TURN_BY_ID.test(pathname) || FEEDBACK_BY_ID.test(pathname)
 }
 
-export async function dispatchGet(deps: SiteApiDeps, url: URL, dashboard=false): Promise<RouteResult> {
+export async function dispatchGet(deps: SiteApiDeps, url: URL, dashboard = false): Promise<RouteResult> {
   const path = url.pathname
   if (path === '/api/health') return handleHealth(deps)
   if (path === '/api/chats') return handleChats(deps)
   if (path === '/api/tools') return handleTools(deps)
-  if (path === '/api/settings') return handleSettings(deps, url.searchParams,dashboard)
+  if (path === '/api/settings') return handleSettings(deps, url.searchParams, dashboard)
   if (path === '/api/turns') return handleTurns(deps, url.searchParams)
   const turnMatch = TURN_BY_ID.exec(path)
   if (turnMatch?.[1] !== undefined) return handleTurnById(deps, turnMatch[1])

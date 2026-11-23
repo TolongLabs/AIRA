@@ -25,8 +25,8 @@ export type SelectionTableProps<T> = {
   caption: string
   viewId: string
   bulkActions?: SelectionBulkAction<T>[]
-  page:number
-  onPageChange:(page:number)=>void
+  page: number
+  onPageChange: (page: number) => void
   emptyMessage?: string
 }
 
@@ -50,7 +50,8 @@ export default function SelectionTable<T>({
   caption,
   viewId,
   bulkActions = [],
-  page, onPageChange:setPage,
+  page,
+  onPageChange: setPage,
   emptyMessage = 'No matching rows.'
 }: SelectionTableProps<T>) {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
@@ -146,13 +147,17 @@ export default function SelectionTable<T>({
     setPendingId(null)
     setRunningId(action.id)
     setResult(null)
-    const succeeded=new Set<string>()
-    const failures:ActionResult['failures']=[]
-    for(const key of keys){
-      const row=lookup.get(key)
-      if(!row)continue
-      try{await action.run(row);succeeded.add(key)}
-      catch(reason){failures.push({key,label:labelFor(key),message:failureMessage(reason)})}
+    const succeeded = new Set<string>()
+    const failures: ActionResult['failures'] = []
+    for (const key of keys) {
+      const row = lookup.get(key)
+      if (!row) continue
+      try {
+        await action.run(row)
+        succeeded.add(key)
+      } catch (reason) {
+        failures.push({ key, label: labelFor(key), message: failureMessage(reason) })
+      }
     }
     setSelected((prev) => new Set([...prev].filter((key) => !succeeded.has(key))))
     setRunningId(null)
@@ -288,9 +293,7 @@ export default function SelectionTable<T>({
             ': ' +
             result.succeeded +
             ' succeeded' +
-            (result.failures.length
-              ? ', ' + result.failures.length + ' failed and kept selected for review.'
-              : '.')
+            (result.failures.length ? ', ' + result.failures.length + ' failed and kept selected for review.' : '.')
           : ''}
       </div>
       {result && result.failures.length > 0 && (

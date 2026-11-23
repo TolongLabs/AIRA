@@ -80,7 +80,7 @@ export function normalizeReason(value: unknown): DashboardReason {
 }
 
 export function normalizeMethod(value: unknown): DashboardMethod {
-  return DASHBOARD_METHODS.find(method=>method===value) ?? 'OTHER'
+  return DASHBOARD_METHODS.find((method) => method === value) ?? 'OTHER'
 }
 
 export function normalizeBuildId(value: unknown): string {
@@ -129,9 +129,7 @@ export function createDashboardDiagnostics(options: DashboardDiagnosticsOptions)
   const log = options.logger.child({ module: 'site_api' })
   const buildId = normalizeBuildId(options.buildId)
   const now = options.now ?? (() => new Date())
-  const generateId =
-    options.generateId ??
-    (() => randomUUID())
+  const generateId = options.generateId ?? (() => randomUUID())
   const maxEvents = clampInt(options.maxEventsPerInterval, DEFAULT_MAX_EVENTS_PER_INTERVAL, 1, 500)
   const intervalMs = clampInt(options.intervalMs, DEFAULT_INTERVAL_MS, 1000, 600_000)
 

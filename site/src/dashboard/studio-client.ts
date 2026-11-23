@@ -116,7 +116,8 @@ export function putStudio(id: string, expectedRevision: string, patch: StudioPat
 
 /** POST /owner-api/core/characters — { id, card, moods, lines } or { id, sourceId }. */
 export function postStudio(
-  body: { id: string; card: StudioCard; moods: StudioMoodsDoc; lines: StudioLinesDoc } | { id: string; sourceId: string }
+  body:
+    { id: string; card: StudioCard; moods: StudioMoodsDoc; lines: StudioLinesDoc } | { id: string; sourceId: string }
 ): Promise<{ id: string }> {
   return studioFetch('POST', 'characters', body)
 }
@@ -172,8 +173,7 @@ export function validateCard(card: StudioCard): string[] {
   faults.push(...validateId(card.id).map((f) => `card.id: ${f}`))
   if (!card.displayName.trim()) faults.push('card.displayName: give the character a display name.')
   for (const alias of card.aliases ?? [])
-    if (alias.length < 2 || alias.length > 40)
-      faults.push(`card.aliases: each alias is 2–40 characters ("${alias}").`)
+    if (alias.length < 2 || alias.length > 40) faults.push(`card.aliases: each alias is 2–40 characters ("${alias}").`)
   if (!card.languages.length) faults.push('card.languages: list at least one language tag (e.g. en).')
   for (const lang of card.languages)
     if (!isLangTag(lang)) faults.push(`card.languages: "${lang}" is not a language tag.`)
@@ -204,7 +204,8 @@ export function validateMoods(moods: StudioMoodsDoc): string[] {
   const beatNames = new Set((moods.beats ?? []).map((b) => b.name))
   for (const beat of moods.beats ?? []) {
     if (!/^[a-z][a-z0-9_]{0,31}$/.test(beat.name)) faults.push(`moods.beats: "${beat.name}" is not a valid beat name.`)
-    if (!beat.line.trim() || beat.line.length > 300) faults.push(`moods.beats.${beat.name}: one line, 1–300 characters.`)
+    if (!beat.line.trim() || beat.line.length > 300)
+      faults.push(`moods.beats.${beat.name}: one line, 1–300 characters.`)
   }
   for (const [key, entry] of Object.entries(moods.moods)) {
     const at = `moods.${key}`

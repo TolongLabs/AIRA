@@ -64,15 +64,15 @@ function useStoredAppearance(): readonly [AppearanceChoice, (value: AppearanceCh
 
 export function Backdrop() {
   const [saved] = useStoredAppearance()
-  const [preview,setPreview]=useState<AppearanceChoice | null>(null)
-  useEffect(()=>{
-    const handle=(event:Event)=>{
-      const value=(event as CustomEvent).detail
+  const [preview, setPreview] = useState<AppearanceChoice | null>(null)
+  useEffect(() => {
+    const handle = (event: Event) => {
+      const value = (event as CustomEvent).detail
       setPreview(value == null ? null : normalize(value))
     }
-    window.addEventListener(PREVIEW_EVENT,handle)
-    return ()=>window.removeEventListener(PREVIEW_EVENT,handle)
-  },[])
+    window.addEventListener(PREVIEW_EVENT, handle)
+    return () => window.removeEventListener(PREVIEW_EVENT, handle)
+  }, [])
   return <div className={'dashboard-backdrop dashboard-backdrop--' + (preview ?? saved)} aria-hidden="true" />
 }
 
@@ -88,10 +88,12 @@ export default function Appearance() {
     lastSaved.current = saved
   }, [saved])
 
-  useEffect(()=>{
-    window.dispatchEvent(new CustomEvent(PREVIEW_EVENT,{detail:preview}))
-    return ()=>{window.dispatchEvent(new CustomEvent(PREVIEW_EVENT,{detail:null}))}
-  },[preview])
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(PREVIEW_EVENT, { detail: preview }))
+    return () => {
+      window.dispatchEvent(new CustomEvent(PREVIEW_EVENT, { detail: null }))
+    }
+  }, [preview])
 
   function apply() {
     if (!dirty) return
@@ -109,9 +111,7 @@ export default function Appearance() {
         Back to Host Settings
       </a>
       <h2>Appearance</h2>
-      <p className="appearance-lede">
-        Choose a background. Apply saves it on this device.
-      </p>
+      <p className="appearance-lede">Choose a background. Apply saves it on this device.</p>
       <fieldset className="appearance-group">
         <legend>Finish</legend>
         <div className="appearance-grid">

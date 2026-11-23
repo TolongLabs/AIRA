@@ -68,8 +68,7 @@ export default function Catalogue() {
     if (sort === 'name') list.sort((a, b) => a.displayName.localeCompare(b.displayName))
     if (sort === 'source')
       list.sort((a, b) => a.source.localeCompare(b.source) || a.displayName.localeCompare(b.displayName))
-    if (sort === 'language')
-      list.sort((a, b) => (a.languages[0] ?? '').localeCompare(b.languages[0] ?? ''))
+    if (sort === 'language') list.sort((a, b) => (a.languages[0] ?? '').localeCompare(b.languages[0] ?? ''))
     return list
   }, [rows, query, source, sort])
 

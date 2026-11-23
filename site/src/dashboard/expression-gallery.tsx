@@ -332,7 +332,9 @@ export default function ExpressionGallery({ id, writable }: ExpressionGalleryPro
       >
         <form className="expression-gallery-form" onSubmit={(event) => void onSubmit(event)}>
           <h3 className="expression-gallery-subtitle">Upload Expression</h3>
-          <p className="expression-gallery-hint">Static PNG, JPEG or WebP up to 4 MB. Converted to 512 by 512 on save.</p>
+          <p className="expression-gallery-hint">
+            Static PNG, JPEG or WebP up to 4 MB. Converted to 512 by 512 on save.
+          </p>
           {conflict && (
             <p className="expression-gallery-error" role="alert">
               {conflict}
