@@ -1,10 +1,11 @@
 # Owner Site
 
-Mirai, the owner site, specified in [`docs/trd/site.md`](../docs/trd/site.md). Its design contract is
-[the AIRA web design contract](../docs/DESIGN.md), which wins for anything visual.
+The private AIRA dashboard uses the same owner API from both the canonical routes and the preview.
+Open `/app/preview/overview` on a staged install. With the dashboard entry enabled, `/` opens `/overview`.
+The classic site is available under `/app/`. See the [route map](../docs/trd/dashboard-routes.md),
+[state ownership matrix](../docs/trd/dashboard-state.md) and [design contract](../docs/DESIGN.md).
 
-This is the existing site as it was imported, scrubbed of private data. The revamp (FR-40 to FR-42) changes it from
-here. The `site` job in CI typechecks and builds it.
+Build the site from the repository root.
 
 ```sh
 cd site
@@ -14,7 +15,7 @@ bun run build
 
 ## Dashboard assets
 
-The preview uses local Outfit, Unbounded and Geist Mono files. The corresponding SIL Open Font Licenses are in
+The dashboard uses local Outfit, Unbounded and Geist Mono files. The corresponding SIL Open Font Licenses are in
 [the font directory](public/dashboard/fonts/). The robot glyph follows the approved AIRA design.
 
 The lattice and stipple are original repeating ASCII tiles. The TolongDesign catalogue provided the
