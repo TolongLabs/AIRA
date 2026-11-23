@@ -53,6 +53,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+export function marketScopeKey(chatKey: string): string {
+  const id = chatKey.trim()
+  if (!/^[a-zA-Z0-9:_-]+@(g\.us|s\.whatsapp\.net|lid)$/.test(id)) return id
+  const kind = id.endsWith('@g.us') ? 'group' : 'dm'
+  return kind + '/whatsapp/' + id.replace('@', '.').replace(/[^a-zA-Z0-9_.-]/g, '-')
+}
+
 export function cleanSymbols(symbols: unknown): string[] {
   if (!Array.isArray(symbols)) return []
   const seen = new Set<string>()
@@ -69,20 +76,36 @@ export function cleanSymbols(symbols: unknown): string[] {
   return out
 }
 
-export function loadWatchConfig(configPath: string, strict = false): WatchConfig {
+export function readWatchFields(configPath: string, strict = false): Record<string, unknown> {
   let raw: unknown
   try {
     const text = readFileSync(configPath, 'utf8')
     raw = parse(text) ?? {}
   } catch (error) {
     if (strict && (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-    return { watchlist: [], alerts: [] }
+    return {}
   }
   if (!isRecord(raw)) {
     if (strict) throw new Error('Invalid market configuration')
-    return { watchlist: [], alerts: [] }
+    return {}
   }
-  const data: Record<string, unknown> = { ...raw }
+  return raw
+}
+
+export function loadWatchConfig(configPath: string, strict = false): WatchConfig {
+  const data = readWatchFields(configPath, strict)
+  if (isRecord(data.chats)) {
+    const chats = { ...data.chats }
+    for (const [id, entry] of Object.entries(data.chats)) {
+      const scope = marketScopeKey(id)
+      if (scope === id) continue
+      // The host's scoped row wins if both spellings exist. Preserve other fields from older core rows.
+      if (!Object.hasOwn(chats, scope)) chats[scope] = entry
+      else if (isRecord(entry) && isRecord(chats[scope])) chats[scope] = { ...entry, ...chats[scope] }
+      delete chats[id]
+    }
+    data.chats = chats
+  }
   // An explicitly cleared default list (`watchlist: []`) stays cleared. The
   // legacy `watch` key is only a fallback for files written before `watchlist`
   // existed — falling back whenever `watchlist` is EMPTY resurrects a list the
@@ -126,14 +149,14 @@ export function chatInherits(data: WatchConfig): Set<string> {
 }
 
 export function watchlistFor(chatKey: string, data: WatchConfig): string[] {
-  const own = chatWatchlists(data)[chatKey]
+  const own = chatWatchlists(data)[marketScopeKey(chatKey)]
   if (own) return [...own]
-  if (chatInherits(data).has(chatKey)) return [...data.watchlist]
+  if (chatInherits(data).has(marketScopeKey(chatKey))) return [...data.watchlist]
   return []
 }
 
 export function setChatInherit(configPath: string, chatKey: string, want: boolean): WatchConfig {
-  const key = chatKey.trim()
+  const key = marketScopeKey(chatKey)
   if (!key) throw new Error('chatKey is required')
   const data = loadWatchConfig(configPath)
   const chats: Record<string, unknown> = isRecord(data.chats) ? { ...data.chats } : {}
@@ -156,7 +179,7 @@ export function setChatInherit(configPath: string, chatKey: string, want: boolea
 
 export function positionsFor(chatKey: string, data: WatchConfig): Record<string, Position> {
   const chats = isRecord(data.chats) ? data.chats : {}
-  const entry = chats[chatKey]
+  const entry = chats[marketScopeKey(chatKey)]
   const held = isRecord(entry) && isRecord(entry.positions) ? entry.positions : {}
   const out: Record<string, Position> = {}
   for (const [sym, row] of Object.entries(held)) {
@@ -176,7 +199,7 @@ export function setPosition(
   symbol: string,
   options: { qty?: number; cost?: number }
 ): Record<string, Position> {
-  const key = chatKey.trim()
+  const key = marketScopeKey(chatKey)
   const sym = symbol.trim().toLowerCase()
   if (!key || !sym) throw new Error('chatKey and symbol are required')
 
@@ -264,7 +287,7 @@ export function pnlMissing(chatKey: string, quotesBy: Record<string, QuoteLike>,
 }
 
 export function setChatWatchlist(configPath: string, chatKey: string, symbols: string[]): WatchConfig {
-  const key = chatKey.trim()
+  const key = marketScopeKey(chatKey)
   if (!key) throw new Error('chatKey is required')
   const cleaned = cleanSymbols(symbols)
   const data = loadWatchConfig(configPath)

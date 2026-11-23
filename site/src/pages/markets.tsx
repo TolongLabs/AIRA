@@ -361,6 +361,7 @@ function Alerts({
                   ? `moves more than ${a.level}% in a day`
                   : `goes ${a.direction} ${price(a.level, currencyOf(a.symbol))}`}
               </span>
+              {a.to && <span className="text-muted">{a.to}</span>}
               {away && <span className="ml-auto text-[0.82rem] text-muted">{away}</span>}
               <Button
                 size="sm"
@@ -402,8 +403,13 @@ function Alerts({
           }
           setSavingAlert(true)
           void onSave([
-            ...alerts.filter((a) => !(a.symbol === sym && a.direction === direction)),
-            { symbol: sym, direction, level: n }
+            ...alerts.filter((a) => a.to || a.symbol !== sym || a.direction !== direction),
+            {
+              ...alerts.find((a) => !a.to && a.symbol === sym && a.direction === direction),
+              symbol: sym,
+              direction,
+              level: n
+            }
           ])
             .then(() => setLevel(''))
             .finally(() => setSavingAlert(false))

@@ -3,7 +3,7 @@ import os
 import sqlite3
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 def snapshot(root):
@@ -26,6 +26,10 @@ def snapshot(root):
             src.close()
         final = out / (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + ".db")
         os.replace(tmp, final)
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).timestamp()
+        for previous in out.glob("????????T????????????Z.db"):
+            if previous != final and previous.stat().st_mtime < cutoff:
+                previous.unlink()
     finally:
         Path(tmp).unlink(missing_ok=True)
 

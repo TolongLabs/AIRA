@@ -217,3 +217,9 @@ The client rejects an incomplete acknowledgement. The core writes the same marke
 and hours. Notice routes store the gateway's prefixed WhatsApp target. Core lookups accept both that form
 and older bare targets. A refused write retains its draft. Service actions check the resulting unit state.
 A lost upload acknowledgement requires checking recent sends before retrying.
+
+Arming an alert for the default destination preserves rules for individual chats, including gateway IDs saved by the core.
+Renaming a routine preserves its full stored prompt even when the host returns only a shortened preview.
+Core-managed owner mutations require the same owner token as a protected settings read. A credential refusal returns HTTP 401.
+The core uses the host’s scoped WhatsApp key for each chat watchlist and reads older bare-ID entries.
+Alert delivery retains the destination ID supplied by the gateway.

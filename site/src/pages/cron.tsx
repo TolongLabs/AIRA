@@ -157,9 +157,7 @@ function JobEditor({
     job ? CronSchedule.parse(job.schedule) : CronSchedule.default()
   )
   const [scheduleEdited, setScheduleEdited] = useState(false)
-  const [prompt, setPrompt] = useState(
-    (job?.prompt ?? job?.prompt_preview ?? '').replace(/^\[AIRA-SCHEDULED v1 kind=job id=site_[a-f0-9]{32}\]\s*/, '')
-  )
+  const [prompt, setPrompt] = useState(CronJobPolicy.editablePrompt(job ?? undefined))
   const [deliver, setDeliver] = useState(job?.deliver ?? '')
   const [busy, setBusy] = useState(false)
 
@@ -407,7 +405,9 @@ function JobRow({ job, chats, onChanged }: { job: CronJob; chats: Chat[]; onChan
       </div>
 
       {job.prompt_preview ? (
-        <p className="mt-3 mb-0 line-clamp-3 text-[0.92rem] leading-relaxed text-read">{job.prompt_preview}</p>
+        <p className="mt-3 mb-0 line-clamp-3 text-[0.92rem] leading-relaxed text-read">
+          {CronJobPolicy.editablePrompt({ prompt_preview: job.prompt_preview })}
+        </p>
       ) : null}
 
       <p className="mt-3 mb-0 text-[0.82rem] text-muted">

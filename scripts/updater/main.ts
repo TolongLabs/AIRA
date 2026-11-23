@@ -1,4 +1,4 @@
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 import { createRealOps, deployLockPath, resolveSiteUrl } from './ops.js'
 import { runUpdate } from './update.js'
 
@@ -15,7 +15,7 @@ const ops = createRealOps({
   siteUrl: await resolveSiteUrl(dirname(composeFile), process.env),
   image: process.env['AIRA_IMAGE'] || 'ghcr.io/tolonglabs/aira',
   repository: process.env['AIRA_REPOSITORY'] || 'TolongLabs/AIRA',
-  recordFile: process.env['AIRA_DEPLOY_LOG'] || '/var/lib/aira/deploys.jsonl'
+  recordFile: process.env['AIRA_DEPLOY_LOG'] || join(dirname(composeFile), 'deploys.jsonl')
 })
 
 const result = await runUpdate(ops, {
@@ -29,6 +29,7 @@ process.stdout.write(JSON.stringify(result) + '\n')
 const skipped =
   result.action === 'none' &&
   (result.reason === 'no_release' ||
+    result.reason === 'main_managed' ||
     result.reason === 'up_to_date' ||
     result.reason === 'manual_release' ||
     result.reason === 'locked')

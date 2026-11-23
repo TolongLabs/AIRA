@@ -223,6 +223,13 @@ export class CronJobPolicy {
     )
   }
 
+  static editablePrompt(job?: Pick<CronJobLike, 'prompt' | 'prompt_preview'>): string {
+    return (job?.prompt ?? job?.prompt_preview ?? '').replace(
+      /^\[(?:AIRA-SCHEDULED v1 kind=job id=site_[a-f0-9]{32}|HERMES-SCOPE [^\]\r\n]+)\]\s*/,
+      ''
+    )
+  }
+
   static buildUpdateBody(job: CronJobLike, draft: CronJobUpdateDraft): Record<string, unknown> {
     const body: Record<string, unknown> = {
       action: 'update',
@@ -234,7 +241,7 @@ export class CronJobPolicy {
       const cron = draft.schedule.toCron()
       if (cron !== job.schedule) body.schedule = cron
     }
-    if (draft.prompt !== (job.prompt ?? job.prompt_preview ?? '')) body.prompt = draft.prompt
+    if (draft.prompt !== CronJobPolicy.editablePrompt(job)) body.prompt = draft.prompt
     if (draft.deliver !== (job.deliver ?? '')) body.deliver = draft.deliver
     return body
   }

@@ -77,11 +77,11 @@ from this page after an audit.
 
 ## Owner Site
 
-| ID    | Status  | Main Code Paths                             | Test Paths     | TRD Module | Gap                                                              |
-| ----- | ------- | ------------------------------------------- | -------------- | ---------- | ---------------------------------------------------------------- |
-| FR-40 | Partial | site/src/pages/chats.tsx, src/api/routes.ts | —              | site.md    | Only Chats is rebuilt; the rest still use the legacy API.        |
-| FR-41 | Planned | —                                           | —              | site.md    | No studio page and no character write, sticker or preview route. |
-| FR-42 | Partial | src/api/writes.ts, src/settings/settings.ts | tests/contract | site.md    | Only chat status and one setting per call; no pack writer.       |
+| ID    | Status  | Main Code Paths                             | Test Paths                   | TRD Module | Gap                                                                                                                |
+| ----- | ------- | ------------------------------------------- | ---------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------ |
+| FR-40 | Partial | site/src/pages/chats.tsx, src/api/server.ts | site-owner-routing, site-api | site.md    | Chats use the core. Host owner operations share the site origin at `/owner-api/`. Hierarchy editors remain in #22. |
+| FR-41 | Planned | —                                           | —                            | site.md    | No studio page and no character write, sticker or preview route.                                                   |
+| FR-42 | Partial | src/api/writes.ts, src/settings/settings.ts | tests/contract               | site.md    | Only chat status and one setting per call; no pack writer.                                                         |
 
 ## Models
 

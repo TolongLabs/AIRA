@@ -1,3 +1,4 @@
+import { readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { join } from 'node:path'
@@ -89,4 +90,35 @@ it('rejects incomplete per-chat watchlist acknowledgements', () => {
       checkOwnerResponse(route, { scope_key: 'fixture', inherits_default: false, watchlist: [] }, 'POST')
     ).not.toThrow()
   }
+})
+
+it('requires a protected owner read and preserves destinations across market writes', async () => {
+  const path = join(tmpDir(), 'markets.yaml')
+  const chatAlert = { symbol: 'abc', direction: 'above', level: 5, to: 'fixture@g.us' }
+  writeFileSync(path, JSON.stringify({ alerts: [chatAlert] }))
+  const owner = createServer((req, res) => {
+    if (req.headers['x-tolongai-token'] !== 'paired') return void res.writeHead(401).end()
+    res.end(JSON.stringify({ markets: { alerts: [chatAlert] } }))
+  })
+  await new Promise<void>((resolve) => owner.listen(0, '127.0.0.1', resolve))
+  closers.push(() => new Promise<void>((resolve) => owner.close(() => resolve())))
+  const { app } = await startApp(queueModel([]), {
+    config: (c) => {
+      c.owner.marketsConfig = path
+    },
+    env: { AIRA_OWNER_API_ORIGIN: 'http://127.0.0.1:' + (owner.address() as AddressInfo).port }
+  })
+  closers.push(() => app.close())
+  const base = 'http://127.0.0.1:' + (await app.listenSite(0, '127.0.0.1')).port + '/owner-api/'
+  const alerts = [chatAlert, { symbol: 'abc', direction: 'above', level: 6 }]
+  const post = (route: string, token: string) =>
+    fetch(base + route, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-tolongai-token': token },
+      body: JSON.stringify({ alerts, expected: { alerts: [chatAlert] } })
+    })
+  for (const route of ['cron', 'settings/markets']) expect((await post(route, 'wrong')).status).toBe(401)
+  expect(JSON.parse(readFileSync(path, 'utf8')).alerts).toEqual([chatAlert])
+  expect(await (await post('settings/markets', 'paired')).json()).toMatchObject({ markets: { alerts } })
+  expect((await post('settings/markets', 'paired')).status).toBe(409)
 })

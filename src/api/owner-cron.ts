@@ -29,8 +29,17 @@ export function ownerCronTransport(origin: string, socketPath: string | undefine
             let length = 0
             for await (const chunk of res) {
               length += chunk.length
-              if (length > 4 * 1024 * 1024) throw new Error('Owner job list exceeds limit')
+              if (length > 4 * 1024 * 1024) throw new Error('Owner response exceeds size limit')
               chunks.push(Buffer.from(chunk))
+            }
+            if (res.statusCode === 401 || ((res.statusCode ?? 502) >= 400 && length === 0)) {
+              resolve(
+                reply(
+                  res.statusCode ?? 502,
+                  res.statusCode === 401 ? 'Owner token required' : 'Owner service refused request'
+                )
+              )
+              return
             }
             const result: unknown = JSON.parse(Buffer.concat(chunks).toString())
             if (!object(result)) throw new Error('Invalid job response')
@@ -58,12 +67,25 @@ export async function changeOwnerJob(storage: Storage, input: unknown, call: Ret
     if (!prompt.trim()) return reply(400, 'missing_prompt')
     const tag = 'site_' + randomUUID().replaceAll('-', '')
     storage.tx((db) => db.prepare('INSERT INTO site_job(tag,chat_id) VALUES (?,?)').run(tag, chat.chatId))
-    const result = await call({ ...input, prompt: `[AIRA-SCHEDULED v1 kind=job id=${tag}]\n${prompt}` })
-    if (result.status >= 400 && result.status < 500)
+    const result = await call({ ...input, prompt: `[AIRA-SCHEDULED v1 kind=job id=${tag}]\n${prompt}` }).catch(
+      (): { status: number; body: Row } => reply(502, 'Owner connection interrupted')
+    )
+    if (result.status === 200 && result.body.success === true && typeof result.body.job_id === 'string') return result
+    if (result.status >= 400 && result.status < 500) {
       storage.tx((db) => db.prepare('DELETE FROM site_job WHERE tag=?').run(tag))
-    if (result.status === 200 && (result.body.success !== true || typeof result.body.job_id !== 'string'))
-      return reply(502, 'Could not confirm creation. Check scheduled jobs before retrying.')
-    return result
+      return result
+    }
+    // A disconnected acknowledgement can follow a successful write. Re-read before removing its scope.
+    const refreshed = await call().catch(() => undefined)
+    if (refreshed?.status === 200 && Array.isArray(refreshed.body.jobs)) {
+      const saved = refreshed.body.jobs.find(
+        (row: unknown) => object(row) && mark.exec(String(row.prompt ?? row.prompt_preview ?? ''))?.[1] === tag
+      )
+      if (object(saved) && typeof saved.job_id === 'string')
+        return { status: 200, body: { success: true, job_id: saved.job_id } }
+      storage.tx((db) => db.prepare('DELETE FROM site_job WHERE tag=?').run(tag))
+    }
+    return reply(502, 'Could not confirm creation. Check scheduled jobs before retrying.')
   }
   const job = listed.body.jobs.find((j: unknown) => object(j) && j.job_id === input.job_id)
   if (!object(job)) return reply(404, 'unknown_job')

@@ -185,4 +185,9 @@ when its health checks pass. Preserve host-specific configuration, write credent
 permissions and require a fresh verified snapshot before a version change.
 
 The built updater includes `offline-snapshot.py` beside its JavaScript entry point. When the core is unavailable,
-the host runs this helper against the container’s data mount and verifies the backup with SQLite.
+the host runs this helper against the container’s data mount and verifies the backup with SQLite. After a verified
+copy, it removes offline snapshots older than 14 days.
+
+The timer skips a `sha-*` installation managed by main-branch CI. A version-tagged installation follows releases.
+An unreachable owner console records `owner_console_failed`. An isolated turn failure records `synthetic_turn_failed`.
+Install the release timer in the gateway owner’s systemd user manager so its checks use that owner’s site token.
