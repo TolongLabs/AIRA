@@ -283,3 +283,14 @@ its intended id and compare its source revision before publish. Keep a recoverab
 across the multi-file publish and audit. Recover before serving reads or turns after restart. Only one owner
 writer can publish a pack at a time. Uncoordinated external editors must refetch and apply through the
 coordinated writer for strict concurrency. An invalid external change remains available to the owner for repair.
+
+The protected expressions collection under characters/:id/expressions returns revision and a list of names and
+descriptions. An authenticated item GET returns static image/webp and no-store. POST accepts the displayed name,
+description, MIME type, base64 data and expectedRevision. Conversion accepts static PNG, JPEG or WebP, at most
+4 MiB compressed, 4096 pixels per dimension and 16 million pixels decoded. Publish at most 50 expressions per
+writable pack, comparing version and capacity again after conversion under the pack writer. A published sticker
+is 512 by 512 pixels and at most 100 KiB. See the [WhatsApp sticker requirements](https://github.com/WhatsApp/stickers).
+
+Every protected dashboard response carries a generated X-Request-Id. The listener records request ID, build
+identifier, timestamp, fixed route category, HTTP method, status, elapsed time and a fixed reason code. A bounded
+event window limits volume. Omit URL parameters, bodies, credentials, prompt text and target identifiers.
