@@ -224,3 +224,18 @@ bundled example character, image configuration and synthetic chat rows. The veri
 contained one pre-snapshot row. Reopening the working database retained both rows, including a later write.
 Restoring the copied pack card and configuration reproduced their original bytes. The temporary container
 had no network or production mounts. Repeat the rehearsal on the installed candidate before cutover.
+
+### Dashboard staging rehearsal
+
+The [preview deployment](https://github.com/TolongLabs/AIRA/actions/runs/45263573904) installed
+`54a64c6216cfcbba741dc3111beea426148b6f05` with the classic entry selected. Chrome signed in on the
+private host and loaded all seven preview destinations and the protected health endpoint. It recorded zero
+asset failures and zero uncaught exceptions. An unbound synthetic character copy exercised create, edit,
+stale rejection, unchanged save and readback. The two mutations produced two audit records. The probe
+retired the fixture and verified its endpoint returned 404.
+
+An isolated container from the installed image opened a data-free copy of the installed schema. It applied
+zero migrations at schema 17. The verified online snapshot contained the first synthetic row. Reopening
+the working database recovered both rows, including the later write. The rehearsal also restored the copied
+pack and deployment configuration byte for byte. The [cutover issue](https://github.com/TolongLabs/AIRA/issues/372)
+records the canonical-entry checks, observation window and installed release.
