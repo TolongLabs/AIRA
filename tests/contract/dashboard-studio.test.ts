@@ -1,4 +1,6 @@
+import { copyFileSync } from 'node:fs'
 import { createServer } from 'node:http'
+import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { queueModel, startApp } from '../support/app.js'
 
@@ -13,7 +15,7 @@ it('edits a copy through the protected studio endpoint and rejects a stale draft
   try {
     const address = host.address()
     if (!address || typeof address === 'string') throw new Error('test listener unavailable')
-    const { app } = await startApp(queueModel([]), {
+    const { app, dataDir } = await startApp(queueModel([]), {
       env: { AIRA_OWNER_API_ORIGIN: 'http://127.0.0.1:' + address.port }
     })
     const site = await app.listenSite(0, '127.0.0.1')
@@ -48,12 +50,12 @@ it('edits a copy through the protected studio endpoint and rejects a stale draft
       expressions: unknown[]
     }
     expect(listing.expressions).toEqual([])
-    const upload = (name: string) =>
+    const upload = (name: string, expectedRevision = listing.revision) =>
       fetch(collection, {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          expectedRevision: listing.revision,
+          expectedRevision,
           name,
           description: 'A fictional greeting',
           mime: 'image/png',
@@ -73,6 +75,21 @@ it('edits a copy through the protected studio endpoint and rejects a stale draft
         .toString()
     ).toBe('WEBP')
     expect((await fetch(collection + '/wave')).status).toBe(401)
+    const stickerDir = join(dataDir, 'characters', 'sample-copy', 'stickers')
+    for (let n = 1; n <= 48; n++) copyFileSync(join(stickerDir, 'wave.webp'), join(stickerDir, 'pose-' + n + '.webp'))
+    const readGallery = async () => {
+      const response = await fetch(collection, { headers })
+      expect(response.status).toBe(200)
+      return (await response.json()) as { revision: string; expressions: { name: string }[] }
+    }
+    const almostFull = await readGallery()
+    expect(almostFull.expressions).toHaveLength(49)
+    const contenders = await Promise.all(['last-a', 'last-b'].map((name) => upload(name, almostFull.revision)))
+    expect(contenders.map((r) => r.status).sort()).toEqual([200, 409])
+    const full = await readGallery()
+    expect(full.expressions).toHaveLength(50)
+    expect((await upload('overflow', full.revision)).status).toBe(409)
+    expect(await readGallery()).toEqual(full)
   } finally {
     host.closeAllConnections()
     await new Promise<void>((resolve) => host.close(() => resolve()))
