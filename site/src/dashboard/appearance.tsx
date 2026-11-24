@@ -77,10 +77,14 @@ export function Backdrop() {
   useEffect(() => {
     const surface = glow.current
     if (!surface) return
-    const allowed = matchMedia('(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)')
+    const allowed = matchMedia(
+      '(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) and (forced-colors: none)'
+    )
     let frame = 0
     let x = 0,
       y = 0,
+      wakeX = 0,
+      wakeY = 0,
       targetX = 0,
       targetY = 0,
       previous = 0
@@ -88,23 +92,30 @@ export function Backdrop() {
       if (!surface) return
       const dt = Math.min(48, now - previous)
       previous = now
-      const mix = 1 - Math.exp(-dt / 85)
+      const mix = 1 - Math.exp(-dt / 60)
       x += (targetX - x) * mix
       y += (targetY - y) * mix
-      const dx = targetX - x,
-        dy = targetY - y
-      const distance = Math.hypot(dx, dy)
-      const stretch = Math.min(0.44, distance / 260)
-      surface.style.transform = `translate3d(${x}px,${y}px,0) translate(-50%,-50%) rotate(${Math.atan2(dy, dx)}rad) scale(${1 + stretch},${1 - stretch * 0.6})`
-      frame = distance > 0.25 ? requestAnimationFrame(tick) : 0
+      const wakeMix = 1 - Math.exp(-dt / 125)
+      wakeX += (x - wakeX) * wakeMix
+      wakeY += (y - wakeY) * wakeMix
+      const lag = Math.hypot(wakeX - x, wakeY - y)
+      const reach = lag > 72 ? 72 / lag : 1
+      surface.style.setProperty('--glow-head', `${x.toFixed(2)}px ${y.toFixed(2)}px`)
+      surface.style.setProperty(
+        '--glow-wake',
+        `${(x + (wakeX - x) * reach).toFixed(2)}px ${(y + (wakeY - y) * reach).toFixed(2)}px`
+      )
+      frame = Math.hypot(targetX - x, targetY - y) > 0.25 || lag > 0.25 ? requestAnimationFrame(tick) : 0
     }
     function move(event: PointerEvent) {
       if (!allowed.matches || event.pointerType !== 'mouse' || !surface) return
       targetX = event.clientX
       targetY = event.clientY
       if (!surface.dataset.visible) {
-        x = targetX
-        y = targetY
+        x = wakeX = targetX
+        y = wakeY = targetY
+        surface.style.setProperty('--glow-head', `${x}px ${y}px`)
+        surface.style.setProperty('--glow-wake', `${x}px ${y}px`)
         surface.dataset.visible = 'true'
       }
       if (!frame) {
@@ -118,11 +129,13 @@ export function Backdrop() {
       if (surface) delete surface.dataset.visible
     }
     window.addEventListener('pointermove', move, { passive: true })
+    window.addEventListener('blur', hide)
     document.documentElement.addEventListener('pointerleave', hide)
     allowed.addEventListener('change', hide)
     return () => {
       hide()
       window.removeEventListener('pointermove', move)
+      window.removeEventListener('blur', hide)
       document.documentElement.removeEventListener('pointerleave', hide)
       allowed.removeEventListener('change', hide)
     }
