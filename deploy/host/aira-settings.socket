@@ -1,0 +1,10 @@
+[Unit]
+Description=AIRA owner deployment settings
+
+[Socket]
+ListenStream=%h/.local/share/aira/gateway-directory/settings.sock
+SocketMode=0600
+DirectoryMode=0700
+
+[Install]
+WantedBy=sockets.target

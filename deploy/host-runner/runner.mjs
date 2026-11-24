@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { timingSafeEqual } from 'node:crypto'
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
@@ -252,6 +252,27 @@ async function handleRun(req, res) {
 
 const server = createServer((req, res) => {
   const reqPath = (req.url ?? '').split('?')[0]
+  if (req.method === 'GET' && reqPath === '/ready') {
+    if (!isAuthorized(req)) return res.writeHead(401).end()
+    // Query the same program and login as /run, without starting a conversation.
+    const env = { ...process.env }
+    delete env.RUNNER_TOKEN
+    execFile(
+      program,
+      [...leadingArgs, 'auth', 'status', '--json'],
+      { env, timeout: 3500, maxBuffer: 65536 },
+      (error, stdout) => {
+        let available = false
+        try {
+          available = !error && JSON.parse(stdout).loggedIn === true
+        } catch {}
+        res
+          .writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+          .end(JSON.stringify({ protocol: 'aira-claude-runner', available }))
+      }
+    )
+    return
+  }
   if (req.method === 'GET' && reqPath === '/health') {
     res.writeHead(200, { 'content-type': 'application/json' }).end('{"ok":true}')
     return

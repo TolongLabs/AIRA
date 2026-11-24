@@ -15,3 +15,16 @@ export interface DeploymentSettings {
   groups: Record<string, Record<string, string | number | boolean>>
   credentials: { name: string; purpose: string; present: boolean }[]
 }
+
+export interface ConfigField {
+  kind: 'string' | 'number' | 'boolean' | 'list'
+  display: string
+  value?: string | number | boolean
+}
+export interface HostSettingsSnapshot {
+  revision: string
+  state: 'current' | 'pending' | 'applying' | 'restored' | 'failed'
+  fields: Record<string, Record<string, ConfigField>>
+  credentials: { name: string; purpose: string; present: boolean }[]
+  router: { available: boolean; status: string; legacy?: { available: boolean; status: string } }
+}

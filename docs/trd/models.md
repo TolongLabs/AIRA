@@ -125,6 +125,11 @@ interface TurnRunner {
 
 Everything outside the runner is shared: prompt assembly, the offered tool list, the cleaning chain, records.
 
+The dashboard offers the Claude Code route for the primary or fallback role when its readiness check succeeds.
+The host also reports `aira-router.service` separately. Its local OpenAI-compatible `aira` model is eligible for either API role after the middleware verifies the service owns the loopback listener. It rechecks availability when changing routes. Existing installations retain their configured primary and fallback.
+A pinned regeneration stays on its original role. Switching transports after an API failure cannot repeat tools
+already called in that turn.
+
 ## Host Runner Service
 
 The `claude` program needs the owner's login, which lives in his home folder on the host. A container cannot hold

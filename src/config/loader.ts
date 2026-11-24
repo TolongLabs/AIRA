@@ -101,7 +101,7 @@ export function requireDeployable(config: Config): void {
   if (!isAbsolute(config.gateway.hostDataDir)) {
     throw new ConfigError('gateway.hostDataDir must be set to the absolute path of the data volume on the host')
   }
-  if (config.llm.transport === 'api') {
+  if (config.llm.transport === 'api' && config.llm.main.provider !== 'aira-router') {
     for (const key of ['provider', 'model', 'baseUrl'] as const) {
       if (config.llm.main[key] === '') throw new ConfigError(`llm.main.${key} must be set for the api transport`)
     }

@@ -14,6 +14,7 @@ export interface SubscriptionRunnerOptions {
   /** Effort on a `/think` turn. Empty means normal `effort`. */
   deepEffort?: string
   /** The shared secret of the core and the host runner service. */
+  role?: 'main' | 'fallback'
   runnerToken: string
   toolServer: ToolServer
   breaker: Breaker
@@ -128,7 +129,7 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
         return answerFromFallback(options.fallback, undefined, { ...pinned, role: 'main' })
       }
 
-      if (options.breaker.isOpen('main')) {
+      if (options.breaker.isOpen(options.role ?? 'main')) {
         return runFallback(new ModelError('rate_limit', 'subscription breaker is open'))
       }
 
@@ -254,7 +255,7 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
             }
             const costUsd = typeof lastResult.total_cost_usd === 'number' ? lastResult.total_cost_usd : 0
             const call: ModelCallRecord = {
-              role: 'main',
+              role: options.role ?? 'main',
               model,
               transport: 'subscription',
               effort,
@@ -270,7 +271,7 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
               usage,
               costUsd,
               model,
-              role: 'main',
+              role: options.role ?? 'main',
               transport: 'subscription',
               calls: [call],
               toolMs: session.state.toolMs,
@@ -282,10 +283,10 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
       }
 
       if (failure.kind === 'rate_limit' || failure.kind === 'auth') {
-        options.breaker.open('main')
+        options.breaker.open(options.role ?? 'main')
       }
       if (failure.kind === 'auth') {
-        options.onAuthFailure?.('main')
+        options.onAuthFailure?.(options.role ?? 'main')
       }
       options.logger.warn('subscription_run_failed', {
         turnId: input.context.turnId,
@@ -293,7 +294,7 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
       })
 
       const failedCall: ModelCallRecord = {
-        role: 'main',
+        role: options.role ?? 'main',
         model: initModel ?? (options.model || 'subscription'),
         transport: 'subscription',
         effort,
@@ -306,6 +307,46 @@ export function createSubscriptionRunner(options: SubscriptionRunnerOptions): Tu
       input.onCall?.(failedCall)
       if (session.state.toolCalls > 0) throw failure
       return runFallback(failure, failedCall)
+    }
+  }
+}
+
+/** An API regeneration is pinned. A new turn can change transport only before any tool executes. */
+export function withSubscriptionFallback(api: TurnRunner, wrapper: TurnRunner): TurnRunner {
+  return {
+    async run(input) {
+      if (input.replyTarget?.transport === 'subscription') return wrapper.run(input)
+      if (input.replyTarget) return api.run(input)
+      let usedTool = false
+      const attempts: ModelCallRecord[] = []
+      const tools = input.tools.map((tool) => ({
+        ...tool,
+        call: (...args: Parameters<typeof tool.call>) => {
+          usedTool = true
+          return tool.call(...args)
+        }
+      }))
+      try {
+        return await api.run({
+          ...input,
+          tools,
+          onCall: (call) => {
+            attempts.push(call)
+            input.onCall?.(call)
+          }
+        })
+      } catch (error) {
+        if (
+          usedTool ||
+          input.signal.aborted ||
+          !(error instanceof ModelError) ||
+          error.kind === 'refusal' ||
+          error.kind === 'budget'
+        )
+          throw error
+        const result = await wrapper.run(input)
+        return { ...result, calls: [...attempts, ...result.calls] }
+      }
     }
   }
 }

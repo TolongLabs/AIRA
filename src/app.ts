@@ -39,10 +39,11 @@ import { createMemoryWorker, type MemoryWorker } from './memory/worker.js'
 import { createAnthropicClient } from './models/anthropic-client.js'
 import { createApiRunner } from './models/api-runner.js'
 import { type Breaker, createBreaker } from './models/breaker.js'
+import { localRouterClient } from './models/local-router-client.js'
 import { createOpenAiClient } from './models/openai-client.js'
 import { createRoutedClient } from './models/routed-client.js'
 import { addSpend, spendState } from './models/spend.js'
-import { createSubscriptionRunner } from './models/subscription-runner.js'
+import { createSubscriptionRunner, withSubscriptionFallback } from './models/subscription-runner.js'
 import { createToolServer } from './models/tool-server.js'
 import { type ModelClient, ModelError, type ModelResponse } from './models/types.js'
 import { createPromptBuilder, loadHarnessRules } from './prompt/builder.js'
@@ -155,9 +156,11 @@ function modelClient(
   key: string | undefined,
   role: string,
   override?: ModelClient,
-  effort = target.effort
+  effort = target.effort,
+  ownerSocket?: string
 ): ModelClient | undefined {
   if (override) return override
+  if (target.provider === 'aira-router') return ownerSocket ? localRouterClient(ownerSocket, effort, target) : undefined
   if (target.model === '' || target.baseUrl === '') return undefined
   if (target.provider !== 'anthropic' && target.provider !== 'openai-compatible') {
     throw new ConfigError(`llm.${role}.provider is "${target.provider}": use "anthropic" or "openai-compatible"`)
@@ -234,6 +237,7 @@ export async function createApp(options: AppOptions): Promise<App> {
 
     // Models: one loop, one tool set. A fallback changes the model and nothing else.
     const subscription = config.llm.transport === 'subscription'
+    const wrapperFallback = config.llm.fallbackTransport === 'subscription'
     type Target = { client: ModelClient; model: string; effort: string }
     type RoleTargets = { normal: Target; deep: Target }
     const buildRole = (
@@ -242,13 +246,20 @@ export async function createApp(options: AppOptions): Promise<App> {
       role: string,
       override?: ModelClient
     ): RoleTargets | undefined => {
-      const normalClient = modelClient(targetConfig, key, role, override, targetConfig.effort)
+      const normalClient = modelClient(
+        targetConfig,
+        key,
+        role,
+        override,
+        targetConfig.effort,
+        env.AIRA_OWNER_API_SOCKET
+      )
       if (!normalClient) return undefined
       const deepEffort = targetConfig.deepEffort !== '' ? targetConfig.deepEffort : targetConfig.effort
       const deepClient =
         override || deepEffort === targetConfig.effort
           ? normalClient
-          : (modelClient(targetConfig, key, role, undefined, deepEffort) as ModelClient)
+          : (modelClient(targetConfig, key, role, undefined, deepEffort, env.AIRA_OWNER_API_SOCKET) as ModelClient)
       return {
         normal: { client: normalClient, model: targetConfig.model, effort: targetConfig.effort },
         deep: { client: deepClient, model: targetConfig.model, effort: deepEffort }
@@ -258,12 +269,9 @@ export async function createApp(options: AppOptions): Promise<App> {
     if (!mainRole && !subscription) {
       throw new ConfigError('llm.main needs a model, a baseUrl and LLM_API_KEY in the environment')
     }
-    const fallbackRole = buildRole(
-      config.llm.fallback,
-      env['LLM_FALLBACK_API_KEY'],
-      'fallback',
-      options.clients?.fallback
-    )
+    const fallbackRole = wrapperFallback
+      ? undefined
+      : buildRole(config.llm.fallback, env['LLM_FALLBACK_API_KEY'], 'fallback', options.clients?.fallback)
     for (const [role, target] of [
       ['main', mainRole],
       ['fallback', fallbackRole]
@@ -312,7 +320,7 @@ export async function createApp(options: AppOptions): Promise<App> {
 
     let runner: TurnRunner
     let fallbackBreaker: Breaker | undefined
-    if (!subscription) {
+    if (!subscription && !wrapperFallback) {
       runner = apiRunner(mainRole as RoleTargets, fallbackRole, breaker)
     } else {
       // The program on the host runs the loop and calls the tools through the core's tool server. The fallback
@@ -324,11 +332,13 @@ export async function createApp(options: AppOptions): Promise<App> {
       await toolServer.listen(config.llm.subscription.toolServerPort)
       closers.push(() => toolServer.close())
       fallbackBreaker = fallbackRole ? createBreaker({ breakerMs: config.llm.breakerMs, now }) : undefined
-      runner = createSubscriptionRunner({
+      const wrapperRole = wrapperFallback ? 'fallback' : 'main'
+      const wrapper = createSubscriptionRunner({
+        role: wrapperRole,
         subscription: config.llm.subscription,
-        model: config.llm.main.model,
-        effort: config.llm.main.effort,
-        deepEffort: config.llm.main.deepEffort,
+        model: config.llm[wrapperRole].model,
+        effort: config.llm[wrapperRole].effort,
+        deepEffort: config.llm[wrapperRole].deepEffort,
         runnerToken,
         toolServer,
         breaker,
@@ -337,6 +347,9 @@ export async function createApp(options: AppOptions): Promise<App> {
         logger: logger.child({ module: 'subscription' }),
         now
       })
+      runner = wrapperFallback
+        ? withSubscriptionFallback(apiRunner(mainRole as RoleTargets, undefined, breaker), wrapper)
+        : wrapper
     }
     // Memory extraction needs a model behind a key: the main one, or on the subscription transport the fallback.
     const extractionTarget = mainRole?.normal ?? fallbackRole?.normal
@@ -896,7 +909,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       roles: () => ({
         main: { configured: Boolean(mainRole) || subscription, breakerOpen: breaker.isOpen('main') },
         fallback: {
-          configured: Boolean(fallbackRole),
+          configured: Boolean(fallbackRole) || wrapperFallback,
           breakerOpen: subscription ? (fallbackBreaker?.isOpen('main') ?? false) : breaker.isOpen('fallback')
         },
         judge: { configured: Boolean(moodJudge || memoryJudge), breakerOpen: false },

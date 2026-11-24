@@ -23,6 +23,12 @@ routes. During preview, the core serves them under a separate mount while the ex
 | settings.html                  | Edit host models, voice, files and other owner settings             | /system/settings               | Host owner API                                       | 35:2791                   | Save, read back and retain dirty file on refusal                   | #370       |
 | Theme control                  | Set theme, backdrop and rail                                        | /system/appearance             | Device preferences                                   | 145:176957                | Refresh, check storage migration and reduced motion                | #365, #370 |
 
+Reply Models shows the running primary and fallback and the host's saved routing choices. The AIRA router
+service and the current core's Claude Code runner have separate readiness checks. An unavailable route is
+disabled in both selectors. Core Configuration edits installed YAML fields by group. Credentials offers
+empty, write-only replacement fields and confirms removal. An explicit Apply saved changes restarts the
+current image. The host retains the last working files for recovery.
+
 ## Middleware acceptance
 
 Keep /api/ and /owner-api/ outside the page router. Missing assets return 404. Revalidate HTML on every load and

@@ -197,6 +197,7 @@ export const configSchema = z.strictObject({
   llm: z
     .strictObject({
       transport: z.enum(['api', 'subscription']),
+      fallbackTransport: z.enum(['api', 'subscription']).default('api'),
       main: modelTarget('high'),
       fallback: modelTarget('max'),
       turnDeadlineMs: ms,
@@ -220,10 +221,34 @@ export const configSchema = z.strictObject({
     })
     .superRefine((llm, context) => {
       // Claude refuses an effort outside its list, and an OpenAI-compatible server checks its own.
+      if (llm.transport === 'subscription' && llm.fallbackTransport === 'subscription')
+        context.addIssue({
+          code: 'custom',
+          path: ['fallbackTransport'],
+          message: 'Choose a distinct fallback transport'
+        })
+      for (const role of ['main', 'fallback'] as const) {
+        const transport = role === 'main' ? llm.transport : llm.fallbackTransport
+        if (transport === 'api' && llm[role].provider === 'aira-router' && llm[role].model !== 'aira')
+          context.addIssue({ code: 'custom', path: [role, 'model'], message: 'The local router serves the aira model' })
+      }
+      if (
+        llm.transport === 'api' &&
+        llm.fallbackTransport === 'api' &&
+        llm.main.provider === 'aira-router' &&
+        llm.fallback.provider === 'aira-router'
+      )
+        context.addIssue({
+          code: 'custom',
+          path: ['fallback', 'provider'],
+          message: 'Choose a distinct fallback route'
+        })
       const claudeEffort = (effort: string) => effort === '' || (CLAUDE_EFFORTS as readonly string[]).includes(effort)
       for (const role of ['main', 'fallback'] as const) {
         const target = llm[role]
-        const claude = target.provider === 'anthropic' || (role === 'main' && llm.transport === 'subscription')
+        const claude =
+          target.provider === 'anthropic' ||
+          (role === 'main' ? llm.transport : llm.fallbackTransport) === 'subscription'
         for (const field of ['effort', 'deepEffort'] as const) {
           if (claude && !claudeEffort(target[field])) {
             context.addIssue({

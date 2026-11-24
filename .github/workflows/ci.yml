@@ -190,8 +190,13 @@ jobs:
           install -Dm644 deploy/host/model-probe.py "$HOME/.local/lib/aira/model-probe.py"
           install -Dm644 deploy/host/aira-model-probe.socket "$HOME/.config/systemd/user/aira-model-probe.socket"
           install -Dm644 deploy/host/aira-model-probe@.service "$HOME/.config/systemd/user/aira-model-probe@.service"
+          bun build scripts/dashboard-settings-host.ts --target=node --format=esm --outfile="$RUNNER_TEMP/aira-dashboard-settings.mjs"
+          install -Dm644 "$RUNNER_TEMP/aira-dashboard-settings.mjs" "$HOME/.local/lib/aira/dashboard-settings.mjs"
+          install -Dm644 deploy/host/aira-settings.socket "$HOME/.config/systemd/user/aira-settings.socket"
+          install -Dm644 deploy/host/aira-settings.service "$HOME/.config/systemd/user/aira-settings.service"
           systemctl --user daemon-reload
-          systemctl --user enable --now aira-directory.path aira-owner-api.socket aira-model-probe.socket
+          systemctl --user enable --now aira-directory.path aira-owner-api.socket aira-model-probe.socket aira-settings.socket
+          systemctl --user try-restart aira-settings.service
           systemctl --user start aira-directory.service
 
       - name: Deploy on host

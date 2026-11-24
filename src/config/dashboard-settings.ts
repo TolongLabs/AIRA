@@ -1,4 +1,4 @@
-import type { DeploymentModel, DeploymentSettings } from './dashboard-types.js'
+import type { ConfigField, DeploymentModel, DeploymentSettings } from './dashboard-types.js'
 import type { Config } from './schema.js'
 import type { ConfigStatusSnapshot } from './status.js'
 
@@ -72,6 +72,7 @@ const fields = {
   embeddings: { provider: 'value' },
   llm: {
     transport: 'value',
+    fallbackTransport: 'value',
     main: target,
     fallback: target,
     turnDeadlineMs: 'value',
@@ -185,7 +186,8 @@ export function deploymentSettings(
 ): DeploymentSettings {
   function model(role: 'main' | 'fallback'): DeploymentModel {
     const target = config.llm[role]
-    const runner = role === 'main' && config.llm.transport === 'subscription'
+    const runner = (role === 'main' ? config.llm.transport : config.llm.fallbackTransport) === 'subscription'
+    const legacy = !runner && target.provider === 'aira-router'
     const effort = target.effort || (runner ? 'medium' : 'Provider default')
     return {
       model: target.model || (runner ? 'Claude Code default' : 'Not set'),
@@ -195,11 +197,19 @@ export function deploymentSettings(
           ? 'Anthropic API'
           : target.provider === 'openai-compatible'
             ? 'OpenAI-compatible API'
-            : 'Not set',
-      endpoint: origin(runner ? config.llm.subscription.runnerUrl : target.baseUrl),
+            : legacy
+              ? 'AIRA router · Claude Code'
+              : 'Not set',
+      endpoint: legacy ? 'Private host socket' : origin(runner ? config.llm.subscription.runnerUrl : target.baseUrl),
       effort,
       deepEffort: target.deepEffort || effort,
-      credential: runner ? 'RUNNER_TOKEN' : role === 'main' ? 'LLM_API_KEY' : 'LLM_FALLBACK_API_KEY',
+      credential: legacy
+        ? 'Host Claude login'
+        : runner
+          ? 'RUNNER_TOKEN'
+          : role === 'main'
+            ? 'LLM_API_KEY'
+            : 'LLM_FALLBACK_API_KEY',
       configured: roles[role]?.configured ?? false
     }
   }
@@ -227,4 +237,37 @@ export function deploymentSettings(
       present: Boolean(env[name])
     }))
   }
+}
+
+/** Editable leaf paths come from the same disclosure policy as the startup snapshot. */
+export function hostConfigFields(config: Config) {
+  const result: Record<string, Record<string, ConfigField>> = {}
+  for (const key of Object.keys(fields) as (keyof Config)[]) {
+    const group: Record<string, ConfigField> = {}
+    const display = project(fields[key], config[key])
+    function visit(policy: FieldMap, values: object, prefix: string) {
+      for (const [key, rule] of Object.entries(policy)) {
+        const name = prefix + key
+        const value: unknown = Object.hasOwn(values, key) ? Reflect.get(values, key) : undefined
+        if (typeof rule === 'object') {
+          visit(rule, value && typeof value === 'object' ? value : {}, name + '.')
+          continue
+        }
+        const kind =
+          rule === 'count'
+            ? 'list'
+            : typeof value === 'number'
+              ? 'number'
+              : typeof value === 'boolean'
+                ? 'boolean'
+                : 'string'
+        group[name] = { kind, display: String(display[name] ?? 'Not set') }
+        if (rule === 'value' && (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'))
+          group[name].value = value
+      }
+    }
+    visit(fields[key], config[key], '')
+    result[key] = group
+  }
+  return result
 }

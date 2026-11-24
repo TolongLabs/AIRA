@@ -1,0 +1,8 @@
+[Unit]
+Description=AIRA dashboard settings CLI middleware
+
+[Service]
+ExecStart=/usr/bin/node %h/.local/lib/aira/dashboard-settings.mjs serve
+UMask=0077
+NoNewPrivileges=true
+Restart=on-failure
