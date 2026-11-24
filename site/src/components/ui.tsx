@@ -552,6 +552,10 @@ export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttribute
   return <input ref={ref} className={cn(inputBase, className)} {...props} />
 })
 
+export function FileInput(props: React.ComponentPropsWithRef<'input'>) {
+  return <input {...props} type="file" className={cn('dashboard-file', props.className)} />
+}
+
 export const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>(
   function Textarea({ className, ...props }, ref) {
     return <textarea ref={ref} className={cn(inputBase, 'min-h-24 resize-y leading-relaxed', className)} {...props} />

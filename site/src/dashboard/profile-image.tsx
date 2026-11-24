@@ -1,3 +1,4 @@
+import { FileInput } from '@/components/ui'
 import { useEffect, useState, type ReactNode } from 'react'
 import { MessageCircle, Users } from 'lucide-react'
 import { core, type CoreChat } from '@/lib/core'
@@ -107,8 +108,7 @@ export function PortraitUpload({ kind, id, onSaved }: { kind: Kind; id: string; 
       <label>
         <strong>{kind === 'characters' ? 'Persona' : 'Chat'} profile image</strong>
         <small>PNG, JPEG or WebP · up to 4 MiB</small>
-        <input
-          type="file"
+        <FileInput
           accept="image/png,image/jpeg,image/webp"
           disabled={busy}
           onChange={(event) => {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Button, Toggle } from '@/components/ui'
 import { toast } from '@/lib/hooks'
 import './appearance.css'
 
@@ -244,7 +245,7 @@ export default function Appearance() {
           </div>
         </fieldset>
         <div className="appearance-actions" data-dirty={dirty}>
-          <button
+          <Button
             type="button"
             disabled={!dirty}
             onClick={() => {
@@ -254,10 +255,10 @@ export default function Appearance() {
             }}
           >
             Cancel
-          </button>
-          <button type="button" disabled={!dirty} onClick={apply}>
+          </Button>
+          <Button variant="primary" type="button" disabled={!dirty} onClick={apply}>
             Apply
-          </button>
+          </Button>
         </div>
         <p className="sr-only" role="status">
           {dirty ? 'Previewing ' + labelOf(preview) + ' — nothing is saved yet.' : 'Showing ' + labelOf(saved) + '.'}
@@ -305,14 +306,11 @@ function DisplayOption({
     return () => removeEventListener('storage', change)
   }, [key])
   return (
-    <label className="appearance-option">
-      <span>{label}</span>
-      <input
-        type="checkbox"
-        role="switch"
+    <div className="appearance-option">
+      <Toggle
+        label={label}
         checked={value}
-        onChange={(e) => {
-          const next = e.target.checked
+        onChange={(next) => {
           try {
             localStorage.setItem(key, next ? on : off)
             setValue(next)
@@ -322,6 +320,6 @@ function DisplayOption({
           }
         }}
       />
-    </label>
+    </div>
   )
 }

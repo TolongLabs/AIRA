@@ -1,3 +1,4 @@
+import { TimeField } from '@/dashboard/form-select'
 import { Loading } from '@/dashboard/loading'
 import { ChatAccess } from '@/dashboard/chat-access'
 import { ChatGlyph, motif, ProfileImage, PortraitUpload } from '@/dashboard/profile-image'
@@ -160,7 +161,7 @@ function FeatureTools({ tools }: { tools: CoreToolFeature['tools'] }) {
             side="top"
             sideOffset={4}
             collisionPadding={12}
-            className="z-50 max-w-[min(18rem,calc(100vw-24px))] rounded-card border border-line bg-card px-3 py-2 text-[0.82rem] leading-relaxed text-ink shadow-float"
+            className="aira-tooltip z-50 max-w-[min(18rem,calc(100vw-24px))] px-3 py-2 text-[0.82rem] leading-relaxed"
           >
             {description}
           </Tooltip.Content>
@@ -230,10 +231,10 @@ function QuietHours({ vm, onSave }: { vm: ChatSettingsViewModel; onSave: (value:
     <div className="flex flex-col gap-3">
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label="From">
-          <Input aria-label="From" type="time" value={start} onChange={(e) => setStart(e.target.value)} />
+          <TimeField label="From" value={start} onChange={setStart} />
         </Field>
         <Field label="Until">
-          <Input aria-label="Until" type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
+          <TimeField label="Until" value={end} onChange={setEnd} />
         </Field>
         <Field label="Time zone">
           <Input

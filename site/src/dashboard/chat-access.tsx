@@ -216,6 +216,7 @@ export function ChatAccess({ current, chatId, chatType, inherited, save }: ChatA
             <label className="flex min-h-[44px] cursor-pointer items-center gap-2 text-[0.92rem]">
               <input
                 type="radio"
+                className="dashboard-choice"
                 name={groupName}
                 checked={mode === 'all'}
                 disabled={busy}
@@ -229,6 +230,7 @@ export function ChatAccess({ current, chatId, chatType, inherited, save }: ChatA
             <label className="flex min-h-[44px] cursor-pointer items-center gap-2 text-[0.92rem]">
               <input
                 type="radio"
+                className="dashboard-choice"
                 name={groupName}
                 checked={mode === 'list'}
                 disabled={busy}

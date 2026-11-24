@@ -3,7 +3,8 @@ import './simulator.css'
 import { PortraitUpload, ProfileImage, motif } from './profile-image'
 import { WorkspaceTabs } from './workspace-tools'
 import { Loading } from '@/dashboard/loading'
-import { Input } from '@/components/ui'
+import { FormSelect } from './form-select'
+import { FileInput, Input } from '@/components/ui'
 import ExpressionGallery from './expression-gallery'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { core } from '@/lib/core'
@@ -536,16 +537,21 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
             {section === 'studio-identity' && mode === 'import' && (
               <section className="studio-section" aria-label="Import source">
                 <h3>Copy from an existing pack</h3>
-                <Field label="Source pack">
-                  <select value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
-                    <option value="">Pick a pack…</option>
-                    {sourceOptions.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.displayName} ({c.id})
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+                <div className="studio-field">
+                  <label className="studio-label" htmlFor="studio-source-pack">
+                    Source pack
+                  </label>
+                  <FormSelect
+                    id="studio-source-pack"
+                    label="Source pack"
+                    value={sourceId}
+                    onChange={setSourceId}
+                    options={[
+                      { value: '', label: 'Pick a pack…' },
+                      ...sourceOptions.map((c) => ({ value: c.id, label: c.displayName + ' (' + c.id + ')' }))
+                    ]}
+                  />
+                </div>
                 <Field label="New id for the copy">
                   <input value={copyId} placeholder="my-character" onChange={(e) => setCopyId(e.target.value)} />
                 </Field>
@@ -561,9 +567,8 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
                 <p className="studio-hint">
                   JSON only, up to 256 KB. The file is parsed as data and validated — never run.
                 </p>
-                <input
+                <FileInput
                   aria-label="Upload a typed pack document"
-                  type="file"
                   accept="application/json,.json"
                   onChange={(e) => {
                     const file = e.target.files?.[0]
@@ -625,21 +630,23 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
                     onChange={(speechRules) => setDraft((d) => ({ ...d, card: { ...d.card, speechRules } }))}
                     hint="One rule per line."
                   />
-                  <Field label="Default reply length">
-                    <select
+                  <div className="studio-field">
+                    <label className="studio-label" htmlFor="studio-default-reply-length">
+                      Default reply length
+                    </label>
+                    <FormSelect
+                      id="studio-default-reply-length"
+                      label="Default reply length"
                       value={draft.card.defaultReplyLength}
-                      onChange={(e) =>
-                        setDraft((d) => ({
-                          ...d,
-                          card: { ...d.card, defaultReplyLength: e.target.value as ReplyLength }
-                        }))
+                      options={(['short', 'default', 'long'] as const).map((value) => ({
+                        value,
+                        label: value[0]!.toUpperCase() + value.slice(1) + ' (≤ ' + REPLY_LENGTHS[value] + ' chars)'
+                      }))}
+                      onChange={(value: ReplyLength) =>
+                        setDraft((d) => ({ ...d, card: { ...d.card, defaultReplyLength: value } }))
                       }
-                    >
-                      <option value="short">Short (≤ {REPLY_LENGTHS.short} chars)</option>
-                      <option value="default">Default (≤ {REPLY_LENGTHS.default} chars)</option>
-                      <option value="long">Long (≤ {REPLY_LENGTHS.long} chars)</option>
-                    </select>
-                  </Field>
+                    />
+                  </div>
                 </div>
               </section>
             )}
@@ -647,21 +654,21 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
             {section === 'studio-moods' && (
               <section className="studio-section" data-section="studio-moods" aria-label="Moods">
                 <h3>Moods</h3>
-                <Field label="Default mood">
-                  <select
+                <div className="studio-field">
+                  <label className="studio-label" htmlFor="studio-default-mood">
+                    Default mood
+                  </label>
+                  <FormSelect
+                    id="studio-default-mood"
+                    label="Default mood"
                     value={draft.moods.default}
-                    onChange={(e) => {
-                      setDraft((d) => ({ ...d, moods: { ...d.moods, default: e.target.value } }))
-                      setSelectedMood(e.target.value)
+                    options={moodKeys.map((value) => ({ value, label: value }))}
+                    onChange={(value) => {
+                      setDraft((d) => ({ ...d, moods: { ...d.moods, default: value } }))
+                      setSelectedMood(value)
                     }}
-                  >
-                    {moodKeys.map((key) => (
-                      <option key={key} value={key}>
-                        {key}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+                  />
+                </div>
                 <div className="studio-mood-tabs" role="tablist" aria-label="Moods">
                   {moodKeys.map((key) => (
                     <button
@@ -1026,15 +1033,18 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
             {section === 'studio-preview' && (
               <section className="studio-section" data-section="studio-preview" aria-label="Prompt preview">
                 <h3>Prompt Preview</h3>
-                <Field label="Preview mood">
-                  <select value={activeMood} onChange={(e) => setSelectedMood(e.target.value)}>
-                    {moodKeys.map((key) => (
-                      <option key={key} value={key}>
-                        {key}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+                <div className="studio-field">
+                  <label className="studio-label" htmlFor="studio-preview-mood">
+                    Preview mood
+                  </label>
+                  <FormSelect
+                    id="studio-preview-mood"
+                    label="Preview mood"
+                    value={activeMood}
+                    options={moodKeys.map((value) => ({ value, label: value }))}
+                    onChange={setSelectedMood}
+                  />
+                </div>
                 <pre className="studio-pre">{preview.text}</pre>
                 <p role="status">
                   About {preview.tokens} tokens.{' '}
@@ -1363,6 +1373,7 @@ export function StudioSimulator() {
     }
   }, [])
 
+  const packOptions = packs.map((p) => ({ value: p.id, label: p.displayName + ' (' + p.id + ')' }))
   if (waiting) return <p role="status">Waiting for the editor tab…</p>
   if (!draft && selectedPack && !fault) return <Loading />
   if (!draft)
@@ -1370,17 +1381,16 @@ export function StudioSimulator() {
       <section className="dashboard-pane studio-sim">
         <h2>WhatsApp Simulator</h2>
         <p>Open Preview Conversation in the editor to test an unsaved draft, or select a saved persona.</p>
-        <label>
-          Saved persona{' '}
-          <select value={selectedPack} onChange={(e) => setSelectedPack(e.target.value)}>
-            <option value="">Choose a persona</option>
-            {packs.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.displayName}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="studio-field">
+          <label htmlFor="saved-persona">Saved persona</label>
+          <FormSelect
+            id="saved-persona"
+            label="Saved persona"
+            value={selectedPack}
+            options={[{ value: '', label: 'Choose a persona' }, ...packOptions]}
+            onChange={setSelectedPack}
+          />
+        </div>
         {fault && <p role="alert">{fault}</p>}
       </section>
     )
@@ -1434,20 +1444,15 @@ export function StudioSimulator() {
             {fromEditor ? (
               <strong>{title}</strong>
             ) : (
-              <select
-                aria-label="Saved persona"
+              <FormSelect
+                label="Saved persona"
                 value={selectedPack}
-                onChange={(e) => {
+                options={packOptions}
+                onChange={(value) => {
                   setDraft(null)
-                  setSelectedPack(e.target.value)
+                  setSelectedPack(value)
                 }}
-              >
-                {packs.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.displayName}
-                  </option>
-                ))}
-              </select>
+              />
             )}
             <small>WhatsApp simulator</small>
           </div>

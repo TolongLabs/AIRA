@@ -40,6 +40,9 @@ The console has seven destinations sharing one shell: /overview, /chats, /charac
 health status, active and pending chats, the next routine, and one compact Library summary
 in a responsive, full-width bento with service readiness, chat distribution, a scheduled agenda library composition and a thirteen-week inbound traffic calendar. Overview is compact and read-only with linked diagnostic headings, leading with one dominant diagnostic and smaller paired tools beside it.
 
+Chat Directory rows use fixed 34-pixel rounded-square avatars. Group and direct chat icons sit
+at the center. An uploaded portrait fills the same square.
+
 Chats is a directory with per-chat settings at `/chats/:id/settings` across six tabs:
 Character, Reply, Features, Quiet Hours, Access, and Send Message. A local value overrides the shared
 default, and Use Defaults removes that override and returns the chat to inherited behavior.
@@ -68,7 +71,8 @@ The base pair is white and black with a selectable static ASCII lattice or stipp
 ShaderGradient layer, or plain finish, while focus and reading surfaces sit above
 that base plane. Navigation retains the shell during location changes. Reduced motion falls back to the static finish. Navigation uses white at 38 percent in light mode and smoked neutral at 43
 percent in dark mode; content cards use white at 73 percent in light or charcoal at 82
-percent in dark. Borders stay restrained and gutters shared, keeping the quiet bento base
+percent in dark. The outer shells diffuse the canvas behind a directional edge highlight.
+Solid reading surfaces and reduced transparency use opaque panels. Borders stay restrained and gutters shared, keeping the quiet bento base
 plane calm. Each view leads with one dominant diagnostic (never a fake chart) and smaller
 paired tools, stacking to a single column on phone.
 
