@@ -6,6 +6,11 @@ export interface ChatFeatureDefinition {
   hint: string
 }
 
+/** The personas a chat may pick: the repository's placeholder pack is hidden unless the chat already uses it. */
+export function personaChoices(characters: readonly CoreCharacter[], current?: string | null): CoreCharacter[] {
+  return characters.filter((c) => c.id !== 'example' || c.source !== 'repository' || c.id === current)
+}
+
 /** Settings edited elsewhere or managed by commands, never cleared from the Chats tab. */
 export const READ_ONLY_SETTINGS = new Set(['allowedSenders', 'muted', 'model'])
 

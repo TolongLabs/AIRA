@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CHAT_FEATURE_DEFINITIONS,
   ChatSettingsViewModel,
+  personaChoices,
   READ_ONLY_SETTINGS
 } from '../../site/src/lib/chat-view-model.js'
 import { type CoreCharacter, type CoreChat, CoreError, reasonText } from '../../site/src/lib/core.js'
@@ -206,5 +207,24 @@ describe('CHAT_FEATURE_DEFINITIONS and reasonText', () => {
     expect(reasonText(new CoreError(500, 'internal'))).toBe(
       'The core hit an internal error while saving. Reload to check the current value.'
     )
+  })
+})
+
+describe('personaChoices', () => {
+  const pack = (id: string, source: CoreCharacter['source']): CoreCharacter => ({
+    id,
+    displayName: id,
+    source,
+    languages: ['en']
+  })
+  const all = [pack('example', 'repository'), pack('mine', 'data')]
+
+  it('hides the repository placeholder pack', () => {
+    expect(personaChoices(all).map((c) => c.id)).toEqual(['mine'])
+  })
+
+  it('keeps the placeholder when the chat already uses it, and an uploaded pack with the same id', () => {
+    expect(personaChoices(all, 'example').map((c) => c.id)).toEqual(['example', 'mine'])
+    expect(personaChoices([pack('example', 'data')]).map((c) => c.id)).toEqual(['example'])
   })
 })

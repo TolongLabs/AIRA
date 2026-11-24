@@ -9,7 +9,7 @@ import { ChevronRight, X } from 'lucide-react'
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { Shell } from '@/components/shell'
 import { Badge, Button, Card, Empty, Field, Input, Picker, Section, Segmented, Spinner, Toggle } from '@/components/ui'
-import { CHAT_FEATURE_DEFINITIONS, ChatSettingsViewModel } from '@/lib/chat-view-model'
+import { CHAT_FEATURE_DEFINITIONS, ChatSettingsViewModel, personaChoices } from '@/lib/chat-view-model'
 import {
   type CoreCharacter,
   type CoreChat,
@@ -992,7 +992,7 @@ function ChatRow({
                   >
                     {characters.length && !onToggle ? (
                       <div className="persona-choices" role="group" aria-label="Choose a character">
-                        {characters.map((persona, index) => (
+                        {personaChoices(characters, character).map((persona, index) => (
                           <label key={persona.id}>
                             <input
                               type="radio"
@@ -1018,7 +1018,7 @@ function ChatRow({
                     ) : characters.length ? (
                       <Picker
                         ariaLabel="character"
-                        options={characters.map((c) => ({
+                        options={personaChoices(characters, character).map((c) => ({
                           value: c.id,
                           label: c.displayName,
                           hint: `${c.id} · ${c.source === 'data' ? 'uploaded' : 'built in'}`
