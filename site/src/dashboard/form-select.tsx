@@ -13,7 +13,7 @@ export function FormSelect<T extends string>({
 }: {
   label: string
   value: T
-  options: readonly { value: T; label: string }[]
+  options: readonly { value: T; label: string; disabled?: boolean }[]
   onChange: (value: T) => void
   id?: string
   disabled?: boolean
@@ -38,7 +38,12 @@ export function FormSelect<T extends string>({
         <Select.Content className="dashboard-select-menu" position="popper" sideOffset={5} align="start">
           <Select.Viewport>
             {options.map((option) => (
-              <Select.Item key={option.value} value={'item:' + option.value} className="dashboard-select-option">
+              <Select.Item
+                disabled={option.disabled}
+                key={option.value}
+                value={'item:' + option.value}
+                className="dashboard-select-option"
+              >
                 <Select.ItemText>{option.label}</Select.ItemText>
                 <Select.ItemIndicator>
                   <Check size={15} />

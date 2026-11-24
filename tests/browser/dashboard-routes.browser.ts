@@ -1,11 +1,16 @@
+import { writeFileSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { resolve } from 'node:path'
 import { chromium } from 'playwright'
 import { expect } from 'playwright/test'
 import { it } from 'vitest'
+import { stringify } from 'yaml'
+import { DashboardSettingsStore, SettingsError } from '../../scripts/dashboard-settings-store.js'
 import { ensureChat, setChatLabel } from '../../src/settings/chats.js'
 import { queueModel, startApp } from '../support/app.js'
+import { testConfig } from '../support/core.js'
+import { tmpDir } from '../support/tmp.js'
 
 // Bounded Chromium journey over the dashboard routes (AIRA #369/370/371).
 // Real production build (site/dist) through tests/support/app, loopback fake
@@ -38,6 +43,7 @@ function json(response: import('node:http').ServerResponse, status: number, valu
 }
 
 interface FixtureState {
+  routerAvailable?: boolean
   failSettings: boolean
   failDashboard: boolean
   failCron: boolean
@@ -263,6 +269,22 @@ async function startFixture(
   state: FixtureState,
   canonical = false
 ): Promise<{ origin: string; app: Awaited<ReturnType<typeof startApp>>['app']; close: () => Promise<void> }> {
+  const root = tmpDir('dashboard-owner-config-')
+  const config = testConfig((c) => {
+    c.gateway.hostDataDir = '/synthetic/data'
+    c.llm.transport = 'api'
+    c.llm.main.provider = 'openai-compatible'
+    c.llm.main.model = 'fixture-model'
+    c.llm.main.baseUrl = 'https://fixture.invalid/v1'
+  })
+  writeFileSync(resolve(root, 'config.yml'), stringify(config))
+  writeFileSync(resolve(root, '.env'), 'LLM_API_KEY=fictional-initial-value\n')
+  const store = new DashboardSettingsStore(root, Buffer.from(TOKEN))
+  const router = {
+    available: false,
+    status: 'Runner unavailable',
+    legacy: { available: !!state.routerAvailable, status: state.routerAvailable ? 'Available' : 'Stopped' }
+  }
   const host = createServer((request, response) => {
     void (async () => {
       if (request.headers['x-tolongai-token'] !== TOKEN) {
@@ -271,6 +293,25 @@ async function startFixture(
       }
       const path = pathnameOf(request.url)
       const query = searchOf(request.url)
+      if (path === '/api/settings/core_config') {
+        json(response, 200, store.snapshot(router))
+        return
+      }
+      if (request.method === 'POST' && path === '/api/settings/core_save') {
+        try {
+          store.save((await readJson(request)) as Parameters<typeof store.save>[0], router)
+          json(response, 200, store.snapshot(router))
+        } catch (e) {
+          json(response, e instanceof SettingsError ? e.status : 500, { error: 'Save refused' })
+        }
+        return
+      }
+      if (request.method === 'POST' && path === '/api/settings/core_apply') {
+        const { revision } = (await readJson(request)) as { revision: string }
+        await store.apply(revision, async () => {})
+        json(response, 202, { state: 'applying' })
+        return
+      }
       if (request.method === 'GET' && path === '/api/settings') {
         if (state.failSettings) {
           json(response, 500, { error: 'settings down' })
@@ -1017,10 +1058,13 @@ it('creates personas from the catalogue, keeps section drafts and uses the local
         toast.evaluate((el) => {
           const box = el.getBoundingClientRect()
           const wrapper = el.parentElement!
-          if (Number(getComputedStyle(el).opacity) < 0.95 || Number(getComputedStyle(wrapper).opacity) < 0.95)
+          if (
+            Number(el.ownerDocument.defaultView!.getComputedStyle(el).opacity) < 0.95 ||
+            Number(el.ownerDocument.defaultView!.getComputedStyle(wrapper).opacity) < 0.95
+          )
             return false
           el.style.pointerEvents = 'auto'
-          const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)
+          const top = el.ownerDocument.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)
           el.style.removeProperty('pointer-events')
           return top !== null && el.contains(top)
         })
@@ -1153,6 +1197,75 @@ it('keeps System tabs and device appearance usable on desktop and phone', async 
     await expect(page.getByRole('radio', { name: /Contours/ })).toBeChecked()
     expect(await page.getByRole('button', { name: /use default/i }).count()).toBe(0)
     await screenshot(page, 'appearance')
+  } finally {
+    await browser.close()
+    await fixture.close()
+  }
+})
+
+it('edits host configuration and write-only credentials and disables the unavailable Claude router for either role', async () => {
+  const fixture = await startFixture(baseState())
+  const browser = await chromium.launch()
+  try {
+    const page = await browser.newPage({ viewport: { width: 396, height: 704 } })
+    await auth(page, fixture.origin)
+    await page.goto(fixture.origin + '/app/preview/system/settings#credentials')
+    await page.getByRole('button', { name: 'Replace LLM_API_KEY', exact: true }).click()
+    const secret = page.getByLabel('New LLM_API_KEY', { exact: true })
+    await expect(secret).toHaveValue('')
+    await expect(secret).toHaveAttribute('type', 'password')
+    await secret.fill('fictional-browser-input')
+    await page.getByRole('button', { name: 'Save credential', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Apply saved changes' })).toBeVisible()
+    await page.reload()
+    await page.getByRole('button', { name: 'Replace LLM_API_KEY', exact: true }).click()
+    await expect(secret).toHaveValue('')
+    await page.goto(fixture.origin + '/app/preview/system/settings#core-config')
+    await page.getByRole('searchbox').fill('memory.recallTokenBudget')
+    await page.getByRole('button', { name: 'Edit configuration' }).click()
+    await page.getByLabel('memory.recallTokenBudget', { exact: true }).fill('877')
+    await page.getByRole('button', { name: 'Save configuration' }).click()
+    await expect(page.getByText('877', { exact: true })).toBeVisible()
+    await page.goto(fixture.origin + '/app/preview/system/settings#models')
+    await page.getByRole('button', { name: 'Edit reply routes' }).click()
+    for (const role of ['main', 'fallback']) {
+      await page.getByRole('combobox', { name: role + ' route', exact: true }).click()
+      await expect(page.getByRole('option', { name: /AIRA router/ })).toBeDisabled()
+      await page.keyboard.press('Escape')
+    }
+    await page.getByRole('button', { name: 'Apply saved changes' }).click()
+    await expect(page.getByText('Changes are active.', { exact: true })).toBeVisible()
+  } finally {
+    await browser.close()
+    await fixture.close()
+  }
+})
+
+it('moves the available local AIRA router from primary to fallback in one saved edit', async () => {
+  const fixture = await startFixture({ ...baseState(), routerAvailable: true })
+  const browser = await chromium.launch()
+  try {
+    const page = await browser.newPage()
+    await auth(page, fixture.origin)
+    await page.goto(fixture.origin + '/app/preview/system/settings#models')
+    await page.getByRole('button', { name: 'Edit reply routes' }).click()
+    await page.getByRole('combobox', { name: 'main route', exact: true }).click()
+    await page.getByRole('option', { name: /AIRA router/ }).click()
+    await page.getByRole('button', { name: 'Save routes' }).click()
+    await expect(page.getByText('Saved on the host.', { exact: true })).toBeVisible()
+    await page.reload()
+    await page.getByRole('button', { name: 'Edit reply routes' }).click()
+    await expect(page.getByRole('combobox', { name: 'main route', exact: true })).toContainText('AIRA router')
+    await page.getByRole('combobox', { name: 'main route', exact: true }).click()
+    await page.getByRole('option', { name: 'Model API', exact: true }).click()
+    await page.getByLabel('main model', { exact: true }).fill('fixture-model')
+    await page.getByRole('combobox', { name: 'fallback route', exact: true }).click()
+    await page.getByRole('option', { name: /AIRA router/ }).click()
+    await page.getByRole('button', { name: 'Save routes' }).click()
+    await expect(page.getByRole('button', { name: 'Edit reply routes' })).toBeVisible()
+    await page.reload()
+    await page.getByRole('button', { name: 'Edit reply routes' }).click()
+    await expect(page.getByRole('combobox', { name: 'fallback route', exact: true })).toContainText('AIRA router')
   } finally {
     await browser.close()
     await fixture.close()

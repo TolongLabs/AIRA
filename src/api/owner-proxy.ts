@@ -35,7 +35,11 @@ export function proxyOwnerApi(
       method: req.method,
       headers,
       socketPath:
-        socketPath && path === 'settings/models_probe' ? join(dirname(socketPath), 'model-probe.sock') : socketPath,
+        socketPath && path === 'settings/models_probe'
+          ? join(dirname(socketPath), 'model-probe.sock')
+          : socketPath && ['settings/core_config', 'settings/core_save', 'settings/core_apply'].includes(path)
+            ? join(dirname(socketPath), 'settings.sock')
+            : socketPath,
       signal: AbortSignal.timeout(120_000)
     },
     (reply) => {

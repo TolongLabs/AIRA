@@ -25,7 +25,11 @@ Container and Compose files for running AIRA on a host.
 ## Main-branch deployment
 
 The self-hosted GitHub Actions runner deploys the SHA image after the main-branch checks pass.
-It installs the directory watcher, the owner API socket and the model probe socket as systemd user units.
+It installs the directory watcher and the owner, probe and settings sockets as systemd user units.
+The settings socket runs the bundled `dashboard-settings.mjs` CLI. The CLI accepts `status`, `save` and `apply`.
+Pass save and apply JSON on stdin. The same handlers serve the authenticated dashboard. Replacement credentials
+are write-only. Save updates the installed files. Apply recreates the current image and restores the previous
+files if the core fails its health check. The site container keeps its configuration mount read-only.
 The container mounts their directory read-only at `/gateway/directory`. Mount the parent directory so
 the container sees a new directory file when the host replaces it.
 

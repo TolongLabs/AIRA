@@ -6,7 +6,12 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createBreaker } from '../../src/models/breaker.js'
-import { createSubscriptionRunner, renderPrompt, renderSystem } from '../../src/models/subscription-runner.js'
+import {
+  createSubscriptionRunner,
+  renderPrompt,
+  renderSystem,
+  withSubscriptionFallback
+} from '../../src/models/subscription-runner.js'
 import { createToolServer, type ToolServer } from '../../src/models/tool-server.js'
 import { ModelError } from '../../src/models/types.js'
 import { createLogger } from '../../src/records/logger.js'
@@ -1027,4 +1032,54 @@ describe('the subscription transport', () => {
       expect(programRequests).toBe(0)
     })
   })
+})
+
+it('uses Claude as fallback after eligible API errors and never repeats tools, refusals, or a pinned API run', async () => {
+  const wrapper = makeFallback()
+  const input: RunInput = {
+    system: [],
+    messages: [],
+    tools: [],
+    context: makeContext(),
+    signal: new AbortController().signal
+  }
+  const offline: TurnRunner = {
+    async run() {
+      throw new ModelError('transient', 'synthetic outage')
+    }
+  }
+  const route = withSubscriptionFallback(offline, wrapper)
+  await route.run(input)
+  expect(wrapper.calls).toBe(1)
+  await expect(
+    route.run({ ...input, replyTarget: { transport: 'api', role: 'main', model: 'fixture' } })
+  ).rejects.toThrow()
+  const refusal = withSubscriptionFallback(
+    {
+      async run() {
+        throw new ModelError('refusal', 'refused')
+      }
+    },
+    wrapper
+  )
+  await expect(refusal.run(input)).rejects.toThrow()
+  const tool: OfferedTool = {
+    schema: { name: 'example', description: 'fixture', parameters: { type: 'object', properties: {} } },
+    async call() {
+      return { ok: true, content: 'fixture' }
+    }
+  }
+  const afterTool = withSubscriptionFallback(
+    {
+      async run(req) {
+        await req.tools[0]!.call({}, 'fixture', req.signal)
+        throw new ModelError('transient', 'failed after tool')
+      }
+    },
+    wrapper
+  )
+  await expect(afterTool.run({ ...input, tools: [tool] })).rejects.toThrow()
+  expect(wrapper.calls).toBe(1)
+  await route.run({ ...input, replyTarget: { transport: 'subscription', role: 'fallback', model: 'fixture' } })
+  expect(wrapper.calls).toBe(2)
 })
