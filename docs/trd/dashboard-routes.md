@@ -96,6 +96,9 @@ WebKit. A separate Chromium sweep exercised 23 synthetic routes and states at 32
 also checked with a focused inspector. At 320 px its search and inspector fit on screen and Tab, arrows,
 Enter and Escape operate the graph without a pointer.
 
+On fine pointing devices, the cursor glow fades smoothly into the backdrop at every edge, including
+while moving diagonally. Touch, reduced motion and forced colors use the static backdrop.
+
 Orca 46.1 in headed Chromium announced the skip link, Overview heading and chat search field. The session used
 a private display, accessibility bus and fixture service. The check inspected Orca's generated speech text.
 Audible pronunciation and physical assistive devices were outside this run.

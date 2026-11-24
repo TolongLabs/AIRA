@@ -265,14 +265,44 @@
 
 .dashboard-cursor-glow {
   position: absolute;
-  inset: 0 auto auto 0;
-  width: 216px;
-  height: 180px;
+  inset: 0;
   opacity: 0;
-  background:
-    radial-gradient(ellipse at 56% 46%, rgb(133 239 211 / 0.78), transparent 64%),
-    radial-gradient(ellipse at 32% 65%, rgb(116 197 219 / 0.5), transparent 58%);
   transition: opacity 160ms ease-out;
+}
+.dashboard-cursor-glow::before,
+.dashboard-cursor-glow::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 288px;
+  height: 256px;
+  transform: translate(-50%, -50%);
+}
+.dashboard-cursor-glow::before {
+  translate: var(--glow-head, -240px -240px);
+  background: radial-gradient(
+    ellipse 112px 104px,
+    rgb(133 239 211 / 0.48),
+    rgb(133 239 211 / 0.33) 27%,
+    rgb(133 239 211 / 0.12) 55%,
+    rgb(133 239 211 / 0.025) 80%,
+    transparent
+  );
+}
+.dashboard-cursor-glow::after {
+  translate: var(--glow-wake, -240px -240px);
+  background: radial-gradient(
+    ellipse 126px 112px,
+    rgb(116 197 219 / 0.32),
+    rgb(116 197 219 / 0.19) 32%,
+    rgb(116 197 219 / 0.05) 65%,
+    transparent
+  );
+}
+.dashboard-cursor-glow[data-visible='true']::before,
+.dashboard-cursor-glow[data-visible='true']::after {
+  will-change: translate;
 }
 .dashboard-cursor-glow[data-visible='true'] {
   opacity: 0.64;
