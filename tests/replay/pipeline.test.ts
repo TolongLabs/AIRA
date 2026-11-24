@@ -1405,6 +1405,17 @@ describe('a reply that steps out of its role', () => {
     ])
   })
 
+  it('introduces the configured fictional character when both replies make identity claims', async () => {
+    const runner = scripted(["I'm an AI assistant.", 'I’m a real person.'])
+    const core = await startTestCore({ runner, config, deps: { cleaner: createReplyCleaner(config) } })
+    core.activate(CHAT)
+    const reply = await core.gateway.send(msg('m-1', 'Are you an AI or a real person?'))
+    expect(reply.content).toContain(core.packs().packs.get('example')!.card.displayName)
+    expect(reply.content).toContain('fictional character')
+    expect(runner.inputs).toHaveLength(2)
+    expect(rows(core.storage, 'SELECT state FROM turn')).toEqual([{ state: 'delivered' }])
+  })
+
   it('delivers the pack line when the regenerated reply steps out of its role too', async () => {
     const { runner } = readingScript('My scraper failed again.')
     const core = await startTestCore({

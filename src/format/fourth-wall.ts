@@ -1,6 +1,16 @@
 // The fourth-wall check (docs/trd/prompt-engine.md#staying-in-role). A reply that names a tool, an error or a mechanism
 // has stepped out of its role. The check is pure: it returns the name of the pattern that matched, never the text.
 
+const SELF_AS_MACHINE =
+  /(?:\b(?:i am|i['’]m|im)\s+|(?:^|[.!?\n]\s*)as\s+)(?:(?:(?:just|only)\s+)?an?\s+)?(?:ai|a\.i\.|artificial intelligence|(?:large\s+)?language model|llm|bot|chatbot|virtual assistant|assistant)\b/iu
+const SELF_AS_HUMAN = /\b(?:i am|i['’]m|im)\s+(?:a\s+)?(?:real\s+)?(?:human|real person)\b/iu
+
+export function identityClaim(text: string): 'names-itself-ai' | 'claims-human' | undefined {
+  if (SELF_AS_MACHINE.test(text)) return 'names-itself-ai'
+  if (SELF_AS_HUMAN.test(text)) return 'claims-human'
+  return undefined
+}
+
 export interface FourthWallPattern {
   name: string
   pattern: RegExp
@@ -89,5 +99,5 @@ export function fourthWallBreak(text: string, toolNames: readonly string[]): str
     const matcher = /[_.]/.test(name) ? distinctiveNameMatcher(name) : codeFormMatcher(name)
     if (matcher.test(text)) return TOOL_NAME_PATTERN
   }
-  return undefined
+  return identityClaim(text)
 }

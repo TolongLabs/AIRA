@@ -24,6 +24,13 @@ describe('fourth-wall check', () => {
     expect(fourthWallBreak(reply, [])).toBe(pattern)
   })
 
+  it('recognizes direct identity claims without matching ordinary discussion of assistants or people', () => {
+    expect(fourthWallBreak('I’m a real person.', [])).toBe('claims-human')
+    expect(fourthWallBreak('As an AI, I can try.', [])).toBe('names-itself-ai')
+    expect(fourthWallBreak('She works as an assistant.', [])).toBeUndefined()
+    expect(fourthWallBreak('I’m a fictional guide.', [])).toBeUndefined()
+  })
+
   it('has a synthetic reply for every fixed pattern', () => {
     expect(new Set(BREAKS.map(([pattern]) => pattern))).toEqual(new Set(FOURTH_WALL_PATTERNS.map((e) => e.name)))
   })

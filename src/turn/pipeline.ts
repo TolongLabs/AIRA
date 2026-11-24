@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { PackSet } from '../character/loader.js'
 import type { LineKind } from '../character/schema.js'
 import type { Config } from '../config/schema.js'
+import { identityClaim } from '../format/fourth-wall.js'
 import type { Attachment, GatewayRequest } from '../gateway/request.js'
 import { compactDue } from '../gateway/schedule.js'
 import { modelRecordContext } from '../judge/systemone.js'
@@ -700,7 +701,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     }
     // A reply that steps out of its role gets one regeneration, with no tools, on the route that gave it. It runs only
     // when the deadline leaves time for a call as long as the last model call; the same prompt answers.
-    const regenerateInRole = async (first: RunResult): Promise<RunResult | undefined> => {
+    const regenerateInRole = async (first: RunResult, note: string): Promise<RunResult | undefined> => {
       const successful = first.calls.filter((call) => call.error === undefined)
       const last = successful[successful.length - 1]
       const replyTarget: ReplyTarget | undefined = last
@@ -716,11 +717,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         return await Promise.race([
           deps.runner.run({
             system: built.system,
-            messages: [
-              ...built.messages,
-              { role: 'assistant', content: first.text },
-              { role: 'user', content: FOURTH_WALL_NOTE }
-            ],
+            messages: [...built.messages, { role: 'assistant', content: first.text }, { role: 'user', content: note }],
             tools: [],
             replyTarget,
             context,
@@ -752,8 +749,19 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       if (outcome.diagnostics) delete outcome.diagnostics.reply
       const firstSteps = cleaned.steps
       const why = new Error(cleaned.fourthWall)
-      const again = await regenerateInRole(run)
-      const second = again ? cleanRun(again) : undefined
+      const identity = identityClaim(run.text)
+      const again = await regenerateInRole(
+        run,
+        identity
+          ? 'Introduce the fictional character by name, in the language of the chat. Do not claim a human or machine identity.'
+          : FOURTH_WALL_NOTE
+      )
+      let second = again ? cleanRun(again) : undefined
+      let handledBy = 'regenerate'
+      if (identity && (!second || second.error || second.fourthWall || second.replacedBy || !second.content.trim())) {
+        second = cleanRun({ ...run, text: `My name here is ${pack.card.displayName}. I’m a fictional character.` })
+        handledBy = 'character_intro'
+      }
       // A regeneration call counts as an attempt, whether or not it answered. Runners that report calls through
       // onCall add them already; the others are added here.
       if (again) for (const call of again.calls) if (!outcome.calls.includes(call)) outcome.calls.push(call)
@@ -767,7 +775,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
           costUsd: (outcome.fields.costUsd ?? run.costUsd) + again.costUsd
         } satisfies TurnRecordFields)
       }
-      if (!again || !second || second.fourthWall !== undefined || second.error !== undefined) {
+      if (!second || second.fourthWall !== undefined || second.error !== undefined) {
         fail('clean', 'persona_leak', why, 'line:error')
         Object.assign(outcome.fields, { cleaningSteps: firstSteps } satisfies TurnRecordFields)
         stamp('cleaned')
@@ -776,7 +784,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         outcome.content = pack.lines.error
         return outcome
       }
-      fail('clean', 'persona_leak', why, 'regenerate')
+      fail('clean', 'persona_leak', why, handledBy)
       cleaned = { ...second, steps: [...firstSteps, ...second.steps] }
     }
     Object.assign(outcome.fields, {

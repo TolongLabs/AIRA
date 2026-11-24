@@ -186,6 +186,10 @@ then sends nothing for that turn (`src/format/clean.ts`).
 
 A fixed prompt rule asks every character to describe what it could see or do in its own voice. Failures in the
 media and link intake use plain sentences that the character can express naturally.
+When asked who is speaking, the character can give its name and describe its fictional role. It must never
+claim to be a real person, an AI, or an assistant. The reply cleaner checks direct identity claims.
+If a second attempt still cannot give an in-character introduction, the core identifies the configured character
+by its public display name and describes it as fictional. This response counts as delivered.
 
 After the prompt leak check, `fourthWall` flags internal mechanism phrases and tool names before rendering.
 Tool names with underscores or dots match as whole words. Other tool names match in backticks or call syntax.
