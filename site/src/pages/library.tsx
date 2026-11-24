@@ -1,3 +1,5 @@
+import { Loading } from '@/dashboard/loading'
+import { scrollSurface } from '@/dashboard/scroll'
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, ChevronDown, ChevronUp, Pause, Play, Search } from 'lucide-react'
 import type { LibDetail, LibIndex, LibItem, SongLine } from '@/lib/api'
@@ -118,9 +120,9 @@ function ReadingControls() {
       const whole = Math.trunc(carry.current)
       if (whole) {
         carry.current -= whole
-        window.scrollBy(0, whole)
+        scrollSurface().scrollBy(0, whole)
       }
-      if (window.innerHeight + window.scrollY >= document.body.scrollHeight - 2) {
+      if (scrollSurface().clientHeight + scrollSurface().scrollTop >= scrollSurface().scrollHeight - 2) {
         setPlaying(false)
         return
       }
@@ -132,9 +134,9 @@ function ReadingControls() {
 
   const jump = (to: 'top' | 'bottom') => {
     setPlaying(false) // a jump ends the crawl, never fights it
-    window.scrollTo({
-      top: to === 'top' ? 0 : document.body.scrollHeight,
-      behavior: 'smooth'
+    scrollSurface().scrollTo({
+      top: to === 'top' ? 0 : scrollSurface().scrollHeight,
+      behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'
     })
   }
 
@@ -1122,6 +1124,7 @@ function DashboardSelectedItem({
   const [busy, setBusy] = useState(false)
   const [detail, setDetail] = useState<LibDetail | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const itemPane = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => setReviewed(initialReviewed), [initialReviewed])
@@ -1167,12 +1170,18 @@ function DashboardSelectedItem({
     }
   }
 
+  useEffect(() => {
+    if (!loading && itemPane.current && matchMedia('(max-width:760px)').matches) {
+      const target = location.hash === '#reader' ? document.getElementById('reader') : itemPane.current
+      target?.focus({ preventScroll: true })
+      target?.scrollIntoView({ block: 'start', behavior: 'instant' })
+    }
+  }, [loading, id])
+
   if (loading)
     return (
-      <div className="lib-dash-card" role="status">
-        <span className="flex items-center gap-2 text-muted">
-          <Spinner /> loading…
-        </span>
+      <div className="lib-dash-card">
+        <Loading>Loading item…</Loading>
       </div>
     )
   if (err || !detail) {
@@ -1202,7 +1211,7 @@ function DashboardSelectedItem({
   const canRemove = item.type !== 'song'
 
   return (
-    <div className="lib-dash-card">
+    <div className="lib-dash-card" ref={itemPane} tabIndex={-1} role="region" aria-label={item.title}>
       <p className="m-0 font-mono text-[0.66rem] uppercase tracking-[0.12em] text-muted">{item.type}</p>
       <h2>{item.title}</h2>
       {facts.length > 0 && <p className="text-muted">{facts.join(' · ')}</p>}
@@ -1210,7 +1219,7 @@ function DashboardSelectedItem({
         <a href={libraryItemHref(item.id, searchQs) + '#reader'}>Open Reader</a>
         <a href={libraryGraphHref(item.id)}>View Connections</a>
       </div>
-      <div id="reader">
+      <div id="reader" tabIndex={-1}>
         <ItemView
           id={item.id}
           go={(to) => {
@@ -1268,7 +1277,7 @@ function LibraryDashboard({ view, selectedId, initialSearch, initialType, initia
       else url.searchParams.delete('type')
       if (page > 1) url.searchParams.set('page', String(page))
       else url.searchParams.delete('page')
-      window.history.replaceState(null, '', url.toString())
+      window.history.replaceState(window.history.state, '', url.toString())
     } catch {
       /* non-browser or blocked — links still carry searchQs */
     }
@@ -1322,11 +1331,7 @@ function LibraryDashboard({ view, selectedId, initialSearch, initialType, initia
           </button>
         </p>
       )}
-      {idx.loading && !data && (
-        <p role="status" className="flex items-center gap-2 text-muted">
-          <Spinner /> loading…
-        </p>
-      )}
+      {idx.loading && !data && <Loading>loading…</Loading>}
       {data && view === 'costs' && (
         <div className="lib-dash-cols">
           <div className="lib-dash-card">

@@ -16,7 +16,28 @@ export function WorkspaceTabs({
   entries: { href: string; label: string; active: boolean }[]
 }) {
   return (
-    <nav className="workspace-tabs" aria-label={label}>
+    <nav
+      className="workspace-tabs"
+      aria-label={label}
+      onKeyDown={(event) => {
+        const links = Array.from(event.currentTarget.querySelectorAll('a'))
+        const current = links.indexOf(event.target as HTMLAnchorElement)
+        if (current < 0) return
+        const index =
+          event.key === 'ArrowRight'
+            ? (current + 1) % links.length
+            : event.key === 'ArrowLeft'
+              ? (current + links.length - 1) % links.length
+              : event.key === 'Home'
+                ? 0
+                : event.key === 'End'
+                  ? links.length - 1
+                  : -1
+        if (index < 0) return
+        event.preventDefault()
+        links[index]?.focus()
+      }}
+    >
       {entries.map((entry) => (
         <a key={entry.href} href={entry.href} aria-current={entry.active ? 'page' : undefined}>
           {entry.label}

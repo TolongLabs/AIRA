@@ -1,3 +1,4 @@
+import { Loading } from '@/dashboard/loading'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ServiceRow } from '@/components/service-row'
 import { Button } from '@/components/ui'
@@ -61,13 +62,13 @@ export default function Health() {
   return (
     <div className="system-health">
       <Toaster />
-      <div className="workspace-grid">
-        <section className="dashboard-pane">
+      <>
+        <section className="dashboard-pane health-services">
           <h2 className="dashboard-pane-title">Service Health</h2>
           {error ? (
             <p role="alert">Service status unavailable.</p>
           ) : loading ? (
-            <p role="status">Loading…</p>
+            <Loading>Loading…</Loading>
           ) : services.length ? (
             <ul className="system-services">
               {services.map(([unit, state]) => (
@@ -82,11 +83,23 @@ export default function Health() {
           ) : (
             <p>No services reported.</p>
           )}
+          {selected && (
+            <div className="service-actions" role="group" aria-labelledby="service-action-title">
+              <h3 id="service-action-title">{selected[0]} actions</h3>
+              <ServiceRow
+                key={selected[0]}
+                unit={selected[0]}
+                state={selected[1]}
+                onDone={() => void reload()}
+                controlsOnly
+              />
+            </div>
+          )}
         </section>
-        <section className="dashboard-pane">
+        <section className="dashboard-pane health-diagnostics">
           <h2 className="dashboard-pane-title">Core Diagnostics</h2>
           {health === null ? (
-            <p role="status">Loading diagnostics…</p>
+            <Loading>Loading diagnostics…</Loading>
           ) : health === 'unavailable' ? (
             <p role="alert">Core diagnostics unavailable.</p>
           ) : (
@@ -99,21 +112,10 @@ export default function Health() {
               <dd>{breakerCount ? breakerCount + ' open' : 'Closed'}</dd>
             </dl>
           )}
-          {selected && (
-            <div aria-label={'Service actions for ' + selected[0]}>
-              <ServiceRow
-                key={selected[0]}
-                unit={selected[0]}
-                state={selected[1]}
-                onDone={() => void reload()}
-                controlsOnly
-              />
-            </div>
-          )}
         </section>
-      </div>
+      </>
       {roles.length > 0 && (
-        <section className="dashboard-pane">
+        <section className="dashboard-pane health-roles">
           <h2 className="dashboard-pane-title">Model Roles</h2>
           <ul className="system-roles">
             {roles.map(([name, role]) => (
@@ -125,10 +127,10 @@ export default function Health() {
           </ul>
         </section>
       )}
-      <section className="dashboard-pane">
+      <section className="dashboard-pane health-config">
         <h2 className="dashboard-pane-title">Deployment Configuration</h2>
         {config === null ? (
-          <p role="status">Loading deployment revision…</p>
+          <Loading>Loading deployment revision…</Loading>
         ) : config === 'unavailable' ? (
           <p role="alert">Deployment revision unavailable.</p>
         ) : (

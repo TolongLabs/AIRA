@@ -6,7 +6,7 @@
   display: grid;
   grid-template-columns: 45fr 55fr;
   gap: 1rem;
-  align-items: start;
+  align-items: stretch;
 }
 
 .lib-dash-card {
@@ -20,15 +20,6 @@
   min-width: 0;
 }
 
-.lib-dash-card > h2:first-child::before {
-  content: '';
-  display: block;
-  width: 24px;
-  height: 3px;
-  background: var(--chart-ink);
-  border-radius: 6px;
-  margin-bottom: 12px;
-}
 .lib-dash-card h2 {
   margin: 0 0 0.75rem;
   font-size: 1.05rem;
@@ -47,7 +38,7 @@
   color: var(--muted);
 }
 .lib-dash-summary {
-  border-top: 1px solid var(--tile-edge);
+  border-top: 0;
   margin-top: 18px;
   padding-top: 16px;
 }

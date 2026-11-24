@@ -1,3 +1,4 @@
+import { Loading } from '@/dashboard/loading'
 import { WorkspaceTools } from '@/dashboard/workspace-tools'
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Search, X } from 'lucide-react'
@@ -201,7 +202,7 @@ function GraphCanvas({ focusId }: { focusId?: string } = {}) {
     const trigger = triggerRef.current
     setSelected(null)
     setAnnouncement('')
-    if (trigger === 'keyboard') canvasRef.current?.focus()
+    if (trigger === 'keyboard' || document.activeElement?.closest('.graph-inspector')) canvasRef.current?.focus()
   }, [])
 
   /* everything the simulation mutates lives here, out of React's way */
@@ -323,6 +324,12 @@ function GraphCanvas({ focusId }: { focusId?: string } = {}) {
     if (!n) return
     selectNode(n, 'link')
   }, [loaded, decodedFocus, selectNode])
+
+  useEffect(() => {
+    if (selected && triggerRef.current !== 'keyboard' && matchMedia('(max-width:760px)').matches) {
+      inspectorCloseRef.current?.closest('.graph-inspector')?.scrollIntoView({ block: 'start', behavior: 'instant' })
+    }
+  }, [selected])
 
   /* ── the loop ────────────────────────────────────────────────────────── */
   useEffect(() => {
@@ -596,7 +603,7 @@ function GraphCanvas({ focusId }: { focusId?: string } = {}) {
     >
       {/* The canvas is the page. Taller too — the old height left a band of
           empty paper under it at every viewport over about 900px. */}
-      <div className="relative h-[calc(100vh-190px)] min-h-[560px] overflow-hidden rounded-card border border-line bg-card">
+      <div className="knowledge-graph relative h-[calc(100vh-190px)] min-h-[560px] overflow-hidden rounded-card border border-line bg-card">
         <canvas
           ref={canvasRef}
           className="block size-full touch-none"
@@ -610,6 +617,7 @@ function GraphCanvas({ focusId }: { focusId?: string } = {}) {
         <p id="graph-kb-help" className="sr-only">
           Arrow keys move between matching nodes. Enter opens details. Escape closes details. Plus and minus zoom.
         </p>
+        {!loaded && <Loading>Loading graph…</Loading>}
         <p id="graph-kb-status" aria-live="polite" className="sr-only">
           {announcement || (loaded ? `${visibleNodes().length} nodes match` : 'Loading graph')}
         </p>
@@ -640,7 +648,7 @@ function GraphCanvas({ focusId }: { focusId?: string } = {}) {
         )}
 
         {/* controls float over the canvas, not in a bar that steals its height */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start justify-between gap-3 p-3">
+        <div className="graph-controls pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start justify-between gap-3 p-3">
           <div className="pointer-events-auto flex gap-1 rounded-full border border-line bg-card/90 p-1 backdrop-blur">
             {(['all', 'ideas', 'library'] as Lens[]).map((l) => (
               <button
@@ -717,7 +725,7 @@ function GraphCanvas({ focusId }: { focusId?: string } = {}) {
                 closeInspector()
               }
             }}
-            className="absolute top-16 right-3 max-h-[70%] w-[calc(100%-1.5rem)] max-w-80 overflow-auto rounded-card border border-line bg-card p-4 shadow-float"
+            className="graph-inspector absolute top-16 right-3 max-h-[70%] w-[calc(100%-1.5rem)] max-w-80 overflow-auto rounded-card border border-line bg-card p-4 shadow-float"
           >
             <div className="flex items-start justify-between gap-2">
               <div>

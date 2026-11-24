@@ -16,7 +16,7 @@
   display: grid;
   grid-template-columns: 3fr 2fr;
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
 }
 .dashboard-shell .mkd-stack {
   display: grid;
@@ -176,7 +176,7 @@
 }
 .dashboard-shell .mkd-story {
   padding: 12px 0;
-  border-top: 1px solid var(--edge, #ffffffbf);
+  border-top: 0;
 }
 .dashboard-shell .mkd-story:first-child {
   border-top: 0;
@@ -238,7 +238,7 @@
   margin-top: 12px;
 }
 .dashboard-shell .mkd-chat {
-  border-top: 1px solid var(--edge, #ffffffbf);
+  border-top: 0;
   padding-top: 12px;
 }
 .dashboard-shell .mkd-chat:first-child {

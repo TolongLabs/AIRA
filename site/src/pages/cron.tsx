@@ -1,4 +1,6 @@
-import { useContext, useEffect, useMemo, useState } from 'react'
+import { Loading } from '@/dashboard/loading'
+import { scrollSurface } from '@/dashboard/scroll'
+import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Pause, Pencil, Play, Plus, Trash2 } from 'lucide-react'
 import type { Chat, CronArchived, CronJob } from '@/lib/api'
 import { get, post } from '@/lib/api'
@@ -484,6 +486,8 @@ function RoutinesDashboard({
      deletion. One in-flight check at a time, no auto-write loop. */
   const [verifiedGone, setVerifiedGone] = useState(false)
   const [verifyError, setVerifyError] = useState<string | null>(null)
+  const detailPanel = useRef<HTMLDivElement>(null)
+  const newButton = useRef<HTMLButtonElement>(null)
   const selectedId = initial.selectedId
   const badId = initial.badId
   const chats = chatsApi.data?.chats ?? []
@@ -506,6 +510,17 @@ function RoutinesDashboard({
   }, [jobs, query])
 
   const selected = selectedId ? jobs.find((j) => j.job_id === selectedId) : visible[0]
+
+  useEffect(() => {
+    if ((selectedId || badId) && matchMedia('(max-width:760px)').matches && detailPanel.current) {
+      detailPanel.current.focus({ preventScroll: true })
+      detailPanel.current.scrollIntoView({ block: 'start', behavior: 'instant' })
+    }
+  }, [selectedId, badId, Boolean(selected)])
+  function closeEditor() {
+    setAdding(false)
+    newButton.current?.focus()
+  }
 
   /* A selected id missing from the first payload may be a stale list rather
    * than a deleted job. Re-read once before calling it unknown; if the fresh
@@ -554,7 +569,7 @@ function RoutinesDashboard({
   useEffect(() => {
     if (selectedId) return
     const saved = Number(sessionStorage.getItem(ROUTINES_SCROLL_KEY) ?? '')
-    if (Number.isFinite(saved) && saved > 0) window.scrollTo({ top: saved })
+    if (Number.isFinite(saved) && saved > 0) scrollSurface().scrollTo({ top: saved })
   }, [selectedId])
 
   useEffect(() => {
@@ -587,7 +602,7 @@ function RoutinesDashboard({
 
   function rememberScroll() {
     try {
-      sessionStorage.setItem(ROUTINES_SCROLL_KEY, String(window.scrollY))
+      sessionStorage.setItem(ROUTINES_SCROLL_KEY, String(scrollSurface().scrollTop))
     } catch {
       /* private mode: the list simply starts at the top on return */
     }
@@ -600,6 +615,7 @@ function RoutinesDashboard({
       <Toaster />
       <Tabs
         label="Routine views"
+        panelId="routine-view"
         value={tab}
         onChange={changeTab}
         tabs={[
@@ -608,7 +624,7 @@ function RoutinesDashboard({
         ]}
       />
       {tab === 'archive' ? (
-        <div className="automations-panel">
+        <div id="routine-view" role="tabpanel" aria-labelledby="routine-view-archive" className="automations-panel">
           {jobsApi.error && !jobsApi.data ? (
             <div className="automations-alert" role="alert">
               <p className="m-0 text-[0.9rem]">Schedule unavailable: {jobsApi.error}</p>
@@ -623,11 +639,11 @@ function RoutinesDashboard({
           )}
         </div>
       ) : (
-        <div className="automations-layout">
+        <div id="routine-view" role="tabpanel" aria-labelledby="routine-view-scheduled" className="automations-layout">
           <div className="automations-list">
             <div className="automations-list-head">
               <p className="automations-kicker">Upcoming runs</p>
-              <Button size="sm" variant="primary" onClick={() => setAdding(true)}>
+              <Button ref={newButton} size="sm" variant="primary" onClick={() => setAdding(true)}>
                 <Plus />
                 New routine
               </Button>
@@ -642,9 +658,7 @@ function RoutinesDashboard({
               />
             </Field>
             {jobsApi.loading && !jobsApi.data ? (
-              <p role="status" className="mt-3 mb-0 flex items-center gap-2 text-muted">
-                <Spinner /> loading…
-              </p>
+              <Loading>loading…</Loading>
             ) : jobsApi.error && !jobsApi.data ? (
               <div className="automations-alert mt-3" role="alert">
                 <p className="m-0 text-[0.9rem]">Schedule unavailable: {jobsApi.error}</p>
@@ -694,15 +708,15 @@ function RoutinesDashboard({
               </div>
             ) : null}
           </div>
-          <div className="automations-detail">
+          <div className="automations-detail" role="region" aria-label="Routine detail" ref={detailPanel} tabIndex={-1}>
             {adding ? (
               <JobEditor
                 chats={chats}
                 onDone={() => {
-                  setAdding(false)
+                  closeEditor()
                   void jobsApi.reload()
                 }}
-                onCancel={() => setAdding(false)}
+                onCancel={closeEditor}
               />
             ) : badId ? (
               <div className="automations-alert" role="alert">

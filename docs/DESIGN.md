@@ -20,6 +20,8 @@ with an expandable sidebar and multi-column content; phone collapses to a single
 moves navigation into a drawer reached from the header. Intermediate widths interpolate
 between these two arrangements without introducing a third.
 
+The sidebar and content share a fixed viewport height. Content scrolls inside the workspace. Spacing and tonal
+surfaces separate sections. Loading placeholders follow the geometry of the pending content.
 The expanded sidebar measures 248 pixels and the compact rail 80 pixels, and both keep the
 same order and active state. The Japanese-inspired robot head has a transparent background. Its ink is true black #000000 in Light
 and true white #FFFFFF in Dark, with no coloured backplate and transparent cut-outs. It
@@ -36,7 +38,7 @@ lives in the sidebar. The active sidebar indicator uses the ObsidianUI Dashboard
 The console has seven destinations sharing one shell: /overview, /chats, /characters,
 /library, /automations, /markets, and /system. Overview is the first page at /overview:
 health status, active and pending chats, the next routine, and one compact Library summary
-in a single glanceable surface. Overview is compact and read-only and each card is
+in a responsive, full-width bento with service readiness, chat distribution, a scheduled agenda and library composition. Overview is compact and read-only and each card is
 clickable, leading with one dominant diagnostic and smaller paired tools beside it.
 
 Chats is a directory with per-chat settings at `/chats/:id/settings` across five groups:
@@ -47,7 +49,7 @@ or direct message with a 4000-code-point maximum. It is manual text sent without
 call.
 
 Characters is a searchable, filterable, sortable persona directory with Create and Import
-actions and 2:3 persona cards. Per-persona tool wording is edited at `/characters/:id/footer`,
+actions and up to five compact persona cards per row. The three Website cover illustrations share one crop and caption layout. Per-persona tool wording is edited at `/characters/:id/footer`,
 where labels run 1 to 40 UTF-16 code units and each persona holds up to 50 expressions. The
 WhatsApp simulator opens in a new tab so previewing never loses editor state. Library holds
 items and their graph, Automations pairs routines with session notices, Markets groups
@@ -75,7 +77,7 @@ paired tools, stacking to a single column on phone.
 Modals sit over a dimmed and blurred lower interface with a fill of 86 percent in light mode
 and 91 percent in dark, and actions align right with Cancel first and primary last. Forms use
 the shadcn field, label, description, and error pattern with custom controls layered on top.
-Tabs are minimal and text-led with an underline indicator, visible focus, and arrow-key
+Tabs use a tonal fill and heavier text for selection, visible keyboard focus, and arrow-key
 navigation. The phone drawer uses a solid light fill, and motion, transparency, static
 presentation, focus, and contrast follow reduced-motion and contrast guidelines throughout.
 

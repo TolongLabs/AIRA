@@ -758,25 +758,46 @@ export function Tabs<T extends string>({
   value,
   onChange,
   label,
-  className
+  className,
+  panelId
 }: {
   tabs: { key: T; label: string; count?: number }[]
   value: T
   onChange: (key: T) => void
   label: string
   className?: string
+  panelId?: string
 }) {
   return (
     <div role="tablist" aria-label={label} className={cn('border-b border-line', className)}>
       <div className="flex flex-wrap gap-x-7 gap-y-1">
-        {tabs.map((t) => {
+        {tabs.map((t, index) => {
           const on = t.key === value
           return (
             <button
               key={t.key}
               type="button"
               role="tab"
+              id={panelId ? panelId + '-' + t.key : undefined}
+              aria-controls={panelId}
+              tabIndex={on ? 0 : -1}
               aria-selected={on}
+              onKeyDown={(event) => {
+                const target =
+                  event.key === 'ArrowRight'
+                    ? (index + 1) % tabs.length
+                    : event.key === 'ArrowLeft'
+                      ? (index + tabs.length - 1) % tabs.length
+                      : event.key === 'Home'
+                        ? 0
+                        : event.key === 'End'
+                          ? tabs.length - 1
+                          : -1
+                if (target < 0) return
+                event.preventDefault()
+                event.currentTarget.parentElement?.querySelectorAll('button')[target]?.focus()
+                onChange(tabs[target]!.key)
+              }}
               onClick={() => onChange(t.key)}
               className={cn(
                 'relative inline-flex cursor-pointer items-center gap-2 border-0 bg-transparent',

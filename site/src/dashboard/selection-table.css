@@ -26,9 +26,7 @@
 .selection-table tbody td {
   padding-block: 0;
 }
-.selection-table tbody tr {
-  border-top: 1px solid var(--tile-edge, #bad1cf);
-}
+
 .selection-table tbody tr:has(input:checked) {
   background: var(--tile-inset);
 }
@@ -93,7 +91,8 @@
   place-items: center;
   width: 44px;
   height: 44px;
-  border: 1px solid var(--chart-ink, #00675c);
+  border: 1px solid transparent;
+  font-weight: 700;
   border-radius: 8px;
   background: var(--active, #d6f5ef);
 }

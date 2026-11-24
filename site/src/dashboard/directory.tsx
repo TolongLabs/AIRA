@@ -1,3 +1,4 @@
+import { Loading } from '@/dashboard/loading'
 import { useEffect, useState } from 'react'
 import { ChevronRight, Search } from 'lucide-react'
 import { Input } from '@/components/ui'
@@ -86,26 +87,32 @@ export default function Directory() {
     await core.setSetting('chat', chat.chatId, 'character', personaId, chat.settingsRevision)
   }
 
+  const viewParams = new URLSearchParams(location.search)
+  for (const [key, value] of [
+    ['search', query],
+    ['status', status === 'all' ? '' : status],
+    ['order', order === 'recent' ? '' : order],
+    ['page', page === 1 ? '' : String(page)]
+  ]) {
+    if (value) viewParams.set(key, value)
+    else viewParams.delete(key)
+  }
+  const viewQuery = viewParams.toString()
   useEffect(() => {
     const url = new URL(location.href)
-    for (const [key, value] of [
-      ['search', query],
-      ['status', status === 'all' ? '' : status],
-      ['order', order === 'recent' ? '' : order],
-      ['page', page === 1 ? '' : String(page)]
-    ]) {
-      if (value) url.searchParams.set(key, value)
-      else url.searchParams.delete(key)
-    }
+    url.search = viewQuery
     history.replaceState(history.state, '', url)
-  }, [query, status, order, page])
+  }, [viewQuery])
+  function fromDirectory(path: string) {
+    return chatHref(path, viewParams)
+  }
   return (
     <section className="directory">
       <WorkspaceTools>
-        <a className="workspace-tool" href={chatHref('chats/defaults')}>
+        <a className="workspace-tool" href={fromDirectory('chats/defaults')}>
           Chat Defaults
         </a>
-        <a className="workspace-tool" href={chatHref('chats/files')}>
+        <a className="workspace-tool" href={fromDirectory('chats/files')}>
           Send File
         </a>
       </WorkspaceTools>
@@ -157,7 +164,7 @@ export default function Directory() {
       {error ? (
         <p role="alert">Chat directory unavailable.</p>
       ) : !filtered ? (
-        <p role="status">Loading…</p>
+        <Loading>Loading…</Loading>
       ) : !filtered.length ? (
         <p>No matching chats.</p>
       ) : (
@@ -185,7 +192,7 @@ export default function Directory() {
                       .toUpperCase()}
                   </span>
                   <div>
-                    <a href={chatHref('chats/' + encodeURIComponent(chat.chatId) + '/settings')}>{label(chat)}</a>
+                    <a href={fromDirectory('chats/' + encodeURIComponent(chat.chatId) + '/settings')}>{label(chat)}</a>
                     <small>{chat.type === 'group' ? 'Group Chat' : 'Direct Chat'}</small>
                   </div>
                 </div>
@@ -217,7 +224,7 @@ export default function Directory() {
                 <a
                   className="directory-settings"
                   aria-label={'Settings for ' + label(chat)}
-                  href={chatHref('chats/' + encodeURIComponent(chat.chatId) + '/settings')}
+                  href={fromDirectory('chats/' + encodeURIComponent(chat.chatId) + '/settings')}
                 >
                   Settings <ChevronRight size={14} aria-hidden="true" />
                 </a>

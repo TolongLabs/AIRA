@@ -79,16 +79,42 @@ export function Backdrop() {
     if (!surface) return
     const allowed = matchMedia('(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)')
     let frame = 0
+    let x = 0,
+      y = 0,
+      targetX = 0,
+      targetY = 0,
+      previous = 0
+    function tick(now: number) {
+      if (!surface) return
+      const dt = Math.min(48, now - previous)
+      previous = now
+      const mix = 1 - Math.exp(-dt / 85)
+      x += (targetX - x) * mix
+      y += (targetY - y) * mix
+      const dx = targetX - x,
+        dy = targetY - y
+      const distance = Math.hypot(dx, dy)
+      const stretch = Math.min(0.44, distance / 260)
+      surface.style.transform = `translate3d(${x}px,${y}px,0) translate(-50%,-50%) rotate(${Math.atan2(dy, dx)}rad) scale(${1 + stretch},${1 - stretch * 0.6})`
+      frame = distance > 0.25 ? requestAnimationFrame(tick) : 0
+    }
     function move(event: PointerEvent) {
       if (!allowed.matches || event.pointerType !== 'mouse' || !surface) return
-      cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(() => {
-        surface.style.transform = 'translate3d(' + (event.clientX - 82) + 'px,' + (event.clientY - 82) + 'px,0)'
+      targetX = event.clientX
+      targetY = event.clientY
+      if (!surface.dataset.visible) {
+        x = targetX
+        y = targetY
         surface.dataset.visible = 'true'
-      })
+      }
+      if (!frame) {
+        previous = performance.now()
+        frame = requestAnimationFrame(tick)
+      }
     }
     function hide() {
       cancelAnimationFrame(frame)
+      frame = 0
       if (surface) delete surface.dataset.visible
     }
     window.addEventListener('pointermove', move, { passive: true })
@@ -127,9 +153,14 @@ export default function Appearance() {
     }
   }, [preview])
 
+  const choices = useRef<HTMLFieldSetElement>(null)
+  function focusChoice(value: AppearanceChoice) {
+    choices.current?.querySelector<HTMLInputElement>(`input[value="${value}"]`)?.focus({ preventScroll: true })
+  }
   function apply() {
     if (!dirty) return
     if (storeAppearance(preview)) {
+      focusChoice(preview)
       setSaved(preview)
       setNotice('')
     } else {
@@ -144,7 +175,7 @@ export default function Appearance() {
       </a>
       <h1>Appearance</h1>
       <p className="appearance-lede">Choose a background. Apply saves it on this device.</p>
-      <fieldset className="appearance-group">
+      <fieldset ref={choices} className="appearance-group">
         <legend className="sr-only">Finish</legend>
         <div className="appearance-grid">
           {CHOICES.map((choice) => {
@@ -174,13 +205,21 @@ export default function Appearance() {
         </div>
       </fieldset>
       <div className="appearance-actions" data-dirty={dirty}>
-        <button type="button" disabled={preview === APPEARANCE_DEFAULT} onClick={() => setPreview(APPEARANCE_DEFAULT)}>
+        <button
+          type="button"
+          disabled={preview === APPEARANCE_DEFAULT}
+          onClick={() => {
+            setPreview(APPEARANCE_DEFAULT)
+            focusChoice(APPEARANCE_DEFAULT)
+          }}
+        >
           Use Default
         </button>
         <button
           type="button"
           disabled={!dirty}
           onClick={() => {
+            focusChoice(saved)
             setPreview(saved)
             setNotice('')
           }}

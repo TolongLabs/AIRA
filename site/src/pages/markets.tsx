@@ -1,3 +1,5 @@
+import { scrollSurface } from '@/dashboard/scroll'
+import { Loading } from '@/dashboard/loading'
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { ArrowDown, ArrowUp, Bell, Plus, RefreshCw, TrendingDown, TrendingUp, X } from 'lucide-react'
@@ -637,8 +639,12 @@ function Alerts({
             onChange={(v) => setDirection(v)}
           />
         </Field>
-        <Field label={direction === 'moves' ? 'by more than (%)' : unit ? `the price is (${unit})` : 'the price is'}>
+        <Field
+          htmlFor="market-alert-threshold"
+          label={direction === 'moves' ? 'by more than (%)' : unit ? `the price is (${unit})` : 'the price is'}
+        >
           <Input
+            id="market-alert-threshold"
             type="number"
             step="any"
             value={level}
@@ -845,7 +851,8 @@ export default function MarketsPage() {
     } catch {
       /* private mode or non-pushState mount — the state still switched */
     }
-    panelRef.current?.focus()
+    scrollSurface().scrollTo({ top: 0, behavior: 'instant' })
+    panelRef.current?.focus({ preventScroll: true })
   }
 
   const news = useMemo(() => {
@@ -1633,7 +1640,7 @@ function DashboardMarkets(props: DashProps) {
           </p>
         )
       )}
-      <div ref={panelRef} tabIndex={-1} className="mkd-panel" aria-label={activeLabel}>
+      <div ref={panelRef} tabIndex={-1} className="mkd-panel" role="region" aria-label={activeLabel}>
         {tab === 'watchlist' && <DashWatchlist {...props} />}
         {tab === 'alerts' && <DashAlertsDelivery {...props} />}
         {tab === 'news' && <DashNews {...props} />}
@@ -1719,9 +1726,7 @@ function DashWatchlist(props: DashProps) {
           />
         </div>
         {settings.loading && !settings.data ? (
-          <p role="status" className="mkd-muted">
-            Loading watchlist…
-          </p>
+          <Loading>Loading watchlist…</Loading>
         ) : settings.error ? (
           <p role="alert" className="mkd-error">
             Watchlist unavailable: {settings.error}{' '}
@@ -1820,9 +1825,10 @@ function DashWatchlist(props: DashProps) {
                 </span>
               )}
             </p>
-            {!quote && (
+            {!quote && !hist?.price && props.dash.loading && !props.dash.data && <Loading>Loading quote…</Loading>}
+            {!quote && !hist?.price && !props.dash.loading && (
               <p role="status" className="mkd-muted">
-                No quote for this one yet — the poller has not been round since it was added.
+                {props.dash.error ? 'Quote unavailable.' : 'No quote reported yet.'}
               </p>
             )}
             <div className="mkd-row" role="group" aria-label="Chart range">
@@ -1840,9 +1846,7 @@ function DashWatchlist(props: DashProps) {
             </div>
             <div className="mkd-chart">
               {loadingChart && !series.length ? (
-                <p role="status" className="mkd-muted">
-                  Loading chart…
-                </p>
+                <Loading>Loading chart…</Loading>
               ) : chartErr ? (
                 <p role="status" className="mkd-error">
                   Chart unavailable: {chartErr}
@@ -1991,9 +1995,7 @@ function DashAlertsDelivery(props: DashProps) {
       <section aria-label="Armed alerts" className="mkd-card">
         <h2 className="mkd-h">Armed alerts</h2>
         {settings.loading && !settings.data ? (
-          <p role="status" className="mkd-muted">
-            Loading alerts…
-          </p>
+          <Loading>Loading alerts…</Loading>
         ) : settings.error ? (
           <p role="alert" className="mkd-error">
             Alerts unavailable: {settings.error}{' '}
@@ -2101,9 +2103,7 @@ function DashAlertsDelivery(props: DashProps) {
           that group means their holdings, not yours.
         </p>
         {chats.loading && !chats.data ? (
-          <p role="status" className="mkd-muted">
-            Loading chats…
-          </p>
+          <Loading>Loading chats…</Loading>
         ) : chats.error ? (
           <p role="alert" className="mkd-error">
             Chats unavailable: {chats.error}{' '}
@@ -2300,9 +2300,7 @@ function DashNews(props: DashProps) {
         </Button>
       </div>
       {dash.loading && !dash.data ? (
-        <p role="status" className="mkd-muted">
-          Loading stories…
-        </p>
+        <Loading>Loading stories…</Loading>
       ) : dash.error && !news.items.length ? (
         <p role="alert" className="mkd-error">
           News unavailable: {dash.error}{' '}

@@ -1,6 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useId, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import './selection-table.css'
 
@@ -92,6 +92,17 @@ export default function SelectionTable<T>({
     setPendingId(null)
     setResult(null)
   }, [viewId])
+
+  const pagerChanged = useRef(false)
+  function goToPage(target: number) {
+    pagerChanged.current = true
+    setPage(target)
+  }
+  useLayoutEffect(() => {
+    if (!pagerChanged.current) return
+    pagerChanged.current = false
+    headerBox.current?.focus()
+  }, [safePage])
 
   const visibleSelected = visibleKeys.filter((key) => selected.has(key))
   const allVisible = visibleKeys.length > 0 && visibleSelected.length === visibleKeys.length
@@ -243,10 +254,10 @@ export default function SelectionTable<T>({
       {!rows.length && <p>{emptyMessage}</p>}
       {rows.length > 0 && (
         <div className="selection-pager" data-single={pageCount === 1}>
-          <span>
+          <span aria-live="polite" aria-atomic="true">
             {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, rows.length)} of {rows.length} Chats
           </span>
-          <button type="button" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>
+          <button type="button" disabled={safePage <= 1} onClick={() => goToPage(safePage - 1)}>
             <span aria-hidden="true">‹</span>
             <span className="sr-only">Previous page</span>
           </button>
@@ -254,11 +265,11 @@ export default function SelectionTable<T>({
             {safePage}
           </span>
           {safePage < pageCount && (
-            <button type="button" aria-label={'Page ' + (safePage + 1)} onClick={() => setPage(safePage + 1)}>
+            <button type="button" aria-label={'Page ' + (safePage + 1)} onClick={() => goToPage(safePage + 1)}>
               {safePage + 1}
             </button>
           )}
-          <button type="button" disabled={safePage >= pageCount} onClick={() => setPage(safePage + 1)}>
+          <button type="button" disabled={safePage >= pageCount} onClick={() => goToPage(safePage + 1)}>
             <span aria-hidden="true">›</span>
             <span className="sr-only">Next page</span>
           </button>

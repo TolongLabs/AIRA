@@ -1,3 +1,4 @@
+import { Loading } from '@/dashboard/loading'
 import { useEffect, useMemo, useState } from 'react'
 import { core, type CoreCharacter } from '@/lib/core'
 import { Input } from '@/components/ui'
@@ -14,16 +15,7 @@ function matches(row: CoreCharacter, query: string): boolean {
   return hay.includes(query.trim().toLowerCase())
 }
 
-function Artwork({ row }: { row: CoreCharacter }) {
-  // No authorized art endpoint exists, so the tile is a legible initial.
-  // It never stands in for a real persona image.
-  const initial = row.displayName.trim().charAt(0).toUpperCase() || row.id.charAt(0).toUpperCase() || '?'
-  return (
-    <span className="studio-art" aria-hidden="true">
-      {initial}
-    </span>
-  )
-}
+const covers = ['tidekeeper', 'orbit-guide', 'signal-finch'] as const
 
 export default function Catalogue() {
   const [rows, setRows] = useState<CoreCharacter[] | null>(null)
@@ -64,6 +56,16 @@ export default function Catalogue() {
     history.replaceState(null, '', url)
   }, [query, source, sort])
 
+  const artwork = useMemo(
+    () =>
+      new Map(
+        (rows ?? [])
+          .map((row) => row.id)
+          .sort()
+          .map((id, index) => [id, covers.find((cover) => cover === id) ?? covers[index % covers.length]])
+      ),
+    [rows]
+  )
   const visible = useMemo(() => {
     const list = (rows ?? [])
       .filter((row) => (source === 'all' || row.source === source) && matches(row, query))
@@ -126,7 +128,7 @@ export default function Catalogue() {
       {error ? (
         <p role="alert">Characters unavailable. The core did not answer.</p>
       ) : !rows ? (
-        <p role="status">Loading…</p>
+        <Loading layout="cards">Loading…</Loading>
       ) : (
         <>
           {!visible.length && <p>No matching characters.</p>}
@@ -134,19 +136,21 @@ export default function Catalogue() {
             {visible.map((row) => (
               <li key={row.id} className="studio-card">
                 <a className="studio-card-link" href={studioHref(studioPaths.edit(row.id))}>
-                  <Artwork row={row} />
+                  <img className="studio-art" alt="" src={`/app/dashboard/${artwork.get(row.id)}.svg`} />
                   <div className="studio-card-meta">
                     <span className="studio-card-name">{row.displayName}</span>
                     <span>
                       {row.source === 'data' ? 'Data Pack' : 'Built-In'} ·{' '}
-                      {row.source === 'repository' ? 'Read Only' : row.languages.join(' · ') || 'No language set'}
+                      {row.languages.join(' · ') || 'No language set'}
                     </span>
                   </div>
                 </a>
-                {row.source === 'data' && (
+                {row.source === 'data' ? (
                   <a className="studio-card-links" href={studioHref(studioPaths.footer(row.id))}>
                     Tool wording
                   </a>
+                ) : (
+                  <span className="studio-card-links studio-readonly">Read Only</span>
                 )}
               </li>
             ))}

@@ -1,9 +1,39 @@
+import { ArrowUpRight, CalendarClock, CircleCheck, CirclePause, LibraryBig, MessagesSquare, Radio } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
-import type { CSSProperties } from 'react'
 import type { CronJob, Dashboard } from '@/lib/api'
 import { core, type CoreChat } from '@/lib/core'
 import { useApi } from '@/lib/hooks'
 import { dashboardHref } from './navigation'
+import { Loading } from './loading'
+import './overview.css'
+
+const stamp = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
+const date = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+function Card({
+  route,
+  kind,
+  title,
+  icon,
+  children
+}: {
+  route: string
+  kind: string
+  title: string
+  icon: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <a className={'insight insight-' + kind} href={dashboardHref(route)}>
+      <div className="insight-heading">
+        {icon}
+        <h2>{title}</h2>
+        <ArrowUpRight aria-hidden="true" />
+      </div>
+      {children}
+    </a>
+  )
+}
 
 export function Overview() {
   const host = useApi<Dashboard>('/api/dashboard')
@@ -23,92 +53,146 @@ export function Overview() {
       current = false
     }
   }, [])
-  const units = Object.entries(host.data?.services ?? {})
-  const active = Array.isArray(chats) ? chats.filter((chat) => chat.status === 'active').length : 0
-  const pending = Array.isArray(chats) ? chats.filter((chat) => chat.status === 'pending').length : 0
+  const units = Object.entries(host.data?.services ?? {}).sort(
+    ([, a], [, b]) => Number(a === 'active') - Number(b === 'active')
+  )
   const online = units.filter(([, state]) => state === 'active').length
+  const active = Array.isArray(chats) ? chats.filter((chat) => chat.status === 'active').length : 0
+  const groups = Array.isArray(chats) ? chats.filter((chat) => chat.type === 'group').length : 0
   const jobs = routines.data?.jobs.filter((job) => job.enabled) ?? []
-  const next = jobs
-    .map((job) => Date.parse(job.next_run_at ?? ''))
-    .filter(Number.isFinite)
-    .sort((a, b) => a - b)[0]
-  const hostStatus = host.error ? 'Unavailable' : host.loading ? 'Loading…' : ''
+  const agenda = jobs
+    .flatMap((job) => {
+      const time = Date.parse(job.next_run_at ?? '')
+      return Number.isFinite(time) ? [{ job, time }] : []
+    })
+    .sort((a, b) => a.time - b.time)
+  const shelves = Object.entries(host.data?.brain ?? {})
+    .filter(([, n]) => Number.isFinite(n) && n > 0)
+    .sort(([, a], [, b]) => b - a)
+  const total = shelves.reduce((sum, [, n]) => sum + n, 0)
+  const hostWait = !host.data && (host.error ? 'Unavailable' : <Loading layout="metric" />)
   return (
-    <div className="overview-grid">
-      <a className="overview-health" href={dashboardHref('system/health')}>
-        <span>
-          {hostStatus || (units.length ? online + ' of ' + units.length + ' Online' : 'No services reported')}
-        </span>
-        {units.length > 0 && (
-          <strong>
-            {online}/{units.length}
-          </strong>
-        )}
-        <h2>Service Health</h2>
-        {!hostStatus && units.length > 0 && (
-          <span className="overview-status" data-online={online === units.length}>
-            {online === units.length ? 'Healthy' : 'Needs attention'}
-          </span>
-        )}
-        <ul>
-          {units.map(([unit, state]) => (
-            <li key={unit}>
-              <b data-online={state === 'active'}>{unit}</b>
-              <span>{state === 'active' ? 'Online' : state}</span>
-            </li>
-          ))}
-        </ul>
-      </a>
-      <a href={dashboardHref('chats')}>
-        <h2>Chats</h2>
-        {Array.isArray(chats) ? (
-          <>
-            <strong>{active} Active</strong>
-            <span>{pending} Pending</span>
-            {active + pending > 0 && (
-              <div className="overview-ratio">
-                <small>
-                  {active}:{pending} active
-                </small>
-                <div className="overview-segments" aria-hidden="true">
-                  {[0, 1, 2, 3].map((part) => (
-                    <span
-                      key={part}
-                      style={
-                        {
-                          '--fill': Math.min(100, Math.max(0, ((4 * active) / (active + pending) - part) * 100)) + '%'
-                        } as CSSProperties
-                      }
+    <div className="operations-board">
+      <Card kind="health" route="system/health" title="Service Health" icon={<Radio aria-hidden="true" />}>
+        {hostWait ||
+          (units.length ? (
+            <>
+              <div className="readiness">
+                <div className="readiness-ring">
+                  <svg viewBox="0 0 96 96" aria-hidden="true">
+                    <circle cx="48" cy="48" r="40" />
+                    <circle
+                      cx="48"
+                      cy="48"
+                      r="40"
+                      pathLength="100"
+                      strokeDasharray={`${(100 * online) / units.length} 100`}
                     />
-                  ))}
+                  </svg>
+                  <strong>
+                    {online}/{units.length}
+                  </strong>
+                </div>
+                <div>
+                  <strong>{online === units.length ? 'Healthy' : 'Needs attention'}</strong>
+                  <span>
+                    {online} of {units.length} Online
+                  </span>
                 </div>
               </div>
+              <ul className="unit-matrix">
+                {units.map(([name, state]) => (
+                  <li key={name}>
+                    {state === 'active' ? <CircleCheck aria-hidden="true" /> : <CirclePause aria-hidden="true" />}
+                    <span>
+                      {name}
+                      <small>{state === 'active' ? 'Online' : state}</small>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p>No services reported.</p>
+          ))}
+      </Card>
+      <Card kind="chats" route="chats" title="Chats" icon={<MessagesSquare aria-hidden="true" />}>
+        {Array.isArray(chats) ? (
+          <>
+            <div className="insight-count">
+              {chats.length}
+              <span>total chats</span>
+            </div>
+            <div className="chat-distribution" aria-hidden="true">
+              {Array.from({ length: 32 }, (_, i) => (
+                <i key={i} data-filled={chats.length > 0 && (i + 0.5) / 32 <= active / chats.length} />
+              ))}
+            </div>
+            <div className="chat-legend">
+              <strong>{active} Active</strong>
+              <span>{chats.length - active} Pending</span>
+            </div>
+            <small>
+              {groups} group · {chats.length - groups} direct
+            </small>
+          </>
+        ) : chats === null ? (
+          <Loading layout="metric" />
+        ) : (
+          <p>Chats unavailable.</p>
+        )}
+      </Card>
+      <Card kind="agenda" route="automations/routines" title="Routines" icon={<CalendarClock aria-hidden="true" />}>
+        {!routines.data ? (
+          routines.error ? (
+            <p>Schedule unavailable.</p>
+          ) : (
+            <Loading />
+          )
+        ) : (
+          <>
+            <div className="agenda-summary">
+              <strong>{agenda.length ? 'Next runs' : 'No upcoming run'}</strong>
+              <span>{jobs.length} scheduled</span>
+            </div>
+            {agenda.length > 0 && (
+              <ol className="run-agenda">
+                {agenda.slice(0, 3).map(({ job, time }) => (
+                  <li key={job.job_id}>
+                    <time dateTime={new Date(time).toISOString()}>{stamp.format(time)}</time>
+                    <span>
+                      <b>{job.name || 'Unnamed routine'}</b>
+                      <small>{date.format(time)}</small>
+                    </span>
+                  </li>
+                ))}
+              </ol>
             )}
           </>
-        ) : (
-          <span>{chats ? 'Unavailable' : 'Loading…'}</span>
         )}
-      </a>
-      <a href={dashboardHref('automations/routines')}>
-        <h2>Routines</h2>
-        <strong>
-          {routines.error
-            ? 'Unavailable'
-            : routines.loading
-              ? 'Loading…'
-              : next
-                ? new Date(next).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
-                : 'No upcoming run'}
-        </strong>
-        {next !== undefined && <span>Next Run</span>}
-        {routines.data && <small className="overview-scheduled">{jobs.length} scheduled</small>}
-      </a>
-      <a className="overview-library" href={dashboardHref('library')}>
-        <h2>Library</h2>
-        <span>
-          {hostStatus || Object.values(host.data?.brain ?? {}).reduce((sum, n) => sum + n, 0) + ' saved items'}
-        </span>
-      </a>
+      </Card>
+      <Card kind="library" route="library" title="Library" icon={<LibraryBig aria-hidden="true" />}>
+        {hostWait || (
+          <>
+            <strong className="collection-count">{total} saved items</strong>
+            {shelves.length > 0 ? (
+              <ol className="shelf-chart">
+                {shelves.slice(0, 4).map(([name, n]) => (
+                  <li key={name}>
+                    <span>{name.replaceAll('_', ' ')}</span>
+                    <i aria-hidden="true">
+                      <i style={{ width: (100 * n) / shelves[0]![1] + '%' }} />
+                    </i>
+                    <b>{n}</b>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p>The collection is empty.</p>
+            )}
+          </>
+        )}
+      </Card>
     </div>
   )
 }

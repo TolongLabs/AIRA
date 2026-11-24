@@ -18,7 +18,7 @@
   display: grid;
   grid-template-columns: minmax(0, 45fr) minmax(0, 55fr);
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
   min-width: 0;
 }
 
@@ -170,20 +170,11 @@
   }
 }
 
-.automations-kicker::before {
-  content: '';
-  display: block;
-  width: 24px;
-  height: 3px;
-  margin-bottom: 10px;
-  border-radius: 8px;
-  background: var(--chart-ink);
-}
 .notices-board {
   display: grid;
   grid-template-columns: minmax(0, 53fr) minmax(0, 47fr);
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
 }
 .notices-column {
   display: grid;
@@ -196,5 +187,17 @@
 @media (max-width: 760px) {
   .notices-board {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.automations-wrap {
+  container-type: inline-size;
+}
+@container (max-width:680px) {
+  .notices-board {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .notices-column .min-w-56 {
+    min-width: min(14rem, 100%);
   }
 }
