@@ -1,6 +1,7 @@
 # Third-party notices
 
-AIRA uses a navigation indicator adapted from [ObsidianUI Dashboard Shell](https://www.obsidianui.dev/docs/dashboard-shell).
+AIRA adapts the interactive chat strip from [ObsidianUI Status Bars](https://www.obsidianui.dev/docs/status-bars)
+and the navigation indicator from [ObsidianUI Dashboard Shell](https://www.obsidianui.dev/docs/dashboard-shell).
 
 MIT License
 

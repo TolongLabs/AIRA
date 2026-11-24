@@ -1,21 +1,3 @@
-@font-face {
-  font-family: Outfit;
-  src: url('/dashboard/fonts/outfit.woff2') format('woff2');
-  font-weight: 100 900;
-  font-display: swap;
-}
-@font-face {
-  font-family: Unbounded;
-  src: url('/dashboard/fonts/unbounded.woff2') format('woff2');
-  font-weight: 100 900;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Geist Mono';
-  src: url('/dashboard/fonts/geist-mono.woff2') format('woff2');
-  font-weight: 100 900;
-  font-display: swap;
-}
 .dashboard-shell {
   --glass: rgb(247 249 248 / 0.36);
   --rim: rgb(255 255 255 / 0.7);
@@ -538,7 +520,9 @@
   color: var(--on-accent);
 }
 .dashboard-pane,
-.file-delivery > section {
+.file-delivery > section,
+.settings-bento > section,
+.settings-providers > div > section {
   min-width: 0;
   padding: 20px;
   border: 1px solid var(--tile-edge);
@@ -1168,18 +1152,6 @@ body:has(.dashboard-shell) {
 .dashboard-view [role='tab'] > .absolute.bg-accent {
   display: none;
 }
-@media (min-width: 761px) {
-  .dashboard-view > .appearance {
-    flex: 1;
-    grid-template-rows: auto auto auto 1fr auto;
-  }
-  .appearance-grid {
-    height: 100%;
-  }
-  .appearance-grid .appearance-card {
-    grid-template-rows: minmax(min-content, 1fr) auto auto;
-  }
-}
 
 /* On small screens navigation has a dedicated row above the reading surface. */
 @media (max-width: 760px) {
@@ -1299,4 +1271,189 @@ body:has(.dashboard-shell) {
     outline: 3px solid Highlight;
     outline-offset: 2px;
   }
+}
+
+.directory-avatar {
+  overflow: hidden;
+  flex: none;
+}
+.directory-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.portrait-upload {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--tile-inset);
+}
+.portrait-upload label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.portrait-upload input {
+  max-width: 100%;
+  font-size: 14px;
+}
+.portrait-upload small {
+  color: var(--muted);
+}
+.portrait-sample {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 16px;
+}
+
+.persona-choices label .persona-portrait {
+  width: 100%;
+  height: 78px;
+  object-fit: cover;
+  border-radius: 9px;
+}
+.chat-detail .composer {
+  display: grid;
+  gap: 14px;
+  max-width: none;
+  padding-block: 12px;
+}
+.chat-detail .composer h2 {
+  font-size: 1.15rem;
+}
+.chat-detail .composer .compose-card {
+  max-width: none;
+  background: var(--tile-inset);
+}
+.chat-detail .file-delivery {
+  grid-template-columns: minmax(0, 1fr);
+}
+.chat-detail .chat-section-title:has(+ .composer) {
+  margin-bottom: 0;
+}
+
+.settings-bento,
+.profile-files-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.settings-bento section {
+  min-width: 0;
+  margin-block: 0;
+}
+.settings-providers > div {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.settings-bento section > .glass {
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.settings-bento section > .glass + .glass {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--tile-edge);
+  border-radius: 0;
+}
+.settings-bento .dashboard-pane dl {
+  margin-bottom: 0;
+}
+
+.settings-bento input:not([type='checkbox']),
+.settings-bento select {
+  max-width: 100%;
+}
+.settings-bento h2,
+.profile-files-grid h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+}
+.settings-bento dl,
+.profile-file-picker {
+  display: grid;
+  gap: 12px;
+}
+.settings-bento dd {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.settings-bento dt,
+.profile-files-grid p {
+  color: var(--muted);
+}
+.profile-files-grid {
+  grid-template-columns: minmax(180px, 0.7fr) minmax(0, 2fr);
+}
+.profile-file-picker fieldset {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.profile-file-picker legend {
+  font-weight: 600;
+  padding-bottom: 6px;
+}
+.profile-file-picker button {
+  min-height: 42px;
+  text-align: left;
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+.profile-file-picker [aria-pressed='true'] {
+  background: var(--active);
+}
+.profile-file-editor {
+  display: grid;
+  gap: 12px;
+}
+.profile-file-editor textarea {
+  width: 100%;
+  min-height: clamp(240px, 43vh, 600px);
+  font-family: 'Geist Mono', monospace;
+  font-size: 13px;
+}
+@media (max-width: 920px) {
+  .settings-bento,
+  .profile-files-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.chat-detail .composer {
+  margin: 0;
+  width: 100%;
+}
+.chat-detail .composer > .compose-card > p:empty {
+  display: none;
+}
+.host-settings-view {
+  align-content: start;
+}
+.settings-bento > section h2 {
+  margin: 0;
+}
+
+.access-observed > div {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  max-height: 160px;
+  overflow: auto;
+  padding: 4px;
+}
+.access-observed button {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }

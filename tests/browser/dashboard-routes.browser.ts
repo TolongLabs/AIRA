@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 import { chromium } from 'playwright'
 import { expect } from 'playwright/test'
 import { it } from 'vitest'
+import { ensureChat, setChatLabel } from '../../src/settings/chats.js'
 import { queueModel, startApp } from '../support/app.js'
 
 // Bounded Chromium journey over the dashboard routes (AIRA #369/370/371).
@@ -43,6 +44,15 @@ interface FixtureState {
   failItemOnce: boolean
   failItemAlways: boolean
   settings: {
+    search: { mode: string; modes: { id: string; label: string }[] }
+    learning: {
+      learning: string
+      chats: number
+      lessons: number
+      style_rules: number
+      calls_today: number
+      day_cap: number
+    }
     bindings: Record<string, unknown>
     markets: {
       watchlist: string[]
@@ -78,6 +88,8 @@ function baseState(): FixtureState {
     failItemOnce: false,
     failItemAlways: false,
     settings: {
+      search: { mode: 'ddgs', modes: [{ id: 'ddgs', label: 'DDGS' }] },
+      learning: { learning: 'on', chats: 0, lessons: 0, style_rules: 0, calls_today: 2, day_cap: 40 },
       bindings: {},
       markets: {
         watchlist: ['spx'],
@@ -250,7 +262,7 @@ function baseState(): FixtureState {
 async function startFixture(
   state: FixtureState,
   canonical = false
-): Promise<{ origin: string; close: () => Promise<void> }> {
+): Promise<{ origin: string; app: Awaited<ReturnType<typeof startApp>>['app']; close: () => Promise<void> }> {
   const host = createServer((request, response) => {
     void (async () => {
       if (request.headers['x-tolongai-token'] !== TOKEN) {
@@ -416,6 +428,7 @@ async function startFixture(
   const origin = 'http://127.0.0.1:' + site.port
   return {
     origin,
+    app,
     close: async () => {
       host.closeAllConnections()
       await new Promise<void>((done) => host.close(() => done()))
@@ -737,7 +750,26 @@ it.each([
           message: route + ' exceeds the ' + name + ' viewport'
         })
         .toBeLessThanOrEqual(width)
-      expect(await page.locator('#workspace').evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1)
+      const workspace = page.locator('#workspace')
+      const overflow = await workspace.evaluate((el) =>
+        [...el.querySelectorAll('*')]
+          .filter((child) => child.getBoundingClientRect().right > el.getBoundingClientRect().right + 1)
+          .slice(0, 6)
+          .map((child) =>
+            [
+              child.tagName,
+              child.parentElement?.className,
+              Math.round(child.getBoundingClientRect().x),
+              Math.round(child.getBoundingClientRect().width),
+              el.clientWidth
+            ].join(':')
+          )
+          .join(', ')
+      )
+      expect(
+        await workspace.evaluate((el) => el.scrollWidth - el.clientWidth),
+        route + ' horizontal overflow: ' + overflow
+      ).toBeLessThanOrEqual(1)
       const shellBounds = await page.locator('#workspace').boundingBox()
       expect(shellBounds!.height).toBe(height - (width <= 760 ? 72 : 16))
       expect(await page.locator('html').evaluate((el) => el.scrollHeight)).toBe(height)
@@ -772,7 +804,7 @@ it.each([
       }
       if (route === 'system/appearance') {
         const swatches = page.locator('.appearance-swatch')
-        await expect(swatches).toHaveCount(4)
+        await expect(swatches).toHaveCount(6)
         const first = await swatches.nth(0).boundingBox()
         const second = await swatches.nth(1).boundingBox()
         expect(first!.y).toBe(second!.y)
@@ -791,6 +823,226 @@ it.each([
         })
       }
     }
+  } finally {
+    await browser.close()
+    await fixture.close()
+  }
+})
+
+it('reads measured traffic and provisions the selected chat with portraits and attached files', async () => {
+  const state = baseState()
+  state.dashboard.services = { Core: 'active', Gateway: 'inactive' }
+  const fixture = await startFixture(state)
+  const browser = await chromium.launch()
+  try {
+    const chat = ensureChat(fixture.app.storage, { waId: 'fixture-group@g.us', type: 'group' })
+    setChatLabel(fixture.app.storage, { chatId: chat.chatId, label: 'Fixture Group', actor: 'fixture' })
+    let total = 0
+    fixture.app.storage.tx((db) => {
+      const insert = db.prepare(
+        "INSERT INTO inbound_message(chat_id,mid,sender_id,state,received_at,closed_at) VALUES(?,?,?,'dropped',?,?)"
+      )
+      for (let ago = 0; ago < 80; ago++) {
+        const when = new Date(Date.now() - ago * 86400000).toISOString()
+        const count = (ago * 7 + 3) % 17
+        for (let i = 0; i < count; i++) {
+          insert.run(chat.chatId, 'fixture-in-' + total++, 's_fixture', when, when)
+        }
+      }
+    })
+    const page = await browser.newPage({ viewport: { width: 1440, height: 810 } })
+    await auth(page, fixture.origin)
+    await expect(page.locator('.insight-health')).toHaveAttribute('data-tone', 'attention')
+    await expect(page.getByText('Inactive', { exact: true })).toBeVisible()
+    await expect(page.locator('.traffic-summary strong')).toHaveText(String(total))
+    const cells = page.locator('.traffic-grid button')
+    expect(
+      await cells.evaluateAll(
+        (nodes) =>
+          new Set(nodes.map((node) => node.ownerDocument.defaultView!.getComputedStyle(node).backgroundColor)).size
+      )
+    ).toBeGreaterThanOrEqual(4)
+    const first = await cells.nth(0).boundingBox()
+    const second = await cells.nth(1).boundingBox()
+    expect(first!.y + first!.height).toBeLessThan(second!.y)
+    const strip = page.getByRole('grid', { name: 'Chat reply status' })
+    await strip.focus()
+    await strip.press('End')
+    await expect(page.getByRole('tooltip')).toContainText('Fixture Group')
+    await strip.press('Escape')
+    await expect(page.getByRole('tooltip')).toHaveCount(0)
+    await screenshot(page, 'traffic')
+    await page.goto(fixture.origin + '/app/preview/chats')
+    await expect(page.locator('.directory-avatar svg')).toHaveCount(2)
+    await page.getByRole('link', { name: 'Fixture Group', exact: true }).click()
+    await expect(page.locator('.persona-portrait').first()).toHaveAttribute('src', /\.svg$/)
+    await page.getByRole('tab', { name: 'Access' }).click()
+    await page.locator('.portrait-upload input').setInputFiles(resolve('site/public/dashboard/field-light.webp'))
+    await expect(page.locator('.portrait-upload img')).toHaveAttribute('src', /^data:image\/webp/)
+    await expect(page.locator('.chat-context .directory-avatar img')).toBeVisible()
+    await page.getByRole('button', { name: 'Edit who may write' }).click()
+    await page.getByRole('radio', { name: 'Only listed senders' }).check()
+    await page.getByRole('button', { name: 's_fixture +', exact: true }).click()
+    await page.getByLabel('Add a sender id').fill('s_first, s_second')
+    await page.getByRole('button', { name: 'Add', exact: true }).click()
+    await page.getByRole('button', { name: 'Review', exact: true }).click()
+    await page.getByRole('button', { name: 'Confirm save' }).click()
+    await expect(page.getByText(/Only 3 listed senders/)).toBeVisible()
+    await page.getByRole('tab', { name: 'Send Message' }).click()
+    await page.getByText('Attachment', { exact: true }).first().click()
+    await page
+      .locator('input[type=file]')
+      .setInputFiles({ name: 'fixture.txt', mimeType: 'text/plain', buffer: Buffer.from('fixture') })
+    await page.getByRole('button', { name: 'Review and send' }).click()
+    await expect(page.getByRole('group', { name: 'confirm the send' })).toContainText('Field Notes')
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await screenshot(page, 'attachments')
+    await page.goto(fixture.origin + '/app/preview/chats')
+    await expect(page.locator('.directory-avatar img')).toBeVisible()
+  } finally {
+    await browser.close()
+    await fixture.close()
+  }
+})
+async function screenshot(page: import('playwright').Page, name: string) {
+  const dir = process.env.AIRA_REFINEMENT_SCREENS
+  if (dir) {
+    await mkdir(dir, { recursive: true })
+    await page.screenshot({ path: resolve(dir, name + '.png'), animations: 'disabled' })
+  }
+}
+it('creates personas from the catalogue, keeps section drafts and uses the local WhatsApp simulator', async () => {
+  const fixture = await startFixture(baseState())
+  const browser = await chromium.launch()
+  try {
+    const context = await browser.newContext({
+      viewport: { width: 1440, height: 810 },
+      permissions: ['clipboard-read', 'clipboard-write']
+    })
+    const page = await context.newPage()
+    await auth(page, fixture.origin)
+    for (let i = 0; i < 16; i++) {
+      const r = await page.request.post(fixture.origin + '/owner-api/core/characters', {
+        headers: { 'x-tolongai-token': TOKEN },
+        data: { id: 'fixture-' + String(i).padStart(2, '0'), sourceId: 'example' }
+      })
+      expect(r.status()).toBe(201)
+    }
+    await page.goto(fixture.origin + '/app/preview/characters')
+    await expect(page.locator('.studio-card')).toHaveCount(15)
+    await page.getByRole('button', { name: 'Next page' }).click()
+    await expect(page.locator('.studio-card')).toHaveCount(2)
+    await page.setViewportSize({ width: 396, height: 704 })
+    await page.getByRole('button', { name: 'Previous page' }).click()
+    await expect(page.locator('.studio-card')).toHaveCount(6)
+    await page.getByRole('button', { name: 'Create', exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog.getByRole('link', { name: /Manual/ })).toHaveAttribute('href', /characters\/new$/)
+    await expect(dialog.getByRole('link', { name: /Import/ })).toHaveAttribute('href', /characters\/import$/)
+    await expect(dialog.locator('img')).toHaveCount(3)
+    await screenshot(page, 'create-phone')
+    await dialog.getByRole('button', { name: /Agent/ }).click()
+    await expect(dialog.getByRole('textbox')).toHaveAttribute('readonly', '')
+    await dialog.getByRole('button', { name: 'Copy Prompt' }).click()
+    expect(await page.evaluate('navigator.clipboard.readText()')).toContain('speechRules')
+    await page.keyboard.press('Escape')
+    await page.setViewportSize({ width: 1440, height: 810 })
+    await page.goto(fixture.origin + '/app/preview/characters/fixture-00/edit')
+    await page.getByLabel('Display name').fill('Fixture Draft')
+    await page.locator('.portrait-upload input').setInputFiles(resolve('site/public/dashboard/field-dark.webp'))
+    await expect(page.locator('.portrait-sample')).toHaveAttribute('src', /^data:image\/webp/)
+    await page.getByRole('link', { name: 'Fixed Lines', exact: true }).click()
+    await expect(page.getByLabel('Display name')).toHaveCount(0)
+    await page.getByRole('link', { name: 'Identity', exact: true }).click()
+    await expect(page.getByLabel('Display name')).toHaveValue('Fixture Draft')
+    await screenshot(page, 'persona-editor')
+    const [sim] = await Promise.all([
+      context.waitForEvent('page'),
+      page.getByRole('button', { name: 'Preview Conversation' }).click()
+    ])
+    await expect(sim.locator('.wa-head')).toContainText('Fixture Draft')
+    await sim.getByRole('textbox', { name: 'Try a message' }).fill('Fixture hello')
+    await sim.getByRole('button', { name: 'Send preview message' }).click()
+    await expect(sim.locator('.wa-turn .wa-bubble')).toHaveCount(2)
+    await sim.getByRole('button', { name: 'Turn details' }).click()
+    await expect(sim.getByText('Estimated prompt')).toBeVisible()
+    await screenshot(sim, 'simulator')
+    await sim.close()
+    await page.getByLabel('Display name').fill('Example')
+    await page.goto(fixture.origin + '/app/preview/system/settings#files')
+    await page.getByRole('combobox', { name: 'Character pack' }).click()
+    await page.getByRole('option').filter({ hasText: 'Example' }).nth(1).click()
+    await page.getByRole('button', { name: 'lines.yml' }).click()
+    const editor = page.getByRole('textbox', { name: 'lines.yml content' })
+    const old = await editor.inputValue()
+    await editor.fill(old.replace(/^feedback:.*$/m, 'feedback: Fixture feedback'))
+    await page.getByRole('button', { name: 'Save Changes' }).click()
+    await expect(page.getByText('Profile file saved.')).toBeVisible()
+    await expect(editor).toContainText('Fixture feedback')
+    await screenshot(page, 'profile-files')
+    await page.goto(fixture.origin + '/app/preview/characters/simulator')
+    await expect(page.getByLabel('Try a message')).toBeVisible()
+    await page.getByLabel('Saved persona').selectOption('fixture-00')
+    await expect(page.getByLabel('Saved persona')).toHaveValue('fixture-00')
+    await page.goto(fixture.origin + '/app/preview/characters/import')
+    const fileField = page.getByLabel('Upload a typed pack document')
+    await fileField.setInputFiles({
+      name: 'upload.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from('{"card":{},"moods":{},"lines":{}}')
+    })
+    await expect(page.getByRole('alert')).toContainText('value types')
+    const example = await (
+      await page.request.get(fixture.origin + '/owner-api/core/characters/example/studio', {
+        headers: { 'x-tolongai-token': TOKEN }
+      })
+    ).json()
+    const imported = { card: { ...example.card, id: 'fixture-import' }, moods: example.moods, lines: example.lines }
+    await fileField.setInputFiles({
+      name: 'upload.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(imported))
+    })
+    await expect(page.getByRole('region', { name: 'Pack id', exact: true }).getByRole('textbox')).toHaveValue(
+      'fixture-import'
+    )
+  } finally {
+    await browser.close()
+    await fixture.close()
+  }
+})
+
+it('keeps System tabs and device appearance usable on desktop and phone', async () => {
+  const fixture = await startFixture(baseState())
+  const browser = await chromium.launch()
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 810 } })
+    await auth(page, fixture.origin)
+    for (const [hash, heading] of [
+      ['providers', 'Web search'],
+      ['markets', 'The default watchlist'],
+      ['voice', 'Voice notes'],
+      ['home', 'Home Assistant'],
+      ['files', 'card.yml']
+    ]) {
+      await page.goto(fixture.origin + '/app/preview/system/settings#' + hash)
+      await expect(page.getByRole('heading', { name: heading, exact: true }).first()).toBeVisible()
+      await screenshot(page, 'settings-' + hash)
+      await page.setViewportSize({ width: 396, height: 704 })
+      expect(await page.locator('main').evaluate((el) => el.scrollWidth - el.clientWidth), hash).toBeLessThanOrEqual(1)
+      await page.setViewportSize({ width: 1440, height: 810 })
+    }
+    await page.goto(fixture.origin + '/app/preview/system/appearance')
+    await page.getByRole('radio', { name: /Contours/ }).check()
+    await page.getByRole('button', { name: 'Apply', exact: true }).click()
+    await page.getByRole('switch', { name: 'Cursor glow' }).uncheck()
+    await page.getByRole('switch', { name: 'Solid reading surfaces' }).check()
+    await page.reload()
+    await expect(page.locator('html')).toHaveAttribute('data-glow', 'off')
+    await expect(page.locator('html')).toHaveAttribute('data-surfaces', 'solid')
+    await expect(page.getByRole('radio', { name: /Contours/ })).toBeChecked()
+    expect(await page.getByRole('button', { name: /use default/i }).count()).toBe(0)
+    await screenshot(page, 'appearance')
   } finally {
     await browser.close()
     await fixture.close()

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { get } from '@/lib/api'
-import { cn } from '@/lib/utils'
+import hotToast, { Toaster as HotToaster } from 'react-hot-toast'
+import { useContext } from 'react'
+import { DashboardContext } from '@/dashboard/context'
 
 /* ── data ─────────────────────────────────────────────────────────────── */
 
@@ -84,50 +86,22 @@ export function useThemeColors<K extends string>(names: Record<K, string>): Reco
 
 /* ── toasts ───────────────────────────────────────────────────────────── */
 
-type Toast = { id: number; text: string; ok: boolean }
-let push: ((t: Toast) => void) | null = null
-let nextId = 1
+export function toast(message: string, ok = true) {
+  return ok ? hotToast.success(message) : hotToast.error(message)
+}
 
-/** Fire-and-forget feedback. Mount <Toaster/> once per page. */
-export function toast(text: string, ok = true) {
-  push?.({ id: nextId++, text, ok })
+export function ToastHost() {
+  return (
+    <HotToaster
+      position="bottom-center"
+      containerStyle={{ bottom: 'max(24px, env(safe-area-inset-bottom))' }}
+      toastOptions={{ className: 'owner-toast', duration: 4500, error: { duration: 6500 } }}
+    />
+  )
 }
 
 export function Toaster() {
-  const [items, setItems] = useState<Toast[]>([])
-  const timers = useRef<Map<number, number>>(new Map())
-
-  useEffect(() => {
-    push = (t) => {
-      setItems((xs) => [...xs, t])
-      const handle = window.setTimeout(() => setItems((xs) => xs.filter((x) => x.id !== t.id)), t.ok ? 2200 : 5000)
-      timers.current.set(t.id, handle)
-    }
-    const pending = timers.current
-    return () => {
-      push = null
-      pending.forEach((h) => window.clearTimeout(h))
-    }
-  }, [])
-
-  return (
-    <div
-      aria-live="polite"
-      className="pointer-events-none fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 flex-col items-center gap-2"
-    >
-      {items.map((t) => (
-        <div
-          key={t.id}
-          className={cn(
-            'rounded-full border px-5 py-2.5 text-[0.9rem] font-medium shadow-float',
-            t.ok ? 'border-line-strong bg-card-2 text-ink' : 'border-down/40 bg-card-2 text-down'
-          )}
-        >
-          {t.text}
-        </div>
-      ))}
-    </div>
-  )
+  return useContext(DashboardContext) ? null : <ToastHost />
 }
 
 /* ── misc ─────────────────────────────────────────────────────────────── */

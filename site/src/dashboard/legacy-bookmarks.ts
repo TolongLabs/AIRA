@@ -171,6 +171,8 @@ function pageKey(logical: string): string | null {
 export function translateLegacyBookmark(source: LegacyBookmark, mount: string): CanonicalTarget | null {
   const { pathname, search, hash } = source
   const logical = mount !== '' && pathname.startsWith(mount + '/') ? pathname.slice(mount.length) : pathname
+  const oldComposer = /^\/chats\/(c_[a-zA-Z0-9_-]+)\/send$/.exec(logical)
+  if (oldComposer) return { path: mount + '/chats/' + oldComposer[1] + '/settings', search, hash: '#send' }
   const key = pageKey(pathname === mount ? '/' : logical)
   if (!key) return null
   const made = (route: string, nextSearch: string, nextHash: string): CanonicalTarget => ({
@@ -238,7 +240,7 @@ export function translateLegacyBookmark(source: LegacyBookmark, mount: string): 
         const idPart = slash === -1 ? rest : rest.slice(0, slash)
         const tail = slash === -1 ? 'settings' : rest.slice(slash + 1)
         if ((tail === 'settings' || tail === 'send') && CHAT_ID.test(idPart))
-          return made(`chats/${encodeURIComponent(idPart)}/${tail}`, search, '')
+          return made(`chats/${encodeURIComponent(idPart)}/settings`, search, tail === 'send' ? '#send' : '')
         return null
       }
       if (raw === '') return made('chats', search, '')

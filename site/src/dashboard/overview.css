@@ -281,3 +281,156 @@
     min-height: 210px;
   }
 }
+
+.operations-board {
+  grid-template-rows: auto auto;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  align-content: stretch;
+}
+.insight {
+  grid-column: span 2;
+  gap: clamp(10px, 1.65vh, 21px);
+}
+.insight-health,
+.insight-chats {
+  grid-column: span 3;
+}
+.insight-health[data-tone='attention'] {
+  background: radial-gradient(at 92% 0, #665733, transparent 75%), #383524;
+}
+.insight-health[data-tone='failed'] {
+  background: radial-gradient(at 92% 0, #794947, transparent 75%), #452929;
+}
+.insight-health[data-tone='unknown'] {
+  background: #384747;
+}
+.unit-matrix li[data-state='inactive'],
+.unit-matrix li[data-state='failed'] {
+  background: #ffd49525;
+}
+.unit-matrix li[data-state='inactive'] svg,
+.unit-matrix li[data-state='failed'] svg {
+  color: #ffe4ae;
+}
+.insight-chats .insight-heading {
+  color: inherit;
+  text-decoration: none;
+}
+.chat-strip-wrap {
+  position: relative;
+}
+.chat-status-bars {
+  height: clamp(38px, 5vh, 64px);
+  display: flex;
+  gap: min(3px, 0.4%);
+  overflow: hidden;
+  border-radius: 5px;
+}
+.chat-status-bars span {
+  flex: 1;
+  min-width: 0;
+  border-radius: 3px;
+  background: var(--chart-track);
+}
+.chat-status-bars [data-status='active'] {
+  background: var(--chart-ink);
+}
+.chat-status-bars [data-current='true'] {
+  box-shadow: inset 0 0 0 2px var(--text);
+  filter: brightness(1.3);
+}
+.chat-status-tip {
+  position: absolute;
+  bottom: 100%;
+  width: min(180px, 100%);
+  z-index: 2;
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--card-2);
+  color: var(--text);
+  box-shadow: 0 3px 20px #001c1a30;
+  font-size: 13px;
+}
+.traffic-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.traffic-summary strong {
+  font-size: clamp(24px, 2.4vw, 40px);
+  line-height: 1;
+  font-weight: 550;
+}
+.traffic-summary span,
+.traffic-axis {
+  font-size: 12px;
+  color: var(--muted);
+}
+.traffic-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: auto;
+}
+.traffic-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(7, minmax(0, 1fr));
+  aspect-ratio: 13/7;
+  width: 100%;
+  max-width: 350px;
+  grid-template-columns: repeat(13, 1fr);
+  gap: 3px;
+}
+.insight-traffic .traffic-grid button {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  min-height: 0;
+  aspect-ratio: auto;
+  border-radius: 3px;
+  background: var(--day-color, var(--chart-track));
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.traffic-grid [data-level='1'] {
+  --day-color: color-mix(in srgb, var(--chart-ink) 30%, var(--chart-track));
+}
+.traffic-grid [data-level='2'] {
+  --day-color: color-mix(in srgb, var(--chart-ink) 50%, var(--chart-track));
+}
+.traffic-grid [data-level='3'] {
+  --day-color: color-mix(in srgb, var(--chart-ink) 75%, var(--chart-track));
+}
+.traffic-grid [data-level='4'] {
+  --day-color: var(--chart-ink);
+}
+@container (max-width:780px) {
+  .operations-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .insight {
+    grid-column: auto;
+  }
+  .insight-traffic {
+    grid-column: 1/-1;
+  }
+}
+@container (max-width:600px) {
+  .operations-board {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.unit-matrix li[data-state='active'] {
+  background: rgb(145 236 204 / 0.13);
+}
+.unit-matrix li[data-state='inactive'] {
+  background: rgb(255 202 105 / 0.22);
+}
+.unit-matrix li[data-state='failed'] {
+  background: rgb(255 132 124 / 0.26);
+}

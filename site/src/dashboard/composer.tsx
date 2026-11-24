@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { get, post, OwnerRequestError } from '@/lib/api'
 import type { CoreChat } from '@/lib/core'
-import { chatHref } from './navigation'
+import SendPage from '@/pages/send'
+import { Segmented } from '@/components/ui'
 
 type Outcome = 'acknowledged' | 'refused' | 'unknown'
 type Receipt = { submissionId: string; outcome: Outcome }
@@ -18,6 +19,7 @@ function newSubmissionId() {
 }
 
 export default function Composer({ chat }: { chat: CoreChat }) {
+  const [mode, setMode] = useState<'text' | 'file'>('text')
   const [draft, setDraft] = useState('')
   const [review, setReview] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -42,7 +44,6 @@ export default function Composer({ chat }: { chat: CoreChat }) {
   const name = chat.label || (chat.type === 'group' ? 'Unnamed Group' : 'Unnamed Direct Chat')
   const text = draft.trim()
   const count = [...text].length
-  const back = chatHref('chats/' + encodeURIComponent(chat.chatId) + '/settings')
   async function lookup(stored: string) {
     if (checking.current) return
     checking.current = true
@@ -122,74 +123,85 @@ export default function Composer({ chat }: { chat: CoreChat }) {
   }
   return (
     <section className="composer">
-      <a href={back}>Chat Settings</a>
-      <h1 ref={heading} tabIndex={-1}>
-        {review ? 'Review Message' : 'Send Message'}
-      </h1>
-      <div className="compose-card">
-        <span>To</span>
-        <strong>{name}</strong>
-        <small>{chat.chatId}</small>
-        <small>{chat.type === 'group' ? 'WhatsApp Group' : 'WhatsApp Direct Chat'}</small>
-        <p>Sent as written to this chat.</p>
-        {!result &&
-          (review ? (
-            <>
-              <h3>Message</h3>
-              <p className="message-preview">{text}</p>
-            </>
-          ) : (
-            <>
-              <label htmlFor="message-text">Message</label>
-              <textarea
-                ref={input}
-                id="message-text"
-                readOnly={confirmed.current !== null}
-                rows={7}
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                aria-describedby="message-length"
-                aria-invalid={count > 4000}
-              />
-              <small id="message-length">{count.toLocaleString()} / 4,000 Characters</small>
-            </>
-          ))}
-        <p ref={receipt} tabIndex={-1} role="status">
-          {busy
-            ? 'Submitting…'
-            : result === 'acknowledged'
-              ? 'Gateway acknowledged the message.'
-              : result === 'refused'
-                ? 'The send was refused. Your draft is available to edit.'
-                : result === 'unknown'
-                  ? 'The send outcome is unknown.'
-                  : ''}
-        </p>
-        {error && <p role="alert">{error}</p>}
-        <div className="compose-actions">
-          {result === 'unknown' ? (
-            <button onClick={() => id.current && lookup(id.current)}>Check Status</button>
-          ) : result ? (
-            <button onClick={start}>{result === 'refused' ? 'Edit Draft' : 'New Message'}</button>
-          ) : review ? (
-            <>
-              <button disabled={busy} onClick={() => setReview(false)}>
-                Edit Message
-              </button>
-              <button disabled={busy} onClick={send}>
-                Confirm Send
-              </button>
-            </>
-          ) : (
-            <>
-              <a href={back}>Cancel</a>
-              <button disabled={!count || count > 4000} onClick={() => setReview(true)}>
-                Review Message
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+      <Segmented
+        options={['text', 'file'] as const}
+        labels={{ text: 'Text message', file: 'Attachment' }}
+        value={mode}
+        disabled={busy || review}
+        onChange={setMode}
+      />
+      {mode === 'file' ? (
+        <SendPage chat={chat} />
+      ) : (
+        <>
+          <h2 ref={heading} tabIndex={-1}>
+            {review ? 'Review Message' : 'Send Message'}
+          </h2>
+          <div className="compose-card">
+            <span>To</span>
+            <strong>{name}</strong>
+
+            <small>{chat.type === 'group' ? 'WhatsApp Group' : 'WhatsApp Direct Chat'}</small>
+            <p>Sent as written to this chat.</p>
+            {!result &&
+              (review ? (
+                <>
+                  <h3>Message</h3>
+                  <p className="message-preview">{text}</p>
+                </>
+              ) : (
+                <>
+                  <label htmlFor="message-text">Message</label>
+                  <textarea
+                    ref={input}
+                    id="message-text"
+                    readOnly={confirmed.current !== null}
+                    rows={7}
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    aria-describedby="message-length"
+                    aria-invalid={count > 4000}
+                  />
+                  <small id="message-length">{count.toLocaleString()} / 4,000 Characters</small>
+                </>
+              ))}
+            <p ref={receipt} tabIndex={-1} role="status">
+              {busy
+                ? 'Submitting…'
+                : result === 'acknowledged'
+                  ? 'Gateway acknowledged the message.'
+                  : result === 'refused'
+                    ? 'The send was refused. Your draft is available to edit.'
+                    : result === 'unknown'
+                      ? 'The send outcome is unknown.'
+                      : ''}
+            </p>
+            {error && <p role="alert">{error}</p>}
+            <div className="compose-actions">
+              {result === 'unknown' ? (
+                <button onClick={() => id.current && lookup(id.current)}>Check Status</button>
+              ) : result ? (
+                <button onClick={start}>{result === 'refused' ? 'Edit Draft' : 'New Message'}</button>
+              ) : review ? (
+                <>
+                  <button disabled={busy} onClick={() => setReview(false)}>
+                    Edit Message
+                  </button>
+                  <button disabled={busy} onClick={send}>
+                    Confirm Send
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button disabled={!count || count > 4000} onClick={() => setReview(true)}>
+                    Review Message
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </section>
   )
 }

@@ -38,18 +38,16 @@ lives in the sidebar. The active sidebar indicator uses the ObsidianUI Dashboard
 The console has seven destinations sharing one shell: /overview, /chats, /characters,
 /library, /automations, /markets, and /system. Overview is the first page at /overview:
 health status, active and pending chats, the next routine, and one compact Library summary
-in a responsive, full-width bento with service readiness, chat distribution, a scheduled agenda and library composition. Overview is compact and read-only and each card is
-clickable, leading with one dominant diagnostic and smaller paired tools beside it.
+in a responsive, full-width bento with service readiness, chat distribution, a scheduled agenda library composition and a thirteen-week inbound traffic calendar. Overview is compact and read-only with linked diagnostic headings, leading with one dominant diagnostic and smaller paired tools beside it.
 
-Chats is a directory with per-chat settings at `/chats/:id/settings` across five groups:
-Character, Reply, Features, Quiet Hours, and Access. A local value overrides the shared
-default, and Use Default removes that override and returns the chat to inherited behavior.
-The manual composer at `/chats/:id/send` is owner-authored plain text for one known group
+Chats is a directory with per-chat settings at `/chats/:id/settings` across six tabs:
+Character, Reply, Features, Quiet Hours, Access, and Send Message. A local value overrides the shared
+default, and Use Defaults removes that override and returns the chat to inherited behavior.
+The manual composer in `/chats/:id/settings#send` is owner-authored plain text for one known group
 or direct message with a 4000-code-point maximum. It is manual text sent without a model
 call.
 
-Characters is a searchable, filterable, sortable persona directory with Create and Import
-actions and up to five compact persona cards per row. The three Website cover illustrations share one crop and caption layout. Per-persona tool wording is edited at `/characters/:id/footer`,
+Characters is a searchable, filterable, sortable persona directory with a Create dialog for Agent, Manual and Import and up to five compact persona cards per row and three rows per page. The three Website cover illustrations share one crop and caption layout. Per-persona tool wording is edited at `/characters/:id/footer`,
 where labels run 1 to 40 UTF-16 code units and each persona holds up to 50 expressions. The
 WhatsApp simulator opens in a new tab so previewing never loses editor state. Library holds
 items and their graph, Automations pairs routines with session notices, Markets groups

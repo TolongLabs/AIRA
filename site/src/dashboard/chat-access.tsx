@@ -1,3 +1,4 @@
+import { core } from '@/lib/core'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Badge, Button, Field, Input } from '@/components/ui'
 
@@ -13,6 +14,7 @@ export type ChatAccessValue = 'all' | string[]
 export interface ChatAccessProps {
   /** The authoritative value from the core. */
   current: ChatAccessValue
+  chatId: string
   chatType: 'dm' | 'group'
   /** True when the value is inherited from above this chat. */
   inherited: boolean
@@ -63,7 +65,7 @@ function impactFor(current: ChatAccessValue, next: ChatAccessValue | null): stri
   return `${parts.join(', ')}. Refused senders get no reply; the listed ones are answered.`
 }
 
-export function ChatAccess({ current, chatType, inherited, save }: ChatAccessProps) {
+export function ChatAccess({ current, chatId, chatType, inherited, save }: ChatAccessProps) {
   const groupName = useId()
   const [editing, setEditing] = useState(false)
   const [mode, setMode] = useState<'all' | 'list'>(current === 'all' ? 'all' : 'list')
@@ -74,6 +76,22 @@ export function ChatAccess({ current, chatType, inherited, save }: ChatAccessPro
   const [clearing, setClearing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const [observed, setObserved] = useState<{ id: string; label: string | null }[]>([])
+  useEffect(() => {
+    if (!editing || mode !== 'list') return
+    let live = true
+    core.senders(chatId).then(
+      (r) => {
+        if (live) setObserved(r.senders)
+      },
+      () => {
+        if (live) setObserved([])
+      }
+    )
+    return () => {
+      live = false
+    }
+  }, [chatId, editing, mode])
   const cancelRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -101,12 +119,24 @@ export function ChatAccess({ current, chatType, inherited, save }: ChatAccessPro
   }
 
   function add() {
-    const problem = senderIdProblem(text, listed)
-    if (problem) {
-      setError(problem)
+    const candidates = text
+      .split(/[,;\n]+/)
+      .map((id) => id.trim())
+      .filter(Boolean)
+    const next = [...listed]
+    for (const candidate of candidates) {
+      const problem = senderIdProblem(candidate, next)
+      if (problem) {
+        setError(problem)
+        return
+      }
+      next.push(candidate)
+    }
+    if (!candidates.length) {
+      setError('Enter a sender id.')
       return
     }
-    setListed((prev) => [...prev, text.trim()])
+    setListed(next)
     setText('')
     setError(null)
   }
@@ -210,10 +240,32 @@ export function ChatAccess({ current, chatType, inherited, save }: ChatAccessPro
               Only listed senders
             </label>
           </fieldset>
+          {mode === 'list' && observed.some((sender) => !listed.includes(sender.id)) && (
+            <div className="access-observed">
+              <strong>Recent senders</strong>
+              <div>
+                {observed
+                  .filter((sender) => !listed.includes(sender.id))
+                  .map((sender) => (
+                    <Button
+                      key={sender.id}
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => {
+                        setListed([...listed, sender.id])
+                        setError(null)
+                      }}
+                    >
+                      {sender.label || sender.id} +
+                    </Button>
+                  ))}
+              </div>
+            </div>
+          )}
           {mode === 'list' && (
             <Field
               label="Sender ids"
-              hint="Ids match exactly, including case. A sender who is not listed is refused at admission: no reply is sent. Applies from the next turn."
+              hint="Paste one sender ID or a comma-separated list. Only listed senders can start a turn."
             >
               {listed.length > 0 && (
                 <div className="flex flex-wrap gap-2" aria-label="Listed senders">
@@ -254,7 +306,7 @@ export function ChatAccess({ current, chatType, inherited, save }: ChatAccessPro
                   className="min-w-0 flex-1 basis-40 font-mono text-[0.85rem]"
                   aria-label="Add a sender id"
                   aria-invalid={error ? true : undefined}
-                  placeholder="sender id"
+                  placeholder="Sender IDs, separated by commas"
                   autoComplete="off"
                   spellCheck={false}
                 />
@@ -273,7 +325,7 @@ export function ChatAccess({ current, chatType, inherited, save }: ChatAccessPro
             <Button
               size="sm"
               variant="primary"
-              disabled={busy || unchanged}
+              disabled={busy || unchanged || (mode === 'list' && !!text.trim())}
               onClick={() => {
                 setNotice(null)
                 setClearing(false)
@@ -293,7 +345,7 @@ export function ChatAccess({ current, chatType, inherited, save }: ChatAccessPro
                   setReviewing(true)
                 }}
               >
-                Use inherited
+                Use Defaults
               </Button>
             )}
             <Button size="sm" variant="ghost" disabled={busy} onClick={cancel}>

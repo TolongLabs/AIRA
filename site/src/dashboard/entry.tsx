@@ -23,6 +23,7 @@ import { translateLegacyBookmark } from './legacy-bookmarks'
 import { dashboardHref, destinations, previewMount } from './navigation'
 import { WorkspaceErrorBoundary } from './workspace-error'
 import Appearance, { Backdrop } from './appearance'
+import { ToastHost } from '@/lib/hooks'
 import { Loading } from './loading'
 import { scrollSurface } from './scroll'
 import { Overview } from './overview'
@@ -271,7 +272,6 @@ function Dashboard() {
         {mobile && path === 'chats' && (
           <nav aria-label="Chat tools" className="drawer-chat-tools">
             <a href={dashboardHref('chats/defaults')}>Chat Defaults</a>
-            <a href={dashboardHref('chats/files')}>Send File</a>
           </nav>
         )}
         <button
@@ -292,6 +292,7 @@ function Dashboard() {
           Skip to content
         </a>
         <Backdrop />
+        <ToastHost />
         <aside>{nav(false)}</aside>
         <header>
           <button aria-label="Open navigation" onClick={() => drawer.current?.showModal()}>
@@ -305,56 +306,52 @@ function Dashboard() {
           {nav(true)}
         </dialog>
         <main id="workspace" data-page={path} tabIndex={-1}>
-          {path !== 'system/appearance' &&
-            !chatRoute &&
-            !edit &&
-            path !== 'characters/new' &&
-            path !== 'characters/import' && (
-              <div className="workspace-heading">
-                <h1>{title}</h1>
-                <div ref={setToolsHost} className="workspace-tools">
-                  {section === 'automations' && (
-                    <WorkspaceTabs
-                      label="Automation views"
-                      entries={[
-                        {
-                          label: 'Routines',
-                          href: dashboardHref('automations/routines'),
-                          active: !path.startsWith('automations/notices')
-                        },
-                        {
-                          label: 'Session Notices',
-                          href: dashboardHref('automations/notices'),
-                          active: path.startsWith('automations/notices')
-                        }
-                      ]}
-                    />
-                  )}
-                  {section === 'system' && path !== 'system/appearance' && (
-                    <WorkspaceTabs
-                      label="System views"
-                      entries={[
-                        {
-                          label: 'Service Health',
-                          href: dashboardHref('system/health'),
-                          active: path === 'system' || path === 'system/health'
-                        },
-                        {
-                          label: 'Host Settings',
-                          href: dashboardHref('system/settings'),
-                          active: path === 'system/settings'
-                        },
-                        {
-                          label: 'Appearance',
-                          href: dashboardHref('system/appearance'),
-                          active: path === 'system/appearance'
-                        }
-                      ]}
-                    />
-                  )}
-                </div>
+          {!chatRoute && !edit && path !== 'characters/new' && path !== 'characters/import' && (
+            <div className="workspace-heading">
+              <h1>{title}</h1>
+              <div ref={setToolsHost} className="workspace-tools">
+                {section === 'automations' && (
+                  <WorkspaceTabs
+                    label="Automation views"
+                    entries={[
+                      {
+                        label: 'Routines',
+                        href: dashboardHref('automations/routines'),
+                        active: !path.startsWith('automations/notices')
+                      },
+                      {
+                        label: 'Session Notices',
+                        href: dashboardHref('automations/notices'),
+                        active: path.startsWith('automations/notices')
+                      }
+                    ]}
+                  />
+                )}
+                {section === 'system' && (
+                  <WorkspaceTabs
+                    label="System views"
+                    entries={[
+                      {
+                        label: 'Service Health',
+                        href: dashboardHref('system/health'),
+                        active: path === 'system' || path === 'system/health'
+                      },
+                      {
+                        label: 'Host Settings',
+                        href: dashboardHref('system/settings'),
+                        active: path === 'system/settings'
+                      },
+                      {
+                        label: 'Appearance',
+                        href: dashboardHref('system/appearance'),
+                        active: path === 'system/appearance'
+                      }
+                    ]}
+                  />
+                )}
               </div>
-            )}
+            </div>
+          )}
           <WorkspaceToolsContext.Provider value={toolsHost}>
             <Suspense key={section} fallback={<Loading layout="cards">Loading {title}…</Loading>}>
               <WorkspaceErrorBoundary key={address}>
@@ -362,7 +359,7 @@ function Dashboard() {
                   {path === 'overview' ? (
                     <Overview />
                   ) : chatRoute ? (
-                    <ChatSettings selectedId={chatRoute[1]} compose={chatRoute[2] === 'send'} />
+                    <ChatSettings selectedId={chatRoute[1]} />
                   ) : path === 'characters/new' || path === 'characters/import' || edit ? (
                     <StudioEditor
                       mode={edit ? 'edit' : path === 'characters/new' ? 'create' : 'import'}

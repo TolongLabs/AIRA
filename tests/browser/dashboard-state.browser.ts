@@ -87,7 +87,7 @@ for (const engine of [chromium, firefox, webkit]) {
         await pageA.getByPlaceholder('my-character').fill(COPY_ID)
         await pageA.getByRole('button', { name: 'Copy to editable pack' }).click()
         await pageA.waitForURL('**/characters/' + COPY_ID + '/edit')
-        // The editor navigation appears while the protected gallery request is still loading.
+        await pageA.getByRole('link', { name: 'Expressions', exact: true }).click()
         await pageA
           .getByRole('region', { name: 'Expression gallery' })
           .getByText('No expressions yet.', { exact: true })
@@ -125,7 +125,7 @@ for (const engine of [chromium, firefox, webkit]) {
         await pageB
           .getByText('Context size', { exact: true })
           .locator('xpath=../..')
-          .getByRole('button', { name: 'Use inherited' })
+          .getByRole('button', { name: 'Use Defaults' })
           .click()
         await pageB.getByText('This chat now inherits it.').waitFor()
         await pageB.getByText('built-in default').first().waitFor()

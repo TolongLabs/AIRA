@@ -12,6 +12,8 @@ export interface Resolved {
 }
 
 export interface CoreChat {
+  deliveryTarget?: string | null
+  hasPortrait?: boolean
   settingsRevision?: string
   chatId: string
   waId: string
@@ -34,6 +36,7 @@ export interface FooterKindInfo {
 }
 
 export interface CoreCharacter {
+  hasPortrait?: boolean
   id: string
   displayName: string
   aliases?: string[]
@@ -110,6 +113,13 @@ function put<T>(path: string, body: unknown): Promise<T> {
 
 export const core = {
   health: () => call<CoreHealth>('/api/health'),
+  senders: (id: string) =>
+    call<{ senders: { id: string; label: string | null }[] }>('/api/chats/' + encodeURIComponent(id) + '/senders'),
+  activity: () => call<{ start: string; today: string; counts: { day: string; count: number }[] }>('/api/activity'),
+  profileImage: (kind: 'chats' | 'characters', id: string) =>
+    call<{ image: string | null }>(`/api/${kind}/${encodeURIComponent(id)}/profile-image`),
+  saveImage: (kind: 'chats' | 'characters', id: string, image: string, mime: string) =>
+    put<{ saved: boolean }>(`/api/${kind}/${encodeURIComponent(id)}/profile-image`, { image, mime }),
   tools: () => call<CoreToolCatalog>('/api/tools'),
   chats: () => call<{ chats: CoreChat[] }>('/api/chats'),
   characters: () =>

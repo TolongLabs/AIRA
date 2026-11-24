@@ -419,7 +419,7 @@ function GraphCanvas({ focusId }: { focusId?: string } = {}) {
       for (const n of labelled) {
         if (n.deg < 3) continue
         const px = Math.round(12 + Math.min(6, n.deg * 0.5))
-        ctx.font = `${px}px system-ui, -apple-system, sans-serif`
+        ctx.font = `${px}px Outfit, sans-serif`
         ctx.textAlign = 'center'
         ctx.textBaseline = 'bottom'
         ctx.lineWidth = 3

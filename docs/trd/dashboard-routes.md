@@ -145,6 +145,9 @@ Only dates and aggregate counts leave the protected activity endpoint.
 Create opens a choice of agent instructions, manual entry or JSON import. Catalogue pages hold three rows at
 the current column count. Persona editor tabs show one section and retain unsaved fields across tab changes.
 The simulator uses the harness conversation layout and runs synthetic mood matching entirely in the browser.
+JSON import uses the document ID, card ID or filename in that order. Invalid input keeps the current draft.
+Empty opener, ending and face lists are valid, as in the core mood schema and the shipped example.
+A direct visit opens a saved persona with a selector. An editor-launched preview uses the unsaved draft.
 
 The selected chat's Send Message tab holds text and attachment workflows. The host file recipient must match
 the core's canonical gateway target or a unique, explicitly mapped phone number for a phone-addressed DM.

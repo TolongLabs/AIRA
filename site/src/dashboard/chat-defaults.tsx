@@ -205,7 +205,7 @@ function DefaultsRow({
         </span>
         {canClear && onClear && (
           <Button size="sm" variant="ghost" className="ml-auto" disabled={busy} onClick={onClear}>
-            Use inherited
+            Use Defaults
           </Button>
         )}
       </div>
@@ -580,7 +580,7 @@ function DefaultsForm({
           <b>Settings changed in another session</b>
           <p>
             Your draft for <span className="font-mono">{conflict.key}</span>:{' '}
-            {conflict.value === null ? 'Use inherited' : JSON.stringify(conflict.value)}
+            {conflict.value === null ? 'Use Defaults' : JSON.stringify(conflict.value)}
           </p>
           {conflict.revision === snapshot.revision ? (
             <div className="chat-defaults-conflict-actions">

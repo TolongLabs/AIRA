@@ -1,10 +1,13 @@
 import { Loading } from '@/dashboard/loading'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react'
 import { core, type CoreCharacter } from '@/lib/core'
 import { Input } from '@/components/ui'
 import { FormSelect } from './form-select'
 import { WorkspaceTools } from './workspace-tools'
 import { studioHref, studioPaths } from './studio-client'
+import { CreatePersona } from './studio-create'
+import { motifs as covers, ProfileImage } from './profile-image'
+import './selection-table.css'
 import './studio.css'
 
 type SourceFilter = 'all' | 'repository' | 'data'
@@ -15,9 +18,24 @@ function matches(row: CoreCharacter, query: string): boolean {
   return hay.includes(query.trim().toLowerCase())
 }
 
-const covers = ['tidekeeper', 'orbit-guide', 'signal-finch'] as const
-
 export default function Catalogue() {
+  const catalogue = useRef<HTMLElement>(null)
+  const [columns, setColumns] = useState(5)
+  const [page, setPage] = useState(() =>
+    Math.max(1, Math.floor(Number(new URLSearchParams(location.search).get('page')) || 1))
+  )
+  useLayoutEffect(() => {
+    const el = catalogue.current
+    if (!el) return
+    const update = () => {
+      const w = el.clientWidth
+      setColumns(w >= 780 ? 5 : w >= 560 ? 3 : 2)
+    }
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
   const [rows, setRows] = useState<CoreCharacter[] | null>(null)
   const [faults, setFaults] = useState<{ id: string; reason: string }[]>([])
   const [error, setError] = useState(false)
@@ -46,6 +64,7 @@ export default function Catalogue() {
   useEffect(() => {
     const url = new URL(location.href)
     for (const [key, value] of [
+      ['page', page > 1 ? String(page) : ''],
       ['search', query],
       ['source', source === 'all' ? '' : source],
       ['sort', sort === 'name' ? '' : sort]
@@ -54,7 +73,7 @@ export default function Catalogue() {
       else url.searchParams.delete(key)
     }
     history.replaceState(null, '', url)
-  }, [query, source, sort])
+  }, [page, query, source, sort])
 
   const artwork = useMemo(
     () =>
@@ -77,15 +96,13 @@ export default function Catalogue() {
     return list
   }, [rows, query, source, sort])
 
+  const pageSize = columns * 3
+  const pages = Math.max(1, Math.ceil(visible.length / pageSize))
+  const current = Math.min(page, pages)
   return (
-    <section className="studio-catalogue" aria-label="Character studio">
+    <section ref={catalogue} className="studio-catalogue" aria-label="Character studio">
       <WorkspaceTools>
-        <a className="workspace-tool" data-primary href={studioHref(studioPaths.create)}>
-          Create
-        </a>
-        <a className="workspace-tool" href={studioHref(studioPaths.import)}>
-          Import
-        </a>
+        <CreatePersona />
       </WorkspaceTools>
       <div className="studio-catalogue-meta">
         <span>Persona Catalogue</span>
@@ -101,12 +118,18 @@ export default function Catalogue() {
           aria-label="Search personas"
           value={query}
           placeholder="Search Personas"
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => {
+            setQuery(event.target.value)
+            setPage(1)
+          }}
         />
         <FormSelect<SourceFilter>
           label="Filter personas"
           value={source}
-          onChange={setSource}
+          onChange={(v) => {
+            setSource(v)
+            setPage(1)
+          }}
           options={[
             { value: 'all', label: 'All sources' },
             { value: 'data', label: 'Editable' },
@@ -116,7 +139,10 @@ export default function Catalogue() {
         <FormSelect<SortKey>
           label="Sort personas"
           value={sort}
-          onChange={setSort}
+          onChange={(v) => {
+            setSort(v)
+            setPage(1)
+          }}
           options={[
             { value: 'name', label: 'Name' },
             { value: 'source', label: 'Source' },
@@ -133,10 +159,16 @@ export default function Catalogue() {
         <>
           {!visible.length && <p>No matching characters.</p>}
           <ul className="studio-grid">
-            {visible.map((row) => (
+            {visible.slice((current - 1) * pageSize, current * pageSize).map((row) => (
               <li key={row.id} className="studio-card">
                 <a className="studio-card-link" href={studioHref(studioPaths.edit(row.id))}>
-                  <img className="studio-art" alt="" src={`/app/dashboard/${artwork.get(row.id)}.svg`} />
+                  <ProfileImage
+                    kind="characters"
+                    id={row.id}
+                    configured={row.hasPortrait}
+                    className="studio-art"
+                    fallback={<img className="studio-art" alt="" src={`/app/dashboard/${artwork.get(row.id)}.svg`} />}
+                  />
                   <div className="studio-card-meta">
                     <span className="studio-card-name">{row.displayName}</span>
                     <span>
@@ -155,6 +187,23 @@ export default function Catalogue() {
               </li>
             ))}
           </ul>
+          {pages > 1 && (
+            <nav className="selection-pager" aria-label="Catalogue pages">
+              <span aria-live="polite">
+                {(current - 1) * pageSize + 1}–{Math.min(current * pageSize, visible.length)} of {visible.length}{' '}
+                Personas
+              </span>
+              <button aria-label="Previous page" disabled={current === 1} onClick={() => setPage(current - 1)}>
+                ‹
+              </button>
+              <span aria-current="page" className="selection-current">
+                {current}
+              </span>
+              <button aria-label="Next page" disabled={current === pages} onClick={() => setPage(current + 1)}>
+                ›
+              </button>
+            </nav>
+          )}
           {!!faults.length && (
             <section className="studio-faults" aria-label="Packs that failed to load">
               <h2>Could not load</h2>
