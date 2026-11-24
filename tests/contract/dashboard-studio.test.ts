@@ -1,4 +1,4 @@
-import { copyFileSync } from 'node:fs'
+import { copyFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
@@ -90,6 +90,12 @@ it('edits a copy through the protected studio endpoint and rejects a stale draft
     expect(full.expressions).toHaveLength(50)
     expect((await upload('overflow', full.revision)).status).toBe(409)
     expect(await readGallery()).toEqual(full)
+    writeFileSync(join(dataDir, 'characters', 'sample-copy', 'extra.txt'), 'fixture')
+    expect((await fetch(url, { headers })).status).toBe(400)
+    const docs = await fetch(url + '?view=documents', { headers })
+    expect(docs.status).toBe(200)
+    expect(await docs.json()).toMatchObject({ writable: false, card: { id: 'sample-copy', displayName: 'Blue Comet' } })
+    expect((await fetch(url + '?view=documents')).status).toBe(401)
   } finally {
     host.closeAllConnections()
     await new Promise<void>((resolve) => host.close(() => resolve()))

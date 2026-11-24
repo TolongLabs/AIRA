@@ -258,6 +258,10 @@ function readTreeBytes(dir: string, repository = false): TreeBytes {
   if (dirStat.isSymbolicLink()) throw new StudioPackError('invalid_body', 'pack must not be a symlink', 400)
   if (!dirStat.isDirectory()) throw new StudioPackError('pack_unparseable', 'pack is not a directory', 409)
   scanStickersGuard(dir, repository)
+  return readDocumentBytes(dir)
+}
+
+function readDocumentBytes(dir: string): TreeBytes {
   return {
     'card.yml': safeReadFile(dir, 'card.yml', MAX_YAML_BYTES),
     'moods.yml': safeReadFile(dir, 'moods.yml', MAX_YAML_BYTES),
@@ -760,6 +764,24 @@ export function getStudioPack(deps: ReadDeps, id: string): StudioPackRead {
     card: docs.card,
     moods: docs.moods,
     lines: docs.lines
+  }
+}
+
+/** File browsing can show validated documents from a loaded pack that Studio cannot safely replace. */
+export function getProfileDocuments(deps: ReadDeps, id: string): StudioPackRead {
+  try {
+    return getStudioPack(deps, id)
+  } catch (error) {
+    if (
+      !(error instanceof StudioPackError) ||
+      !['invalid_body', 'too_large'].includes(error.code) ||
+      deps.packs().packs.get(id)?.source !== 'data'
+    )
+      throw error
+    const located = locatePack(deps, id)
+    assertPathSafe(deps.paths.root, located.dir, 'pack')
+    const tree = readDocumentBytes(located.dir)
+    return { id, source: located.source, writable: false, revision: revisionOf(id, tree, []), ...parseTree(id, tree) }
   }
 }
 
