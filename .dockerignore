@@ -1,6 +1,7 @@
 # The build context is an allow-list so secrets, local data, and build output stay out of the image.
 *
 !package.json
+!LICENSE
 !bun.lock
 !tsconfig.json
 !tsconfig.build.json
