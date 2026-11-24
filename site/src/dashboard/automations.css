@@ -201,3 +201,10 @@
     min-width: min(14rem, 100%);
   }
 }
+
+.notice-route-form {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+}
+.notice-route-form .min-w-56 {
+  min-width: 0;
+}

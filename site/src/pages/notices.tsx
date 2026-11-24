@@ -521,7 +521,7 @@ export default function NoticesPage() {
 
               <div className="automations-panel">
                 <p className="automations-kicker">Add a route</p>
-                <div className="grid items-start gap-4 sm:grid-cols-[1fr_1fr_auto]">
+                <div className="notice-route-form grid items-start gap-4">
                   <Field
                     label="when this machine finishes"
                     hint={machines.length ? 'listed once a machine has reported' : 'none yet — install the hook first'}
