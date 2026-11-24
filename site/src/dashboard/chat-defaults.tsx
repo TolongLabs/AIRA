@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Button, Card, Empty, Field, Input, Picker, Section, Segmented, Toggle } from '@/components/ui'
 import { dashboardHref } from '@/dashboard/navigation'
 import { authHeaders, requestToken } from '@/lib/api'
-import { CHAT_FEATURE_DEFINITIONS } from '@/lib/chat-view-model'
+import { CHAT_FEATURE_DEFINITIONS, personaChoices } from '@/lib/chat-view-model'
 import { CoreError, core, reasonText, type CoreCharacter, type CoreChat, type Resolved } from '@/lib/core'
 import { toast, Toaster } from '@/lib/hooks'
 import { cn } from '@/lib/utils'
@@ -373,7 +373,7 @@ function CharacterRow({
   return (
     <Picker
       ariaLabel="character"
-      options={characters.map((c) => ({
+      options={personaChoices(characters, current).map((c) => ({
         value: c.id,
         label: c.displayName,
         hint: `${c.id} · ${c.source === 'data' ? 'uploaded' : 'built in'}`
