@@ -117,8 +117,8 @@ async function studioFetch<T>(method: string, path: string, body?: unknown): Pro
 }
 
 /** GET /owner-api/core/characters/:id/studio — id, source, writability, revision, documents. */
-export function getStudio(id: string): Promise<StudioDoc> {
-  return studioFetch<StudioDoc>('GET', `characters/${encodeURIComponent(id)}/studio`)
+export function getStudio(id: string, view?: 'documents'): Promise<StudioDoc> {
+  return studioFetch<StudioDoc>('GET', `characters/${encodeURIComponent(id)}/studio` + (view ? '?view=documents' : ''))
 }
 
 /** PUT /owner-api/core/characters/:id/studio — a merge patch of the changed leaves, with `null` tombstones. */

@@ -20,6 +20,7 @@ import { dispatchGet, isKnownRoute, type SiteApiDeps } from './routes.js'
 import { handleStudioExpressions } from './studio-expression-routes.js'
 import {
   createStudioPack,
+  getProfileDocuments,
   getStudioPack,
   StudioPackError,
   studioExpressionStore,
@@ -150,7 +151,10 @@ async function serveStudio(
   id?: string
 ) {
   try {
-    if (id && request.method === 'GET') return json(response, 200, getStudioPack(options, id))
+    if (id && request.method === 'GET') {
+      const documents = new URL(request.url ?? '/', 'http://localhost').searchParams.get('view') === 'documents'
+      return json(response, 200, documents ? getProfileDocuments(options, id) : getStudioPack(options, id))
+    }
     if (request.method !== (id ? 'PUT' : 'POST')) return json(response, 405, { error: 'method_not_allowed' })
     const data = await readJson(request, 768 * 1024)
     if ('error' in data) return json(response, data.status, { error: data.error })

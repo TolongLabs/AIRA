@@ -56,7 +56,7 @@ export default function ProfileFiles({ active }: { active: boolean }) {
     let live = true
     setDoc(null)
     setIssue('')
-    getStudio(id).then(
+    getStudio(id, 'documents').then(
       (d) => {
         if (live) {
           const src = stringify(d[file])
@@ -88,7 +88,7 @@ export default function ProfileFiles({ active }: { active: boolean }) {
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw Error('mapping')
       const patch = diffDocs(doc, { ...doc, [file]: parsed }).patch
       const receipt = await putStudio(id, doc.revision, patch)
-      const fresh = await getStudio(id)
+      const fresh = await getStudio(id, 'documents')
       if (fresh.revision !== receipt.revision) throw new StudioError(409, 'stale_revision')
       const normalized = stringify(fresh[file])
       setDoc(fresh)
@@ -147,7 +147,12 @@ export default function ProfileFiles({ active }: { active: boolean }) {
         {doc ? (
           <>
             <p>
-              {doc.writable ? 'Editable data pack' : 'Read-only built-in pack'} · {doc.card.displayName}
+              {doc.writable
+                ? 'Editable data pack'
+                : doc.source === 'repository'
+                  ? 'Read-only built-in pack'
+                  : 'Read-only data pack · Studio cannot replace the full pack safely'}{' '}
+              · {doc.card.displayName}
             </p>
             <Textarea
               aria-label={file + '.yml content'}

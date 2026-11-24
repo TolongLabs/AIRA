@@ -159,6 +159,9 @@ Images are dashboard portraits stored in the data volume separately from packs a
 base64 WebP. Writes normalize a static PNG, JPEG or WebP up to 4 MiB into a square WebP for an existing
 target. Directory records indicate when a portrait exists. Missing portraits use chat glyphs or catalogue motifs.
 
-System Profile Files browses the loaded core packs and their card, moods and lines documents. Edits use Studio's
+System Profile Files browses the loaded core packs and their card, moods and lines documents. The protected Studio
+GET with `?view=documents` can show these validated files read-only when a loaded data pack has unsupported assets.
+It reads only the three named YAML files under the pack root. The normal Studio writer still checks the full tree.
+Edits use Studio's
 revision-checked writer. Device appearance uses actual finish samples and shares the System header. Toasts appear
 at bottom center with a frosted surface. Clearing an override is labelled Use Defaults.
