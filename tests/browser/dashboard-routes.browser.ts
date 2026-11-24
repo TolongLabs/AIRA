@@ -853,6 +853,10 @@ it('reads measured traffic and provisions the selected chat with portraits and a
     const page = await browser.newPage({ viewport: { width: 1440, height: 810 } })
     await auth(page, fixture.origin)
     await expect(page.locator('.insight-health')).toHaveAttribute('data-tone', 'attention')
+    const chatSurface = await page
+      .locator('.insight-chats')
+      .evaluate((el) => el.ownerDocument.defaultView!.getComputedStyle(el).background)
+    await expect(page.locator('.insight-health')).toHaveCSS('background', chatSurface)
     await expect(page.getByText('Inactive', { exact: true })).toBeVisible()
     await expect(page.locator('.traffic-summary strong')).toHaveText(String(total))
     const cells = page.locator('.traffic-grid button')

@@ -34,9 +34,6 @@
   height: 42px;
   width: 42%;
 }
-.insight-health .workspace-loading i {
-  background: #40675e;
-}
 @keyframes workspace-pulse {
   to {
     opacity: 0.48;
