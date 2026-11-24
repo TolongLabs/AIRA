@@ -1,21 +1,480 @@
-MIT License
+# TolongLabs Proprietary Source-Available Licence 1.0
 
-Copyright (c) 2026 TolongLabs
+Copyright (c) 2026 TolongLabs. All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+## 1. What this licence is
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+This licence applies to the software, source code, documentation, designs and other material
+in this repository, and every version of them published with this licence (together, the
+**Work**).
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Any part of the repository that is identified as owned by someone else (for example in a NOTICE
+or third-party licence file) stays under its own licence, and this licence does not apply to it.
+
+The Work is proprietary. Publishing it on GitHub or anywhere else does not make it open
+source, and does not give anyone any right except the rights written in this licence.
+
+By downloading, copying, running, modifying or sharing the Work, or making any other use of it
+that needs a licence, you accept this licence. If you have not accepted it, you have no licence,
+and any of those acts may infringe copyright (clause 10.1).
+
+## 2. Definitions
+
+**TolongLabs** means the Founders acting together under the name "TolongLabs", and includes
+any company or other body to which the Founders later transfer the rights in the Work.
+
+**Founders** means the founders of TolongLabs recorded in its private schedule (clause 3.1),
+or any person who replaces one of them under the Founders' private arrangements.
+
+**Council** means the governing council (board) of TolongLabs, made up of the Founders. The Council
+decides under the Founders' private arrangements, which are confidential and are not part of
+this licence. A written notice issued in the name of the Council is conclusive evidence, as
+between TolongLabs and you, that the Council has made the decision stated in it.
+
+**Author** means a person listed in the AUTHORS file of this repository whose listing the
+Council has approved. **Co-author** means an Author who contributed jointly with another Author.
+
+**Contribution** means anything a person submits for inclusion in the Work, including code,
+text, images, comments, pull requests and patches.
+
+**Disclosed Materials** means copies of any part of the Work, and other TolongLabs materials
+such as pitch decks, demos, prototypes, specifications, designs and data, that TolongLabs gives
+you outside this repository in connection with a possible business deal.
+
+**Personal Use** means use by an individual for their own study, learning, hobby projects or
+private, non-commercial purposes.
+
+**Academic Use** means use for study, teaching or non-commercial research at a school, college,
+university or research institute, including publishing academic papers or theses about the
+Work.
+
+**Commercial Use** means any use of the Work, or of anything made from it, that is intended
+for or directed toward commercial advantage or monetary compensation, whether direct or
+indirect. It includes, without limitation: selling, licensing or renting the Work; using it to
+provide a paid or advertising-funded product or service; using it inside a business,
+including internal business operations; using it in work done for a client or employer; and
+using it to train, fine-tune or evaluate a commercial artificial intelligence system.
+Research or teaching that is paid for or sponsored by a commercial organisation in return for
+rights in the results, or that is aimed at a commercial product, is Commercial Use.
+
+**Financial Year** means the period from 1 January to 31 December, or any other accounting
+period the Council adopts in writing and tells the Authors about.
+
+**You** means any person or organisation that receives or uses the Work, other than TolongLabs.
+
+## 3. Ownership and authorship
+
+3.1 All copyright and other intellectual property rights in the Work, in every country, belong
+to TolongLabs, except where a written document issued by the Council says otherwise. Until
+TolongLabs is registered as a separate legal entity, those rights are owned jointly by the
+Founders as partners carrying on business as TolongLabs. The Founders' full legal names are
+recorded in a private schedule kept by TolongLabs and will be produced in any proceedings where
+they are needed.
+
+3.2 TolongLabs alone decides who may use the Work, for what purpose, in which field, in which
+territory and on what terms. TolongLabs may grant, refuse, limit, condition or end any
+permission for any field of use.
+
+3.3 The names of the Authors and Co-authors are recorded in the AUTHORS file. You must not
+remove, hide or change any copyright notice, author name or licence notice in the Work.
+
+3.4 Nothing in this licence transfers ownership of the Work, or any part of it, to you.
+
+3.5 A licence or permission given by one Founder alone, and not issued in the name of the
+Council, has no effect between you and TolongLabs.
+
+## 4. What you may do without a separate licence
+
+4.1 Free of charge and without asking, you may view, run, copy and modify the Work for:
+
+(a) Personal Use;
+
+(b) Academic Use; and
+
+(c) evaluating, for up to 30 days, whether to ask TolongLabs for a commercial licence,
+
+in each case with no Commercial Use. For Academic Use, you may also share copies with your own
+students, teachers and research colleagues, provided this licence goes with every copy and
+nobody pays for them. Evaluation under paragraph (c) is not Commercial Use, but it does not
+include production use, delivery to a client or any use that earns money.
+
+4.2 Except as allowed to an Author by a consent under clause 6, you must not, without TolongLabs' prior
+written licence:
+
+(a) make any Commercial Use of the Work;
+
+(b) distribute, publish, sublicense, sell, rent or make the Work available to anyone else,
+except as clause 4.1 allows or through the forking functions that GitHub's own terms of
+service allow for a public repository;
+
+(c) use any modified version or derivative work of the Work for anything other than the uses
+in clause 4.1;
+
+(d) remove or bypass any licence check, key or technical protection in the Work; or
+
+(e) use the name "TolongLabs", its logos or any Author's name to promote anything.
+
+4.3 Any copy of the Work that you are allowed to make must keep this licence file and every
+copyright, author and licence notice exactly as they appear in the Work.
+
+4.4 GitHub notice. If this repository is public, GitHub's terms of service allow GitHub users
+to view and fork it inside GitHub. That permission comes from GitHub's terms, not from this
+licence, and gives no right to use any fork for any purpose that this licence forbids.
+
+4.5 Nothing in this licence limits any right the law gives you that cannot be excluded by
+agreement.
+
+## 5. Commercial licences
+
+5.1 Commercial Use of the Work is not permitted by default. It is allowed only under a written
+licence issued in the name of the Council. No Founder, Author, employee or agent can give
+that permission orally or by conduct.
+
+5.2 Requests for a commercial licence go to: tolonglabs@gmail.com.
+
+## 6. Commercial use by Authors
+
+6.1 An Author may make Commercial Use of the Work as a whole only for a specific use that
+TolongLabs has consented to under this clause 6, and only through a client deal made under
+clause 6B. Any consent is a non-exclusive, non-transferable, non-sublicensable licence. It does
+not allow the Author to give, sell, license or host the Work, or a copy of it, for any other
+person or company outside a deal made under clause 6B. A company that wants to use the Work
+itself needs its own licence under clause 5.
+
+6.2 Request. The Author must send TolongLabs a written request at tolonglabs@gmail.com describing the
+use, the product or service, who it is for and the planned start date. Each new product, client
+or significant change is a separate use and needs its own consent.
+
+6.3 Other Authors. TolongLabs will promptly tell the other persons listed in the AUTHORS file
+of the Work at the time of the request (the **other Authors**) about the request. Each of them
+may vote for or against it by writing to TolongLabs within 14 days after the request. The
+requesting Author does not vote. Votes are sent only to TolongLabs and are confidential; the
+requesting Author is told only the result. All deadlines in this clause 6 are counted in
+Malaysian time. A refused request may be made again as a new request.
+
+6.4 TolongLabs decides. TolongLabs has one vote, cast by the Council. The Council will take the
+other Authors' votes into account, but TolongLabs' vote decides the request. If TolongLabs
+consents, consent is given even if every other Author votes against. If TolongLabs refuses,
+consent is refused even if every other Author votes for.
+
+6.5 Form and deadline. A consent has effect only if it is in writing and issued in the name of
+the Council. If no consent is given within 14 days after the request, the request is refused.
+
+6.6 No reasons. The Council is not required to give any reason for refusing, limiting or
+revoking a consent. The Council's deliberations, votes and reasons are confidential to the
+Council and will not be disclosed, unless a formal written agreement signed by the Author and
+issued in the name of the Council expressly requires reasons to be given.
+
+6.7 Revocation. The Council may revoke, suspend or limit any consent, or all of an Author's
+rights under this clause 6, at any time, in whole or in part, by written notice sent by email
+to that Author's email address on record. The revocation takes effect when the notice is sent, or on any later date stated in it.
+
+6.8 Wind-down. After revocation, the Author must stop the Commercial Use concerned within the
+reasonable period stated in the revocation notice, which will be at least 14 days unless the
+Council and the Author agree otherwise in writing.
+
+6.9 A revocation under this clause 6 is not a breach of this licence by the Author. Clause 10.2
+does not apply to the wind-down period in clause 6.8.
+
+6.10 Revocation does not remove the Author's name from the AUTHORS file and does not affect the
+Author's moral right to be identified as an author.
+
+6.11 A formal written agreement signed by the Author and issued in the name of the Council may
+change any part of this clause 6, 6A or 6B for that Author, and if so it prevails over this
+licence.
+
+## 6A. Authors' share of profits
+
+6A.1 For each Financial Year of TolongLabs, each Author is entitled to a share of the Net Profit
+equal to that Author's Contribution Percentage of the Net Profit.
+
+6A.2 Combined cap. The shares of all Authors together must not exceed 25% of the Net Profit for
+that Financial Year. The 25% is a single cap shared among all Authors, not a cap for each
+Author. If the Authors' shares would together exceed 25%, each Author's share is reduced in
+proportion so that the total is 25%.
+
+Example: three Authors have Contribution Percentages of 20%, 10% and 10%. Together that is 40%,
+which is over the cap, so their shares become 12.5%, 6.25% and 6.25% of the Net Profit (25% in
+total). If instead their percentages were 10%, 5% and 5% (20% in total), each would receive
+exactly their own percentage, because the total is under the cap.
+
+6A.3 **Contribution Percentage** means the part of the whole Work that the Author contributed,
+as a percentage, decided by the Council in writing and taking into account the code, design,
+documentation and other work the Author contributed. Where Co-authors contributed jointly,
+the Council divides that contribution between them. The Council may review it when the Work
+changes. The Council records each Author's Contribution Percentage in writing, with its date,
+no later than 60 days after the end of each Financial Year. Each Author is told their own
+Contribution Percentage. The Council's decision is final unless it contains an obvious error,
+without limiting the right to refer a dispute to arbitration under clause 14.
+
+6A.4 **Net Profit** means the money TolongLabs actually receives in a Financial Year from
+commercial licences, sales, client deals and other Commercial Use of the Work, after deducting
+all costs, expenses, taxes and reasonable reserves related to the Work, including payments to
+Authors under clause 6B, as shown in TolongLabs' accounts. Money paid or distributed to the
+Founders is not a cost and is not deducted. Reserves must relate to the Work, and any reserve not
+used is added back in a later Financial Year. Net Profit is never less than zero.
+
+6A.4A Prize money, awards and other winnings from hackathons, competitions or any other events,
+whether in cash or in kind, are not covered by this licence, and this licence does not apply to
+them.
+
+6A.5 TolongLabs will pay each Author's share within 90 days after the end of each financial
+year, with a short statement showing the Net Profit, the Author's Contribution Percentage, the
+total of all Authors' Contribution Percentages (without names) and any reduction under the cap.
+Payments are made in Ringgit Malaysia, after any tax TolongLabs must withhold by law and normal
+bank charges.
+
+6A.5A Accounts check. Once in each Financial Year, an Author may ask, at the Author's own cost,
+for an independent registered accountant to check that the Author's share and any reduction
+under the cap were worked out correctly. The accountant is agreed between the Author and
+TolongLabs, or, if they do not agree within 14 days, chosen by TolongLabs. The accountant reports
+only whether the calculation is correct and the amount of any error, and keeps all other
+information confidential. If there is an error, TolongLabs pays any shortfall within 30 days.
+The Author pays the accountant's fee in every case.
+
+6A.6 Payments to an Author for client deals are made under clause 6B and are separate from
+this profit share.
+
+6A.7 If the Council revokes a consent or an Author's rights under clause 6, the Author's profit
+share stops from the date the revocation notice is sent, or from any later date stated in the
+notice or agreed with the Author in writing. The Author keeps the profit share for Net Profit received
+before that date.
+
+6A.8 The Founders are part of TolongLabs and are not Authors for the purposes of this clause 6A.
+How TolongLabs pays or distributes money to the Founders is a private matter for the Council and
+is not part of this licence.
+
+6A.9 The profit share is payment for the Author's contribution. It does not make any Author a
+partner in TolongLabs, give any Author a say in how TolongLabs is run, or allow any Author to
+act for or bind TolongLabs. The Author has no share in any loss or capital of TolongLabs.
+
+6A.10 Amounts an Author has already earned under clause 6A or 6B stay payable after any
+revocation, termination or new version of this licence.
+
+## 6B. Client deals and payments to Authors
+
+6B.1 All Commercial Use of the Work for a client, including any use by an Author under a
+consent, goes through TolongLabs. The contract with the client is signed by TolongLabs and by
+each Author who does the work.
+
+6B.2 If an Author refuses, or fails without good reason, to attend or sign the client contract
+when TolongLabs asks, the Author is treated as having excluded themselves from that deal.
+TolongLabs may go ahead without them, and the Author has no right to any payment from that deal.
+This affects only payment from that deal and does not affect clause 6A.
+
+6B.3 The client pays TolongLabs only. The Author must not ask for or accept any payment from the
+client for that deal. Any payment the Author receives from the client is held for TolongLabs and
+must be passed to TolongLabs within 7 days.
+
+6B.4 TolongLabs pays the Author the amount or percentage stated in the consent for that deal,
+issued before the work starts. If the consent states none, the Authors who do the work on that
+deal share 25% of TolongLabs' Net Receipts from that deal equally between them, so the total for
+all of them is 25%.
+
+6B.5 **Net Receipts** means the money TolongLabs actually receives from the client for that deal,
+after deducting the documented direct costs and taxes of that deal, each deducted once. Net
+Receipts are never less than zero.
+
+6B.6 TolongLabs pays the Author within 90 days after it receives each payment from the client,
+with a short statement showing how the amount was worked out. Payments are made in Ringgit
+Malaysia, after any tax TolongLabs must withhold by law and normal bank charges.
+
+6B.7 TolongLabs pays the Author only out of money it actually receives from the client. It will
+make reasonable efforts to collect payment, but owes the Author nothing for any amount the
+client does not pay.
+
+6B.8 Revocation of a consent does not affect the Author's payment for client money TolongLabs
+receives for work the Author did before the revocation took effect.
+
+6B.9 A formal written agreement signed by the Author and issued in the name of the Council may
+set any other amount or terms, and if so it prevails over this clause 6B (see clause 6.11).
+
+## 7. Contributions
+
+7.1 By submitting a Contribution, in return for TolongLabs reviewing and considering it, you
+assign to TolongLabs, by way of present assignment of
+existing and future copyright, all copyright and other intellectual property rights in that
+Contribution throughout the world, for the full term of those rights.
+
+7.2 If, in any country, that assignment is not effective, you instead grant TolongLabs a
+non-exclusive, perpetual, irrevocable, worldwide, royalty-free licence, with the right to
+sublicense, to do anything with the Contribution that would otherwise infringe your rights.
+
+7.3 You consent to TolongLabs, its successors, licensees and clients, and anyone it authorises,
+modifying, adapting and combining your Contribution. Authors are credited in the AUTHORS file,
+and TolongLabs will not present your Contribution as the work of another named person.
+
+7.4 You confirm that each Contribution is your own original work, or that you have the right to
+assign it, and that it does not include material owned by an employer or any other person.
+
+7.5 Every person who works on the Work for TolongLabs signs the TolongLabs Contributor Notice
+before starting work. That signed notice is the main record of the assignment, and it prevails
+over this clause 7 if they differ. This clause 7 applies to anyone who has not signed it.
+TolongLabs will not accept a Contribution from a person who has not signed the Contributor
+Notice unless the Council decides otherwise.
+
+## 8. Materials shown to companies and other prospective partners
+
+8.1 Disclosed Materials are part of the Work. If you receive them, this licence applies to them,
+whether or not you ever open this repository. For Disclosed Materials, this clause 8 applies
+instead of clause 4.1.
+
+8.2 You may use Disclosed Materials only to evaluate a possible deal with TolongLabs. Without a
+written licence issued in the name of the Council, you must not:
+
+(a) make any Commercial Use of Disclosed Materials or of the Work;
+
+(b) copy, adapt or include any part of them in your own product or service; or
+
+(c) give them to anyone except your own staff and advisers who need them for the evaluation and
+are bound to keep them confidential.
+
+8.3 This licence protects the Work and TolongLabs' materials themselves. It does not stop anyone
+from using general ideas or concepts, as long as they do not copy or use the Work or the
+Disclosed Materials.
+
+8.4 Material that TolongLabs itself publishes, including in a public repository, stays subject
+to this licence. Its publication does not free anyone to use it commercially.
+
+8.5 If TolongLabs and you have signed a separate confidentiality or evaluation agreement, it
+applies together with this clause 8, and clause 13.6 decides any conflict.
+
+## 9. Protection in other countries
+
+9.1 The Work is protected by copyright in Malaysia and, under the Berne Convention for the
+Protection of Literary and Artistic Works, in every other country that is party to that
+Convention, without any registration or formality.
+
+9.2 TolongLabs reserves all rights in every country, including the right to bring proceedings
+in any country where an infringement takes place.
+
+## 10. Breach and termination
+
+10.1 Any use of the Work that is not allowed by this licence is not licensed and may infringe
+copyright.
+
+10.2 If you breach this licence, all your rights under it end automatically and immediately.
+TolongLabs may, in its sole discretion and in writing, reinstate them.
+
+10.3 When your rights end, you must stop using the Work and delete all copies in your
+possession or control, and confirm in writing to TolongLabs that you have done so if asked.
+
+10.4 If you, or any organisation you work for or control, start legal proceedings claiming that
+the Work infringes any patent, copyright or other right, all your rights under this licence end
+immediately.
+
+10.5 TolongLabs may seek every remedy available, including injunctions, damages, an account of
+profits and delivery up or destruction of infringing copies. You agree that damages alone may
+not be an adequate remedy for a breach of this licence.
+
+10.6 Clauses 3, 7, 8, 10, 12, 13, 14 and 15, and any amount already earned, continue after your
+rights under this licence end.
+
+## 11. No patent or trademark licence
+
+This licence grants no patent licence and no trademark licence of any kind.
+
+## 12. No warranty and no liability
+
+AS FAR AS THE LAW ALLOWS, THE WORK IS PROVIDED "AS IS", WITHOUT ANY WARRANTY OR CONDITION OF
+ANY KIND, AND NEITHER TOLONGLABS NOR ANY FOUNDER OR AUTHOR WILL BE LIABLE TO YOU FOR ANY LOSS OR
+DAMAGE ARISING FROM THIS LICENCE OR THE USE OF THE WORK, UNDER ANY LEGAL THEORY.
+
+This clause 12 and clause 10.4 do not affect amounts an Author has already earned, or any
+liability that cannot be excluded by law, including liability for fraud.
+
+## 13. Interpretation
+
+13.1 This licence is to be read so as to give the fullest protection the law allows to the
+rights of TolongLabs as copyright owner, and secondly to the Authors and Co-authors.
+
+13.2 No rule of interpretation will apply to read any part of this licence against TolongLabs
+because TolongLabs prepared it.
+
+13.3 Any right not expressly granted in this licence is reserved to TolongLabs.
+
+13.4 If any part of this licence is invalid or unenforceable, it will be applied to the
+greatest extent allowed, and the rest of the licence continues in force.
+
+13.5 TolongLabs may publish a new version of this licence. Each version of the Work is
+governed by the licence version published with it, unless TolongLabs agrees otherwise in
+writing. A consent given under clause 6 continues for the use it was given for until it is
+revoked. No new version reduces any amount an Author has already earned without that Author's
+written agreement.
+
+13.6 Order of documents. If documents conflict, they apply in this order: (1) a formal written
+agreement signed by you and issued in the name of the Council; (2) a signed TolongLabs Evaluation
+and Confidentiality Agreement, for Disclosed Materials and confidential information; (3) a signed
+TolongLabs Contributor Notice; (4) this licence.
+
+13.7 Language. This licence is written in English. If it is translated, the English version
+prevails.
+
+13.8 Transfer to the LLP. TolongLabs may transfer this licence, any consent, any signed agreement
+with you, and all its rights and obligations under them, to a limited liability partnership,
+company or other body formed by the Founders. You agree to that transfer in advance. Amounts
+already earned stay payable by the body that takes over.
+
+13.9 You may not transfer your rights under this licence to anyone else.
+
+## 14. Governing law and disputes
+
+14.1 This licence, and any dispute arising out of or in connection with it or with the Work or
+any Disclosed Materials, including any non-contractual dispute, is governed by the laws of
+Malaysia, except as clause 14.9 says.
+
+14.2 Where the laws of Malaysia give no clear answer on a point, the law of Singapore and the
+decisions of the courts of Singapore may be referred to as persuasive guidance.
+
+14.3 Arbitration. Except as clause 14.9 allows, any dispute between TolongLabs and you arising out of or in connection with
+this licence, the Work or any Disclosed Materials will be referred to and finally resolved by
+arbitration administered by the Asian International Arbitration Centre (AIAC) in Kuala Lumpur under its
+arbitration rules in force when the arbitration starts.
+
+14.4 Place of hearings and seat. All hearings and meetings in the arbitration will be held in
+Kuala Lumpur, Malaysia, unless TolongLabs agrees otherwise. The legal seat of the arbitration
+is Singapore.
+
+14.5 Arbitration law. The parties expressly agree, for the purposes of section 15(1) of the
+International Arbitration Act 1994 of Singapore, that the Model Law and Part 2 of that Act do
+not apply to the arbitration and that the Arbitration Act 2001 of Singapore applies to it. This
+clause 14 (the arbitration agreement) is governed by the law of Singapore.
+
+14.6 Appeal to the Singapore court. You agree in advance, for the purposes of section 49(3)(a)
+of the Arbitration Act 2001 of Singapore, that TolongLabs may appeal to the General Division of
+the High Court of Singapore on any question of law arising out of an award. Any appeal by you
+may be brought only with the permission of that Court. This consent is given now, cannot be
+withdrawn, and applies to every appeal by TolongLabs. The parties do not exclude the Court's
+jurisdiction under section 49.
+
+14.7 Arbitrator and language. There will be one arbitrator, appointed by the AIAC under its
+rules. If the AIAC has not appointed the arbitrator within 30 days after a written request, the
+appointing authority under the Arbitration Act 2001 of Singapore may appoint. The language of
+the arbitration is English. If this clause 14 conflicts with the AIAC rules, this clause 14
+prevails.
+
+14.8 Court proceedings by TolongLabs. Nothing in this clause 14 prevents TolongLabs from going
+to the courts of Malaysia, Singapore or any other country, against anyone (including a person
+who has agreed to this licence):
+
+(a) for an injunction or other urgent or interim relief;
+
+(b) against a person who has not agreed to this licence; or
+
+(c) to enforce an award or judgment, which may be enforced in any country.
+
+14.9 Court option for TolongLabs. Instead of arbitration, TolongLabs may choose to bring a dispute
+before the courts of Singapore, which will then have jurisdiction over it. If TolongLabs makes
+that choice, that dispute is governed by the law of Singapore and dealt with under the procedure
+of the Singapore courts. TolongLabs makes the choice by starting court proceedings in Singapore
+before an arbitration on the same dispute has begun.
+
+## 15. Contact
+
+15.1 All notices, requests and other communications to TolongLabs under this licence must be sent
+by email to tolonglabs@gmail.com.
+
+15.2 TolongLabs may send notices to you, or to an Author, at the email address you gave
+TolongLabs. Unless this licence says otherwise, an email notice is treated as received 24 hours
+after it is sent, unless the sender receives a message that it was not delivered, in which case
+it must be sent again.
