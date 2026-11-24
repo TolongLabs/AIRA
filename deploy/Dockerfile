@@ -104,6 +104,7 @@ ARG AIRA_BUILD_SHA=unknown
 ENV AIRA_BUILD_SHA=$AIRA_BUILD_SHA
 ENV NODE_ENV=production
 WORKDIR /app
+COPY LICENSE ./LICENSE
 COPY --from=prod-deps /repo/node_modules ./node_modules
 COPY --from=build /repo/dist ./dist
 COPY --from=build /repo/src/render/templates ./dist/src/render/templates
