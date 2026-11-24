@@ -32,7 +32,7 @@ import {
   Textarea,
   Toggle
 } from '@/components/ui'
-import { GenerateButton } from '@/components/generate'
+import ProfileFiles from '@/dashboard/profile-files'
 import { SymbolSearch } from '@/components/symbol-search'
 
 /* The old settings page was one rail with five cramped panels and a client
@@ -1133,8 +1133,7 @@ function AvatarTab({ settings, onChanged }: { settings: Settings; onChanged: () 
     <Section title="Avatar">
       <Card className="p-5">
         <p className="mt-0 mb-5 max-w-prose text-[0.92rem] text-muted">
-          Which Live2D model she wears and which way it faces. The model itself renders on the LLaMaDesu display — a
-          live preview lands here when that bridge ships.
+          Choose the Live2D model and orientation for the host display.
         </p>
         <div className="flex flex-wrap items-end gap-3">
           <Field label="model">
@@ -1797,15 +1796,6 @@ function FilesTab({ settings, onChanged, active }: { settings: Settings; onChang
           onChange={(e) => setText(e.target.value)}
           className="mt-4 h-[42vh] max-h-[560px] min-h-56 font-mono text-[0.8rem] leading-relaxed"
         />
-
-        {editable && (
-          <GenerateButton
-            kind={kind === 'agents' ? 'note' : kind}
-            context={text}
-            onAccept={setText}
-            label="Write this file for me"
-          />
-        )}
       </Card>
 
       {/* Fixed to the viewport: impossible to scroll away from or miss. */}
@@ -1904,10 +1894,15 @@ export default function SettingsPage() {
         )}
 
         <div className="min-w-0">
-          {settings.error && (
+          {settings.error && (!dashboard || tab !== 'files') && (
             <Card className="border-down/40 p-4 text-down">Could not load settings: {settings.error}</Card>
           )}
-          {settings.loading && !settings.data && <Loading />}
+          {settings.loading && !settings.data && (!dashboard || tab !== 'files') && <Loading />}
+          {dashboard && (
+            <div hidden={tab !== 'files'}>
+              <ProfileFiles active={tab === 'files'} />
+            </div>
+          )}
 
           {settings.data && (
             <>
@@ -1918,12 +1913,26 @@ export default function SettingsPage() {
                 </p>
               )}
               {tab === 'models' && <ModelsTab settings={settings.data} onChanged={settings.reload} />}
-              {tab === 'markets' && <MarketsTab settings={settings.data} onChanged={settings.reload} />}
-              {(tab === 'avatar' || (dashboard && tab === 'voice')) && (
-                <AvatarTab settings={settings.data} onChanged={settings.reload} />
+              {tab === 'markets' && (
+                <div className={dashboard ? 'settings-bento' : undefined}>
+                  <MarketsTab settings={settings.data} onChanged={settings.reload} />
+                </div>
+              )}
+              {tab === 'avatar' && !dashboard && <AvatarTab settings={settings.data} onChanged={settings.reload} />}
+              {dashboard && (tab === 'avatar' || tab === 'voice') && (
+                <div className="settings-bento settings-voice">
+                  <VoiceTab settings={settings.data} onChanged={settings.reload} />
+                  <AvatarTab settings={settings.data} onChanged={settings.reload} />
+                </div>
               )}
               {dashboard && tab === 'providers' && (
-                <div className="workspace-grid">
+                <div className="settings-bento settings-providers">
+                  {!settings.data.search && !settings.data.learning && !settings.data.lessons && (
+                    <section className="dashboard-pane">
+                      <h2>Providers and Learning</h2>
+                      <p>The host has no provider or learning settings available.</p>
+                    </section>
+                  )}
                   <SearchSection settings={settings.data} onChanged={settings.reload} />
                   <div>
                     <LearningSection settings={settings.data} onChanged={settings.reload} />
@@ -1931,13 +1940,30 @@ export default function SettingsPage() {
                   </div>
                 </div>
               )}
-              {tab === 'voice' && <VoiceTab settings={settings.data} onChanged={settings.reload} />}
-              {tab === 'home' && <HomeTab settings={settings.data} onChanged={settings.reload} />}
+              {!dashboard && tab === 'voice' && <VoiceTab settings={settings.data} onChanged={settings.reload} />}
+              {tab === 'home' && (
+                <div className="settings-bento">
+                  <HomeTab settings={settings.data} onChanged={settings.reload} />
+                  {dashboard && (
+                    <section className="dashboard-pane">
+                      <h2>Connection Settings</h2>
+                      <dl>
+                        <dt>Address</dt>
+                        <dd>{settings.data.home?.ip || 'Unconfigured'}</dd>
+                        <dt>Access token</dt>
+                        <dd>{settings.data.home?.token_set ? 'Configured' : 'Missing'}</dd>
+                      </dl>
+                    </section>
+                  )}
+                </div>
+              )}
               {/* Always mounted and hidden elsewhere: unmounting on every tab
                   switch is what threw unsaved file text away. Switches of file
                   and kind are guarded inside FilesTab instead. */}
               <div hidden={tab !== 'files'}>
-                <FilesTab active={tab === 'files'} settings={settings.data} onChanged={settings.reload} />
+                {!dashboard && (
+                  <FilesTab active={tab === 'files'} settings={settings.data} onChanged={settings.reload} />
+                )}
               </div>
             </>
           )}

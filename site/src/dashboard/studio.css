@@ -413,3 +413,135 @@
     gap: 10px;
   }
 }
+
+.persona-create-dialog {
+  width: min(650px, calc(100vw - 32px));
+  position: fixed;
+}
+.create-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+}
+.create-choices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.create-choices :is(a, button) {
+  display: grid;
+  align-content: start;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  overflow: hidden;
+  padding: 0 0 12px;
+  color: inherit;
+  text-decoration: none;
+  background: var(--card);
+}
+.create-choices img {
+  height: 94px;
+  width: 100%;
+  object-fit: cover;
+}
+.create-choices :is(strong, small) {
+  padding: 0 10px;
+}
+.create-choices strong {
+  margin-top: 8px;
+}
+.persona-create-dialog textarea {
+  width: 100%;
+  padding: 12px;
+  border-radius: 9px;
+  color: inherit;
+  background: var(--sunk);
+  font-family: 'Geist Mono', monospace;
+}
+.studio-editor .studio-body {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+}
+.studio-editor .studio-sections {
+  position: static;
+  display: block;
+  overflow: visible;
+  padding: 0;
+  background: none;
+}
+.studio-editor .studio-sections nav {
+  flex-wrap: wrap;
+}
+.studio-form .studio-section {
+  padding: clamp(16px, 2.5vw, 30px);
+  gap: 18px;
+}
+.studio-form h3 {
+  font-size: 1.25rem;
+  line-height: 1.3;
+}
+.studio-identity-fields {
+  gap: 20px 24px;
+}
+.studio-identity-fields label:has(textarea) {
+  grid-column: 1/-1;
+}
+@media (max-width: 520px) {
+  .create-choices {
+    grid-template-columns: 1fr;
+  }
+  .create-choices :is(a, button) {
+    grid-template-columns: 72px 1fr;
+    align-items: center;
+    padding: 0 8px 0 0;
+  }
+  .create-choices img {
+    width: 72px;
+    height: 64px;
+    grid-row: span 2;
+  }
+  .create-choices strong {
+    margin: 0;
+  }
+  .create-choices small {
+    align-self: start;
+  }
+}
+
+.studio-paired-fields,
+.studio-writing-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 22px;
+  align-items: start;
+}
+.studio-writing-fields .studio-field:has(textarea) {
+  grid-column: 1/-1;
+}
+.studio-field {
+  min-width: 0;
+}
+.studio-field :is(textarea, input, select) {
+  width: 100%;
+  min-width: 0;
+}
+.studio-options summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 10px 0;
+}
+.studio-form :is(.studio-paired-fields, .studio-writing-fields) textarea {
+  padding: 12px 14px;
+  line-height: 1.5;
+}
+@media (max-width: 700px) {
+  .studio-paired-fields,
+  .studio-writing-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

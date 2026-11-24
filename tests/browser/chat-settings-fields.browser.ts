@@ -82,8 +82,8 @@ it('chat settings fields show controls, sources, clear and next turn in chromium
       const clear = async (field: string) => {
         const header = rowHeader(field)
         await expect(header.getByText('set here', { exact: true })).toBeVisible()
-        await header.getByRole('button', { name: 'Use inherited', exact: true }).click()
-        await expect(header.getByRole('button', { name: 'Use inherited', exact: true })).toHaveCount(0)
+        await header.getByRole('button', { name: 'Use Defaults', exact: true }).click()
+        await expect(header.getByRole('button', { name: 'Use Defaults', exact: true })).toHaveCount(0)
       }
       await expect(tab('Character')).toBeVisible()
 
@@ -267,7 +267,7 @@ it('chat settings fields show controls, sources, clear and next turn in chromium
       expect(blocked.content).toBe('NO_REPLY')
       expect(model.requests).toHaveLength(0)
       await panel.getByRole('button', { name: 'Edit who may write' }).click()
-      await panel.getByRole('button', { name: 'Use inherited' }).click()
+      await panel.getByRole('button', { name: 'Use Defaults' }).click()
       await panel.getByRole('button', { name: 'Clear to inherited' }).click()
       await expect(panel.getByText('Inherited', { exact: true })).toBeVisible()
       await expect(panel.getByText(/Everyone in this group may write/)).toBeVisible()
@@ -316,13 +316,13 @@ it('chat settings fields show controls, sources, clear and next turn in chromium
       const setDefaultLanguage = async (value: string) => {
         await defaultsLanguage.fill(value)
         await defaultsSection.getByRole('button', { name: 'Save language', exact: true }).click()
-        await expect(defaultsLanguageHeader.getByRole('button', { name: 'Use inherited', exact: true })).toBeVisible()
+        await expect(defaultsLanguageHeader.getByRole('button', { name: 'Use Defaults', exact: true })).toBeVisible()
       }
       await expect(scope.getByRole('button', { name: 'Global', exact: true })).toHaveAttribute('aria-pressed', 'true')
       await setDefaultLanguage('en')
       await scope.getByRole('button', { name: 'Group defaults', exact: true }).click()
       await expect(defaultsLanguage).toHaveValue('en')
-      await expect(defaultsLanguageHeader.getByRole('button', { name: 'Use inherited', exact: true })).toHaveCount(0)
+      await expect(defaultsLanguageHeader.getByRole('button', { name: 'Use Defaults', exact: true })).toHaveCount(0)
       await setDefaultLanguage('ms')
 
       await page.goto(settingsUrl)
@@ -355,9 +355,9 @@ it('chat settings fields show controls, sources, clear and next turn in chromium
         allowResponse.resolve()
       }
       await expect(defaultsLanguage).toHaveValue('ms')
-      await defaultsLanguageHeader.getByRole('button', { name: 'Use inherited', exact: true }).click()
+      await defaultsLanguageHeader.getByRole('button', { name: 'Use Defaults', exact: true }).click()
       await expect(defaultsLanguage).toHaveValue('en')
-      await expect(defaultsLanguageHeader.getByRole('button', { name: 'Use inherited', exact: true })).toHaveCount(0)
+      await expect(defaultsLanguageHeader.getByRole('button', { name: 'Use Defaults', exact: true })).toHaveCount(0)
 
       await page.goto(settingsUrl)
       await expect(rowHeader('Language').getByText('from global', { exact: true })).toBeVisible()

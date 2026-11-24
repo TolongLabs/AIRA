@@ -1,20 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
-import { dashboardHref } from './navigation'
+import { toast } from '@/lib/hooks'
 import './appearance.css'
 
 export const APPEARANCE_KEY = 'aira-appearance'
 const PREVIEW_EVENT = 'aira:appearance-preview'
 const APPEARANCE_EVENT = 'aira:appearance-change'
 
-export type AppearanceChoice = 'plain' | 'lattice' | 'stipple' | 'shader-gradient'
+export type AppearanceChoice = 'plain' | 'lattice' | 'stipple' | 'shader-gradient' | 'contours' | 'crosshatch'
 
 export const APPEARANCE_DEFAULT: AppearanceChoice = 'plain'
 
 const CHOICES: { value: AppearanceChoice; label: string; hint: string }[] = [
   { value: 'plain', label: 'Plain', hint: 'Tonal teal base with no pattern.' },
   { value: 'lattice', label: 'Lattice', hint: 'Subdued ASCII lattice over the base.' },
-  { value: 'stipple', label: 'Stipple', hint: 'Subdued ASCII stipple over the base.' },
-  { value: 'shader-gradient', label: 'ShaderGradient', hint: 'Soft teal gradient drawn with CSS only.' }
+  { value: 'stipple', label: 'Stipple', hint: 'Fine dots over the tonal base.' },
+  { value: 'shader-gradient', label: 'Shader Gradient', hint: 'Soft teal light across the workspace.' },
+  { value: 'contours', label: 'Contours', hint: 'Soft concentric lines across the canvas.' },
+  { value: 'crosshatch', label: 'Crosshatch', hint: 'Fine diagonal lines in both directions.' }
 ]
 
 function labelOf(value: AppearanceChoice): string {
@@ -63,6 +65,22 @@ function useStoredAppearance(): readonly [AppearanceChoice, (value: AppearanceCh
 }
 
 export function Backdrop() {
+  useEffect(() => {
+    function sync() {
+      for (const key of ['glow', 'surfaces']) {
+        try {
+          document.documentElement.dataset[key] = localStorage.getItem('aira-' + key) ?? ''
+        } catch {}
+      }
+    }
+    sync()
+    addEventListener('storage', sync)
+    addEventListener('aira:display', sync)
+    return () => {
+      removeEventListener('storage', sync)
+      removeEventListener('aira:display', sync)
+    }
+  }, [])
   const [saved] = useStoredAppearance()
   const [preview, setPreview] = useState<AppearanceChoice | null>(null)
   useEffect(() => {
@@ -108,7 +126,13 @@ export function Backdrop() {
       frame = Math.hypot(targetX - x, targetY - y) > 0.25 || lag > 0.25 ? requestAnimationFrame(tick) : 0
     }
     function move(event: PointerEvent) {
-      if (!allowed.matches || event.pointerType !== 'mouse' || !surface) return
+      if (
+        document.documentElement.dataset.glow === 'off' ||
+        !allowed.matches ||
+        event.pointerType !== 'mouse' ||
+        !surface
+      )
+        return
       targetX = event.clientX
       targetY = event.clientY
       if (!surface.dataset.visible) {
@@ -176,6 +200,7 @@ export default function Appearance() {
       focusChoice(preview)
       setSaved(preview)
       setNotice('')
+      toast('Background applied.')
     } else {
       setNotice('Browser storage is unavailable. The preview applies to this view only.')
     }
@@ -183,74 +208,120 @@ export default function Appearance() {
 
   return (
     <section className="appearance">
-      <a className="appearance-back" href={dashboardHref('system/settings')}>
-        ← Back to Host Settings
-      </a>
-      <h1>Appearance</h1>
-      <p className="appearance-lede">Choose a background. Apply saves it on this device.</p>
-      <fieldset ref={choices} className="appearance-group">
-        <legend className="sr-only">Finish</legend>
-        <div className="appearance-grid">
-          {CHOICES.map((choice) => {
-            const selected = preview === choice.value
-            const badge = selected ? (dirty ? 'Preview' : 'Current') : choice.value === saved ? 'Current' : null
-            return (
-              <label key={choice.value} className="appearance-card">
-                <input
-                  type="radio"
-                  name="appearance-finish"
-                  value={choice.value}
-                  checked={selected}
-                  onChange={() => {
-                    setPreview(choice.value)
-                    setNotice('')
-                  }}
-                />
-                <span className={'appearance-swatch appearance-swatch--' + choice.value} aria-hidden="true" />
-                <span className="appearance-row">
-                  <span className="appearance-name">{choice.label}</span>
-                  {badge && <span className="appearance-badge">{badge}</span>}
-                </span>
-                <span className="appearance-hint">{choice.hint}</span>
-              </label>
-            )
-          })}
+      <div className="dashboard-pane appearance-finishes">
+        <h2 className="dashboard-pane-title">Background Finish</h2>
+        <p className="appearance-lede">Select a finish to preview it on this device.</p>
+        <fieldset ref={choices} className="appearance-group">
+          <legend className="sr-only">Finish</legend>
+          <div className="appearance-grid">
+            {CHOICES.map((choice) => {
+              const selected = preview === choice.value
+              const badge = selected ? (dirty ? 'Preview' : 'Current') : choice.value === saved ? 'Current' : null
+              return (
+                <label key={choice.value} className="appearance-card">
+                  <input
+                    type="radio"
+                    name="appearance-finish"
+                    value={choice.value}
+                    checked={selected}
+                    onChange={() => {
+                      setPreview(choice.value)
+                      setNotice('')
+                    }}
+                  />
+                  <span className={'appearance-swatch appearance-finish--' + choice.value} aria-hidden="true">
+                    <i />
+                    <i />
+                  </span>
+                  <span className="appearance-row">
+                    <span className="appearance-name">{choice.label}</span>
+                    {badge && <span className="appearance-badge">{badge}</span>}
+                  </span>
+                  <span className="appearance-hint">{choice.hint}</span>
+                </label>
+              )
+            })}
+          </div>
+        </fieldset>
+        <div className="appearance-actions" data-dirty={dirty}>
+          <button
+            type="button"
+            disabled={!dirty}
+            onClick={() => {
+              focusChoice(saved)
+              setPreview(saved)
+              setNotice('')
+            }}
+          >
+            Cancel
+          </button>
+          <button type="button" disabled={!dirty} onClick={apply}>
+            Apply
+          </button>
         </div>
-      </fieldset>
-      <div className="appearance-actions" data-dirty={dirty}>
-        <button
-          type="button"
-          disabled={preview === APPEARANCE_DEFAULT}
-          onClick={() => {
-            setPreview(APPEARANCE_DEFAULT)
-            focusChoice(APPEARANCE_DEFAULT)
-          }}
-        >
-          Use Default
-        </button>
-        <button
-          type="button"
-          disabled={!dirty}
-          onClick={() => {
-            focusChoice(saved)
-            setPreview(saved)
-            setNotice('')
-          }}
-        >
-          Cancel
-        </button>
-        <button type="button" disabled={!dirty} onClick={apply}>
-          Apply
-        </button>
+        <p className="sr-only" role="status">
+          {dirty ? 'Previewing ' + labelOf(preview) + ' — nothing is saved yet.' : 'Showing ' + labelOf(saved) + '.'}
+        </p>
       </div>
-      <p className="sr-only" role="status">
-        {dirty ? 'Previewing ' + labelOf(preview) + ' — nothing is saved yet.' : 'Showing ' + labelOf(saved) + '.'}
-      </p>
+      <div className="dashboard-pane appearance-display">
+        <h2 className="dashboard-pane-title">Display</h2>
+        <DisplayOption setting="glow" label="Cursor glow" on="on" off="off" defaultOn={true} />
+        <DisplayOption setting="surfaces" label="Solid reading surfaces" on="solid" off="glass" defaultOn={false} />
+      </div>
       {notice && (
         <p className="appearance-notice" role="alert">
           {notice}
         </p>
       )}
     </section>
+  )
+}
+
+function DisplayOption({
+  setting,
+  label,
+  on,
+  off,
+  defaultOn
+}: {
+  setting: string
+  label: string
+  on: string
+  off: string
+  defaultOn: boolean
+}) {
+  const key = 'aira-' + setting
+  function read() {
+    try {
+      return (localStorage.getItem(key) ?? (defaultOn ? on : off)) === on
+    } catch {
+      return defaultOn
+    }
+  }
+  const [value, setValue] = useState(read)
+  useEffect(() => {
+    const change = () => setValue(read())
+    addEventListener('storage', change)
+    return () => removeEventListener('storage', change)
+  }, [key])
+  return (
+    <label className="appearance-option">
+      <span>{label}</span>
+      <input
+        type="checkbox"
+        role="switch"
+        checked={value}
+        onChange={(e) => {
+          const next = e.target.checked
+          try {
+            localStorage.setItem(key, next ? on : off)
+            setValue(next)
+            dispatchEvent(new Event('aira:display'))
+          } catch {
+            toast('Device preferences could not be saved.', false)
+          }
+        }}
+      />
+    </label>
   )
 }

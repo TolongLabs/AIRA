@@ -2,6 +2,8 @@ import { Loading } from '@/dashboard/loading'
 import { useContext, useEffect, useRef, useState } from 'react'
 import { DashboardContext } from '@/dashboard/context'
 import { FileUp, Send as SendIcon, X } from 'lucide-react'
+import type { CoreChat } from '@/lib/core'
+import { fileRecipient } from '@/lib/file-recipient'
 import type { SendRecord, SendView } from '@/lib/api'
 import { get, postForm } from '@/lib/api'
 import { toast, Toaster, useApi } from '@/lib/hooks'
@@ -57,7 +59,7 @@ type Source = (typeof SOURCES)[number]
 type Picked = { name: string; size: number; file?: File; path?: string }
 type Stage = 'edit' | 'confirm' | 'sending'
 
-export default function SendPage() {
+export default function SendPage({ chat }: { chat?: CoreChat } = {}) {
   const view = useApi<SendView>('/api/send')
   const [recent, setRecent] = useState<SendRecord[] | null>(null)
   const [target, setTarget] = useState('')
@@ -83,7 +85,8 @@ export default function SendPage() {
   const recipients = data?.recipients ?? []
   const files = data?.files ?? []
   const sendable = files.filter((f) => f.size > 0 && f.size <= max)
-  const who = recipients.find((r) => r.target === target)
+  const who = chat ? fileRecipient(chat, recipients) : recipients.find((r) => r.target === target)
+  const recipient = who?.target
   const boxFile = files.find((f) => f.path === boxPath)
 
   const picked: Picked | null =
@@ -171,7 +174,7 @@ export default function SendPage() {
   }
 
   const busy = stage !== 'edit'
-  const rows = (recent ?? data?.recent ?? []).slice(0, 20)
+  const rows = (recent ?? data?.recent ?? []).filter((row) => !chat || row.target === recipient).slice(0, 20)
 
   const dashboard = useContext(DashboardContext)
   return (
@@ -187,36 +190,43 @@ export default function SendPage() {
           ) : (
             <Card className="p-5 sm:p-6">
               <div className="grid gap-6">
-                <Field
-                  label={dashboard ? 'Recipient' : 'To'}
-                  hint={
-                    recipients.length
-                      ? 'Every chat and group on the Chats page. Type a name, a number or “group”.'
-                      : 'No chats yet. A chat appears here once it is on the Chats page.'
-                  }
-                >
-                  <Picker
-                    ariaLabel="which chat"
-                    placeholder="pick a chat or group…"
-                    searchPlaceholder="type a name, a number or “group”…"
-                    searchAfter={5}
-                    disabled={busy}
-                    value={target}
-                    onChange={(v) => {
-                      setTarget(v)
-                      setResult(null)
-                    }}
-                    className="max-w-xl"
-                    options={recipients.map((r) => ({
-                      value: r.target,
-                      label: r.name,
-                      hint:
-                        r.kind === 'group'
-                          ? 'group'
-                          : `chat${r.number ? ` · ${r.number}` : ''}${r.pending ? ' · has not written yet' : ''}`
-                    }))}
-                  />
-                </Field>
+                {chat ? (
+                  <div>
+                    <strong>{chat.label || (chat.type === 'group' ? 'Unnamed Group' : 'Unnamed Direct Chat')}</strong>
+                    {!who && <p role="status">File delivery is unavailable for this recipient.</p>}
+                  </div>
+                ) : (
+                  <Field
+                    label={dashboard ? 'Recipient' : 'To'}
+                    hint={
+                      recipients.length
+                        ? 'Every chat and group on the Chats page. Type a name, a number or “group”.'
+                        : 'No chats yet. A chat appears here once it is on the Chats page.'
+                    }
+                  >
+                    <Picker
+                      ariaLabel="which chat"
+                      placeholder="pick a chat or group…"
+                      searchPlaceholder="type a name, a number or “group”…"
+                      searchAfter={5}
+                      disabled={busy}
+                      value={target}
+                      onChange={(v) => {
+                        setTarget(v)
+                        setResult(null)
+                      }}
+                      className="max-w-xl"
+                      options={recipients.map((r) => ({
+                        value: r.target,
+                        label: r.name,
+                        hint:
+                          r.kind === 'group'
+                            ? 'group'
+                            : `chat${r.number ? ` · ${r.number}` : ''}${r.pending ? ' · has not written yet' : ''}`
+                      }))}
+                    />
+                  </Field>
+                )}
 
                 <Field label={dashboard ? 'Attachment' : 'File'}>
                   <div className="flex flex-col gap-3">
@@ -435,7 +445,13 @@ export default function SendPage() {
                     </Button>
                     {!ready && !problem ? (
                       <span className="text-[0.82rem] text-faint">
-                        {!who ? 'Pick a chat first.' : !picked ? 'Choose a file.' : ''}
+                        {!who
+                          ? chat
+                            ? 'The host has no matching file recipient.'
+                            : 'Pick a chat first.'
+                          : !picked
+                            ? 'Choose a file.'
+                            : ''}
                       </span>
                     ) : null}
                   </div>

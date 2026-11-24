@@ -6,6 +6,7 @@ import { core, type CoreChat } from '@/lib/core'
 import { useApi } from '@/lib/hooks'
 import { dashboardHref } from './navigation'
 import { Loading } from './loading'
+import { ActivityCalendar, ChatStatusBars } from './overview-activity'
 import './overview.css'
 
 const stamp = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
@@ -15,8 +16,10 @@ function Card({
   kind,
   title,
   icon,
-  children
+  children,
+  tone
 }: {
+  tone?: string
   route: string
   kind: string
   title: string
@@ -24,7 +27,7 @@ function Card({
   children: ReactNode
 }) {
   return (
-    <a className={'insight insight-' + kind} href={dashboardHref(route)}>
+    <a className={'insight insight-' + kind} data-tone={tone} href={dashboardHref(route)}>
       <div className="insight-heading">
         {icon}
         <h2>{title}</h2>
@@ -73,7 +76,21 @@ export function Overview() {
   const hostWait = !host.data && (host.error ? 'Unavailable' : <Loading layout="metric" />)
   return (
     <div className="operations-board">
-      <Card kind="health" route="system/health" title="Service Health" icon={<Radio aria-hidden="true" />}>
+      <Card
+        kind="health"
+        tone={
+          !units.length
+            ? 'unknown'
+            : online === units.length
+              ? 'healthy'
+              : units.some(([, s]) => s === 'failed')
+                ? 'failed'
+                : 'attention'
+        }
+        route="system/health"
+        title="Service Health"
+        icon={<Radio aria-hidden="true" />}
+      >
         {hostWait ||
           (units.length ? (
             <>
@@ -94,7 +111,7 @@ export function Overview() {
                   </strong>
                 </div>
                 <div>
-                  <strong>{online === units.length ? 'Healthy' : 'Needs attention'}</strong>
+                  <strong>{online === units.length ? 'Healthy' : 'Needs Attention'}</strong>
                   <span>
                     {online} of {units.length} Online
                   </span>
@@ -102,11 +119,15 @@ export function Overview() {
               </div>
               <ul className="unit-matrix">
                 {units.map(([name, state]) => (
-                  <li key={name}>
+                  <li key={name} data-state={state}>
                     {state === 'active' ? <CircleCheck aria-hidden="true" /> : <CirclePause aria-hidden="true" />}
                     <span>
                       {name}
-                      <small>{state === 'active' ? 'Online' : state}</small>
+                      <small>
+                        {state === 'active'
+                          ? 'Online'
+                          : state.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                      </small>
                     </span>
                   </li>
                 ))}
@@ -116,18 +137,19 @@ export function Overview() {
             <p>No services reported.</p>
           ))}
       </Card>
-      <Card kind="chats" route="chats" title="Chats" icon={<MessagesSquare aria-hidden="true" />}>
+      <section className="insight insight-chats">
+        <a href={dashboardHref('chats')} className="insight-heading">
+          <MessagesSquare aria-hidden="true" />
+          <h2>Chats</h2>
+          <ArrowUpRight aria-hidden="true" />
+        </a>
         {Array.isArray(chats) ? (
           <>
             <div className="insight-count">
               {chats.length}
               <span>total chats</span>
             </div>
-            <div className="chat-distribution" aria-hidden="true">
-              {Array.from({ length: 32 }, (_, i) => (
-                <i key={i} data-filled={chats.length > 0 && (i + 0.5) / 32 <= active / chats.length} />
-              ))}
-            </div>
+            <ChatStatusBars chats={chats} />
             <div className="chat-legend">
               <strong>{active} Active</strong>
               <span>{chats.length - active} Pending</span>
@@ -141,7 +163,7 @@ export function Overview() {
         ) : (
           <p>Chats unavailable.</p>
         )}
-      </Card>
+      </section>
       <Card kind="agenda" route="automations/routines" title="Routines" icon={<CalendarClock aria-hidden="true" />}>
         {!routines.data ? (
           routines.error ? (
@@ -193,6 +215,7 @@ export function Overview() {
           </>
         )}
       </Card>
+      <ActivityCalendar />
     </div>
   )
 }

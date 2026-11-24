@@ -2,6 +2,7 @@ import { Loading } from '@/dashboard/loading'
 import { useEffect, useState } from 'react'
 import { ChevronRight, Search } from 'lucide-react'
 import { Input } from '@/components/ui'
+import { ChatGlyph } from './profile-image'
 import { FormSelect } from './form-select'
 import { WorkspaceTools } from './workspace-tools'
 import { core, type CoreChat } from '@/lib/core'
@@ -112,9 +113,6 @@ export default function Directory() {
         <a className="workspace-tool" href={fromDirectory('chats/defaults')}>
           Chat Defaults
         </a>
-        <a className="workspace-tool" href={fromDirectory('chats/files')}>
-          Send File
-        </a>
       </WorkspaceTools>
       <div className="directory-filters">
         <div className="directory-search">
@@ -183,14 +181,7 @@ export default function Directory() {
               header: 'Chat',
               render: (chat) => (
                 <div className="directory-chat">
-                  <span className="directory-avatar" aria-hidden="true">
-                    {label(chat)
-                      .split(/\s+/)
-                      .slice(0, 2)
-                      .map((word) => Array.from(word)[0])
-                      .join('')
-                      .toUpperCase()}
-                  </span>
+                  <ChatGlyph chat={chat} />
                   <div>
                     <a href={fromDirectory('chats/' + encodeURIComponent(chat.chatId) + '/settings')}>{label(chat)}</a>
                     <small>{chat.type === 'group' ? 'Group Chat' : 'Direct Chat'}</small>

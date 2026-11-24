@@ -1,5 +1,6 @@
 import { Loading } from '@/dashboard/loading'
 import { ChatAccess } from '@/dashboard/chat-access'
+import { ChatGlyph, motif, ProfileImage, PortraitUpload } from '@/dashboard/profile-image'
 import Composer from '@/dashboard/composer'
 import { chatHref, dashboardHref } from '@/dashboard/navigation'
 import * as Tooltip from '@radix-ui/react-tooltip'
@@ -55,7 +56,8 @@ const SECTIONS = [
   { key: 'reply', label: 'Reply' },
   { key: 'features', label: 'Features' },
   { key: 'quiet', label: 'Quiet hours' },
-  { key: 'access', label: 'Access' }
+  { key: 'access', label: 'Access' },
+  { key: 'send', label: 'Send Message' }
 ] as const
 type SectionKey = (typeof SECTIONS)[number]['key']
 
@@ -120,7 +122,7 @@ function SocialPlatforms({
                 />
                 {vm.canClearSetting(key) && (
                   <Button size="sm" variant="ghost" disabled={disabled} onClick={() => clear(key)}>
-                    Use inherited
+                    Use Defaults
                   </Button>
                 )}
               </div>
@@ -209,7 +211,7 @@ function SettingRow({
         </span>
         {vm.canClearSetting(name) && onClear && (
           <Button size="sm" variant="ghost" className="ml-auto" onClick={() => onClear(name)}>
-            Use inherited
+            Use Defaults
           </Button>
         )}
       </div>
@@ -479,7 +481,7 @@ function NameCallField({
                     void onClear('nameCall.names')
                   }}
                 >
-                  Use inherited
+                  Use Defaults
                 </Button>
               )}
             </div>
@@ -711,7 +713,27 @@ function ChatRow({
 }) {
   const vm = useMemo(() => new ChatSettingsViewModel(chat, characters), [chat, characters])
   const toolFeatures = toolCatalog.data?.features ?? []
-  const [tab, setTab] = useState<SectionKey>('character')
+  const sections = onToggle ? SECTIONS.filter((s) => s.key !== 'send') : SECTIONS
+  const resolveTab = () =>
+    !onToggle && location.pathname.endsWith('/send')
+      ? 'send'
+      : (sections.find((s) => '#' + s.key === location.hash)?.key ?? 'character')
+  const [tab, setTab] = useState<SectionKey>(resolveTab)
+  useEffect(() => {
+    if (onToggle) return
+    const change = () => setTab(SECTIONS.find((s) => '#' + s.key === location.hash)?.key ?? 'character')
+    addEventListener('hashchange', change)
+    return () => removeEventListener('hashchange', change)
+  }, [onToggle])
+  function chooseTab(next: SectionKey) {
+    setTab(next)
+    if (!onToggle)
+      history.replaceState(
+        history.state,
+        '',
+        chatHref('chats/' + encodeURIComponent(chat.chatId) + '/settings') + '#' + next
+      )
+  }
   const [busy, setBusy] = useState(false)
   const [conflict, setConflict] = useState<{ key: string; value: unknown; revision?: string } | null>(null)
   const name = chat.label || (onToggle ? midTrunc(chat.waId, 28) : 'Unnamed Chat')
@@ -869,14 +891,7 @@ function ChatRow({
         </button>
       ) : (
         <div className="chat-context">
-          <span className="directory-avatar" aria-hidden="true">
-            {name
-              .split(/\s+/)
-              .slice(0, 2)
-              .map((part) => Array.from(part)[0])
-              .join('')
-              .toUpperCase()}
-          </span>
+          <ChatGlyph chat={chat} />
           <div>
             <strong>{name}</strong>
             <small>
@@ -899,7 +914,7 @@ function ChatRow({
                 'sm:w-[11rem] sm:flex-col sm:overflow-visible sm:border-r sm:border-b-0 sm:py-4'
               )}
             >
-              {SECTIONS.map((s, index) => {
+              {sections.map((s, index) => {
                 const on = s.key === tab
                 return (
                   <button
@@ -920,18 +935,18 @@ function ChatRow({
                         event.key === 'Home'
                           ? 0
                           : event.key === 'End'
-                            ? SECTIONS.length - 1
+                            ? sections.length - 1
                             : event.key in offsets
-                              ? (index + offsets[event.key] + SECTIONS.length) % SECTIONS.length
+                              ? (index + offsets[event.key] + sections.length) % sections.length
                               : undefined
                       if (idx === undefined) return
                       event.preventDefault()
-                      const next = SECTIONS[idx].key
-                      setTab(next)
+                      const next = sections[idx]!.key
+                      chooseTab(next)
                       document.getElementById(chat.chatId + '-tab-' + next)?.focus()
                     }}
                     aria-selected={on}
-                    onClick={() => setTab(s.key)}
+                    onClick={() => chooseTab(s.key)}
                     className={cn(
                       'flex min-h-11 shrink-0 cursor-pointer items-center border-0 px-3 text-left',
                       'rounded-[var(--radius-control)] transition-colors',
@@ -950,9 +965,10 @@ function ChatRow({
               role="tabpanel"
               className="min-w-0 flex-1 px-4 sm:px-6"
             >
-              {!onToggle && (
+              {!onToggle && tab !== 'send' && (
                 <h2 className="chat-section-title">{SECTIONS.find((section) => section.key === tab)?.label}</h2>
               )}
+              {tab === 'send' && <Composer key={chat.chatId} chat={chat} />}
               {!onToggle && pack && (tab === 'character' || tab === 'reply') && (
                 <div className="chat-footer-link">
                   <strong>Persona Tool Footer</strong>
@@ -975,7 +991,7 @@ function ChatRow({
                   >
                     {characters.length && !onToggle ? (
                       <div className="persona-choices" role="group" aria-label="Choose a character">
-                        {characters.map((persona) => (
+                        {characters.map((persona, index) => (
                           <label key={persona.id}>
                             <input
                               type="radio"
@@ -985,9 +1001,13 @@ function ChatRow({
                               disabled={busy}
                               onChange={() => void save('character', persona.id)}
                             />
-                            <span aria-hidden="true" className="persona-initial">
-                              {persona.displayName.slice(0, 1)}
-                            </span>
+                            <ProfileImage
+                              kind="characters"
+                              id={persona.id}
+                              configured={persona.hasPortrait}
+                              className="persona-portrait"
+                              fallback={<img className="persona-portrait" alt="" src={motif(persona.id, index)} />}
+                            />
                             <strong>{persona.displayName}</strong>
                             <small>{persona.id}</small>
                           </label>
@@ -1282,10 +1302,16 @@ function ChatRow({
               )}
               {tab === 'access' && (
                 <>
-                  {!onToggle && accessControls}
+                  {!onToggle && (
+                    <>
+                      <PortraitUpload kind="chats" id={chat.chatId} onSaved={onChanged} />
+                      {accessControls}
+                    </>
+                  )}
                   <SettingRow vm={vm} name="allowedSenders" label="Who may write">
                     {!onToggle ? (
                       <ChatAccess
+                        chatId={chat.chatId}
                         current={vm.settingValue<'all' | string[]>('allowedSenders', 'all')}
                         chatType={chat.type}
                         inherited={chat.settings.allowedSenders?.level !== 'chat'}
@@ -1734,9 +1760,9 @@ function PersonaFooter({
 
 export default function ChatsPage({
   selectedId,
-  compose = false,
+
   footerId
-}: { selectedId?: string; compose?: boolean; footerId?: string } = {}) {
+}: { selectedId?: string; footerId?: string } = {}) {
   const chats = useCore(core.chats)
   const packs = useCore(core.characters)
   const tools = useCore(core.tools)
@@ -1796,7 +1822,7 @@ export default function ChatsPage({
           {chats.loading ? 'Loading…' : chats.error ? 'Chat settings unavailable.' : 'Chat no longer exists.'}
         </p>
       )
-    if (compose) return <Composer chat={chat} />
+
     return (
       <section className="chat-detail">
         <nav aria-label="Breadcrumb" className="studio-crumb">
@@ -1806,9 +1832,6 @@ export default function ChatsPage({
         </nav>
         <div className="workspace-heading">
           <h1>Chat Settings</h1>
-          <a className="workspace-tool" href={chatHref('chats/' + encodeURIComponent(chat.chatId) + '/send')}>
-            Send Message
-          </a>
         </div>
         <ChatRow
           chat={chat}

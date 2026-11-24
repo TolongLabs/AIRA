@@ -234,11 +234,9 @@ export function validateMoods(moods: StudioMoodsDoc): string[] {
       }
     }
     if (!entry.tone.trim()) faults.push(`${at}.tone: describe the tone.`)
-    if (!entry.openers.filter((s) => s.trim()).length) faults.push(`${at}.openers: add at least one opener.`)
-    if (!entry.endings.filter((s) => s.trim()).length) faults.push(`${at}.endings: add at least one ending.`)
-    const faces = entry.faces.filter((s) => s.trim())
-    if (!faces.length) faults.push(`${at}.faces: add at least one face.`)
-    for (const face of faces)
+    if (entry.openers.some((line) => !line.trim())) faults.push(`${at}.openers: remove blank openers.`)
+    if (entry.endings.some((line) => !line.trim())) faults.push(`${at}.endings: remove blank endings.`)
+    for (const face of entry.faces)
       if (!isFace(face)) faults.push(`${at}.faces: "${face}" is not one kaomoji in round brackets.`)
     for (const group of entry.faceGroups ?? []) {
       const pool = moods.faceGroups?.[group]
@@ -515,7 +513,7 @@ export function blankDraft(): StudioDraft {
     moods: {
       default: 'calm',
       moods: {
-        calm: { patterns: [''], tone: '', openers: [''], endings: [''], faces: [''], stickers: [] }
+        calm: { patterns: [], tone: '', openers: [], endings: [], faces: [], stickers: [] }
       }
     },
     lines: Object.fromEntries([...LINE_KINDS.map((k) => [k, '']), ['feedback', '']]) as StudioLinesDoc
