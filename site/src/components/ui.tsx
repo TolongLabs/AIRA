@@ -772,9 +772,10 @@ export function Tabs<T extends string>({
   className?: string
   panelId?: string
 }) {
+  const dashboard = React.useContext(DashboardContext)
   return (
-    <div role="tablist" aria-label={label} className={cn('border-b border-line', className)}>
-      <div className="flex flex-wrap gap-x-7 gap-y-1">
+    <div role="tablist" aria-label={label} className={cn(!dashboard && 'border-b border-line', className)}>
+      <div className={dashboard ? 'workspace-tabs' : 'flex flex-wrap gap-x-7 gap-y-1'}>
         {tabs.map((t, index) => {
           const on = t.key === value
           return (
@@ -813,7 +814,9 @@ export function Tabs<T extends string>({
               {t.count != null && (
                 <span className={cn('tnum font-mono text-[0.7rem]', on ? 'text-muted' : 'text-faint')}>{t.count}</span>
               )}
-              {on && <span aria-hidden className="absolute -bottom-px right-0 left-0 h-[2px] rounded-full bg-accent" />}
+              {on && !dashboard && (
+                <span aria-hidden className="absolute -bottom-px right-0 left-0 h-[2px] rounded-full bg-accent" />
+              )}
             </button>
           )
         })}

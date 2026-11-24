@@ -1,6 +1,6 @@
 .dashboard-shell {
-  --glass: rgb(255 255 255 / 0.38);
-  --shell-filter: blur(10px) saturate(135%);
+  --glass: rgb(255 255 255 / 0.32);
+  --shell-filter: blur(0.85px) saturate(115%);
   --shell-sheen: linear-gradient(
     135deg,
     rgb(255 255 255 / 0.22),
@@ -50,7 +50,7 @@
   --song: #89500f;
 }
 [data-theme='dark'] .dashboard-shell {
-  --glass: rgb(30 38 37 / 0.43);
+  --glass: rgb(30 38 37 / 0.36);
   --shell-sheen: linear-gradient(
     135deg,
     rgb(201 240 233 / 0.07),
@@ -521,7 +521,7 @@
   align-items: center;
   gap: 5px;
 }
-.workspace-tabs > a,
+.workspace-tabs > :is(a, button),
 .dashboard-shell .workspace-tool {
   position: relative;
   display: inline-flex;
@@ -537,10 +537,9 @@
   white-space: nowrap;
   line-height: 1.2;
 }
-.workspace-tabs > a[aria-current='page'] {
+.dashboard-shell .workspace-tabs > :is([aria-current='page'], [role='tab'][aria-selected='true']) {
+  border-color: var(--tile-edge);
   background: var(--active);
-}
-.workspace-tabs > a[aria-current='page'] {
   font-weight: 650;
 }
 .dashboard-shell .workspace-tool[data-primary] {

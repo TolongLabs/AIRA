@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { parse, stringify } from 'yaml'
 import { type App, createApp } from '../../src/app.js'
+import { credentialPurposes, deploymentSettings } from '../../src/config/dashboard-settings.js'
 import { loadConfig } from '../../src/config/loader.js'
 import { createConfigStatus, revisionForConfig } from '../../src/config/status.js'
 import { createLogger } from '../../src/records/logger.js'
@@ -197,5 +198,78 @@ describe('deployment activation readback', () => {
       body: JSON.stringify({})
     })
     expect(put.status).toBe(405)
+  })
+})
+
+describe('owner deployment settings', () => {
+  it('serves applied values only after authentication and reports unapplied file changes', async () => {
+    const path = join(tmpDir('aira-settings-'), 'config.yml')
+    writeConfigFile(path)
+    const { origin, token } = await ownerStub()
+    const { site } = await startFileApp(path, origin)
+    const url = site + '/owner-api/core/deployment-settings'
+    const headers = { 'x-tolongai-token': token }
+    expect((await fetch(url)).status).toBe(401)
+    expect((await fetch(site + '/api/deployment-settings')).status).toBe(404)
+    expect((await fetch(url, { method: 'POST', headers })).status).toBe(405)
+    writeConfigFile(path, (doc) => {
+      ;(doc['prompt'] as { maxSystemTokens: number }).maxSystemTokens = 456789
+    })
+    const res = await fetch(url, { headers })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).toBe('no-store')
+    const body = (await res.json()) as ReturnType<typeof deploymentSettings>
+    expect(body.activation).toBe('pending_restart')
+    expect(body.groups.prompt?.maxSystemTokens).not.toBe(456789)
+    expect(body.models.main).toMatchObject({ model: 'm', connection: 'OpenAI-compatible API', configured: true })
+    expect(Object.keys(body.groups).sort()).toEqual(Object.keys(loadConfig(path)).sort())
+  })
+  it('describes the subscription primary and independent API fallback without returning private data', () => {
+    const marker = 'private-fixture-marker'
+    const config = testConfig((c) => {
+      c.llm.transport = 'subscription'
+      c.llm.main.effort = ''
+      c.llm.main.deepEffort = ''
+      c.llm.fallback = {
+        ...c.llm.fallback,
+        provider: 'openai-compatible',
+        model: 'fixture-flash',
+        effort: 'high',
+        deepEffort: 'max',
+        baseUrl: 'https://user:' + marker + '@api.invalid/' + marker + '?k=' + marker
+      }
+      c.storage.path = '/' + marker
+      c.gateway.selfIds = [marker]
+      c.gateway.jobs = [{ id: marker, chat: marker }]
+      c.render.report.header = marker
+      c.backup.offsite.repository = marker
+      c.mcp.servers = [
+        { id: 'fixture', transport: 'stdio', command: [marker], tools: [marker], chats: [marker], timeoutMs: 2500 }
+      ]
+    })
+    const snapshot = createConfigStatus({ config }).read()
+    const env = Object.fromEntries(Object.keys(credentialPurposes).map((k) => [k, marker]))
+    env['UNLISTED_PRIVATE_CREDENTIAL'] = marker
+    const view = deploymentSettings(config, env, snapshot, {
+      main: { configured: true },
+      fallback: { configured: false }
+    })
+    expect(view.models.main).toMatchObject({
+      connection: 'Claude Code subscription',
+      effort: 'medium',
+      deepEffort: 'medium',
+      credential: 'RUNNER_TOKEN'
+    })
+    expect(view.models.fallback).toMatchObject({
+      connection: 'OpenAI-compatible API',
+      effort: 'high',
+      deepEffort: 'max',
+      endpoint: 'https://api.invalid',
+      configured: false
+    })
+    expect(view.groups.mcp?.['servers[0].timeoutMs']).toBe(2500)
+    expect(view.credentials.every((c) => c.present)).toBe(true)
+    expect(JSON.stringify(view)).not.toContain(marker)
+    expect(JSON.stringify(view)).not.toContain('UNLISTED_PRIVATE_CREDENTIAL')
   })
 })

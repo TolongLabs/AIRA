@@ -292,6 +292,36 @@ describe('studio packs', () => {
     expect(revisionAudits(storage, 'copy-fox').length).toBe(1)
   })
 
+  it('preserves dated document backups on edit, checks their revision and leaves them out of copies', () => {
+    const { deps, root } = setup()
+    createStudioPack(deps, { id: FOX, card: makeCard(FOX), moods: makeMoods(), lines: makeLines() })
+    const dir = join(root, 'characters', FOX)
+    const name = 'card.yml.bak-20260101'
+    const path = join(dir, name)
+    const original = getStudioPack(deps, FOX)
+    writeFileSync(path, 'older synthetic document', { mode: 0o600 })
+    const withBackup = getStudioPack(deps, FOX)
+    expect(withBackup.writable).toBe(true)
+    expect(withBackup.revision).not.toBe(original.revision)
+    expect(JSON.stringify(withBackup)).not.toContain('older synthetic document')
+    writeFileSync(path, 'newer synthetic backup')
+    expect(() =>
+      updateStudioPack(deps, FOX, { expectedRevision: withBackup.revision, card: { displayName: 'Edited' } })
+    ).toThrow(expect.objectContaining({ code: 'stale_revision' }))
+    const updated = updateStudioPack(deps, FOX, {
+      expectedRevision: getStudioPack(deps, FOX).revision,
+      card: { displayName: 'Edited' }
+    })
+    expect(getStudioPack(deps, FOX).revision).toBe(updated.revision)
+    expect(getStudioPack(deps, FOX).card.displayName).toBe('Edited')
+    expect(readFileSync(path, 'utf8')).toBe('newer synthetic backup')
+    expect(lstatSync(path).mode & 0o777).toBe(0o600)
+    createStudioPack(deps, { sourceId: FOX, newId: BADGER })
+    expect(existsSync(join(root, 'characters', BADGER, name))).toBe(false)
+    symlinkSync(path, join(dir, 'moods.yml.bak-20260202'))
+    expect(() => getStudioPack(deps, FOX)).toThrow(expect.objectContaining({ code: 'invalid_body' }))
+  })
+
   it('refuses repository writes, traversal, symlinks and oversized files', () => {
     const { deps, root, repositoryDir } = setup()
     writeRepoPack(repositoryDir, REPO_FOX)
@@ -497,9 +527,11 @@ describe('studio packs', () => {
     expect(revisionAudits(storage, FOX)[0]?.key).toBe(`revision:${String(journal['opId'])}`)
   })
 
-  it('restores exact sticker bytes across a backup and rename recovery', () => {
+  it('restores exact stickers and dated backups across a publish recovery', () => {
     const { deps, root, storage } = setup()
     createStudioPack(deps, { id: FOX, card: makeCard(FOX), moods: makeMoods(), lines: makeLines() })
+    const datedBackup = join(root, 'characters', FOX, 'lines.yml.bak-20260202')
+    writeFileSync(datedBackup, 'previous synthetic lines')
     const sticker = makeStickerBytes([9, 9, 9])
     writeSticker(root, FOX, 'calm_00.webp', sticker)
     const r0 = getStudioPack(deps, FOX).revision
@@ -534,6 +566,7 @@ describe('studio packs', () => {
     expect(revisionAudits(storage, FOX).length).toBe(auditsBefore + 1)
     expect(getStudioPack(deps, FOX).card.displayName).toBe('Sticker exact fox')
     expect(readFileSync(join(root, 'characters', FOX, 'stickers', 'calm_00.webp'))).toEqual(sticker)
+    expect(readFileSync(datedBackup, 'utf8')).toBe('previous synthetic lines')
     const second = recoverStudioPacks(deps)
     expect(second.recovered).toEqual([])
     expect(revisionAudits(storage, FOX).length).toBe(auditsBefore + 1)

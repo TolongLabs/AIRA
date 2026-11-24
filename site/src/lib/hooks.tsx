@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { get } from '@/lib/api'
-import hotToast, { Toaster as HotToaster } from 'react-hot-toast'
+import { createPortal } from 'react-dom'
+import hotToast, { Toaster as HotToaster, useToasterStore } from 'react-hot-toast'
 import { useContext } from 'react'
 import { DashboardContext } from '@/dashboard/context'
 
@@ -91,12 +92,54 @@ export function toast(message: string, ok = true) {
 }
 
 export function ToastHost() {
-  return (
+  const { toasts } = useToasterStore()
+  const visible = toasts.length > 0
+  const [placed, setPlaced] = useState(false)
+  const [layer] = useState(() => {
+    const node = document.createElement('div')
+    node.className = 'owner-toast-layer'
+    node.setAttribute('popover', 'manual')
+    return node
+  })
+  useLayoutEffect(() => {
+    if (!visible) {
+      setPlaced(false)
+      return
+    }
+    function place() {
+      // A native modal makes outside nodes inert. Radix hides outside content from screen readers.
+      const dialog =
+        document.querySelector('dialog:modal') ??
+        Array.from(
+          document.querySelectorAll('[role="dialog"][data-state="open"],[role="alertdialog"][data-state="open"]')
+        ).at(-1)
+      const host = dialog ?? document.body
+      if (layer.parentElement !== host) host.append(layer)
+      if (layer.showPopover && !layer.matches(':popover-open')) layer.showPopover()
+    }
+    place()
+    // ToastBar measures on mount to start its animation. Its host must already be visible.
+    setPlaced(true)
+    const observer = new MutationObserver(place)
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['open', 'data-state']
+    })
+    return () => {
+      observer.disconnect()
+      layer.remove()
+    }
+  }, [visible, layer])
+  if (!visible || !placed) return null
+  return createPortal(
     <HotToaster
       position="bottom-center"
       containerStyle={{ bottom: 'max(24px, env(safe-area-inset-bottom))' }}
       toastOptions={{ className: 'owner-toast', duration: 4500, error: { duration: 6500 } }}
-    />
+    />,
+    layer
   )
 }
 

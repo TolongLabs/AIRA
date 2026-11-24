@@ -125,6 +125,16 @@ route and gets `404`. Access without the owner credential gets `401`.
   or inaccessible source (`inaccessible`, applied intact). It shows only the
   opaque tokens and timestamps.
 
+### Running core settings
+
+`GET /owner-api/core/deployment-settings` requires owner authentication and returns a read-only view
+of the startup-applied configuration. Models identifies the main transport (Claude Code subscription,
+Anthropic API, or OpenAI-compatible API), the API fallback, normal and /think effort, and route availability.
+Core Configuration covers every schema group. Private paths, commands, identifiers, and free-text fields
+report presence or counts. Model endpoints expose only the HTTP(S) origin. Credentials reports presence
+for named core integrations, never their values. Disk changes take effect through deployment and restart.
+`/owner-api/core/config` retains its revision-only contract. Host-owned integrations keep their existing writers.
+
 ## Host settings, routines, notices, markets, and files
 
 These pages reach the host owner service through the core's same-origin
