@@ -87,7 +87,7 @@ function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID_RE.test(value)
 }
 
-function resolveTarget(storage: Storage, chatId: string): string | undefined {
+export function resolveOwnerTarget(storage: Storage, chatId: string): string | undefined {
   return storage.read((db) => {
     const row = db.prepare('SELECT wa_id, type FROM chat WHERE chat_id = ?').get(chatId) as
       { wa_id: string; type: string } | undefined
@@ -294,7 +294,7 @@ export async function handleOwnerMessagePost(
     return
   }
 
-  const target = resolveTarget(deps.storage, chatId)
+  const target = resolveOwnerTarget(deps.storage, chatId)
   if (!target) {
     fail(response, log, 404, 'not_found', 'owner_message.unknown_chat')
     return

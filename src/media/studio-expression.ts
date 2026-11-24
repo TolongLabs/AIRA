@@ -190,7 +190,8 @@ function probeDimensions(value: unknown): { width: number; height: number; frame
 export async function convertExpression(
   bytes: Buffer,
   mime: string,
-  callerSignal?: AbortSignal
+  callerSignal?: AbortSignal,
+  framing: 'contain' | 'cover' = 'contain'
 ): Promise<StudioExpressionResult> {
   if (callerSignal?.aborted) return { ok: false, reason: 'aborted' }
 
@@ -300,7 +301,7 @@ export async function convertExpression(
             '-frames:v',
             '1',
             '-vf',
-            SCALE_PAD_FILTER,
+            framing === 'cover' ? 'crop=min(iw\\,ih):min(iw\\,ih),scale=512:512:flags=lanczos' : SCALE_PAD_FILTER,
             '-map_metadata',
             '-1',
             '-map_chapters',

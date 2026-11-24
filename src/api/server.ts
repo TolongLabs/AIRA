@@ -10,6 +10,7 @@ import {
   normalizeMethod,
   normalizeRoute
 } from './dashboard-diagnostics.js'
+import { chatSenders, inboundActivity, profileImage } from './dashboard-media.js'
 import { authorizeOwner } from './owner-auth.js'
 import { changeOwnerJob, ownerCronTransport } from './owner-cron.js'
 import { changeOwnerMarkets } from './owner-markets.js'
@@ -255,6 +256,29 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
     }
     const path = target.split('?')[0] ?? '/'
     if (dashboard) {
+      if (path === '/api/activity') {
+        if (request.method !== 'GET') return json(response, 405, { error: 'method_not_allowed' })
+        return json(response, 200, inboundActivity(options))
+      }
+      const senders = /^\/api\/chats\/(c_[a-zA-Z0-9_-]+)\/senders$/.exec(path)
+      if (senders) {
+        if (request.method !== 'GET') return json(response, 405, { error: 'method_not_allowed' })
+        const result = chatSenders(options, senders[1]!)
+        return json(response, result.status, result.body)
+      }
+      const portrait = /^\/api\/(characters|chats)\/([a-zA-Z0-9_-]{1,128})\/profile-image$/.exec(path)
+      if (portrait) {
+        const data = request.method === 'PUT' ? await readJson(request, 5600000) : { body: undefined }
+        if ('error' in data) return json(response, data.status, { error: data.error })
+        const result = await profileImage(
+          options,
+          portrait[1] as 'characters' | 'chats',
+          portrait[2]!,
+          request.method ?? '',
+          data.body
+        )
+        return json(response, result.status, result.body)
+      }
       if (path === '/api/config') {
         if (request.method !== 'GET') return json(response, 405, { error: 'method_not_allowed' })
         const snapshot =
