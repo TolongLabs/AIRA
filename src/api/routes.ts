@@ -11,6 +11,8 @@ import type { Storage } from '../storage/database.js'
 import type { DataPaths } from '../storage/startup.js'
 import type { ToolRegistry } from '../tools/registry.js'
 import type { ToolMode } from '../tools/types.js'
+import { hasPortrait } from './dashboard-media.js'
+import { resolveOwnerTarget } from './owner-message.js'
 import { getStudioFooter, StudioPackError } from './studio-packs.js'
 
 // Read handlers for the core's site API (docs/trd/site.md#read-routes).
@@ -97,7 +99,7 @@ function handleHealth(deps: SiteApiDeps): RouteResult {
   })
 }
 
-function handleChats(deps: SiteApiDeps): RouteResult {
+function handleChats(deps: SiteApiDeps, dashboard: boolean): RouteResult {
   const rawChats = listChats(deps.storage)
   const directory = rawChats.some((chat) => chat.label === '')
     ? readChannelDirectory(deps.channelDirectoryPath ?? DEFAULT_CHANNEL_DIRECTORY_PATH)
@@ -122,6 +124,8 @@ function handleChats(deps: SiteApiDeps): RouteResult {
     const snapshot = deps.storage.read((db) => scopeSnapshot(db, 'chat', chat.chatId, chat.type))
     return {
       ...chat,
+      ...(dashboard && hasPortrait(deps.paths.root, 'chats', chat.chatId) ? { hasPortrait: true } : {}),
+      ...(dashboard ? { deliveryTarget: resolveOwnerTarget(deps.storage, chat.chatId) ?? null } : {}),
       storedLabel: chat.label,
       lastInboundAt: activity.get(chat.chatId) ?? null,
       label,
@@ -283,11 +287,12 @@ export function footerKindsFor(registry: ToolRegistry): { kind: string; defaultL
     .map((kind) => ({ kind, defaultLabel: plainLabel(kind) }))
 }
 
-function handleCharacters(deps: SiteApiDeps): RouteResult {
+function handleCharacters(deps: SiteApiDeps, dashboard: boolean): RouteResult {
   const set = deps.packs()
   const characters = [...set.packs.values()]
     .map((pack) => ({
       id: pack.id,
+      ...(dashboard && hasPortrait(deps.paths.root, 'characters', pack.id) ? { hasPortrait: true } : {}),
       displayName: pack.card.displayName,
       ...(pack.card.aliases ? { aliases: pack.card.aliases } : {}),
       source: pack.source,
@@ -346,7 +351,7 @@ export function isKnownRoute(pathname: string): boolean {
 export async function dispatchGet(deps: SiteApiDeps, url: URL, dashboard = false): Promise<RouteResult> {
   const path = url.pathname
   if (path === '/api/health') return handleHealth(deps)
-  if (path === '/api/chats') return handleChats(deps)
+  if (path === '/api/chats') return handleChats(deps, dashboard)
   if (path === '/api/tools') return handleTools(deps)
   if (path === '/api/settings') return handleSettings(deps, url.searchParams, dashboard)
   if (path === '/api/turns') return handleTurns(deps, url.searchParams)
@@ -365,7 +370,7 @@ export async function dispatchGet(deps: SiteApiDeps, url: URL, dashboard = false
   }
   if (path === '/api/report') return handleReport(deps)
   if (path === '/api/memory') return handleMemory(deps, url.searchParams)
-  if (path === '/api/characters') return handleCharacters(deps)
+  if (path === '/api/characters') return handleCharacters(deps, dashboard)
   const footerMatch = CHARACTER_FOOTER_GET.exec(path)
   if (footerMatch?.[1] !== undefined) return handleFooter(deps, footerMatch[1])
   return error(404, 'not_found')

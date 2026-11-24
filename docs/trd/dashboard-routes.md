@@ -11,8 +11,8 @@ routes. During preview, the core serves them under a separate mount while the ex
 | chats.html                     | Find active or pending group or DM                                  | /chats                         | Core chat table and gateway directory                | 22:661, 62:59438          | Search, page, select and return to filtered results                | #367       |
 | chats.html                     | Set character, reply, features, quiet hours or access               | /chats/:id/settings            | Core setting hierarchy and chat record               | 62:59096, 43:6308         | Clear override, reload, verify source and next turn                | #367       |
 | chats.html                     | Manage shared defaults                                              | /chats/defaults                | Global and type settings                             | 36:3437                   | Set a default and read effective value on a chat                   | #367       |
-| send.html                      | Choose target, attach file, reconcile recent send                   | /chats/:id/send                | Host upload and send history                         | 35:3030, 43:10290         | Retain file workflow and reconcile dropped response                | #367       |
-| New                            | Send confirmed owner text to one chat                               | /chats/:id/send                | Protected core operation and gateway acknowledgement | 111:133187, 111:134045    | Restart after lost acknowledgement and look up original submission | #360, #367 |
+| send.html                      | Choose target, attach file, reconcile recent send                   | /chats/:id/settings#send       | Host upload and send history                         | 35:3030, 43:10290         | Retain file workflow and reconcile dropped response                | #367       |
+| New                            | Send confirmed owner text to one chat                               | /chats/:id/settings#send       | Protected core operation and gateway acknowledgement | 111:133187, 111:134045    | Restart after lost acknowledgement and look up original submission | #360, #367 |
 | chats.html footer editor       | Configure a persona tool label                                      | /characters/:id/footer         | Writable pack plus registered tools                  | 43:17174, 109:124266      | Save, clear, run simulated turn                                    | #368       |
 | New                            | Browse, create, import, edit or simulate a persona                  | /characters                    | Pack loader and writable data packs                  | 29:1000, 35:1764, 35:1963 | Publish and select in a chat, preserve draft on preview            | #368       |
 | library.html                   | Browse items and inspect authorized media                           | /library and /library/item/:id | Host library and owner media                         | 22:1543                   | Open item, refresh, refuse unauthorized media                      | #369       |
@@ -118,10 +118,10 @@ All four met the budgets above.
 
 At the routines list, the detail pane initially shows the first visible routine. A bookmarked routine takes
 precedence, including its missing-item recovery state. Filtering updates the default detail without writing a job.
-On phones, the navigation drawer also provides the Directory's Chat Defaults and Send File links.
+On phones, the navigation drawer also provides the Directory's Chat Defaults link.
 
-Per-chat Access groups the reply switch, owner label and sender settings. The header shows the current reply state
-and links to the composer. The Character and Reply tabs link to the assigned persona’s tool footer.
+Per-chat Access groups the reply switch, owner label and sender settings. The header shows the current reply state.
+Send Message opens the composer in a tab. The Character and Reply tabs link to the assigned persona’s tool footer.
 
 Dashboard service restart and stop open a confirmation dialog for the selected unit. Cancel or Escape returns to
 the service control. Only the confirmation submits the operation.
@@ -135,3 +135,27 @@ On the full-height owner workspace the same seven-run fixture had median navigat
 service summary of 359 ms, first-route JavaScript of 438,212 decoded bytes and a p95 frame interval of 17 ms.
 Each met the legacy limits. The chat directory restores the exact originating link on history and breadcrumb
 return. On narrow screens routine and library detail links bring the selected panel into view.
+
+## Owner workspace refinements
+
+The Chats strip has one selectable bar per chat. Its tooltip shows the owner-facing label, type, reply state
+and last inbound date. The activity calendar counts retained inbound messages by UTC day across thirteen weeks.
+Only dates and aggregate counts leave the protected activity endpoint.
+
+Create opens a choice of agent instructions, manual entry or JSON import. Catalogue pages hold three rows at
+the current column count. Persona editor tabs show one section and retain unsaved fields across tab changes.
+The simulator uses the harness conversation layout and runs synthetic mood matching entirely in the browser.
+
+The selected chat's Send Message tab holds text and attachment workflows. The host file recipient must match
+the core's canonical gateway target or a unique, explicitly mapped phone number for a phone-addressed DM.
+Old send bookmarks remain usable. Owners can select recent senders from that chat or add multiple sender IDs,
+then review the change before saving.
+
+The owner's protected core routes expose GET and PUT for chats/:id/profile-image and characters/:id/profile-image.
+Images are dashboard portraits stored in the data volume separately from packs and WhatsApp. Reads return a nullable
+base64 WebP. Writes normalize a static PNG, JPEG or WebP up to 4 MiB into a square WebP for an existing
+target. Directory records indicate when a portrait exists. Missing portraits use chat glyphs or catalogue motifs.
+
+System Profile Files browses the loaded core packs and their card, moods and lines documents. Edits use Studio's
+revision-checked writer. Device appearance uses actual finish samples and shares the System header. Toasts appear
+at bottom center with a frosted surface. Clearing an override is labelled Use Defaults.
