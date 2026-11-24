@@ -5,39 +5,101 @@
 
 # AIRA
 
-AIRA answers WhatsApp DMs and small groups as the character configured for each chat. An owner can change who receives
-replies, choose a character and inspect service health from a private dashboard on the same Linux host.
+AIRA replies to WhatsApp DMs and small groups in the voice of the character assigned to each chat. The owner
+dashboard controls which chats receive replies, which models answer them, and which routines run.
 
-<details>
-<summary>Contents</summary>
+[Quick setup](#quick-setup) · [Open the dashboard](#open-the-owner-dashboard) · [Screenshots](#dashboard) · [Development](#development) · [Operations](#operations)
 
-- [Dashboard](#dashboard)
-- [How a Reply Works](#how-a-reply-works)
-- [Repository Layout](#repository-layout)
-- [Development](#development)
-- [Operations](#operations)
-- [Documentation](#documentation)
-- [Licence](#licence)
+## A conversation with AIRA
 
-</details>
+A member asks what to make with rice and an egg, then asks how to get crispy edges. These are replies from the
+installed AIRA character in the **WhatsApp Simulator**. The simulator used a fresh chat, the real core and its
+configured model routes. Both screenshots show the same exchange.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/whatsapp-dark.webp">
+  <img src="docs/images/whatsapp-light.webp" alt="AIRA suggests egg fried rice, then explains how to crisp the rice in a frying pan.">
+</picture>
+
+[Light conversation](docs/images/whatsapp-light.webp) · [Dark conversation](docs/images/whatsapp-dark.webp)
+
+## Quick setup
+
+Try a DM on your computer before connecting a WhatsApp account. You need Node.js 24, Bun and a model API key.
+
+1. Clone the repository and install the core dependencies.
+
+   ```sh
+   git clone https://github.com/TolongLabs/AIRA.git
+   cd AIRA
+   bun install --frozen-lockfile
+   ```
+
+2. In this fresh checkout, create a private environment file.
+
+   ```sh
+   install -m 600 .env.example .env
+   ```
+
+   Open `.env` in your editor and set `LLM_API_KEY`. The bundled `config.yml` selects Anthropic for the
+   primary role. For an OpenAI-compatible provider, set `llm.main.provider` to `openai-compatible` and set
+   `llm.main.baseUrl`, `llm.main.model` and `llm.main.effort` to values your provider supports.
+
+3. Start the simulator from the repository root. Open the local address it prints, choose the direct chat and
+   send a message.
+
+   ```sh
+   bun run sim --character example
+   ```
+
+   The default address is `http://127.0.0.1:9900`. The public checkout includes the fictional **Example** pack.
+   The screenshots above use the private **AIRA** pack from the installed host. To try a pack of your own, place it in
+   a dedicated simulator data directory under `characters/<pack-id>/`, then pass `--data <directory> --character <pack-id>`.
+
+For an installation that delivers replies to WhatsApp, connect the Hermes gateway and run the core with Docker
+Compose. The install guide covers the data volume, private configuration, gateway media mounts and health check.
+[Host installation](docs/trd/deployment.md#install) · [Simulator options](docs/trd/harness.md#whatsapp-simulator)
+
+## Open the owner dashboard
+
+On a host with AIRA and the Hermes owner service installed, open `http://127.0.0.1:9890/overview`.
+The published dashboard port is `AIRA_SITE_PORT` (default `9890`). The canonical routes use
+`AIRA_DASHBOARD_ENTRY=dashboard`. The entry switch and its rollback are documented in the runbook.
+[Dashboard entry switch](docs/trd/deployment.md#dashboard-entry-recovery)
+
+1. **From a laptop**, forward the host's dashboard port. Replace `owner@your-host` with your SSH login.
+   Keep the SSH session open while using the dashboard.
+
+   ```sh
+   ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:9890:127.0.0.1:9890 owner@your-host
+   ```
+
+2. Open `http://127.0.0.1:9890/overview` in the laptop browser. At the sign-in prompt, enter the Hermes owner
+   site token from the host's `~/.hermes/brain/.site-token` and select **Save token**.
+3. Open **System → Host Settings → Models** to inspect the primary and fallback routes. **Credentials** lets
+   you set or replace a key. **Apply saved changes** activates edits to the installed configuration.
 
 ## Dashboard
 
-The screenshots use fictional chats, temporary character data and a simulated gateway.
+The dashboard screenshots use fictional chats and isolated settings. Select an image to inspect a full-size view.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-dark.webp">
-  <img src="docs/images/overview-light.webp" alt="Desktop Overview showing four online services, active and pending chats, the routine schedule and Library count">
+  <img src="docs/images/overview-light.webp" alt="Overview showing four healthy services, chat status, scheduled routines and a daily activity heatmap.">
 </picture>
 
-| Chat workflow                                                                                                             | Character Studio                                                                                        |
-| ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| ![Phone message review showing the fictional target and the confirmed text before sending](docs/images/chat-confirm.webp) | ![Character Studio editor for an editable copy of the built-in example](docs/images/studio-editor.webp) |
+[Light Overview](docs/images/overview-light.webp) · [Dark Overview](docs/images/overview-dark.webp) · [Phone Overview](docs/images/overview-phone.webp)
 
-The [phone Overview](docs/images/overview-phone.webp) uses a navigation drawer. Chats controls scope and inheritance.
-Character Studio edits identity, speech, moods and fixed lines. Library shows saved items and their connections.
-Automations manages routines and notices. Markets manages watchlists and alerts. System includes host health and
-device appearance.
+| Page                                                                                | Light                                                                                               | Dark                                                                                                         |
+| ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **Chat Directory** — find a conversation and open its settings.                     | [![Light Chat Directory](docs/images/chats-light.webp)](docs/images/chats-light.webp)               | [![Dark Chat Directory](docs/images/chats-dark.webp)](docs/images/chats-dark.webp)                           |
+| **Reply Models** — inspect each role and see which Claude Code paths are available. | [![Light Reply Models](docs/images/models-light.webp)](docs/images/models-light.webp)               | [![Dark Reply Models](docs/images/models-dark.webp)](docs/images/models-dark.webp)                           |
+| **Character Studio** — edit a character’s identity and speech rules.                | [![Light Character Studio](docs/images/studio-editor.webp)](docs/images/studio-editor.webp)         | [![Dark Character Studio](docs/images/studio-editor-dark.webp)](docs/images/studio-editor-dark.webp)         |
+| **Message review** — confirm the chat and message before sending as owner.          | [![Light phone message confirmation](docs/images/chat-confirm.webp)](docs/images/chat-confirm.webp) | [![Dark phone message confirmation](docs/images/chat-confirm-dark.webp)](docs/images/chat-confirm-dark.webp) |
+| **Appearance** — preview background finishes and adjust reading surfaces.           | [![Light Appearance](docs/images/appearance-light.webp)](docs/images/appearance-light.webp)         | [![Dark Appearance](docs/images/appearance-dark.webp)](docs/images/appearance-dark.webp)                     |
+
+Character Studio edits identity, speech, moods and fixed lines. Its **Preview Conversation** shows a draft's
+configured mood openers. The model-backed simulator in the quick setup runs the full reply pipeline.
 
 ## How a Reply Works
 
