@@ -16,7 +16,7 @@
 
 .dashboard-shell .automations-layout {
   display: grid;
-  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 45fr) minmax(0, 55fr);
   gap: 16px;
   align-items: start;
   min-width: 0;
@@ -26,7 +26,10 @@
 .dashboard-shell .automations-detail,
 .dashboard-shell .automations-panel {
   background: var(--tile, #ffffffb8);
-  border: 1px solid var(--edge, #ffffffbf);
+  border: 1px solid var(--tile-edge);
+  box-shadow:
+    inset 0 1px 0 var(--rim),
+    0 4px 10px rgb(12 39 36 / 0.1);
   border-radius: 16px;
   padding: 16px;
   min-width: 0;
@@ -43,13 +46,10 @@
 
 .dashboard-shell .automations-kicker {
   margin: 0;
-  font-family: 'Geist Mono', monospace;
-  font-size: 0.68rem;
-  font-weight: 500;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text, #102725);
-  opacity: 0.7;
+  font-family: Outfit, sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
 }
 
 .dashboard-shell .automations-filter {
@@ -167,5 +167,34 @@
 @media (prefers-reduced-motion: reduce) {
   .dashboard-shell .automations-row {
     transition: none;
+  }
+}
+
+.automations-kicker::before {
+  content: '';
+  display: block;
+  width: 24px;
+  height: 3px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  background: var(--chart-ink);
+}
+.notices-board {
+  display: grid;
+  grid-template-columns: minmax(0, 53fr) minmax(0, 47fr);
+  gap: 16px;
+  align-items: start;
+}
+.notices-column {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.notices-column table {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 760px) {
+  .notices-board {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

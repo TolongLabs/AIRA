@@ -1,3 +1,5 @@
+import * as Dialog from '@radix-ui/react-dialog'
+import { X } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import './selection-table.css'
@@ -14,6 +16,10 @@ export type SelectionBulkAction<T> = {
   id: string
   label: string
   confirmMessage?: string
+  primary?: boolean
+  configure?: ReactNode
+  confirmDisabled?: boolean
+  onFinish?: () => Promise<void>
   run: (row: T) => Promise<void>
 }
 
@@ -26,6 +32,7 @@ export type SelectionTableProps<T> = {
   viewId: string
   bulkActions?: SelectionBulkAction<T>[]
   page: number
+  pageSize?: number
   onPageChange: (page: number) => void
   emptyMessage?: string
 }
@@ -51,6 +58,7 @@ export default function SelectionTable<T>({
   viewId,
   bulkActions = [],
   page,
+  pageSize = SELECTION_PAGE_SIZE,
   onPageChange: setPage,
   emptyMessage = 'No matching rows.'
 }: SelectionTableProps<T>) {
@@ -60,13 +68,15 @@ export default function SelectionTable<T>({
   const [result, setResult] = useState<ActionResult | null>(null)
   const statusId = useId()
   const headerBox = useRef<HTMLInputElement>(null)
-  const confirmButton = useRef<HTMLButtonElement>(null)
+  const cancelButton = useRef<HTMLButtonElement>(null)
+  const dialogTrigger = useRef<HTMLElement | null>(null)
+  const configuration = useRef<HTMLSpanElement>(null)
   const restoreTarget = useRef<HTMLElement | null>(null)
   const previousView = useRef(viewId)
 
-  const pageCount = Math.max(1, Math.ceil(rows.length / SELECTION_PAGE_SIZE))
+  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize))
   const safePage = Math.min(Math.max(1, page), pageCount)
-  const visible = rows.slice((safePage - 1) * SELECTION_PAGE_SIZE, safePage * SELECTION_PAGE_SIZE)
+  const visible = rows.slice((safePage - 1) * pageSize, safePage * pageSize)
   const visibleKeys = useMemo(() => visible.map(getKey), [visible, getKey])
   const lookup = useMemo(() => {
     const map = new Map<string, T>()
@@ -82,10 +92,6 @@ export default function SelectionTable<T>({
     setPendingId(null)
     setResult(null)
   }, [viewId])
-
-  useEffect(() => {
-    if (pendingId) confirmButton.current?.focus()
-  }, [pendingId])
 
   const visibleSelected = visibleKeys.filter((key) => selected.has(key))
   const allVisible = visibleKeys.length > 0 && visibleSelected.length === visibleKeys.length
@@ -135,15 +141,9 @@ export default function SelectionTable<T>({
     focusRestoreTarget()
   }
 
-  function cancelPending() {
-    setPendingId(null)
-    focusRestoreTarget()
-  }
-
   async function dispatch(action: SelectionBulkAction<T>) {
-    const trigger = document.activeElement as HTMLElement | null
     const keys = [...selected].filter((key) => lookup.has(key))
-    if (!keys.length || runningId) return
+    if (!keys.length || runningId || action.confirmDisabled) return
     setPendingId(null)
     setRunningId(action.id)
     setResult(null)
@@ -159,56 +159,54 @@ export default function SelectionTable<T>({
         failures.push({ key, label: labelFor(key), message: failureMessage(reason) })
       }
     }
+    await action.onFinish?.()
     setSelected((prev) => new Set([...prev].filter((key) => !succeeded.has(key))))
     setRunningId(null)
     setResult({ label: action.label, succeeded: succeeded.size, failures })
-    if (trigger && document.contains(trigger)) trigger.focus()
+    if (succeeded.size === keys.length) headerBox.current?.focus()
   }
 
-  function arm(action: SelectionBulkAction<T>, trigger: HTMLButtonElement) {
-    if (runningId) return
-    if (action.confirmMessage && pendingId !== action.id) {
-      restoreTarget.current = trigger
-      setPendingId(action.id)
-      return
-    }
-    void dispatch(action)
+  const primary = bulkActions.find((action) => action.primary)
+  const pending = bulkActions.find((action) => action.id === pendingId)
+
+  function openPanel(id: string, trigger: HTMLElement) {
+    dialogTrigger.current = trigger
+    setPendingId(id)
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLElement>) {
-    if (event.key !== 'Escape') return
-    if (pendingId) {
-      event.stopPropagation()
-      cancelPending()
-    } else if (selected.size > 0 && !runningId) {
+    if (event.key === 'Escape' && !pendingId && selected.size > 0 && !runningId) {
       event.stopPropagation()
       clearSelection()
     }
   }
 
   return (
-    <section className="selection-table" aria-label={caption} onKeyDown={onKeyDown}>
+    <section className="selection-table" data-selected={selected.size > 0} aria-label={caption} onKeyDown={onKeyDown}>
       <div className="selection-scroll">
         <table aria-describedby={statusId}>
-          <caption>{caption}</caption>
+          <caption className="sr-only">{caption}</caption>
           <thead>
             <tr>
               <th scope="col">
-                <input
-                  ref={headerBox}
-                  type="checkbox"
-                  checked={allVisible}
-                  disabled={!visibleKeys.length}
-                  onChange={(e) => toggleVisible(e.target.checked, e.currentTarget)}
-                  aria-label={
-                    visibleKeys.length
-                      ? `Select this page (${visibleSelected.length} of ${visibleKeys.length} selected)`
-                      : 'Select this page (no rows)'
-                  }
-                />
+                <span className="selection-check">
+                  <input
+                    ref={headerBox}
+                    type="checkbox"
+                    checked={allVisible}
+                    disabled={!visibleKeys.length}
+                    onChange={(e) => toggleVisible(e.target.checked, e.currentTarget)}
+                    aria-label={
+                      visibleKeys.length
+                        ? `Select this page (${visibleSelected.length} of ${visibleKeys.length} selected)`
+                        : 'Select this page (no rows)'
+                    }
+                  />
+                  <span aria-hidden="true" />
+                </span>
               </th>
               {columns.map((col) => (
-                <th key={col.id} scope="col">
+                <th key={col.id} scope="col" data-column={col.id}>
                   {col.header}
                 </th>
               ))}
@@ -221,15 +219,20 @@ export default function SelectionTable<T>({
               return (
                 <tr key={key}>
                   <td>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => toggleRow(key, e.target.checked, e.currentTarget)}
-                      aria-label={'Select ' + labelFor(key)}
-                    />
+                    <span className="selection-check">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => toggleRow(key, e.target.checked, e.currentTarget)}
+                        aria-label={'Select ' + labelFor(key)}
+                      />
+                      <span aria-hidden="true" />
+                    </span>
                   </td>
                   {columns.map((col) => (
-                    <td key={col.id}>{col.render(row)}</td>
+                    <td key={col.id} data-column={col.id}>
+                      {col.render(row)}
+                    </td>
                   ))}
                 </tr>
               )
@@ -239,53 +242,108 @@ export default function SelectionTable<T>({
       </div>
       {!rows.length && <p>{emptyMessage}</p>}
       {rows.length > 0 && (
-        <div className="selection-pager">
+        <div className="selection-pager" data-single={pageCount === 1}>
           <span>
-            {SELECTION_PAGE_SIZE} per page · Page {safePage} of {pageCount}
+            {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, rows.length)} of {rows.length} Chats
           </span>
           <button type="button" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>
-            Previous
+            <span aria-hidden="true">‹</span>
+            <span className="sr-only">Previous page</span>
           </button>
+          <span className="selection-current" aria-current="page">
+            {safePage}
+          </span>
+          {safePage < pageCount && (
+            <button type="button" aria-label={'Page ' + (safePage + 1)} onClick={() => setPage(safePage + 1)}>
+              {safePage + 1}
+            </button>
+          )}
           <button type="button" disabled={safePage >= pageCount} onClick={() => setPage(safePage + 1)}>
-            Next
+            <span aria-hidden="true">›</span>
+            <span className="sr-only">Next page</span>
           </button>
         </div>
       )}
       {selected.size > 0 && (
         <div className="selection-island" role="group" aria-label={selected.size + ' selected'}>
           <span className="selection-count">{selected.size} selected</span>
-          {bulkActions.map((action) =>
-            pendingId === action.id && action.confirmMessage ? (
-              <span key={action.id} className="selection-confirm">
-                <span>{action.confirmMessage}</span>
-                <button
-                  ref={confirmButton}
-                  type="button"
-                  disabled={runningId !== null}
-                  onClick={() => void dispatch(action)}
-                >
-                  Confirm {action.label}
-                </button>
-                <button type="button" disabled={runningId !== null} onClick={cancelPending}>
-                  Cancel
-                </button>
-              </span>
-            ) : (
-              <button
-                key={action.id}
-                type="button"
-                disabled={runningId !== null}
-                onClick={(e) => arm(action, e.currentTarget)}
-              >
-                {runningId === action.id ? action.label + '…' : action.label}
-              </button>
-            )
+          <button type="button" disabled={!!runningId} onClick={(event) => openPanel('review', event.currentTarget)}>
+            Review
+          </button>
+          {primary && (
+            <button
+              type="button"
+              disabled={!!runningId}
+              onClick={(event) => openPanel(primary.id, event.currentTarget)}
+            >
+              {primary.label}
+            </button>
           )}
-          <button type="button" disabled={runningId !== null} onClick={clearSelection}>
-            Clear
+          <button type="button" disabled={!!runningId} onClick={clearSelection} aria-label="Clear selection">
+            <X size={16} aria-hidden="true" />
           </button>
         </div>
       )}
+      <Dialog.Root
+        open={selected.size > 0 && pendingId !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingId(null)
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="dashboard-modal-scrim" />
+          <Dialog.Content
+            className="dashboard-modal"
+            onOpenAutoFocus={(event) => {
+              event.preventDefault()
+              const first = configuration.current?.querySelector<HTMLButtonElement>('button') ?? cancelButton.current
+              first?.focus()
+            }}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault()
+              if (dialogTrigger.current?.isConnected) dialogTrigger.current.focus()
+              else headerBox.current?.focus()
+            }}
+          >
+            <Dialog.Title>{pending?.label ?? 'Review Selection'}</Dialog.Title>
+            <Dialog.Description>
+              {pending?.confirmMessage ?? 'Review the chats included in this selection.'}
+            </Dialog.Description>
+            <ul className="selection-review-list">
+              {[...selected]
+                .filter((key) => lookup.has(key))
+                .map((key) => (
+                  <li key={key}>{labelFor(key)}</li>
+                ))}
+            </ul>
+            {pending?.configure && <span ref={configuration}>{pending.configure}</span>}
+            <div className="dashboard-modal-actions">
+              <Dialog.Close asChild>
+                <button ref={cancelButton} type="button">
+                  {pending ? 'Cancel' : 'Close'}
+                </button>
+              </Dialog.Close>
+              {pending ? (
+                <button
+                  type="button"
+                  disabled={!!runningId || pending.confirmDisabled}
+                  onClick={() => void dispatch(pending)}
+                >
+                  Confirm {pending.label}
+                </button>
+              ) : (
+                bulkActions
+                  .filter((action) => !action.primary)
+                  .map((action) => (
+                    <button key={action.id} type="button" onClick={() => setPendingId(action.id)}>
+                      {action.label}
+                    </button>
+                  ))
+              )}
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
       <div id={statusId} className="selection-status" role="status">
         {selected.size > 0 ? selected.size + ' selected. ' : ''}
         {result

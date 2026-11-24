@@ -1,7 +1,6 @@
 .chat-defaults {
   display: grid;
   gap: 16px;
-  max-width: 960px;
   align-content: start;
 }
 
@@ -17,13 +16,32 @@
   font-size: 14px;
 }
 
-.chat-defaults-scopes {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+.chat-defaults-layout {
+  display: grid;
+  grid-template-columns: minmax(200px, 35fr) minmax(0, 65fr);
+  gap: 16px;
+  align-items: start;
+}
+.chat-defaults-scopes,
+.chat-defaults-editor {
+  display: grid;
   gap: 12px;
 }
-
+.chat-defaults-scopes [role='group'] {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.chat-defaults-scopes button {
+  width: 100%;
+  text-align: start;
+  justify-content: flex-start;
+}
+@media (max-width: 760px) {
+  .chat-defaults-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .chat-defaults-counts {
   margin: 0;
   font-size: 13px;

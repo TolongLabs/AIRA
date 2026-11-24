@@ -47,6 +47,13 @@ export interface CoreToolFeature {
   tools: { name: string; mode: 'implicit' | 'explicit' | 'both'; commands: string[] }[]
 }
 
+export interface CoreHealth {
+  status: 'ready' | 'starting'
+  version: string
+  activeTurns: number
+  roles: Record<string, { configured: boolean; breakerOpen: boolean }>
+}
+
 export interface CoreConfigStatus {
   appliedRevision: string | null
   currentRevision: string | null
@@ -102,6 +109,7 @@ function put<T>(path: string, body: unknown): Promise<T> {
 }
 
 export const core = {
+  health: () => call<CoreHealth>('/api/health'),
   tools: () => call<CoreToolCatalog>('/api/tools'),
   chats: () => call<{ chats: CoreChat[] }>('/api/chats'),
   characters: () =>

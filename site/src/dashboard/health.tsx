@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ServiceRow } from '@/components/service-row'
+import { Button } from '@/components/ui'
 import { useApi, Toaster } from '@/lib/hooks'
 import type { Dashboard } from '@/lib/api'
-import { core, type CoreConfigStatus } from '@/lib/core'
+import { core, type CoreConfigStatus, type CoreHealth } from '@/lib/core'
 
 function shortRevision(revision: string | null): string {
   if (!revision) return '—'
@@ -27,14 +28,15 @@ function configMessage(status: CoreConfigStatus): string {
 export default function Health() {
   const { data, error, loading, reload } = useApi<Dashboard>('/api/dashboard')
   const [config, setConfig] = useState<CoreConfigStatus | 'unavailable' | null>(null)
+  const [selectedUnit, setSelectedUnit] = useState<string>()
+  const [health, setHealth] = useState<CoreHealth | 'unavailable' | null>(null)
   const configRead = useRef(0)
   const loadConfig = useCallback(async () => {
     const revision = ++configRead.current
-    try {
-      const value = await core.config()
-      if (revision === configRead.current) setConfig(value)
-    } catch {
-      if (revision === configRead.current) setConfig('unavailable')
+    const [configResult, healthResult] = await Promise.allSettled([core.config(), core.health()])
+    if (revision === configRead.current) {
+      setConfig(configResult.status === 'fulfilled' ? configResult.value : 'unavailable')
+      setHealth(healthResult.status === 'fulfilled' ? healthResult.value : 'unavailable')
     }
   }, [])
   useEffect(() => {
@@ -45,44 +47,113 @@ export default function Health() {
       window.removeEventListener('focus', loadConfig)
     }
   }, [loadConfig])
+  const services = Object.entries(data?.services ?? {})
+  const selected = services.find(([unit]) => unit === selectedUnit) ?? services[0]
+  const roles = health && health !== 'unavailable' ? Object.entries(health.roles ?? {}) : []
+  const breakerCount = roles.filter(([, role]) => role.breakerOpen).length
+  const roleLabels: Record<string, string> = {
+    main: 'Conversation',
+    fallback: 'Fallback',
+    judge: 'Judge',
+    media: 'Vision'
+  }
+
   return (
-    <section>
+    <div className="system-health">
       <Toaster />
-      <h2>Service Health</h2>
-      {error ? (
-        <p role="alert">Service status unavailable.</p>
-      ) : loading ? (
-        <p role="status">Loading…</p>
-      ) : (
-        <div>
-          {Object.entries(data?.services ?? {}).map(([unit, state]) => (
-            <ServiceRow key={unit} unit={unit} state={state} onDone={() => void reload()} />
-          ))}
-        </div>
+      <div className="workspace-grid">
+        <section className="dashboard-pane">
+          <h2 className="dashboard-pane-title">Service Health</h2>
+          {error ? (
+            <p role="alert">Service status unavailable.</p>
+          ) : loading ? (
+            <p role="status">Loading…</p>
+          ) : services.length ? (
+            <ul className="system-services">
+              {services.map(([unit, state]) => (
+                <li key={unit}>
+                  <button type="button" aria-pressed={selected?.[0] === unit} onClick={() => setSelectedUnit(unit)}>
+                    <span>{unit}</span>
+                    <span data-online={state === 'active'}>{state}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>No services reported.</p>
+          )}
+        </section>
+        <section className="dashboard-pane">
+          <h2 className="dashboard-pane-title">Core Diagnostics</h2>
+          {health === null ? (
+            <p role="status">Loading diagnostics…</p>
+          ) : health === 'unavailable' ? (
+            <p role="alert">Core diagnostics unavailable.</p>
+          ) : (
+            <dl className="system-facts">
+              <dt>Readiness</dt>
+              <dd>{health.status === 'ready' ? 'Ready' : 'Starting'}</dd>
+              <dt>Active turns</dt>
+              <dd>{health.activeTurns}</dd>
+              <dt>Model breakers</dt>
+              <dd>{breakerCount ? breakerCount + ' open' : 'Closed'}</dd>
+            </dl>
+          )}
+          {selected && (
+            <div aria-label={'Service actions for ' + selected[0]}>
+              <ServiceRow
+                key={selected[0]}
+                unit={selected[0]}
+                state={selected[1]}
+                onDone={() => void reload()}
+                controlsOnly
+              />
+            </div>
+          )}
+        </section>
+      </div>
+      {roles.length > 0 && (
+        <section className="dashboard-pane">
+          <h2 className="dashboard-pane-title">Model Roles</h2>
+          <ul className="system-roles">
+            {roles.map(([name, role]) => (
+              <li key={name}>
+                <div>{roleLabels[name] ?? name}</div>
+                <span>{role.breakerOpen ? 'Breaker open' : role.configured ? 'Configured' : 'Disabled'}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
-      <h3>Deployment configuration</h3>
-      {config === null ? (
-        <p role="status">Loading deployment revision…</p>
-      ) : config === 'unavailable' ? (
-        <p role="alert">Deployment revision unavailable.</p>
-      ) : (
-        <div>
-          <p data-config-status={config.status}>{configMessage(config)}</p>
-          <dl>
-            <dt>Running revision</dt>
-            <dd title={config.appliedRevision ?? ''}>{shortRevision(config.appliedRevision)}</dd>
-            <dt>File revision</dt>
-            <dd title={config.currentRevision ?? ''}>{shortRevision(config.currentRevision)}</dd>
-            <dt>Checked</dt>
-            <dd>{config.checkedAt}</dd>
-            <dt>Applied</dt>
-            <dd>{config.appliedAt}</dd>
-          </dl>
-          <button type="button" onClick={() => void loadConfig()}>
-            Recheck file
-          </button>
-        </div>
-      )}
-    </section>
+      <section className="dashboard-pane">
+        <h2 className="dashboard-pane-title">Deployment Configuration</h2>
+        {config === null ? (
+          <p role="status">Loading deployment revision…</p>
+        ) : config === 'unavailable' ? (
+          <p role="alert">Deployment revision unavailable.</p>
+        ) : (
+          <>
+            <p data-config-status={config.status}>{configMessage(config)}</p>
+            <dl className="system-facts">
+              <dt>Running revision</dt>
+              <dd title={config.appliedRevision ?? ''}>
+                <code>{shortRevision(config.appliedRevision)}</code>
+              </dd>
+              <dt>File revision</dt>
+              <dd title={config.currentRevision ?? ''}>
+                <code>{shortRevision(config.currentRevision)}</code>
+              </dd>
+              <dt>Checked</dt>
+              <dd>{config.checkedAt}</dd>
+              <dt>Applied</dt>
+              <dd>{config.appliedAt}</dd>
+            </dl>
+          </>
+        )}
+        <Button type="button" onClick={() => void loadConfig()}>
+          Recheck file
+        </Button>
+      </section>
+    </div>
   )
 }

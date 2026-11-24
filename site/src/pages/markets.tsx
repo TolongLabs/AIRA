@@ -23,6 +23,8 @@ import {
 } from '@/components/ui'
 import { SymbolSearch } from '@/components/symbol-search'
 import { DashboardContext } from '../dashboard/context'
+import { WorkspaceTools } from '@/dashboard/workspace-tools'
+import { FormSelect } from '@/dashboard/form-select'
 import '../dashboard/markets.css'
 
 /* WHY THIS PAGE IS SHAPED LIKE THIS
@@ -1591,25 +1593,26 @@ function DashboardMarkets(props: DashProps) {
   return (
     <div className="mkd">
       <Toaster />
-      <nav aria-label="Markets views" className="mkd-tabs">
-        {MARKET_TABS.map((t) => {
-          const on = t.key === tab
-          return (
-            <a
-              key={t.key}
-              href={marketTabHref(t.key)}
-              aria-current={on ? 'page' : undefined}
-              onClick={(e) => {
-                e.preventDefault()
-                if (!on) selectTab(t.key)
-              }}
-              className={'mkd-tab' + (on ? ' mkd-tab-on' : '')}
-            >
-              {t.label}
-            </a>
-          )
-        })}
-      </nav>
+      <WorkspaceTools>
+        <nav aria-label="Markets views" className="workspace-tabs">
+          {MARKET_TABS.map((t) => {
+            const on = t.key === tab
+            return (
+              <a
+                key={t.key}
+                href={marketTabHref(t.key)}
+                aria-current={on ? 'page' : undefined}
+                onClick={(e) => {
+                  e.preventDefault()
+                  if (!on) selectTab(t.key)
+                }}
+              >
+                {t.label}
+              </a>
+            )
+          })}
+        </nav>
+      </WorkspaceTools>
       {conflict ? (
         <MarketsConflictPanel
           conflict={conflict}
@@ -1686,30 +1689,34 @@ function DashWatchlist(props: DashProps) {
   return (
     <section aria-label="Watchlist" className="mkd-grid">
       <div className="mkd-card">
-        <h2 className="mkd-h">Add instrument</h2>
-        <SymbolSearch regions={regions} onPick={(s) => void addSymbol(s)} />
+        <h2 className="mkd-h">Watchlist</h2>
+        <details className="mkd-add">
+          <summary>Add Instrument</summary>
+          <SymbolSearch regions={regions} onPick={(symbol) => void addSymbol(symbol)} />
+        </details>
         <div className="mkd-row">
           <label className="mkd-label" htmlFor="mkd-sort">
             Sort by
           </label>
-          <select
+          <FormSelect
             id="mkd-sort"
+            label="Sort by"
             value={sortValue}
-            onChange={(e) => {
-              const [key, dir] = e.target.value.split(':')
-              setSort({ key: key as SortKey, desc: dir === 'desc' })
+            options={[
+              { value: 'added:desc', label: 'Newest first' },
+              { value: 'added:asc', label: 'Oldest first' },
+              { value: 'symbol:asc', label: 'Name, A to Z' },
+              { value: 'symbol:desc', label: 'Name, Z to A' },
+              { value: 'price:desc', label: 'Dearest first' },
+              { value: 'price:asc', label: 'Cheapest first' },
+              { value: 'change:desc', label: 'Biggest risers first' },
+              { value: 'change:asc', label: 'Biggest fallers first' }
+            ]}
+            onChange={(value) => {
+              const [key, direction] = value.split(':')
+              setSort({ key: key as SortKey, desc: direction === 'desc' })
             }}
-            className="mkd-select"
-          >
-            <option value="added:desc">Newest first</option>
-            <option value="added:asc">Oldest first</option>
-            <option value="symbol:asc">Name, A to Z</option>
-            <option value="symbol:desc">Name, Z to A</option>
-            <option value="price:desc">Dearest first</option>
-            <option value="price:asc">Cheapest first</option>
-            <option value="change:desc">Biggest risers first</option>
-            <option value="change:asc">Biggest fallers first</option>
-          </select>
+          />
         </div>
         {settings.loading && !settings.data ? (
           <p role="status" className="mkd-muted">

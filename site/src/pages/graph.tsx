@@ -1,3 +1,4 @@
+import { WorkspaceTools } from '@/dashboard/workspace-tools'
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Search, X } from 'lucide-react'
 import { get } from '@/lib/api'
@@ -806,13 +807,15 @@ function GraphDashboard({ focusId }: GraphPageProps) {
   const withQs = (path: string) => (qs ? `${path}?${qs}` : path)
   return (
     <>
-      <nav aria-label="Library sections" className="lib-dash-toolbar">
-        <a href={withQs(dashboardHref('library'))}>Items</a>
-        <a href={withQs(dashboardHref('library/graph'))} aria-current="page">
-          Knowledge Graph
-        </a>
-        <a href={withQs(dashboardHref('library/costs'))}>Learning Costs</a>
-      </nav>
+      <WorkspaceTools>
+        <nav aria-label="Library sections" className="workspace-tabs">
+          <a href={withQs(dashboardHref('library'))}>Items</a>
+          <a href={withQs(dashboardHref('library/graph'))} aria-current="page">
+            Knowledge Graph
+          </a>
+          <a href={withQs(dashboardHref('library/costs'))}>Learning Costs</a>
+        </nav>
+      </WorkspaceTools>
       <GraphCanvas focusId={focusId ?? encodeURIComponent(new URLSearchParams(qs).get('focus') ?? '')} />
     </>
   )

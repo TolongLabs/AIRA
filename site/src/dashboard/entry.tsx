@@ -1,6 +1,7 @@
 import { authHeaders, requestToken } from '@/lib/api'
 import { useCoreTransport } from '@/lib/core'
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, startTransition, Suspense, useEffect, useRef, useState } from 'react'
+import type { MouseEvent } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
   BookOpen,
@@ -10,11 +11,14 @@ import {
   MessagesSquare,
   Moon,
   Palette,
-  PanelLeft,
+  PanelLeftClose,
+  PanelLeftOpen,
   Settings,
   Sun
 } from 'lucide-react'
 import { DashboardContext } from './context'
+import { SidebarLinks } from './sidebar-links'
+import { WorkspaceToolsContext, WorkspaceTabs } from './workspace-tools'
 import { translateLegacyBookmark } from './legacy-bookmarks'
 import { dashboardHref, destinations, previewMount } from './navigation'
 import { WorkspaceErrorBoundary } from './workspace-error'
@@ -48,7 +52,7 @@ const views = {
   automations: lazy(() => import('@/pages/cron')),
   'automations/routines': lazy(() => import('@/pages/cron')),
   'automations/notices': lazy(() => import('@/pages/notices')),
-  system: lazy(() => import('@/pages/settings')),
+  system: lazy(() => import('./health')),
   'system/settings': lazy(() => import('@/pages/settings')),
   characters: lazy(() => import('./characters')),
   'system/health': lazy(() => import('./health'))
@@ -94,12 +98,18 @@ function applyLegacyBookmark(): boolean {
 applyLegacyBookmark()
 
 function Dashboard() {
-  const path = location.pathname.startsWith(previewMount + '/')
-    ? location.pathname.slice(previewMount.length + 1)
-    : 'overview'
+  const [address, setAddress] = useState(() => location.pathname + location.search)
+  const path = address.split('?')[0]!.slice(previewMount.length + 1)
   const section = path.split('/')[0]
-  const title = destinations.find(([key]) => key === section)?.[1] ?? 'Page unavailable'
+  const routeTitles: Record<string, string> = {
+    chats: 'Chat Directory',
+    'chats/defaults': 'Chat Defaults',
+    'chats/files': 'Send File',
+    'system/appearance': 'Appearance'
+  }
+  const title = routeTitles[path] ?? destinations.find(([key]) => key === section)?.[1] ?? 'Page unavailable'
   const drawer = useRef<HTMLDialogElement>(null)
+  const [toolsHost, setToolsHost] = useState<HTMLDivElement | null>(null)
   useEffect(() => {
     const phone = window.matchMedia('(max-width: 760px)')
     function resize() {
@@ -110,6 +120,55 @@ function Dashboard() {
     phone.addEventListener('change', resize)
     return () => phone.removeEventListener('change', resize)
   }, [])
+  useEffect(() => {
+    function onPop() {
+      startTransition(() => setAddress(location.pathname + location.search))
+    }
+    addEventListener('popstate', onPop)
+    return () => removeEventListener('popstate', onPop)
+  }, [])
+  const focusOnNavigation = useRef(false)
+  useEffect(() => {
+    if (!focusOnNavigation.current) return
+    focusOnNavigation.current = false
+    document.getElementById('workspace')?.focus({ preventScroll: true })
+    window.scrollTo({ top: 0, behavior: 'instant' })
+  }, [address])
+
+  function follow(event: MouseEvent) {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    )
+      return
+    const link = (event.target as Element).closest<HTMLAnchorElement>('a[href]')
+    if (!link || link.target || link.hasAttribute('download')) return
+    const url = new URL(link.href)
+    const next = url.pathname.slice(previewMount.length + 1)
+    const isEditor = (route: string) =>
+      route === 'system/settings' || /^characters\/(new|import|simulator|[^/]+\/(edit|footer))$/.test(route)
+    if (
+      url.origin !== location.origin ||
+      url.hash ||
+      !url.pathname.startsWith(previewMount + '/') ||
+      !destinations.some(([key]) => next === key || next.startsWith(key + '/')) ||
+      isEditor(path) ||
+      isEditor(next)
+    )
+      return
+    event.preventDefault()
+    drawer.current?.close()
+    const target = url.pathname + url.search
+    if (target === location.pathname + location.search) return
+    history.pushState(null, '', target)
+    focusOnNavigation.current = true
+    startTransition(() => setAddress(target))
+  }
+
   const [compact, setCompact] = useState(preference('aira-compact-rail') === 'true')
   const [theme, setTheme] = useState(() => {
     const saved = preference(themeKey)
@@ -149,26 +208,27 @@ function Dashboard() {
             }
           }}
         >
-          <img alt="" src="/app/dashboard/glyph.svg" />
-          <PanelLeft aria-hidden="true" />
-          <span>AIRA</span>
+          <span className="dashboard-mark" aria-hidden="true">
+            <img alt="" src="/app/dashboard/glyph.svg" />
+            {mobile || !compact ? <PanelLeftClose /> : <PanelLeftOpen />}
+          </span>
+          <span className="dashboard-wordmark">AIRA</span>
         </button>
-        <nav aria-label="Main navigation">
-          {destinations.map(([key, label], i) => {
-            const Icon = icons[i]!
-            return (
-              <a
-                key={key}
-                aria-label={label}
-                aria-current={section === key ? 'page' : undefined}
-                href={dashboardHref(key)}
-              >
-                <Icon aria-hidden="true" />
-                <span>{label}</span>
-              </a>
-            )
-          })}
-        </nav>
+        <SidebarLinks
+          active={section}
+          entries={destinations.map(([key, label], index) => ({
+            key,
+            label,
+            href: dashboardHref(key),
+            Icon: icons[index]!
+          }))}
+        />
+        {mobile && path === 'chats' && (
+          <nav aria-label="Chat tools" className="drawer-chat-tools">
+            <a href={dashboardHref('chats/defaults')}>Chat Defaults</a>
+            <a href={dashboardHref('chats/files')}>Send File</a>
+          </nav>
+        )}
         <button
           className="dashboard-theme"
           aria-label={'Switch to ' + (theme === 'light' ? 'dark' : 'light') + ' mode'}
@@ -182,7 +242,7 @@ function Dashboard() {
   }
   return (
     <DashboardContext.Provider value={true}>
-      <div className="dashboard-shell" data-compact={compact}>
+      <div className="dashboard-shell" data-compact={compact} onClick={follow}>
         <a className="dashboard-skip" href="#workspace">
           Skip to content
         </a>
@@ -197,40 +257,83 @@ function Dashboard() {
         <dialog ref={drawer} aria-label="Navigation">
           {nav(true)}
         </dialog>
-        <main id="workspace" tabIndex={-1}>
-          <h1>{title}</h1>
-          {section === 'automations' && (
-            <nav aria-label="Automation views">
-              <a href={dashboardHref('automations/routines')}>Routines</a>{' '}
-              <a href={dashboardHref('automations/notices')}>Session Notices</a>
-            </nav>
-          )}
-          {section === 'system' && (
-            <nav aria-label="System views">
-              <a href={dashboardHref('system/health')}>Health</a>{' '}
-              <a href={dashboardHref('system/settings')}>Host Settings</a>{' '}
-              <a href={dashboardHref('system/appearance')}>Appearance</a>
-            </nav>
-          )}
-          <WorkspaceErrorBoundary key={path}>
+        <main id="workspace" data-page={path} tabIndex={-1}>
+          {path !== 'system/appearance' &&
+            !chatRoute &&
+            !edit &&
+            path !== 'characters/new' &&
+            path !== 'characters/import' && (
+              <div className="workspace-heading">
+                <h1>{title}</h1>
+                <div ref={setToolsHost} className="workspace-tools">
+                  {section === 'automations' && (
+                    <WorkspaceTabs
+                      label="Automation views"
+                      entries={[
+                        {
+                          label: 'Routines',
+                          href: dashboardHref('automations/routines'),
+                          active: !path.startsWith('automations/notices')
+                        },
+                        {
+                          label: 'Session Notices',
+                          href: dashboardHref('automations/notices'),
+                          active: path.startsWith('automations/notices')
+                        }
+                      ]}
+                    />
+                  )}
+                  {section === 'system' && path !== 'system/appearance' && (
+                    <WorkspaceTabs
+                      label="System views"
+                      entries={[
+                        {
+                          label: 'Service Health',
+                          href: dashboardHref('system/health'),
+                          active: path === 'system' || path === 'system/health'
+                        },
+                        {
+                          label: 'Host Settings',
+                          href: dashboardHref('system/settings'),
+                          active: path === 'system/settings'
+                        },
+                        {
+                          label: 'Appearance',
+                          href: dashboardHref('system/appearance'),
+                          active: path === 'system/appearance'
+                        }
+                      ]}
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+          <WorkspaceToolsContext.Provider value={toolsHost}>
             <Suspense fallback={<p role="status">Loading…</p>}>
-              {path === 'overview' ? (
-                <Overview />
-              ) : chatRoute ? (
-                <ChatSettings selectedId={chatRoute[1]} compose={chatRoute[2] === 'send'} />
-              ) : path === 'characters/new' || path === 'characters/import' || edit ? (
-                <StudioEditor mode={edit ? 'edit' : path === 'characters/new' ? 'create' : 'import'} id={edit?.[1]} />
-              ) : footer ? (
-                <ChatSettings footerId={footer[1]} />
-              ) : item || path === 'library/costs' ? (
-                <Library selectedId={item?.[1]} view={item ? 'items' : 'costs'} />
-              ) : View ? (
-                <View />
-              ) : (
-                <p>Page unavailable.</p>
-              )}
+              <WorkspaceErrorBoundary key={address}>
+                <div className="dashboard-view">
+                  {path === 'overview' ? (
+                    <Overview />
+                  ) : chatRoute ? (
+                    <ChatSettings selectedId={chatRoute[1]} compose={chatRoute[2] === 'send'} />
+                  ) : path === 'characters/new' || path === 'characters/import' || edit ? (
+                    <StudioEditor
+                      mode={edit ? 'edit' : path === 'characters/new' ? 'create' : 'import'}
+                      id={edit?.[1]}
+                    />
+                  ) : footer ? (
+                    <ChatSettings footerId={footer[1]} />
+                  ) : item || path === 'library/costs' ? (
+                    <Library selectedId={item?.[1]} view={item ? 'items' : 'costs'} />
+                  ) : View ? (
+                    <View />
+                  ) : (
+                    <p>Page unavailable.</p>
+                  )}
+                </div>
+              </WorkspaceErrorBoundary>
             </Suspense>
-          </WorkspaceErrorBoundary>
+          </WorkspaceToolsContext.Provider>
         </main>
       </div>
     </DashboardContext.Provider>

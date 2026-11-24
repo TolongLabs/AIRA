@@ -930,88 +930,92 @@ export default function ChatDefaults({ initialScope = 'global' }: ChatDefaultsPr
 
   return (
     <section className="chat-defaults" aria-label="Chat defaults">
-      <h2>Chat defaults</h2>
       <p className="chat-defaults-lede">
         {desc.impact} A nearer level keeps winning: group and DM defaults beat this global level, and a chat's own value
         beats them all.
       </p>
-      <div className="chat-defaults-scopes" role="group" aria-label="Defaults level">
-        <Segmented
-          options={['global', 'group', 'dm'] as const}
-          labels={{ global: 'Global', group: 'Group defaults', dm: 'DM defaults' }}
-          value={scope}
-          onChange={(next) => {
-            if (next === scope) return
-            scopeVersion.current++
-            setSnapshot(null)
-            setError(null)
-            setLoading(true)
-            setScope(next)
-          }}
-        />
-        {!chats.loading && !chats.error && (
-          <p className="chat-defaults-counts">
-            {all.length === 0
-              ? 'No chats on record yet.'
-              : desc.key === 'global'
-                ? `${dms} DM${dms === 1 ? '' : 's'} · ${groups} group${groups === 1 ? '' : 's'} on record`
-                : desc.key === 'dm'
-                  ? `${dms} DM${dms === 1 ? '' : 's'} on record`
-                  : `${groups} group${groups === 1 ? '' : 's'} on record`}
-          </p>
-        )}
-      </div>
-
-      {loading && !snapshot ? (
-        <p role="status" className="chat-defaults-state">
-          <Spinner /> Loading {desc.title.toLowerCase()}…
-        </p>
-      ) : error && !snapshot ? (
-        <Empty
-          title="Defaults unavailable"
-          action={
-            <Button size="sm" onClick={() => setReloadTick((n) => n + 1)}>
-              Retry
-            </Button>
-          }
-        >
-          {error}
-        </Empty>
-      ) : snapshot ? (
-        <>
-          {error && (
-            <p role="alert" className="chat-defaults-state">
-              Could not refresh. Showing the last loaded values.
-            </p>
-          )}
-          <DefaultsForm
-            key={`${desc.key}:${formKey}`}
-            desc={desc}
-            snapshot={snapshot}
-            characters={packs.data?.characters ?? []}
-            charactersError={packs.error ?? undefined}
-            chats={all}
-            onSnapshot={(next) => {
-              if (scopeVersion.current === currentVersion) setSnapshot(next)
-            }}
-            onDiscard={() => {
-              setFormKey((n) => n + 1)
-              setReloadTick((n) => n + 1)
+      <div className="chat-defaults-layout">
+        <aside className="chat-defaults-scopes dashboard-pane" aria-label="Defaults level">
+          <h2>Settings Hierarchy</h2>
+          <Segmented
+            options={['global', 'group', 'dm'] as const}
+            labels={{ global: 'Global', group: 'Group defaults', dm: 'DM defaults' }}
+            value={scope}
+            onChange={(next) => {
+              if (next === scope) return
+              scopeVersion.current++
+              setSnapshot(null)
+              setError(null)
+              setLoading(true)
+              setScope(next)
             }}
           />
-          {chats.error && <p className="chat-defaults-state">Chat counts unavailable: {chats.error}</p>}
-          {packs.data && packs.data.faults.length > 0 && (
-            <p className="chat-defaults-state">
-              {packs.data.faults.length} character pack{packs.data.faults.length === 1 ? '' : 's'} did not load:{' '}
-              {packs.data.faults.map((f) => f.id).join(', ')}.
+          {!chats.loading && !chats.error && (
+            <p className="chat-defaults-counts">
+              {all.length === 0
+                ? 'No chats on record yet.'
+                : desc.key === 'global'
+                  ? `${dms} DM${dms === 1 ? '' : 's'} · ${groups} group${groups === 1 ? '' : 's'} on record`
+                  : desc.key === 'dm'
+                    ? `${dms} DM${dms === 1 ? '' : 's'} on record`
+                    : `${groups} group${groups === 1 ? '' : 's'} on record`}
             </p>
           )}
-          <p className="chat-defaults-note">
-            Name-call names, per-platform switches, sender access, mute and model stay on{' '}
-            <a href={dashboardHref('chats')}>per-chat settings</a>.
-          </p>
-        </>
-      ) : null}
+        </aside>
+        <div className="chat-defaults-editor dashboard-pane">
+          <h2>{desc.title}</h2>
+          {loading && !snapshot ? (
+            <p role="status" className="chat-defaults-state">
+              <Spinner /> Loading {desc.title.toLowerCase()}…
+            </p>
+          ) : error && !snapshot ? (
+            <Empty
+              title="Defaults unavailable"
+              action={
+                <Button size="sm" onClick={() => setReloadTick((n) => n + 1)}>
+                  Retry
+                </Button>
+              }
+            >
+              {error}
+            </Empty>
+          ) : snapshot ? (
+            <>
+              {error && (
+                <p role="alert" className="chat-defaults-state">
+                  Could not refresh. Showing the last loaded values.
+                </p>
+              )}
+              <DefaultsForm
+                key={`${desc.key}:${formKey}`}
+                desc={desc}
+                snapshot={snapshot}
+                characters={packs.data?.characters ?? []}
+                charactersError={packs.error ?? undefined}
+                chats={all}
+                onSnapshot={(next) => {
+                  if (scopeVersion.current === currentVersion) setSnapshot(next)
+                }}
+                onDiscard={() => {
+                  setFormKey((n) => n + 1)
+                  setReloadTick((n) => n + 1)
+                }}
+              />
+              {chats.error && <p className="chat-defaults-state">Chat counts unavailable: {chats.error}</p>}
+              {packs.data && packs.data.faults.length > 0 && (
+                <p className="chat-defaults-state">
+                  {packs.data.faults.length} character pack{packs.data.faults.length === 1 ? '' : 's'} did not load:{' '}
+                  {packs.data.faults.map((f) => f.id).join(', ')}.
+                </p>
+              )}
+              <p className="chat-defaults-note">
+                Name-call names, per-platform switches, sender access, mute and model stay on{' '}
+                <a href={dashboardHref('chats')}>per-chat settings</a>.
+              </p>
+            </>
+          ) : null}
+        </div>
+      </div>
       <Toaster />
     </section>
   )

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Bot, Cpu, FileText, HousePlug, Mic, Plus, Save, Trash2, TrendingUp, X } from 'lucide-react'
 import type { Chat, Settings } from '@/lib/api'
 import { get, post } from '@/lib/api'
@@ -13,6 +13,8 @@ import {
 import { toast, Toaster, useApi } from '@/lib/hooks'
 import { cn } from '@/lib/utils'
 import { Shell } from '@/components/shell'
+import { DashboardContext } from '@/dashboard/context'
+import { WorkspaceTabs } from '@/dashboard/workspace-tools'
 import {
   Badge,
   Button,
@@ -38,7 +40,7 @@ import { SymbolSearch } from '@/components/symbol-search'
    chat, then say how she behaves there" is the only mental model that ever
    made sense to a non-technical reader. */
 
-type Tab = 'models' | 'markets' | 'avatar' | 'voice' | 'home' | 'files'
+type Tab = 'providers' | 'models' | 'markets' | 'avatar' | 'voice' | 'home' | 'files'
 
 /* No blurbs. Each one restated its own tab label in a cuter voice — "Chats:
    who she talks to, and how" — which is a line of text between the reader and
@@ -53,6 +55,14 @@ const TABS: { key: Tab; label: string; icon: typeof Bot }[] = [
   { key: 'home', label: 'Home Assistant', icon: HousePlug },
   { key: 'files', label: 'Profile files', icon: FileText }
 ]
+
+const DASHBOARD_TABS = [
+  { key: 'models', label: 'Models' },
+  { key: 'providers', label: 'Providers and Learning' },
+  { key: 'voice', label: 'Voice and Avatar' },
+  { key: 'home', label: 'Home Assistant' },
+  { key: 'files', label: 'Profile Files' }
+] as const
 
 function ChatWatchlists({ chats, regions }: { chats: Chat[]; regions: { value: string; label: string }[] }) {
   const [open, setOpen] = useState<string>('')
@@ -685,6 +695,7 @@ function LessonsSection({ settings }: { settings: Settings }) {
 const FIELD_PATH: Record<string, string> = { chat: 'models.chat', agent: 'models.agent', effort: 'models.effort' }
 
 function ModelsTab({ settings, onChanged }: { settings: Settings; onChanged: () => void }) {
+  const dashboard = useContext(DashboardContext)
   const m = settings.models ?? {}
   const cat = m.catalogue ?? []
   const ollama = m.ollama ?? { enabled: false, endpoint: '', fallback: '' }
@@ -804,8 +815,8 @@ function ModelsTab({ settings, onChanged }: { settings: Settings; onChanged: () 
   }
 
   return (
-    <>
-      <Section title="Defaults">
+    <div className={dashboard ? 'workspace-grid host-models' : undefined}>
+      <Section title={dashboard ? 'Model Profiles' : 'Defaults'}>
         <p className="mt-0 mb-4 max-w-prose text-[0.9rem] text-muted">
           What every chat uses unless it has been given its own. Set a chat's own model on the Chats page.
         </p>
@@ -856,13 +867,15 @@ function ModelsTab({ settings, onChanged }: { settings: Settings; onChanged: () 
         <HostNoticeLine notice={guard.notice} onReload={() => void guard.reloadTheirs().then(onChanged)} />
       </Section>
 
-      <SearchSection settings={settings} onChanged={onChanged} />
+      {!dashboard && (
+        <>
+          <SearchSection settings={settings} onChanged={onChanged} />
+          <LearningSection settings={settings} onChanged={onChanged} />
+          <LessonsSection settings={settings} />
+        </>
+      )}
 
-      <LearningSection settings={settings} onChanged={onChanged} />
-
-      <LessonsSection settings={settings} />
-
-      <Section title="Local models">
+      <Section title={dashboard ? 'Local Models' : 'Local models'}>
         <p className="mt-0 mb-4 max-w-prose text-[0.9rem] text-muted">
           An Ollama endpoint. With a fallback chosen, a cloud call that fails — timeout, auth, quota — is answered
           locally instead of failing the turn. Every fallback is written to the router log, so a reply that did not come
@@ -928,7 +941,7 @@ function ModelsTab({ settings, onChanged }: { settings: Settings; onChanged: () 
         )}
         <HostNoticeLine notice={guard.notice} onReload={() => void guard.reloadTheirs().then(onChanged)} />
       </Section>
-    </>
+    </div>
   )
 }
 
@@ -1814,6 +1827,7 @@ function FilesTab({ settings, onChanged, active }: { settings: Settings; onChang
 /* ── page ─────────────────────────────────────────────────────────────── */
 
 export default function SettingsPage() {
+  const dashboard = useContext(DashboardContext)
   const settings = useApi<Settings>('/api/settings')
   const [tab, setTab] = useState<Tab>(() => {
     const h = location.hash.slice(1) as Tab
@@ -1821,7 +1835,7 @@ export default function SettingsPage() {
        because the Chats tab was removed and the literal was swapped to its
        neighbour rather than to the new first tab — so the page opened on a
        tab nobody navigated to. */
-    return TABS.some((t) => t.key === h) ? h : 'models'
+    return TABS.some((t) => t.key === h) || (dashboard && h === 'providers') ? h : 'models'
   })
 
   useEffect(() => {
@@ -1841,41 +1855,52 @@ export default function SettingsPage() {
         return
       }
       const next = h as Tab
-      if (TABS.some((t) => t.key === next)) setTab(next)
+      if (TABS.some((t) => t.key === next) || (dashboard && next === 'providers')) setTab(next)
     }
     route()
     window.addEventListener('hashchange', route)
     return () => window.removeEventListener('hashchange', route)
-  }, [])
+  }, [dashboard])
 
   return (
     <Shell page="settings" title="Settings">
       <Toaster />
 
-      <div className="grid gap-8 lg:grid-cols-[240px_minmax(0,1fr)]">
-        <nav className="lg:sticky lg:top-6 lg:self-start">
-          <Kicker className="mb-2">Sections</Kicker>
-          <div className="flex flex-wrap gap-1 lg:flex-col">
-            {TABS.map((t) => {
-              const Icon = t.icon
-              const on = t.key === tab
-              return (
-                <a
-                  key={t.key}
-                  href={`#${t.key}`}
-                  aria-current={on ? 'page' : undefined}
-                  className={cn(
-                    'flex min-h-11 items-center gap-2.5 rounded-card px-3 text-[0.95rem] no-underline transition-colors',
-                    on ? 'bg-accent-soft font-semibold text-accent' : 'text-muted hover:bg-card-2 hover:text-ink'
-                  )}
-                >
-                  <Icon className="size-[18px]" />
-                  {t.label}
-                </a>
-              )
-            })}
-          </div>
-        </nav>
+      <div className={dashboard ? 'host-settings-view' : 'grid gap-8 lg:grid-cols-[240px_minmax(0,1fr)]'}>
+        {dashboard ? (
+          <WorkspaceTabs
+            label="Host setting categories"
+            entries={DASHBOARD_TABS.map((entry) => ({
+              href: '#' + entry.key,
+              label: entry.label,
+              active: entry.key === tab || (entry.key === 'voice' && tab === 'avatar')
+            }))}
+          />
+        ) : (
+          <nav className="lg:sticky lg:top-6 lg:self-start">
+            <Kicker className="mb-2">Sections</Kicker>
+            <div className="flex flex-wrap gap-1 lg:flex-col">
+              {TABS.map((t) => {
+                const Icon = t.icon
+                const on = t.key === tab
+                return (
+                  <a
+                    key={t.key}
+                    href={`#${t.key}`}
+                    aria-current={on ? 'page' : undefined}
+                    className={cn(
+                      'flex min-h-11 items-center gap-2.5 rounded-card px-3 text-[0.95rem] no-underline transition-colors',
+                      on ? 'bg-accent-soft font-semibold text-accent' : 'text-muted hover:bg-card-2 hover:text-ink'
+                    )}
+                  >
+                    <Icon className="size-[18px]" />
+                    {t.label}
+                  </a>
+                )
+              })}
+            </div>
+          </nav>
+        )}
 
         <div className="min-w-0">
           {settings.error && (
@@ -1897,7 +1922,18 @@ export default function SettingsPage() {
               )}
               {tab === 'models' && <ModelsTab settings={settings.data} onChanged={settings.reload} />}
               {tab === 'markets' && <MarketsTab settings={settings.data} onChanged={settings.reload} />}
-              {tab === 'avatar' && <AvatarTab settings={settings.data} onChanged={settings.reload} />}
+              {(tab === 'avatar' || (dashboard && tab === 'voice')) && (
+                <AvatarTab settings={settings.data} onChanged={settings.reload} />
+              )}
+              {dashboard && tab === 'providers' && (
+                <div className="workspace-grid">
+                  <SearchSection settings={settings.data} onChanged={settings.reload} />
+                  <div>
+                    <LearningSection settings={settings.data} onChanged={settings.reload} />
+                    <LessonsSection settings={settings.data} />
+                  </div>
+                </div>
+              )}
               {tab === 'voice' && <VoiceTab settings={settings.data} onChanged={settings.reload} />}
               {tab === 'home' && <HomeTab settings={settings.data} onChanged={settings.reload} />}
               {/* Always mounted and hidden elsewhere: unmounting on every tab

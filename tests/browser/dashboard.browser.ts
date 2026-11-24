@@ -91,7 +91,21 @@ for (const engine of [chromium, firefox, webkit]) {
         await page.setViewportSize({ width: 396, height: 704 })
         await capture('overview-phone')
         await page.setViewportSize({ width: 1440, height: 810 })
-        await page.getByRole('button', { name: 'Collapse sidebar' }).click()
+        const collapse = page.getByRole('button', { name: 'Collapse sidebar' })
+        const collapseIcon = collapse.locator('svg')
+        await page.emulateMedia({ reducedMotion: 'no-preference' })
+        await collapse.hover()
+        expect((await collapseIcon.boundingBox())?.height).toBe(22)
+        await expect
+          .poll(() => collapseIcon.evaluate((icon) => icon.ownerDocument.defaultView?.getComputedStyle(icon).opacity))
+          .toBe('1')
+        expect(
+          await collapseIcon.evaluate(
+            (icon) => icon.ownerDocument.defaultView?.getComputedStyle(icon).transitionDuration
+          )
+        ).toBe('0.16s')
+        await page.emulateMedia({ reducedMotion: 'reduce' })
+        await collapse.click()
         await page.getByRole('button', { name: 'Expand sidebar' }).waitFor()
         await page.getByRole('link', { name: /4 of 4 Online/ }).click()
         await page.reload()
@@ -122,8 +136,25 @@ for (const engine of [chromium, firefox, webkit]) {
             actor: 'fixture'
           })
         }
+        const mainDocument = await page.locator('html').elementHandle()
         await page.getByRole('dialog').getByRole('link', { name: 'Chats', exact: true }).click()
+        await page.getByRole('heading', { name: 'Chat Directory' }).waitFor()
+        expect(await mainDocument?.evaluate((root) => root.isConnected)).toBe(true)
         const selected = page.getByRole('checkbox', { name: 'Select Field Notes', exact: true })
+        await selected.waitFor()
+        await page.getByRole('link', { name: 'Unnamed group 1', exact: true }).waitFor()
+        if (engine === chromium && process.env.AIRA_DASHBOARD_EVIDENCE_DIR) {
+          await page.setViewportSize({ width: 1440, height: 810 })
+          await page.getByRole('button', { name: 'Expand sidebar' }).click()
+          await page.getByRole('heading', { name: 'Chat Directory' }).hover()
+          const pill = page.locator('aside .dashboard-active-pill')
+          await expect.poll(async () => (await pill.boundingBox())?.width ?? 0).toBeGreaterThan(210)
+          await capture('chat-directory')
+          await selected.check()
+          await capture('chat-directory-selected')
+          await selected.uncheck()
+          await page.setViewportSize({ width: 320, height: 704 })
+        }
         await selected.check()
         expect(
           await page
@@ -135,7 +166,28 @@ for (const engine of [chromium, firefox, webkit]) {
         expect(await selected.isChecked()).toBe(true)
         await page.getByRole('searchbox').fill('Field Notes')
         await expect.poll(() => selected.isChecked()).toBe(false)
-        await page.getByRole('link', { name: 'Field Notes' }).click()
+        await selected.check()
+        const review = page.getByRole('button', { name: 'Review', exact: true })
+        await review.click()
+        await page.getByRole('dialog', { name: 'Review Selection' }).getByText('Field Notes').waitFor()
+        await page.keyboard.press('Escape')
+        expect(await review.evaluate((button) => button === button.ownerDocument.activeElement)).toBe(true)
+        await page.getByRole('button', { name: 'Assign Persona', exact: true }).click()
+        const confirmAssignment = page.getByRole('button', { name: 'Confirm Assign Persona' })
+        expect(await confirmAssignment.isDisabled()).toBe(true)
+        await page.getByRole('combobox', { name: 'Persona to assign' }).click()
+        await page.getByRole('option', { name: 'Example', exact: true }).click()
+        await confirmAssignment.click()
+        await page.getByText(/Assign Persona: 1 succeeded/).waitFor()
+        expect(
+          app.storage.read((db) =>
+            db
+              .prepare("SELECT count(*) FROM setting WHERE level = 'chat' AND scope = ? AND key = 'character'")
+              .pluck()
+              .get(fixture.chatId)
+          )
+        ).toBe(1)
+        await page.getByRole('link', { name: 'Field Notes', exact: true }).click()
         await page.getByRole('link', { name: 'Send Message' }).click()
         await page.getByLabel('Message', { exact: true }).fill('Fictional fixture message')
         const draft = page.getByLabel('Message', { exact: true })
