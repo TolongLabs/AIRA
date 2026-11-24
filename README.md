@@ -63,7 +63,8 @@ Compose. The install guide covers the data volume, private configuration, gatewa
 ## Open the owner dashboard
 
 On a host with AIRA and the Hermes owner service installed, open `http://127.0.0.1:9890/overview`.
-The published dashboard port is `AIRA_SITE_PORT` (default `9890`). The canonical routes use
+The published dashboard port is `AIRA_SITE_PORT` (default `9890`). To find yours, run `docker compose port aira 9890`
+in the host’s install directory. If it differs, use that port on the host side of the SSH tunnel below. The canonical routes use
 `AIRA_DASHBOARD_ENTRY=dashboard`. The entry switch and its rollback are documented in the runbook.
 [Dashboard entry switch](docs/trd/deployment.md#dashboard-entry-recovery)
 
