@@ -44,13 +44,6 @@
   width: 17px;
   transition: transform 0.18s ease-out;
 }
-.insight-health {
-  color: #f0fffa;
-  background: radial-gradient(ellipse at 95% 0, #28564f, transparent 70%), #123731;
-}
-.insight-health .insight-heading {
-  color: #cbebe1;
-}
 .readiness {
   display: flex;
   align-items: center;
@@ -73,11 +66,11 @@
 }
 .readiness-ring circle {
   fill: none;
-  stroke: #3d655c;
+  stroke: var(--chart-track);
   stroke-width: 6;
 }
 .readiness-ring circle + circle {
-  stroke: #a2efd0;
+  stroke: var(--chart-ink);
 }
 .readiness-ring strong {
   font-size: clamp(22px, 2vw, 36px);
@@ -95,7 +88,7 @@
 }
 .readiness > div:last-child span,
 .unit-matrix small {
-  color: #bdd8cf;
+  color: var(--muted);
 }
 .unit-matrix,
 .run-agenda,
@@ -113,7 +106,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #ffffff0c;
+  background: var(--tile-inset);
   border-radius: 10px;
   padding: 9px 10px;
   font-weight: 500;
@@ -123,7 +116,7 @@
   width: 15px;
   height: 15px;
   flex: none;
-  color: #a2efd0;
+  color: var(--chart-ink);
 }
 .unit-matrix small,
 .run-agenda small {
@@ -295,22 +288,11 @@
 .insight-chats {
   grid-column: span 3;
 }
-.insight-health[data-tone='attention'] {
-  background: radial-gradient(at 92% 0, #665733, transparent 75%), #383524;
+.unit-matrix li[data-state='inactive'] svg {
+  color: var(--song);
 }
-.insight-health[data-tone='failed'] {
-  background: radial-gradient(at 92% 0, #794947, transparent 75%), #452929;
-}
-.insight-health[data-tone='unknown'] {
-  background: #384747;
-}
-.unit-matrix li[data-state='inactive'],
-.unit-matrix li[data-state='failed'] {
-  background: #ffd49525;
-}
-.unit-matrix li[data-state='inactive'] svg,
 .unit-matrix li[data-state='failed'] svg {
-  color: #ffe4ae;
+  color: var(--down);
 }
 .insight-chats .insight-heading {
   color: inherit;
