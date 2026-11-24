@@ -1,27 +1,15 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { Activity } from 'lucide-react'
 import { core, type CoreChat } from '@/lib/core'
+import { ChartTooltip, useChartTooltip } from './chart-tooltip'
 import { Loading } from './loading'
 
 // Adapted from ObsidianUI Status Bars. Each cell represents a chat rather than a day.
 // Keep the strip's single keyboard stop, pointer tracking and tap-to-pin interaction.
 export function ChatStatusBars({ chats }: { chats: CoreChat[] }) {
-  const [active, setActive] = useState<number | null>(null)
-  const [pinned, setPinned] = useState(false)
-  const root = useRef<HTMLDivElement>(null)
+  const tip = useChartTooltip()
+  const { active } = tip
   const uid = useId()
-  function hide() {
-    setActive(null)
-    setPinned(false)
-  }
-  useEffect(() => {
-    if (!pinned) return
-    const away = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) hide()
-    }
-    document.addEventListener('pointerdown', away)
-    return () => document.removeEventListener('pointerdown', away)
-  }, [pinned])
   if (!chats.length) return <p>No chats yet.</p>
   function indexAt(x: number, box: DOMRect) {
     return Math.max(0, Math.min(chats.length - 1, Math.floor(((x - box.left) / box.width) * chats.length)))
@@ -36,9 +24,8 @@ export function ChatStatusBars({ chats }: { chats: CoreChat[] }) {
   return (
     <div
       className="chat-strip-wrap"
-      ref={root}
       onPointerLeave={(e) => {
-        if (!pinned && e.pointerType === 'mouse') hide()
+        if (e.pointerType !== 'touch') tip.leave()
       }}
     >
       <div
@@ -47,22 +34,17 @@ export function ChatStatusBars({ chats }: { chats: CoreChat[] }) {
         aria-readonly="true"
         tabIndex={0}
         aria-activedescendant={chat ? uid + '-' + active : undefined}
-        aria-describedby={chat ? uid + '-tip' : undefined}
+        aria-describedby={chat ? tip.id : undefined}
         onFocus={(e) => {
-          if (e.currentTarget.matches(':focus-visible')) setActive(0)
+          if (e.currentTarget.matches(':focus-visible')) tip.show(0)
         }}
-        onBlur={hide}
+        onBlur={tip.hide}
         onPointerMove={(e) => {
-          if (e.pointerType === 'mouse' && !pinned)
-            setActive(indexAt(e.clientX, e.currentTarget.getBoundingClientRect()))
+          if (e.pointerType !== 'touch') tip.hover(indexAt(e.clientX, e.currentTarget.getBoundingClientRect()))
         }}
         onClick={(e) => {
           const i = indexAt(e.clientX, e.currentTarget.getBoundingClientRect())
-          if (pinned && i === active) hide()
-          else {
-            setActive(i)
-            setPinned(true)
-          }
+          tip.pin(i)
         }}
         onKeyDown={(e) => {
           const i = active ?? 0
@@ -72,14 +54,14 @@ export function ChatStatusBars({ chats }: { chats: CoreChat[] }) {
             ArrowLeft: Math.max(0, i - 1),
             ArrowRight: Math.min(chats.length - 1, i + 1)
           }
-          if (e.key === 'Escape') hide()
+          if (e.key === 'Escape') tip.hide()
           else if (e.key in next) {
             e.preventDefault()
-            setActive(next[e.key]!)
+            tip.show(next[e.key]!)
           }
         }}
       >
-        <div role="row" className="chat-status-bars">
+        <div ref={tip.plot} role="row" className="chat-status-bars">
           {chats.map((c, i) => (
             <span
               key={c.chatId}
@@ -93,12 +75,7 @@ export function ChatStatusBars({ chats }: { chats: CoreChat[] }) {
         </div>
       </div>
       {chat && (
-        <div
-          id={uid + '-tip'}
-          role="tooltip"
-          className="chat-status-tip"
-          style={{ left: `clamp(0px,calc(${((active! + 0.5) / chats.length) * 100}% - 90px),max(0px,100% - 180px))` }}
-        >
+        <ChartTooltip tip={tip}>
           <b>{label(chat)}</b>
           <span>
             {chat.type === 'group' ? 'Group' : 'Direct chat'} · {chat.status === 'active' ? 'Active' : 'Pending'}
@@ -108,18 +85,27 @@ export function ChatStatusBars({ chats }: { chats: CoreChat[] }) {
               ? 'Last inbound ' + new Date(chat.lastInboundAt).toLocaleDateString()
               : 'No recorded inbound'}
           </small>
-        </div>
+        </ChartTooltip>
       )}
     </div>
   )
 }
 
 const shortDate = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })
+const fullDate = new Intl.DateTimeFormat(undefined, {
+  weekday: 'short',
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+  timeZone: 'UTC'
+})
+const messages = (count: number) => count.toLocaleString() + ' inbound ' + (count === 1 ? 'message' : 'messages')
 const format = (day: string) => shortDate.format(new Date(day + 'T12:00Z'))
 
 export function ActivityCalendar() {
   const [data, setData] = useState<Awaited<ReturnType<typeof core.activity>> | null>(null)
   const [error, setError] = useState(false)
+  const tip = useChartTooltip()
   const [selected, setSelected] = useState<string | null>(null)
   useEffect(() => {
     let live = true
@@ -142,6 +128,7 @@ export function ActivityCalendar() {
       days.push(new Date(ms).toISOString().slice(0, 10))
   const max = Math.max(1, ...counts.values())
   const day = selected ?? days.at(-1)
+  const activeDay = tip.active === null ? undefined : days[tip.active]
   return (
     <section className="insight insight-traffic" aria-label="Activity">
       <div className="insight-heading">
@@ -162,45 +149,78 @@ export function ActivityCalendar() {
             </strong>
             <span>inbound messages · 13 weeks</span>
           </div>
-          <div className="traffic-axis">
-            <span>{days[0] && format(days[0])}</span>
-            <span>Today</span>
+          <div className="traffic-calendar">
+            <div className="traffic-axis" aria-hidden="true">
+              <span>{days[0] && format(days[0])}</span>
+              <span>Today</span>
+            </div>
+            <div className="traffic-weekdays" aria-hidden="true">
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((weekday, i) => (
+                <span key={weekday}>{i % 2 === 1 ? weekday : ''}</span>
+              ))}
+            </div>
+            <div
+              ref={tip.plot}
+              className="traffic-grid"
+              role="group"
+              aria-label="Daily inbound messages, Sunday through Saturday, UTC"
+              onPointerLeave={(e) => {
+                if (e.pointerType !== 'touch') tip.leave()
+              }}
+            >
+              {days.map((d, i) => {
+                const n = counts.get(d) ?? 0
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    aria-label={format(d) + ' (UTC), ' + messages(n)}
+                    aria-describedby={tip.active === i ? tip.id : undefined}
+                    tabIndex={day === d ? 0 : -1}
+                    data-level={n ? 1 + Math.round(Math.sqrt(n / max) * 3) : 0}
+                    data-current={tip.active === i}
+                    onFocus={(e) => {
+                      setSelected(d)
+                      if (e.currentTarget.matches(':focus-visible')) tip.show(i)
+                    }}
+                    onBlur={tip.hide}
+                    onPointerEnter={(e) => {
+                      if (e.pointerType !== 'touch') tip.hover(i)
+                    }}
+                    onClick={() => tip.pin(i)}
+                    onKeyDown={(e) => {
+                      const move: Record<string, number> = {
+                        ArrowLeft: -7,
+                        ArrowRight: 7,
+                        ArrowUp: -1,
+                        ArrowDown: 1,
+                        Home: -91,
+                        End: 91
+                      }
+                      if (e.key in move) {
+                        e.preventDefault()
+                        const index = Math.min(days.length - 1, Math.max(0, i + move[e.key]!))
+                        ;(tip.plot.current?.children[index] as HTMLButtonElement)?.focus()
+                      }
+                    }}
+                  />
+                )
+              })}
+            </div>
+            <div className="traffic-key">
+              <span>Fewer</span>
+              {[0, 1, 2, 3, 4].map((level) => (
+                <i key={level} data-level={level} aria-hidden="true" />
+              ))}
+              <span>More</span>
+            </div>
           </div>
-          <div className="traffic-grid" aria-label="Daily inbound messages">
-            {days.map((d, i) => {
-              const n = counts.get(d) ?? 0
-              return (
-                <button
-                  key={d}
-                  type="button"
-                  aria-label={format(d) + ', ' + n + ' inbound messages'}
-                  tabIndex={day === d ? 0 : -1}
-                  data-level={n ? 1 + Math.round(Math.sqrt(n / max) * 3) : 0}
-                  onFocus={() => setSelected(d)}
-                  onPointerEnter={() => setSelected(d)}
-                  onClick={() => setSelected(d)}
-                  onKeyDown={(e) => {
-                    const move: Record<string, number> = {
-                      ArrowLeft: -7,
-                      ArrowRight: 7,
-                      ArrowUp: -1,
-                      ArrowDown: 1,
-                      Home: -91,
-                      End: 91
-                    }
-                    if (e.key in move) {
-                      e.preventDefault()
-                      const idx = Math.min(days.length - 1, Math.max(0, i + move[e.key]!))
-                      ;(e.currentTarget.parentElement?.children[idx] as HTMLElement)?.focus()
-                    }
-                  }}
-                />
-              )
-            })}
-          </div>
-          <small aria-live="polite">
-            {day && format(day) + ' (UTC) · ' + (counts.get(day) ?? 0) + ' inbound messages'}
-          </small>
+          {activeDay && (
+            <ChartTooltip tip={tip}>
+              <b>{fullDate.format(new Date(activeDay + 'T12:00Z'))} (UTC)</b>
+              <span>{messages(counts.get(activeDay) ?? 0)}</span>
+            </ChartTooltip>
+          )}
         </>
       )}
     </section>

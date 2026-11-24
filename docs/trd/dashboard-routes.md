@@ -138,9 +138,16 @@ return. On narrow screens routine and library detail links bring the selected pa
 
 ## Owner workspace refinements
 
+Shell glass diffuses the selected finish behind navigation and content. Solid reading surfaces,
+reduced transparency, and forced colors provide an opaque alternative. Dashboard controls use
+the shared switch, buttons, choice marks, and menus while retaining accessible names and keyboard input.
+
 The Chats strip has one selectable bar per chat. Its tooltip shows the owner-facing label, type, reply state
 and last inbound date. The activity calendar counts retained inbound messages by UTC day across thirteen weeks.
-Only dates and aggregate counts leave the protected activity endpoint.
+The calendar places UTC weekdays down each column and successive weeks from left to right.
+Dates and intensity labels align with the plot. Hover, keyboard focus, or tap on a day shows its
+UTC date and inbound count, including zero. Future dates have no cell. Chart tooltips use an
+opaque, contrasting surface and stay inside the viewport. Only dates and aggregate counts leave the protected activity endpoint.
 
 Create opens a choice of agent instructions, manual entry or JSON import. Catalogue pages hold three rows at
 the current column count. Persona editor tabs show one section and retain unsaved fields across tab changes.

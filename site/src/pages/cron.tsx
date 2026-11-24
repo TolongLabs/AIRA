@@ -1,3 +1,4 @@
+import { TimeField } from '@/dashboard/form-select'
 import { Loading } from '@/dashboard/loading'
 import { scrollSurface } from '@/dashboard/scroll'
 import { useContext, useEffect, useMemo, useRef, useState } from 'react'
@@ -91,7 +92,7 @@ function SchedulePicker({ value, onChange }: { value: CronSchedule; onChange: (s
 
       {(value.mode === 'daily' || value.mode === 'weekly' || value.mode === 'monthly') && (
         <Field label="at">
-          <Input type="time" value={value.time} onChange={(e) => set({ time: e.target.value })} className="w-36" />
+          <TimeField label="Run at" value={value.time} onChange={(time) => set({ time })} />
         </Field>
       )}
 

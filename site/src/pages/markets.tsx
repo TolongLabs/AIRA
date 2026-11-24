@@ -224,7 +224,7 @@ function MarketsConflictPanel({
           checked={conflict.confirmed}
           disabled={conflict.fresh == null}
           onChange={(e) => onConfirm(e.target.checked)}
-          className="size-4 accent-[var(--accent)]"
+          className="dashboard-choice size-4"
         />
         <span>I compared my draft with the current values and want to retry only these fields.</span>
       </label>
@@ -349,36 +349,27 @@ function ChartTip({
   v,
   span,
   currency,
-  first,
-  colors
+  first
 }: {
   t: number
   v: number
   span: Span
   currency?: string
   first?: { t: number; v: number }
-  colors: Record<string, string>
 }) {
   const base = first?.v
   const delta = base ? v - base : null
   const pct = base ? ((v - base) / base) * 100 : null
   const up = (delta ?? 0) >= 0
   return (
-    <div
-      className="rounded-card border px-3.5 py-2.5 shadow-float"
-      style={{
-        background: colors.card2,
-        borderColor: colors.lineStrong,
-        color: colors.ink
-      }}
-    >
-      <div className="text-[0.75rem] tracking-[0.04em] text-muted uppercase">{fullMoment(t, span)}</div>
+    <div className="aira-tooltip px-3.5 py-2.5">
+      <div className="text-[0.75rem] tracking-[0.04em] tip-muted uppercase">{fullMoment(t, span)}</div>
       <div className="tnum mt-1 font-serif text-[1.35rem] leading-none">{price(v, currency)}</div>
       {pct != null && delta != null && (
-        <div className="tnum mt-1.5 text-[0.82rem]" style={{ color: up ? colors.up : colors.down }}>
+        <div className="tnum mt-1.5 text-[0.82rem]" style={{ color: up ? 'var(--tip-up)' : 'var(--tip-down)' }}>
           {up ? '+' : '−'}
           {Math.abs(pct).toFixed(2)}%
-          <span className="ml-1.5 text-muted">
+          <span className="ml-1.5 tip-muted">
             ({up ? '+' : '−'}
             {price(Math.abs(delta), currency)} since {first ? fullMoment(first.t, span === '1d' ? '1d' : '1y') : ''})
           </span>
@@ -1381,14 +1372,7 @@ export default function MarketsPage() {
                             const row = active ? payload?.[0]?.payload : null
                             if (!row) return null
                             return (
-                              <ChartTip
-                                t={row.t}
-                                v={row.v}
-                                span={span}
-                                currency={hist?.currency}
-                                first={series[0]}
-                                colors={c}
-                              />
+                              <ChartTip t={row.t} v={row.v} span={span} currency={hist?.currency} first={series[0]} />
                             )
                           }}
                         />
@@ -1883,16 +1867,7 @@ function DashWatchlist(props: DashProps) {
                       content={({ active, payload }) => {
                         const row = active ? payload?.[0]?.payload : null
                         if (!row) return null
-                        return (
-                          <ChartTip
-                            t={row.t}
-                            v={row.v}
-                            span={span}
-                            currency={hist?.currency}
-                            first={series[0]}
-                            colors={colors}
-                          />
-                        )
+                        return <ChartTip t={row.t} v={row.v} span={span} currency={hist?.currency} first={series[0]} />
                       }}
                     />
                     <Area
@@ -2245,6 +2220,7 @@ function DashChatWatchlists({ chats, regions }: { chats: Chat[]; regions: { valu
                 <label className="mkd-check">
                   <input
                     type="checkbox"
+                    className="dashboard-choice"
                     checked={!!inherit[key]}
                     disabled={!!own[key] || isBusy}
                     onChange={(e) => void setFollowsDefault(c, e.target.checked)}

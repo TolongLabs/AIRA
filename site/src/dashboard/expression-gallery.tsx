@@ -1,3 +1,4 @@
+import { FileInput } from '@/components/ui'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { authHeaders, requestToken } from '@/lib/api'
 import './expression-gallery.css'
@@ -368,9 +369,9 @@ export default function ExpressionGallery({ id, writable }: ExpressionGalleryPro
           </label>
           <label className="expression-gallery-field">
             <span className="expression-gallery-label">File</span>
-            <input
+            <FileInput
               ref={fileInputRef}
-              type="file"
+
               accept="image/png,image/jpeg,image/webp"
               onChange={(event) => setFile(event.target.files?.[0] ?? null)}
             />

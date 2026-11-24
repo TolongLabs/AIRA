@@ -1,3 +1,4 @@
+import { TimeField } from '@/dashboard/form-select'
 import { Loading } from '@/dashboard/loading'
 import { useEffect, useRef, useState } from 'react'
 import { Button, Card, Empty, Field, Input, Picker, Section, Segmented, Toggle } from '@/components/ui'
@@ -401,16 +402,10 @@ function QuietHoursRow({
     <div className="flex flex-col gap-3">
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label="From">
-          <Input
-            aria-label="From"
-            type="time"
-            value={start}
-            disabled={busy}
-            onChange={(e) => setStart(e.target.value)}
-          />
+          <TimeField label="From" value={start} disabled={busy} onChange={setStart} />
         </Field>
         <Field label="Until">
-          <Input aria-label="Until" type="time" value={end} disabled={busy} onChange={(e) => setEnd(e.target.value)} />
+          <TimeField label="Until" value={end} disabled={busy} onChange={setEnd} />
         </Field>
         <Field label="Time zone">
           <Input

@@ -1,5 +1,14 @@
 .dashboard-shell {
-  --glass: rgb(247 249 248 / 0.36);
+  --glass: rgb(255 255 255 / 0.38);
+  --shell-filter: blur(10px) saturate(135%);
+  --shell-sheen: linear-gradient(
+    135deg,
+    rgb(255 255 255 / 0.22),
+    transparent 36%,
+    transparent 78%,
+    rgb(255 255 255 / 0.08)
+  );
+  position: relative;
   --rim: rgb(255 255 255 / 0.7);
   --tile-inset: rgb(16 90 83 / 0.055);
   --tile-edge: rgb(71 90 89 / 0.13);
@@ -41,7 +50,14 @@
   --song: #89500f;
 }
 [data-theme='dark'] .dashboard-shell {
-  --glass: rgb(27 34 38 / 0.43);
+  --glass: rgb(30 38 37 / 0.43);
+  --shell-sheen: linear-gradient(
+    135deg,
+    rgb(201 240 233 / 0.07),
+    transparent 36%,
+    transparent 78%,
+    rgb(169 218 212 / 0.025)
+  );
   --tile: rgb(37 45 47 / 0.82);
   --rim: rgb(198 243 236 / 0.12);
   --tile-inset: rgb(229 249 248 / 0.065);
@@ -79,8 +95,22 @@
     inset 0 1px 0 var(--rim),
     0 4px 22px rgb(10 36 34 / 0.06);
 }
-.dashboard-shell > dialog {
-  backdrop-filter: blur(18px);
+/* Keep the filter behind the scrolling workspace so its fixed tools stay viewport anchored. */
+.dashboard-shell::before {
+  content: '';
+  position: absolute;
+  grid-area: 1 / 2;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 16px;
+  backdrop-filter: var(--shell-filter);
+}
+.dashboard-shell > :is(aside, main, header) {
+  background-image: var(--shell-sheen);
+}
+.dashboard-shell > aside {
+  backdrop-filter: var(--shell-filter);
 }
 .dashboard-shell > aside {
   position: sticky;
@@ -222,12 +252,6 @@
 .dashboard-shell :focus-visible {
   outline: 3px solid #00877a;
   outline-offset: 2px;
-}
-.dashboard-shell > aside {
-  background: rgb(255 255 255 / 0.38);
-}
-[data-theme='dark'] .dashboard-shell > aside {
-  background: rgb(30 38 37 / 0.43);
 }
 @media (max-width: 760px) {
   .dashboard-shell,
@@ -374,8 +398,12 @@
 }
 .directory-avatar {
   display: grid;
-  flex: 0 0 34px;
-  height: 34px;
+  --avatar-size: 34px;
+  flex: none;
+  inline-size: var(--avatar-size);
+  block-size: var(--avatar-size);
+  aspect-ratio: 1;
+  overflow: hidden;
   place-items: center;
   border-radius: 8px;
   background: var(--active);
@@ -833,8 +861,7 @@
   border-radius: 12px;
 }
 .chat-context .directory-avatar {
-  flex-basis: 44px;
-  height: 44px;
+  --avatar-size: 44px;
   color: var(--on-accent);
   background: var(--accent);
 }
@@ -1162,6 +1189,10 @@ body:has(.dashboard-shell) {
     grid-template-rows: 56px minmax(0, 1fr);
     gap: 0;
   }
+  .dashboard-shell::before {
+    grid-area: 2 / 1;
+    border-radius: 0 0 16px 16px;
+  }
   .dashboard-shell > header {
     position: static;
     width: 100%;
@@ -1169,7 +1200,8 @@ body:has(.dashboard-shell) {
     display: flex;
     gap: 8px;
     padding: 4px 12px;
-    background: var(--glass);
+    background: var(--shell-sheen), var(--glass);
+    backdrop-filter: var(--shell-filter);
     border: 1px solid var(--edge);
     border-bottom: 0;
     border-radius: 16px 16px 0 0;
@@ -1273,10 +1305,6 @@ body:has(.dashboard-shell) {
   }
 }
 
-.directory-avatar {
-  overflow: hidden;
-  flex: none;
-}
 .directory-avatar img {
   width: 100%;
   height: 100%;
@@ -1456,4 +1484,152 @@ body:has(.dashboard-shell) {
 .access-observed button {
   overflow-wrap: anywhere;
   white-space: normal;
+}
+
+:root[data-surfaces='solid'] .dashboard-shell {
+  --tile: var(--card);
+  --glass: var(--card);
+  --shell-filter: none;
+  --shell-sheen: none;
+}
+@media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+  .dashboard-shell,
+  [data-theme='dark'] .dashboard-shell {
+    --tile: var(--card);
+    --glass: var(--card);
+    --shell-filter: none;
+    --shell-sheen: none;
+  }
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .dashboard-shell,
+  [data-theme='dark'] .dashboard-shell {
+    --glass: var(--card);
+  }
+}
+
+.dashboard-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  width: max-content;
+}
+.dashboard-time .dashboard-select {
+  width: auto;
+  gap: 5px;
+}
+.dashboard-select:disabled,
+.dashboard-file:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.dashboard-file {
+  min-width: 0;
+  max-width: 100%;
+  font: inherit;
+  color: var(--muted);
+}
+.dashboard-file::file-selector-button {
+  appearance: none;
+  min-height: 44px;
+  margin-inline-end: 8px;
+  padding-inline: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+.dashboard-file:not(:disabled):hover::file-selector-button {
+  background: var(--active);
+}
+.dashboard-shell .dashboard-choice {
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--sunk);
+  color: var(--on-accent);
+  cursor: pointer;
+}
+.dashboard-choice:checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.dashboard-choice[type='radio'] {
+  border-radius: 50%;
+}
+.dashboard-choice:checked::after {
+  content: '';
+  width: 5px;
+  height: 9px;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(45deg);
+}
+.dashboard-choice[type='radio']:checked::after {
+  width: 8px;
+  height: 8px;
+  border: 0;
+  border-radius: 50%;
+  background: currentColor;
+  transform: none;
+}
+.dashboard-choice:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.dashboard-shell input[type='number'] {
+  appearance: textfield;
+}
+.dashboard-shell input[type='number']::-webkit-inner-spin-button,
+.dashboard-shell input[type='number']::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+.dashboard-shell input[type='range'] {
+  appearance: none;
+  height: 22px;
+  background: transparent;
+}
+.dashboard-shell input[type='range']::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 4px;
+  background: var(--line);
+}
+.dashboard-shell input[type='range']::-moz-range-track {
+  height: 4px;
+  border-radius: 4px;
+  background: var(--line);
+}
+.dashboard-shell input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.dashboard-shell input[type='range']::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+}
+@media (forced-colors: active) {
+  .dashboard-choice:checked::after {
+    color: Highlight;
+  }
+  .dashboard-choice[type='radio']:checked::after {
+    forced-color-adjust: none;
+    background: Highlight;
+  }
 }

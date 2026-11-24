@@ -293,11 +293,6 @@
   gap: 10px;
   cursor: pointer;
 }
-.dashboard-shell .mkd-check input {
-  min-width: 44px;
-  min-height: 44px;
-  accent-color: #00877a;
-}
 .dashboard-shell .mkd :focus-visible {
   outline: 3px solid #00877a;
   outline-offset: 2px;

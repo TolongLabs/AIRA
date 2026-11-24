@@ -225,7 +225,7 @@ function ChatWatchlists({ chats, regions }: { chats: Chat[]; regions: { value: s
                 <label className="mt-3 flex cursor-pointer items-start gap-2.5">
                   <input
                     type="checkbox"
-                    className="mt-0.5 size-4 cursor-pointer accent-[var(--accent)]"
+                    className="dashboard-choice mt-0.5 size-4 cursor-pointer"
                     checked={!!inherit[key]}
                     disabled={!!own[key] || isBusy}
                     onChange={(e) => void setFollowsDefault(c, e.target.checked)}
@@ -885,6 +885,7 @@ function ModelsTab({ settings, onChanged }: { settings: Settings; onChanged: () 
         <label className="mb-4 flex items-center gap-2 text-[0.95rem]">
           <input
             type="checkbox"
+            className="dashboard-choice"
             checked={ollama.enabled}
             disabled={busy}
             onChange={(e) => void saveOllama({ enabled: e.target.checked })}

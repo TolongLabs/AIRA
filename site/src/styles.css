@@ -500,3 +500,33 @@ rt {
   box-shadow: 0 8px 32px #10231f26;
   padding: 12px 16px;
 }
+
+/* Floating feedback also lives in portals outside the dashboard shell. */
+.aira-tooltip {
+  --tip-muted: #cee0db;
+  --tip-up: #9ce6bf;
+  --tip-down: #ffb9b5;
+  border: 1px solid #42645d;
+  border-radius: 10px;
+  background: #173731;
+  color: #f5fffa;
+  box-shadow: 0 4px 16px rgb(7 26 23 / 0.24);
+}
+:root[data-theme='dark'] .aira-tooltip {
+  --tip-muted: #354f48;
+  --tip-up: #125b35;
+  --tip-down: #933031;
+  border-color: #ecfaf3;
+  background: #e0efe8;
+  color: #102b24;
+}
+.aira-tooltip :is(small, .tip-muted) {
+  color: var(--tip-muted);
+}
+@media (forced-colors: active) {
+  .aira-tooltip {
+    background: Canvas;
+    color: CanvasText;
+    border-color: CanvasText;
+  }
+}

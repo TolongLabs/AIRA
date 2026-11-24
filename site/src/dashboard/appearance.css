@@ -120,25 +120,6 @@
   justify-content: flex-end;
 }
 
-.appearance-actions button {
-  min-height: 44px;
-  padding: 10px 16px;
-  border-radius: 8px;
-  border: 1px solid currentColor;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-}
-
-.appearance-actions button:last-child {
-  background: var(--active, #d6f5ef);
-  border-color: transparent;
-}
-
-.appearance-actions button:disabled {
-  opacity: 0.6;
-}
-
 .appearance-state,
 .appearance-notice {
   margin: 0;
@@ -151,7 +132,7 @@
   position: fixed;
   inset: 0;
   overflow: clip;
-  z-index: -1;
+  z-index: -2;
   pointer-events: none;
 }
 
@@ -358,24 +339,16 @@
 .appearance-actions[data-dirty='false'] {
   display: none;
 }
-.appearance-option {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.appearance-option > label {
   min-height: 48px;
-  gap: 12px;
+  align-items: center;
+  flex-direction: row-reverse;
 }
-.appearance-option input {
-  width: 22px;
-  height: 22px;
-  accent-color: var(--chart-ink);
+.appearance-option button[role='switch'] {
+  min-height: 0;
 }
 [data-glow='off'] .dashboard-cursor-glow {
   display: none;
-}
-:root[data-surfaces='solid'] .dashboard-shell {
-  --tile: var(--card);
-  --glass: var(--card-2);
 }
 @media (max-width: 950px) {
   .appearance {
