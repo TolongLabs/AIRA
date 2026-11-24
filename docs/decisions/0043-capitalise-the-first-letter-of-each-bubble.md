@@ -1,7 +1,7 @@
 # ADR-0043: Capitalise the First Letter of Each Bubble
 
 - **Date:** 2026-11-17
-- **Status:** Accepted
+- **Status:** Accepted, partly superseded by [ADR-0185](0185-let-a-pack-switch-off-bubble-capitals.md)
 - **Group:** [Architecture](README.md#architecture)
 
 ## Decision

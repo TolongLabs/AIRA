@@ -79,7 +79,7 @@ Where the record came from.
 
 ## Architecture
 
-Process boundaries, the gateway contract, turns, tools, commands, models, reply formatting, media and social readers. 122 records, in ID order.
+Process boundaries, the gateway contract, turns, tools, commands, models, reply formatting, media and social readers. 123 records, in ID order.
 
 | ID       | Date       | Decision                                                                                | Status                                                        |
 | -------- | ---------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
@@ -125,7 +125,7 @@ Process boundaries, the gateway contract, turns, tools, commands, models, reply 
 | ADR-0040 | 2026-11-16 | [Show the Model the Candidate Rows Before Cancel and Forget][ADR-0040]                  | Accepted                                                      |
 | ADR-0041 | 2026-11-17 | [Read Media Only Through Read-Only Gateway Mounts][ADR-0041]                            | Accepted                                                      |
 | ADR-0042 | 2026-11-17 | [Lift Research Answers to the Long Length Limit][ADR-0042]                              | Accepted                                                      |
-| ADR-0043 | 2026-11-17 | [Capitalise the First Letter of Each Bubble][ADR-0043]                                  | Accepted                                                      |
+| ADR-0043 | 2026-11-17 | [Capitalise the First Letter of Each Bubble][ADR-0043]                                  | Accepted, partly superseded by [ADR-0185]                     |
 | ADR-0044 | 2026-11-17 | [Never Merge a Slash Command With Other Messages][ADR-0044]                             | Accepted                                                      |
 | ADR-0045 | 2026-11-17 | [Give the Model Local Time With Zone and Offset][ADR-0045]                              | Accepted                                                      |
 | ADR-0046 | 2026-11-17 | [Keep the Character in Role When Asked What It Is][ADR-0046]                            | Accepted                                                      |
@@ -207,7 +207,9 @@ Process boundaries, the gateway contract, turns, tools, commands, models, reply 
 | ADR-0122 | 2026-11-22 | [Raise the Shared Short-Video Limit to 300 Seconds][ADR-0122]                           | Accepted                                                      |
 | ADR-0180 | 2026-11-23 | [Fetch Only Verified YouTube Shorts][ADR-0180]                                          | Accepted                                                      |
 | ADR-0181 | 2026-11-23 | [Recover Malformed Replies Within the Turn Deadline][ADR-0181]                          | Accepted                                                      |
+| ADR-0185 | 2026-11-25 | [Let a Pack Switch Off Bubble Capitals][ADR-0185]                                       | Accepted                                                      |
 
+[ADR-0185]: 0185-let-a-pack-switch-off-bubble-capitals.md
 [ADR-0181]: 0181-recover-malformed-api-replies.md
 [ADR-0180]: 0180-fetch-only-verified-youtube-shorts.md
 [ADR-0001]: 0001-build-the-core-as-a-typescript-service-on-node-24.md

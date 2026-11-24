@@ -37,6 +37,7 @@ export interface Pack {
     coreIdentity: string
     speechRules: string[]
     defaultReplyLength: 'short' | 'default' | 'long'
+    capitaliseBubbles?: boolean
     toolFooter?: { icon?: string; labels?: Record<string, string> }
   }
   defaultMood: string

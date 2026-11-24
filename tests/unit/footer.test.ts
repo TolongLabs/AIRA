@@ -205,6 +205,17 @@ describe('cleanReply footer, capitals and bypasses', () => {
     expect(result.steps).toEqual(expect.arrayContaining(['capitals', 'footer']))
   })
 
+  it('leaves the first letters as written when the pack switches capitals off', () => {
+    const result = cleanReply('first part of it\n\nsecond part of it', {
+      ...base,
+      bubbleMaxChars: 20,
+      capitals: false,
+      toolsOk: ['web_search']
+    })
+    expect(result.content).toBe(`first part of it\n${BUBBLE_BREAK}\nsecond part of it\n\n_🛠️ searched the web_`)
+    expect(result.steps).not.toContain('capitals')
+  })
+
   it('adds no footer when no tool ran with outcome ok, or when a line replaced the reply', () => {
     expect(cleanReply('plain reply', base).content).toBe('Plain reply')
     const leaked = cleanReply('one two three four five six seven eight nine ten eleven twelve', {

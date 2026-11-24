@@ -37,6 +37,7 @@ export interface StudioCard {
   coreIdentity: string
   speechRules: string[]
   defaultReplyLength: ReplyLength
+  capitaliseBubbles?: boolean
   toolFooter?: { icon?: string; labels?: Record<string, string> }
 }
 

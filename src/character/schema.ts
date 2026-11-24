@@ -47,6 +47,8 @@ export const cardSchema = z.strictObject({
   coreIdentity: nonEmpty,
   speechRules: z.array(nonEmpty).min(1),
   defaultReplyLength: z.enum(['short', 'default', 'long']),
+  /** False leaves each bubble's first letter as the model wrote it (docs/trd/prompt-engine.md#cleaning-chain). */
+  capitaliseBubbles: z.boolean().optional(),
   expressionDescriptions: z
     .record(
       z.string().regex(STICKER_FILE),
