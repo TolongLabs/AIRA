@@ -180,4 +180,5 @@ The [operator runbook](docs/RUNBOOK.md) and [deployment contract](docs/trd/deplo
 The dashboard font licences and pattern references are in the [site notes](site/README.md#dashboard-assets).
 The README banner combines a generated background with the AIRA glyph and wordmark.
 
-Released under the MIT Licence. Copyright (c) 2026 TolongLabs.
+Copyright (c) 2026 TolongLabs. All rights reserved.
+[TolongLabs Proprietary Source-Available Licence 1.0](LICENSE)
