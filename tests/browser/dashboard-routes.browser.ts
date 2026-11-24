@@ -545,6 +545,13 @@ it('automations shows a managed routine read-only, and missing/failed lookups re
     await auth(page, fixture.origin)
 
     await page.goto(fixture.origin + '/app/preview/automations/routines')
+    const scheduledTab = page.getByRole('tab', { name: /Scheduled/ })
+    await expect(scheduledTab).toHaveCSS('border-radius', '8px')
+    await scheduledTab.focus()
+    await scheduledTab.press('ArrowRight')
+    await expect(page.getByRole('tab', { name: /Archive/ })).toHaveAttribute('aria-selected', 'true')
+    await page.keyboard.press('ArrowLeft')
+    await expect(scheduledTab).toHaveAttribute('aria-selected', 'true')
     await expect(page.getByRole('link', { name: /Morning check/ }).first()).toBeVisible()
     await expect(page.getByRole('link', { name: /Fixture owned/ }).first()).toBeVisible()
 
@@ -718,6 +725,11 @@ it.each([
       new URL(route.request().url()).origin === fixture.origin ? route.continue() : route.abort()
     )
     await auth(page, fixture.origin)
+    const created = await page.request.post(fixture.origin + '/owner-api/core/characters', {
+      headers: { 'x-tolongai-token': TOKEN },
+      data: { id: 'workspace-persona', sourceId: 'example' }
+    })
+    expect(created.status()).toBe(201)
     const evidence = process.env.AIRA_DASHBOARD_EVIDENCE_DIR
     if (evidence) await mkdir(evidence, { recursive: true })
     const routes = [
@@ -972,8 +984,10 @@ it('creates personas from the catalogue, keeps section drafts and uses the local
     }
     await page.goto(fixture.origin + '/app/preview/characters')
     await expect(page.locator('.studio-card')).toHaveCount(15)
+    await expect(page.locator('.studio-card-link[href$="/example/edit"]')).toHaveCount(0)
     await page.getByRole('button', { name: 'Next page' }).click()
-    await expect(page.locator('.studio-card')).toHaveCount(2)
+    await expect(page.locator('.studio-card')).toHaveCount(1)
+    await expect(page.locator('.studio-card-link[href$="/example/edit"]')).toHaveCount(0)
     await page.setViewportSize({ width: 396, height: 704 })
     await page.getByRole('button', { name: 'Previous page' }).click()
     await expect(page.locator('.studio-card')).toHaveCount(6)
@@ -985,8 +999,37 @@ it('creates personas from the catalogue, keeps section drafts and uses the local
     await screenshot(page, 'create-phone')
     await dialog.getByRole('button', { name: /Agent/ }).click()
     await expect(dialog.getByRole('textbox')).toHaveAttribute('readonly', '')
+    for (const agent of ['Claude', 'ChatGPT', 'Gemini']) {
+      const link = dialog.getByRole('link', { name: 'Open ' + agent + ' in a new tab' })
+      await expect(link).toHaveAttribute('target', '_blank')
+      await expect.poll(() => link.locator('img').evaluate((el) => el.naturalWidth)).toBeGreaterThan(0)
+    }
+    await page.setViewportSize({ width: 1440, height: 810 })
+    await screenshot(page, 'agent-prompt-desktop')
+    await page.setViewportSize({ width: 396, height: 704 })
     await dialog.getByRole('button', { name: 'Copy Prompt' }).click()
-    expect(await page.evaluate('navigator.clipboard.readText()')).toContain('speechRules')
+    expect(await page.evaluate('navigator.clipboard.readText()')).toBe(await dialog.getByRole('textbox').inputValue())
+    await expect(dialog.locator('.owner-toast-layer:popover-open')).toContainText('Prompt copied.')
+    await expect(dialog.getByRole('button', { name: 'Copied', exact: true })).toBeVisible()
+    const toast = dialog.locator('.owner-toast')
+    await expect
+      .poll(() =>
+        toast.evaluate((el) => {
+          const box = el.getBoundingClientRect()
+          const wrapper = el.parentElement!
+          if (Number(getComputedStyle(el).opacity) < 0.95 || Number(getComputedStyle(wrapper).opacity) < 0.95)
+            return false
+          el.style.pointerEvents = 'auto'
+          const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)
+          el.style.removeProperty('pointer-events')
+          return top !== null && el.contains(top)
+        })
+      )
+      .toBe(true)
+    await screenshot(page, 'agent-prompt-phone')
+    await page.keyboard.press('Escape')
+    await page.getByRole('button', { name: 'Open navigation' }).click()
+    await expect(page.locator('dialog:modal .owner-toast-layer:popover-open')).toBeVisible()
     await page.keyboard.press('Escape')
     await page.setViewportSize({ width: 1440, height: 810 })
     await page.goto(fixture.origin + '/app/preview/characters/fixture-00/edit')
@@ -1064,6 +1107,9 @@ it('keeps System tabs and device appearance usable on desktop and phone', async 
     const page = await browser.newPage({ viewport: { width: 1440, height: 810 } })
     await auth(page, fixture.origin)
     for (const [hash, heading] of [
+      ['models', 'Primary model'],
+      ['core-config', 'Core Configuration'],
+      ['credentials', 'Core Credentials'],
       ['providers', 'Web search'],
       ['markets', 'The default watchlist'],
       ['voice', 'Voice notes'],
@@ -1072,6 +1118,16 @@ it('keeps System tabs and device appearance usable on desktop and phone', async 
     ]) {
       await page.goto(fixture.origin + '/app/preview/system/settings#' + hash)
       await expect(page.getByRole('heading', { name: heading, exact: true }).first()).toBeVisible()
+      if (hash === 'models') {
+        await expect(page.getByRole('heading', { name: 'Fallback model' })).toBeVisible()
+        await expect(page.getByRole('heading', { name: 'Local Models' })).toHaveCount(0)
+      }
+      if (hash === 'core-config') {
+        await page.getByRole('searchbox', { name: 'Filter core configuration' }).fill('memory.recallTokenBudget')
+        await expect(page.locator('.core-groups details')).toHaveCount(1)
+        await expect(page.getByText('recallTokenBudget', { exact: true })).toBeVisible()
+      }
+      if (hash === 'credentials') await expect(page.getByText('LLM_FALLBACK_API_KEY', { exact: true })).toBeVisible()
       await screenshot(page, 'settings-' + hash)
       await page.setViewportSize({ width: 396, height: 704 })
       expect(await page.locator('main').evaluate((el) => el.scrollWidth - el.clientWidth), hash).toBeLessThanOrEqual(1)

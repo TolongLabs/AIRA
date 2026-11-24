@@ -69,12 +69,16 @@ selection clears.
 Appearance lives at /system/appearance for the dashboard owner and device, not per chat.
 The base pair is white and black with a selectable static ASCII lattice or stipple,
 ShaderGradient layer, or plain finish, while focus and reading surfaces sit above
-that base plane. Navigation retains the shell during location changes. Reduced motion falls back to the static finish. Navigation uses white at 38 percent in light mode and smoked neutral at 43
+that base plane. Navigation retains the shell during location changes. Reduced motion falls back to the static finish. Navigation uses white at 32 percent in light mode and smoked neutral at 36
 percent in dark mode; content cards use white at 73 percent in light or charcoal at 82
-percent in dark. The outer shells diffuse the canvas behind a directional edge highlight.
+percent in dark. The outer shells lightly diffuse the canvas behind a directional edge highlight. Stipple remains visible through the glass.
 Solid reading surfaces and reduced transparency use opaque panels. Borders stay restrained and gutters shared, keeping the quiet bento base
 plane calm. Each view leads with one dominant diagnostic (never a fake chart) and smaller
 paired tools, stacking to a single column on phone.
+
+The agent setup dialog pairs a selectable prompt and its copy action with links to Claude, ChatGPT,
+and Gemini. Owners paste the prompt into their chosen agent and return to import the JSON file.
+Toast feedback stays visible and accessible in the active dialog, including native modal dialogs.
 
 Modals sit over a dimmed and blurred lower interface with a fill of 86 percent in light mode
 and 91 percent in dark, and actions align right with Cancel first and primary last. Forms use

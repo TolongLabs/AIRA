@@ -50,7 +50,7 @@ export default function Catalogue() {
       .characters()
       .then((data) => {
         if (!live) return
-        setRows(data.characters)
+        setRows(data.characters.filter((row) => row.id !== 'example' || row.source !== 'repository'))
         setFaults(data.faults)
       })
       .catch(() => {

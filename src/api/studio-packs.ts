@@ -1,6 +1,16 @@
 import { createHash, randomBytes } from 'node:crypto'
 import type { Dirent } from 'node:fs'
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs'
+import {
+  existsSync,
+  linkSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync
+} from 'node:fs'
 import { dirname, join, resolve, sep } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { isMap, parse, parseDocument, stringify } from 'yaml'
@@ -35,6 +45,8 @@ export const STUDIO_FILES = ['card.yml', 'moods.yml', 'lines.yml'] as const
 type StudioFile = (typeof STUDIO_FILES)[number]
 
 const MAX_YAML_BYTES = 256 * 1024
+const DOCUMENT_BACKUP = /^(?:card|moods|lines)\.yml\.bak-[0-9]{8}$/u
+const MAX_DOCUMENT_BACKUPS = 64
 const MAX_STICKER_BYTES = 500_000
 const STAGE_ROOT_NAME = '.studio-stage'
 const JOURNAL_SUFFIX = '.journal.json'
@@ -208,7 +220,7 @@ function safeReadFile(dir: string, name: string, maxBytes: number): Buffer {
   return readFileSync(full)
 }
 
-function scanStickersGuard(dir: string, repository: boolean): void {
+function validatePackLayout(dir: string, repository: boolean): string[] {
   const stickersDir = join(dir, 'stickers')
   let entries: Dirent<string>[] = []
   try {
@@ -236,17 +248,21 @@ function scanStickersGuard(dir: string, repository: boolean): void {
     const fault = stickerFault(readWebpInfo(readFileSync(full)))
     if (fault) throw new StudioPackError('invalid_body', `invalid sticker "${entry.name}": ${fault}`, 400)
   }
+  const backups: string[] = []
   const unknown: string[] = []
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.name === 'stickers' || (repository && entry.name === 'README.md' && entry.isFile())) continue
-    if (!(STUDIO_FILES as readonly string[]).includes(entry.name)) unknown.push(entry.name)
+    if (!repository && entry.isFile() && DOCUMENT_BACKUP.test(entry.name)) backups.push(entry.name)
+    else if (!(STUDIO_FILES as readonly string[]).includes(entry.name)) unknown.push(entry.name)
   }
   if (unknown.length > 0) {
     throw new StudioPackError('invalid_body', `unknown file "${unknown.sort()[0]}"`, 400)
   }
+  if (backups.length > MAX_DOCUMENT_BACKUPS) throw new StudioPackError('too_large', 'too many document backups', 413)
+  return backups.sort()
 }
 
-type TreeBytes = Record<StudioFile, Buffer>
+type TreeBytes = Record<StudioFile, Buffer> & { backups: { name: string; bytes: Buffer }[] }
 
 interface StickerEntry {
   name: string
@@ -257,12 +273,15 @@ function readTreeBytes(dir: string, repository = false): TreeBytes {
   const dirStat = lstatSync(dir)
   if (dirStat.isSymbolicLink()) throw new StudioPackError('invalid_body', 'pack must not be a symlink', 400)
   if (!dirStat.isDirectory()) throw new StudioPackError('pack_unparseable', 'pack is not a directory', 409)
-  scanStickersGuard(dir, repository)
-  return readDocumentBytes(dir)
+  const names = validatePackLayout(dir, repository)
+  const tree = readDocumentBytes(dir)
+  tree.backups = names.map((name) => ({ name, bytes: safeReadFile(dir, name, MAX_YAML_BYTES) }))
+  return tree
 }
 
 function readDocumentBytes(dir: string): TreeBytes {
   return {
+    backups: [],
     'card.yml': safeReadFile(dir, 'card.yml', MAX_YAML_BYTES),
     'moods.yml': safeReadFile(dir, 'moods.yml', MAX_YAML_BYTES),
     'lines.yml': safeReadFile(dir, 'lines.yml', MAX_YAML_BYTES)
@@ -313,6 +332,11 @@ function revisionOf(id: string, tree: TreeBytes, stickers: StickerEntry[]): stri
     const bytes = tree[name as StudioFile]
     hash.update(`${name}:${bytes.length}\n`)
     hash.update(bytes)
+    hash.update('\n')
+  }
+  for (const backup of tree.backups) {
+    hash.update(`backup/${backup.name}:${backup.bytes.length}\n`)
+    hash.update(backup.bytes)
     hash.update('\n')
   }
   for (const sticker of stickers) {
@@ -1050,6 +1074,8 @@ export function updateStudioPack(
       const text = nextTexts[name] === currentTexts[name] ? current[name as StudioFile] : Buffer.from(nextTexts[name])
       writeFileAtomic(join(stagingDir, name), text)
     }
+    // Same-filesystem links retain owner, permissions and bytes. Studio never writes these files.
+    for (const backup of current.backups) linkSync(join(targetDir, backup.name), join(stagingDir, backup.name))
     stageStickers(currentStickers, stagingDir)
     if (expression) {
       ensureDirectory(join(stagingDir, 'stickers'))

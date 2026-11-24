@@ -7,6 +7,7 @@ import { createSiteApiServer } from './api/server.js'
 import { pendingStudioPacks, recoverStudioPacks } from './api/studio-packs.js'
 import { loadPacks, type PackSet } from './character/loader.js'
 import { writeUnavailableLine } from './character/unavailable.js'
+import { credentialPurposes, deploymentSettings } from './config/dashboard-settings.js'
 import { ConfigError } from './config/loader.js'
 import type { Config } from './config/schema.js'
 import { createConfigStatus } from './config/status.js'
@@ -87,20 +88,7 @@ import type { TurnRunner } from './turn/types.js'
 // docs/trd/storage.md#start-up-sequence, so the entry point, the tests and the harness run the same core.
 
 /** The names of every secret in .env. Their values are masked in every log line. */
-export const SECRET_NAMES = [
-  'LLM_API_KEY',
-  'LLM_FALLBACK_API_KEY',
-  'MEDIA_WATCHER_API_KEY',
-  'YOUTUBE_API_KEY',
-  'TYPESAFE_API_KEY',
-  'EXA_API_KEY',
-  'LINKS_SECRET',
-  'SERPAPI_API_KEY',
-  'RUNNER_TOKEN',
-  'OPENAI_API_KEY',
-  'FEEDBACK_SYNC_SECRET',
-  'FEEDBACK_SYNC_URL'
-] as const
+export const SECRET_NAMES = Object.keys(credentialPurposes)
 
 /** How often the memory worker looks for a closed episode or a due job. */
 const MEMORY_TICK_MS = 15_000
@@ -904,6 +892,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       ready: () => ready,
       activeTurns: () => turns.active(),
       configStatus,
+      deploymentSettings: (roles) => deploymentSettings(config, env, configStatus(), roles),
       roles: () => ({
         main: { configured: Boolean(mainRole) || subscription, breakerOpen: breaker.isOpen('main') },
         fallback: {

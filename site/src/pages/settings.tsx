@@ -32,6 +32,7 @@ import {
   Textarea,
   Toggle
 } from '@/components/ui'
+import CoreSettings, { type CoreSettingsTab } from '@/dashboard/deployment-settings'
 import ProfileFiles from '@/dashboard/profile-files'
 import { SymbolSearch } from '@/components/symbol-search'
 
@@ -41,7 +42,7 @@ import { SymbolSearch } from '@/components/symbol-search'
    chat, then say how she behaves there" is the only mental model that ever
    made sense to a non-technical reader. */
 
-type Tab = 'providers' | 'models' | 'markets' | 'avatar' | 'voice' | 'home' | 'files'
+type Tab = CoreSettingsTab | 'providers' | 'markets' | 'avatar' | 'voice' | 'home' | 'files'
 
 /* No blurbs. Each one restated its own tab label in a cuter voice — "Chats:
    who she talks to, and how" — which is a line of text between the reader and
@@ -59,6 +60,8 @@ const TABS: { key: Tab; label: string; icon: typeof Bot }[] = [
 
 const DASHBOARD_TABS = [
   { key: 'models', label: 'Models' },
+  { key: 'core-config', label: 'Core Configuration' },
+  { key: 'credentials', label: 'Credentials' },
   { key: 'providers', label: 'Providers and Learning' },
   { key: 'voice', label: 'Voice and Avatar' },
   { key: 'home', label: 'Home Assistant' },
@@ -1820,15 +1823,18 @@ function FilesTab({ settings, onChanged, active }: { settings: Settings; onChang
 
 export default function SettingsPage() {
   const dashboard = useContext(DashboardContext)
-  const settings = useApi<Settings>('/api/settings')
   const [tab, setTab] = useState<Tab>(() => {
     const h = location.hash.slice(1) as Tab
     /* Models, which is what the sidebar draws first. This said "markets"
        because the Chats tab was removed and the literal was swapped to its
        neighbour rather than to the new first tab — so the page opened on a
        tab nobody navigated to. */
-    return TABS.some((t) => t.key === h) || (dashboard && h === 'providers') ? h : 'models'
+    return TABS.some((t) => t.key === h) || (dashboard && DASHBOARD_TABS.some((t) => t.key === h)) ? h : 'models'
   })
+
+  const coreTab = dashboard && (tab === 'models' || tab === 'credentials' || tab === 'core-config') ? tab : null
+  const needsHost = !dashboard || (!coreTab && tab !== 'files')
+  const settings = useApi<Settings>(needsHost ? '/api/settings' : null)
 
   useEffect(() => {
     /* Old deep links kept working rather than 404-ing into an empty page.
@@ -1847,7 +1853,7 @@ export default function SettingsPage() {
         return
       }
       const next = h as Tab
-      if (TABS.some((t) => t.key === next) || (dashboard && next === 'providers')) setTab(next)
+      if (TABS.some((t) => t.key === next) || (dashboard && DASHBOARD_TABS.some((t) => t.key === next))) setTab(next)
     }
     route()
     window.addEventListener('hashchange', route)
@@ -1895,25 +1901,23 @@ export default function SettingsPage() {
         )}
 
         <div className="min-w-0">
-          {settings.error && (!dashboard || tab !== 'files') && (
+          {coreTab && <CoreSettings tab={coreTab} />}
+          {settings.error && needsHost && (
             <Card className="border-down/40 p-4 text-down">Could not load settings: {settings.error}</Card>
           )}
-          {settings.loading && !settings.data && (!dashboard || tab !== 'files') && <Loading />}
+          {needsHost && settings.loading && !settings.data && <Loading />}
           {dashboard && (
             <div hidden={tab !== 'files'}>
               <ProfileFiles active={tab === 'files'} />
             </div>
           )}
 
-          {settings.data && (
+          {needsHost && settings.data && (
             <>
-              {['models', 'voice'].includes(tab) && (
-                <p className="mb-3 text-muted">
-                  These settings belong to the host owner service. The WhatsApp core uses its deployed model and media
-                  configuration.
-                </p>
+              {dashboard && ['voice', 'avatar', 'providers', 'home'].includes(tab) && (
+                <p className="mb-3 text-muted">These settings apply to the Hermes host service.</p>
               )}
-              {tab === 'models' && <ModelsTab settings={settings.data} onChanged={settings.reload} />}
+              {!dashboard && tab === 'models' && <ModelsTab settings={settings.data} onChanged={settings.reload} />}
               {tab === 'markets' && (
                 <div className={dashboard ? 'settings-bento' : undefined}>
                   <MarketsTab settings={settings.data} onChanged={settings.reload} />

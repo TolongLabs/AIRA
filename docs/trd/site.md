@@ -276,7 +276,9 @@ A failed parse returns a sanitized fault with no write. Persist no prompt or fil
 The simulator opens in a separate tab, takes the current draft and never invokes a delivery transport.
 
 Canonical trees are data/characters/:id. Reject symlinks, unknown file names, paths outside the pack root
-and active media. Stage on the same filesystem, verify all assets, validate the complete staged pack under
+and active media. Data packs may retain up to 64 regular document backups named `<document>.yml.bak-YYYYMMDD`,
+each within the document size limit. Their bytes contribute to the revision and survive edits and recovery.
+Studio omits backups from API responses and new copies. Stage on the same filesystem, verify all assets and validate the complete staged pack under
 its intended id and compare its source revision before publish. Keep a recoverable intent and prior version
 across the multi-file publish and audit. Recover before serving reads or turns after restart. Only one owner
 writer can publish a pack at a time. Uncoordinated external editors must refetch and apply through the

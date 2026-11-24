@@ -31,6 +31,9 @@ import { dispatchWrite, hostAllowed, isWriteRoute, originAllowed } from './write
 // The core's private HTTP API for the owner site (docs/trd/site.md#serving-the-api).
 
 export interface SiteApiServerOptions extends SiteApiDeps {
+  deploymentSettings?: (
+    roles: ReturnType<SiteApiDeps['roles']>
+  ) => import('../config/dashboard-types.js').DeploymentSettings
   marketsPath?: string
   ownerApiSocket?: string
   ownerApiOrigin?: string
@@ -282,6 +285,11 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
           data.body
         )
         return json(response, result.status, result.body)
+      }
+      if (path === '/api/deployment-settings') {
+        if (request.method !== 'GET') return json(response, 405, { error: 'method_not_allowed' })
+        if (!options.deploymentSettings) return json(response, 503, { error: 'configuration_unavailable' })
+        return json(response, 200, options.deploymentSettings(options.roles()))
       }
       if (path === '/api/config') {
         if (request.method !== 'GET') return json(response, 405, { error: 'method_not_allowed' })
