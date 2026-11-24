@@ -1,3 +1,4 @@
+import { mkdir } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { resolve } from 'node:path'
 import { chromium } from 'playwright'
@@ -86,7 +87,15 @@ it('chat settings fields show controls, sources, clear and next turn in chromium
       }
       await expect(tab('Character')).toBeVisible()
 
-      // Replies switch and label sit above the tabs.
+      await expect(page.getByRole('heading', { name: 'Chat Settings', level: 1 })).toBeVisible()
+      const folder = process.env.AIRA_DASHBOARD_EVIDENCE_DIR
+      if (folder) {
+        await mkdir(folder, { recursive: true })
+        await page.evaluate('document.fonts.ready.then(() => true)')
+        await page.screenshot({ path: resolve(folder, 'chat-settings.png'), animations: 'disabled' })
+      }
+      // Access owns the reply switch and owner label.
+      await tab('Access').click()
       const replies = page.getByRole('switch', { name: 'Replies in this chat' })
       await expect(replies).toBeChecked()
       await replies.click()
@@ -223,7 +232,7 @@ it('chat settings fields show controls, sources, clear and next turn in chromium
       await expect(startTime).toHaveValue('22:00')
       await expect(endTime).toHaveValue('06:00')
       await expect(zone).toHaveValue('UTC')
-      await clear('Quiet hours')
+      await clear('Quiet period')
       await expect(startTime).toHaveValue('23:00')
       await expect(endTime).toHaveValue('07:00')
       await expect(zone).toHaveValue('Asia/Kuala_Lumpur')
@@ -296,13 +305,13 @@ it('chat settings fields show controls, sources, clear and next turn in chromium
 
       // Group defaults override global and clearing the group reveals global.
       await page.goto(origin + '/app/preview/chats/defaults')
-      await expect(page.getByText('Chat defaults', { exact: true })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Chat Defaults', exact: true })).toBeVisible()
       await expect(
         page.getByText('Name-call names, per-platform switches, sender access, mute and model stay on')
       ).toBeVisible()
       const defaultsSection = page.getByRole('region', { name: 'Chat defaults' })
       const defaultsLanguage = defaultsSection.getByLabel('language code')
-      const scope = page.getByRole('group', { name: 'Defaults level' })
+      const scope = page.getByRole('complementary', { name: 'Defaults level' })
       const defaultsLanguageHeader = defaultsSection.getByText('Language', { exact: true }).locator('xpath=..')
       const setDefaultLanguage = async (value: string) => {
         await defaultsLanguage.fill(value)

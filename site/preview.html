@@ -4,6 +4,25 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
+    <style>
+      html {
+        background: #cfe1df;
+      }
+      html[data-theme='dark'] {
+        background: #132628;
+      }
+      @media (prefers-color-scheme: dark) {
+        html:not([data-theme]) {
+          background: #132628;
+        }
+      }
+    </style>
+    <script>
+      try {
+        const theme = localStorage.getItem('tolongai-theme')
+        if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme
+      } catch {}
+    </script>
     <title>AIRA · Owner Dashboard</title>
     <link rel="icon" href="/app/dashboard/glyph.svg" />
   </head>

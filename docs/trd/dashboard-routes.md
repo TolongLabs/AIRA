@@ -103,3 +103,22 @@ Audible pronunciation and physical assistive devices were outside this run.
 The acceptance build with configuration readback and workspace recovery measured 88 ms for load, 243 ms
 for the service summary, 287,444 decoded JavaScript bytes and 17 ms for the p95 scrolling interval
 with the same seven-run fixture. All four medians met the budgets.
+
+The Directory's Assign Persona action applies the selected pack to the selected chats only. Each write carries the
+chat's displayed settings revision. Successful rows leave the selection, while conflicts keep their rows selected
+for review. The selection island opens a review of the selected chat names, with status changes behind confirmation.
+The directory reloads its settings and effective persona names after the batch.
+
+With the Website layout and animated sidebar, the seven-run Overview fixture measured medians of 111 ms for load,
+295 ms for the service summary, 432,409 decoded JavaScript bytes and 17 ms for the p95 scrolling interval.
+All four met the budgets above.
+
+At the routines list, the detail pane initially shows the first visible routine. A bookmarked routine takes
+precedence, including its missing-item recovery state. Filtering updates the default detail without writing a job.
+On phones, the navigation drawer also provides the Directory's Chat Defaults and Send File links.
+
+Per-chat Access groups the reply switch, owner label and sender settings. The header shows the current reply state
+and links to the composer. The Character and Reply tabs link to the assigned persona’s tool footer.
+
+Dashboard service restart and stop open a confirmation dialog for the selected unit. Cancel or Escape returns to
+the service control. Only the confirmation submits the operation.

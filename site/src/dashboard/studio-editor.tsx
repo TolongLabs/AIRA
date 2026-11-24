@@ -1,3 +1,4 @@
+import { Input } from '@/components/ui'
 import ExpressionGallery from './expression-gallery'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { core } from '@/lib/core'
@@ -413,12 +414,12 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
   return (
     <div className="studio-editor">
       <nav className="studio-crumb" aria-label="Breadcrumb">
-        <a href={studioHref(studioPaths.catalogue)}>Characters</a>
+        <a href={studioHref(studioPaths.catalogue)}>Character Studio</a>
         <span aria-hidden="true"> / </span>
         <span aria-current="page">{title}</span>
       </nav>
       <div className="studio-head">
-        <h2 className="studio-title">{title}</h2>
+        <h1 className="studio-title">{title}</h1>
         <div className="studio-actions">
           <button
             type="button"
@@ -531,29 +532,36 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
 
             <section className="studio-section" id="studio-identity" aria-label="Identity">
               <h3>Identity</h3>
-              <Field label="Display name">
-                <input
-                  value={draft.card.displayName}
-                  onChange={(e) => setDraft((d) => ({ ...d, card: { ...d.card, displayName: e.target.value } }))}
-                />
-              </Field>
-              <Field label="Languages" hint="Comma-separated tags, e.g. en, en+ja is two tags.">
-                <input
-                  value={draft.card.languages.join(', ')}
-                  onChange={(e) =>
-                    setDraft((d) => ({
-                      ...d,
-                      card: {
-                        ...d.card,
-                        languages: e.target.value
-                          .split(',')
-                          .map((s) => s.trim())
-                          .filter(Boolean)
-                      }
-                    }))
-                  }
-                />
-              </Field>
+              <div className="studio-identity-fields">
+                <Field label="Display name">
+                  <Input
+                    value={draft.card.displayName}
+                    onChange={(e) => setDraft((d) => ({ ...d, card: { ...d.card, displayName: e.target.value } }))}
+                  />
+                </Field>
+                <Field label="Languages" hint="Comma-separated tags, e.g. en, en+ja is two tags.">
+                  <Input
+                    value={draft.card.languages.join(', ')}
+                    onChange={(e) =>
+                      setDraft((d) => ({
+                        ...d,
+                        card: {
+                          ...d.card,
+                          languages: e.target.value
+                            .split(',')
+                            .map((s) => s.trim())
+                            .filter(Boolean)
+                        }
+                      }))
+                    }
+                  />
+                </Field>
+                {mode === 'edit' && (
+                  <Field label="Pack ID">
+                    <Input value={id ?? ''} readOnly />
+                  </Field>
+                )}
+              </div>
               <Field label="Aliases" hint="Other names members may call the character. Comma-separated.">
                 <input
                   value={(draft.card.aliases ?? []).join(', ')}

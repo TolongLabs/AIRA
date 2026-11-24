@@ -11,7 +11,7 @@ export type AppearanceChoice = 'plain' | 'lattice' | 'stipple' | 'shader-gradien
 export const APPEARANCE_DEFAULT: AppearanceChoice = 'plain'
 
 const CHOICES: { value: AppearanceChoice; label: string; hint: string }[] = [
-  { value: 'plain', label: 'Plain', hint: 'Flat quiet base with no pattern.' },
+  { value: 'plain', label: 'Plain', hint: 'Tonal teal base with no pattern.' },
   { value: 'lattice', label: 'Lattice', hint: 'Subdued ASCII lattice over the base.' },
   { value: 'stipple', label: 'Stipple', hint: 'Subdued ASCII stipple over the base.' },
   { value: 'shader-gradient', label: 'ShaderGradient', hint: 'Soft teal gradient drawn with CSS only.' }
@@ -73,7 +73,39 @@ export function Backdrop() {
     window.addEventListener(PREVIEW_EVENT, handle)
     return () => window.removeEventListener(PREVIEW_EVENT, handle)
   }, [])
-  return <div className={'dashboard-backdrop dashboard-backdrop--' + (preview ?? saved)} aria-hidden="true" />
+  const glow = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    const surface = glow.current
+    if (!surface) return
+    const allowed = matchMedia('(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)')
+    let frame = 0
+    function move(event: PointerEvent) {
+      if (!allowed.matches || event.pointerType !== 'mouse' || !surface) return
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        surface.style.transform = 'translate3d(' + (event.clientX - 82) + 'px,' + (event.clientY - 82) + 'px,0)'
+        surface.dataset.visible = 'true'
+      })
+    }
+    function hide() {
+      cancelAnimationFrame(frame)
+      if (surface) delete surface.dataset.visible
+    }
+    window.addEventListener('pointermove', move, { passive: true })
+    document.documentElement.addEventListener('pointerleave', hide)
+    allowed.addEventListener('change', hide)
+    return () => {
+      hide()
+      window.removeEventListener('pointermove', move)
+      document.documentElement.removeEventListener('pointerleave', hide)
+      allowed.removeEventListener('change', hide)
+    }
+  }, [])
+  return (
+    <div className={'dashboard-backdrop dashboard-backdrop--' + (preview ?? saved)} aria-hidden="true">
+      <span ref={glow} className="dashboard-cursor-glow" />
+    </div>
+  )
 }
 
 export default function Appearance() {
@@ -108,12 +140,12 @@ export default function Appearance() {
   return (
     <section className="appearance">
       <a className="appearance-back" href={dashboardHref('system/settings')}>
-        Back to Host Settings
+        ← Back to Host Settings
       </a>
-      <h2>Appearance</h2>
+      <h1>Appearance</h1>
       <p className="appearance-lede">Choose a background. Apply saves it on this device.</p>
       <fieldset className="appearance-group">
-        <legend>Finish</legend>
+        <legend className="sr-only">Finish</legend>
         <div className="appearance-grid">
           {CHOICES.map((choice) => {
             const selected = preview === choice.value
@@ -141,7 +173,7 @@ export default function Appearance() {
           })}
         </div>
       </fieldset>
-      <div className="appearance-actions">
+      <div className="appearance-actions" data-dirty={dirty}>
         <button type="button" disabled={preview === APPEARANCE_DEFAULT} onClick={() => setPreview(APPEARANCE_DEFAULT)}>
           Use Default
         </button>
@@ -159,7 +191,7 @@ export default function Appearance() {
           Apply
         </button>
       </div>
-      <p className="appearance-state" role="status">
+      <p className="sr-only" role="status">
         {dirty ? 'Previewing ' + labelOf(preview) + ' — nothing is saved yet.' : 'Showing ' + labelOf(saved) + '.'}
       </p>
       {notice && (

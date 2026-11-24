@@ -505,7 +505,7 @@ function RoutinesDashboard({
     return rows.sort((a, b) => time(a) - time(b) || String(a.name ?? '').localeCompare(String(b.name ?? '')))
   }, [jobs, query])
 
-  const selected = selectedId ? (jobs.find((j) => j.job_id === selectedId) ?? null) : null
+  const selected = selectedId ? jobs.find((j) => j.job_id === selectedId) : visible[0]
 
   /* A selected id missing from the first payload may be a stale list rather
    * than a deleted job. Re-read once before calling it unknown; if the fresh
@@ -661,7 +661,7 @@ function RoutinesDashboard({
             ) : (
               <ul className="automations-rows">
                 {visible.map((j) => {
-                  const on = selectedId === j.job_id
+                  const on = selected?.job_id === j.job_id
                   const next = j.next_run_at ? Date.parse(j.next_run_at) / 1000 : null
                   return (
                     <li key={j.job_id}>
@@ -764,7 +764,8 @@ function RoutinesDashboard({
                     </div>
                   </div>
                 ) : null}
-                <JobRow job={selected} chats={chats} onChanged={() => void jobsApi.reload()} />
+                <h2 className="dashboard-pane-title">Routine Detail</h2>
+                <JobRow key={selected.job_id} job={selected} chats={chats} onChanged={() => void jobsApi.reload()} />
                 {selected.prompt_preview || selected.prompt ? (
                   <p className="automations-detail-prompt">
                     {CronJobPolicy.editablePrompt({

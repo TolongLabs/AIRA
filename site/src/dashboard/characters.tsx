@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { core, type CoreCharacter } from '@/lib/core'
+import { Input } from '@/components/ui'
+import { FormSelect } from './form-select'
+import { WorkspaceTools } from './workspace-tools'
 import { studioHref, studioPaths } from './studio-client'
 import './studio.css'
 
@@ -74,42 +77,50 @@ export default function Catalogue() {
 
   return (
     <section className="studio-catalogue" aria-label="Character studio">
-      <div className="studio-toolbar">
-        <div className="studio-controls" role="search">
-          <label>
-            Search{' '}
-            <input
-              type="search"
-              value={query}
-              placeholder="Name, id or alias"
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </label>
-          <label>
-            Source{' '}
-            <select value={source} onChange={(e) => setSource(e.target.value as SourceFilter)}>
-              <option value="all">All sources</option>
-              <option value="data">Editable</option>
-              <option value="repository">Built-in</option>
-            </select>
-          </label>
-          <label>
-            Sort{' '}
-            <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
-              <option value="name">Name</option>
-              <option value="source">Source</option>
-              <option value="language">Language</option>
-            </select>
-          </label>
-        </div>
-        <div className="studio-actions">
-          <a className="studio-button" href={studioHref(studioPaths.create)}>
-            Create
-          </a>
-          <a className="studio-button" href={studioHref(studioPaths.import)}>
-            Import
-          </a>
-        </div>
+      <WorkspaceTools>
+        <a className="workspace-tool" data-primary href={studioHref(studioPaths.create)}>
+          Create
+        </a>
+        <a className="workspace-tool" href={studioHref(studioPaths.import)}>
+          Import
+        </a>
+      </WorkspaceTools>
+      <div className="studio-catalogue-meta">
+        <span>Persona Catalogue</span>
+        {rows && (
+          <span>
+            {visible.length} {visible.length === 1 ? 'Persona' : 'Personas'}
+          </span>
+        )}
+      </div>
+      <div className="studio-controls" role="search">
+        <Input
+          type="search"
+          aria-label="Search personas"
+          value={query}
+          placeholder="Search Personas"
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <FormSelect<SourceFilter>
+          label="Filter personas"
+          value={source}
+          onChange={setSource}
+          options={[
+            { value: 'all', label: 'All sources' },
+            { value: 'data', label: 'Editable' },
+            { value: 'repository', label: 'Built-in' }
+          ]}
+        />
+        <FormSelect<SortKey>
+          label="Sort personas"
+          value={sort}
+          onChange={setSort}
+          options={[
+            { value: 'name', label: 'Name' },
+            { value: 'source', label: 'Source' },
+            { value: 'language', label: 'Language' }
+          ]}
+        />
       </div>
 
       {error ? (
@@ -124,22 +135,19 @@ export default function Catalogue() {
               <li key={row.id} className="studio-card">
                 <a className="studio-card-link" href={studioHref(studioPaths.edit(row.id))}>
                   <Artwork row={row} />
-                  <span className="studio-card-name">{row.displayName}</span>
+                  <div className="studio-card-meta">
+                    <span className="studio-card-name">{row.displayName}</span>
+                    <span>
+                      {row.source === 'data' ? 'Data Pack' : 'Built-In'} ·{' '}
+                      {row.source === 'repository' ? 'Read Only' : row.languages.join(' · ') || 'No language set'}
+                    </span>
+                  </div>
                 </a>
-                <span className="studio-card-meta">
-                  <span className={'studio-source studio-source-' + row.source}>
-                    {row.source === 'data' ? 'Editable' : 'Built-in'}
-                  </span>
-                  <span className="studio-card-id">{row.id}</span>
-                  <span>{row.languages.join(' · ') || 'No language set'}</span>
-                </span>
-                <span className="studio-card-links">
-                  {row.source === 'data' ? (
-                    <a href={studioHref(studioPaths.footer(row.id))}>Tool wording</a>
-                  ) : (
-                    <span title="Built-in packs cannot be edited here">Read-only — copy to edit</span>
-                  )}
-                </span>
+                {row.source === 'data' && (
+                  <a className="studio-card-links" href={studioHref(studioPaths.footer(row.id))}>
+                    Tool wording
+                  </a>
+                )}
               </li>
             ))}
           </ul>

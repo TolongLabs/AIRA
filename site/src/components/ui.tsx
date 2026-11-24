@@ -1,6 +1,8 @@
 import { cva, type VariantProps } from 'class-variance-authority'
 import { Slot } from '@radix-ui/react-slot'
 import * as React from 'react'
+import * as Dialog from '@radix-ui/react-dialog'
+import { DashboardContext } from '@/dashboard/context'
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -292,6 +294,8 @@ export function ConfirmAction({
   size?: 'sm' | 'md'
   className?: string
 }) {
+  const dashboard = React.useContext(DashboardContext)
+  const [failed, setFailed] = useState(false)
   const [armed, setArmed] = useState(false)
   const [busy, setBusy] = useState(false)
   const cancelRef = useRef<HTMLButtonElement>(null)
@@ -303,11 +307,13 @@ export function ConfirmAction({
   }, [armed])
 
   async function go() {
+    setFailed(false)
     setBusy(true)
     try {
       await onConfirm()
       setArmed(false)
     } catch {
+      setFailed(true)
       /* The caller owns the error toast. Stay armed but idle so the operator
          can see the strip, read the failure and decide again — the old code
          left the bare button hot instead, and a stray third click re-fired a
@@ -315,6 +321,54 @@ export function ConfirmAction({
     } finally {
       setBusy(false)
     }
+  }
+
+  if (dashboard) {
+    return (
+      <Dialog.Root
+        open={armed}
+        onOpenChange={(open) => {
+          if (!busy) {
+            setFailed(false)
+            setArmed(open)
+          }
+        }}
+      >
+        <Dialog.Trigger asChild>
+          <Button size={size} variant="outline" disabled={disabled} className={className}>
+            {icon}
+            {label}
+          </Button>
+        </Dialog.Trigger>
+        <Dialog.Portal>
+          <Dialog.Overlay className="dashboard-modal-scrim" />
+          <Dialog.Content
+            className="dashboard-modal"
+            onOpenAutoFocus={(event) => {
+              event.preventDefault()
+              cancelRef.current?.focus()
+            }}
+          >
+            <Dialog.Title>{question}</Dialog.Title>
+            <Dialog.Description>{warning}</Dialog.Description>
+            {failed && (
+              <p role="alert">The operation could not be confirmed. Check the current state before trying again.</p>
+            )}
+            <div className="dashboard-modal-actions">
+              <Dialog.Close asChild>
+                <button ref={cancelRef} type="button" disabled={busy}>
+                  Cancel
+                </button>
+              </Dialog.Close>
+              <button type="button" disabled={busy} onClick={() => void go()}>
+                {busy && <Spinner />}
+                {confirmLabel ?? label}
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+    )
   }
 
   if (!armed)
@@ -455,12 +509,14 @@ export function Field({
   label,
   hint,
   children,
-  className
+  className,
+  htmlFor
 }: {
   label: string
   hint?: string
   children: React.ReactNode
   className?: string
+  htmlFor?: string
 }) {
   /* A <div>, not a <label>. Wrapping the control made the whole row clickable,
      which is right for an input and wrong for a <select>: Firefox re-dispatches
@@ -472,7 +528,13 @@ export function Field({
      given; without an id it is a caption, which is what it was in practice. */
   return (
     <div className={cn('flex min-w-0 flex-col gap-1.5', className)}>
-      <span className="text-[0.82rem] font-medium text-muted">{label}</span>
+      {htmlFor ? (
+        <label htmlFor={htmlFor} className="text-[0.82rem] font-medium text-muted">
+          {label}
+        </label>
+      ) : (
+        <span className="text-[0.82rem] font-medium text-muted">{label}</span>
+      )}
       {children}
       {hint ? <span className="text-[0.78rem] text-faint">{hint}</span> : null}
     </div>

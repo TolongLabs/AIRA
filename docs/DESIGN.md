@@ -29,7 +29,7 @@ collapse icon, and the compact rail glyph expands in place. Activating it collap
 expands the sidebar on the same route, preserving the current active route. The hit area
 is 44 pixels and collapsing never depends on hover alone. On phone, the top glyph in the
 header opens the drawer and the same glyph inside the drawer closes it. A theme control
-lives in the sidebar.
+lives in the sidebar. The active sidebar indicator uses the ObsidianUI Dashboard Shell shared-layout motion and follows the route. Reduced motion changes the indicator immediately.
 
 ## Destinations
 
@@ -66,7 +66,7 @@ selection clears.
 Appearance lives at /system/appearance for the dashboard owner and device, not per chat.
 The base pair is white and black with a selectable static ASCII lattice or stipple,
 ShaderGradient layer, or plain finish, while focus and reading surfaces sit above
-that base plane. Reduced motion falls back to the static finish. Navigation uses white at 38 percent in light mode and smoked neutral at 43
+that base plane. Navigation retains the shell during location changes. Reduced motion falls back to the static finish. Navigation uses white at 38 percent in light mode and smoked neutral at 43
 percent in dark mode; content cards use white at 73 percent in light or charcoal at 82
 percent in dark. Borders stay restrained and gutters shared, keeping the quiet bento base
 plane calm. Each view leads with one dominant diagnostic (never a fake chart) and smaller

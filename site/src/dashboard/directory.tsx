@@ -1,15 +1,32 @@
 import { useEffect, useState } from 'react'
+import { ChevronRight, Search } from 'lucide-react'
+import { Input } from '@/components/ui'
+import { FormSelect } from './form-select'
+import { WorkspaceTools } from './workspace-tools'
 import { core, type CoreChat } from '@/lib/core'
 import { chatHref } from './navigation'
-
 import SelectionTable from './selection-table'
+
+function inbound(iso: string | null | undefined): string {
+  if (!iso) return 'Never'
+  const date = new Date(iso)
+  return Number.isFinite(date.getTime())
+    ? date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+    : 'Unknown'
+}
+
 export default function Directory() {
   const [rows, setRows] = useState<CoreChat[] | null>(null)
+  const [personas, setPersonas] = useState<Map<string, string> | null>(null)
   const [error, setError] = useState(false)
+  const [personaId, setPersonaId] = useState('')
+  const [readbackFailed, setReadbackFailed] = useState(false)
   const params = new URLSearchParams(location.search)
   const [query, setQuery] = useState(params.get('search') ?? '')
   const [status, setStatus] = useState(params.get('status') ?? 'all')
+  const [order, setOrder] = useState(params.get('order') ?? 'recent')
   const [page, setPage] = useState(Math.max(1, Number(params.get('page')) || 1))
+
   useEffect(() => {
     let live = true
     core.chats().then(
@@ -20,57 +37,123 @@ export default function Directory() {
         if (live) setError(true)
       }
     )
+    core.characters().then(
+      (data) => {
+        if (live) setPersonas(new Map(data.characters.map((pack) => [pack.id, pack.displayName])))
+      },
+      () => {
+        if (live) setPersonas(new Map())
+      }
+    )
     return () => {
       live = false
     }
   }, [])
+
+  const named = new Map<string, string>()
+  const unnamed = { group: 0, dm: 0 }
+  for (const chat of rows ?? []) {
+    named.set(
+      chat.chatId,
+      chat.label.trim() || (chat.type === 'group' ? 'Unnamed group ' : 'Unnamed direct chat ') + ++unnamed[chat.type]
+    )
+  }
+  const label = (chat: CoreChat) => named.get(chat.chatId) ?? 'Unnamed chat'
   const filtered = rows
-    ?.filter((c) => (status === 'all' || c.status === status) && c.label.toLowerCase().includes(query.toLowerCase()))
-    .sort((a, b) => a.label.localeCompare(b.label))
+    ?.filter(
+      (chat) =>
+        (status === 'all' || chat.status === status) && label(chat).toLowerCase().includes(query.trim().toLowerCase())
+    )
+    .sort(
+      (a, b) =>
+        (order === 'recent' ? (b.lastInboundAt ?? '').localeCompare(a.lastInboundAt ?? '') : 0) ||
+        label(a).localeCompare(label(b), undefined, { numeric: true })
+    )
   async function changeAccess(chat: CoreChat, status: CoreChat['status']) {
     await core.setStatus(chat.chatId, status)
     setRows((previous) => previous?.map((row) => (row.chatId === chat.chatId ? { ...row, status } : row)) ?? null)
   }
+  async function reloadAssignments() {
+    try {
+      setRows((await core.chats()).chats)
+      setReadbackFailed(false)
+    } catch {
+      setReadbackFailed(true)
+    }
+  }
+  async function assignPersona(chat: CoreChat) {
+    if (!chat.settingsRevision) throw new Error('Chat revision unavailable. Refresh the directory.')
+    await core.setSetting('chat', chat.chatId, 'character', personaId, chat.settingsRevision)
+  }
+
   useEffect(() => {
     const url = new URL(location.href)
     for (const [key, value] of [
       ['search', query],
       ['status', status === 'all' ? '' : status],
+      ['order', order === 'recent' ? '' : order],
       ['page', page === 1 ? '' : String(page)]
     ]) {
       if (value) url.searchParams.set(key, value)
       else url.searchParams.delete(key)
     }
-    history.replaceState(null, '', url)
-  }, [query, status, page])
+    history.replaceState(history.state, '', url)
+  }, [query, status, order, page])
   return (
     <section className="directory">
-      <a href={chatHref('chats/defaults')}>Shared Defaults</a>
-      <label>
-        Search chats{' '}
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value)
+      <WorkspaceTools>
+        <a className="workspace-tool" href={chatHref('chats/defaults')}>
+          Chat Defaults
+        </a>
+        <a className="workspace-tool" href={chatHref('chats/files')}>
+          Send File
+        </a>
+      </WorkspaceTools>
+      <div className="directory-filters">
+        <div className="directory-search">
+          <Search aria-hidden="true" size={16} />
+          <Input
+            type="search"
+            aria-label="Search chats"
+            placeholder="Search Chats"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value)
+              setPage(1)
+            }}
+          />
+        </div>
+        <FormSelect
+          label="Filter replies"
+          options={[
+            { value: 'all', label: 'All Statuses' },
+            { value: 'active', label: 'Active' },
+            { value: 'pending', label: 'Pending' }
+          ]}
+          value={status}
+          onChange={(value) => {
+            setStatus(value)
             setPage(1)
           }}
         />
-      </label>
-      <label>
-        Access{' '}
-        <select
-          value={status}
-          onChange={(e) => {
-            setStatus(e.target.value)
+        <FormSelect
+          label="Sort chats"
+          options={[
+            { value: 'recent', label: 'Recent Activity' },
+            { value: 'name', label: 'Chat Name' }
+          ]}
+          value={order}
+          onChange={(value) => {
+            setOrder(value)
             setPage(1)
           }}
-        >
-          <option value="all">All Chats</option>
-          <option value="active">Active</option>
-          <option value="pending">Pending</option>
-        </select>
-      </label>
+        />
+      </div>
+      {readbackFailed && (
+        <p role="alert">
+          Could not reload persona assignments. <button onClick={() => void reloadAssignments()}>Retry</button>
+        </p>
+      )}
       {error ? (
         <p role="alert">Chat directory unavailable.</p>
       ) : !filtered ? (
@@ -81,39 +164,100 @@ export default function Directory() {
         <SelectionTable
           rows={filtered}
           caption="Chat Directory"
-          viewId={JSON.stringify([query, status])}
+          viewId={JSON.stringify([query, status, order])}
           page={page}
+          pageSize={10}
           onPageChange={setPage}
-          getKey={(c) => c.chatId}
-          getRowLabel={(c) => c.label || c.chatId}
+          getKey={(chat) => chat.chatId}
+          getRowLabel={label}
           columns={[
             {
               id: 'name',
               header: 'Chat',
-              render: (c) => (
-                <>
-                  <a href={chatHref('chats/' + encodeURIComponent(c.chatId) + '/settings')}>
-                    {c.label || 'Unnamed Chat'}
-                  </a>
-                  <small>{c.chatId}</small>
-                </>
+              render: (chat) => (
+                <div className="directory-chat">
+                  <span className="directory-avatar" aria-hidden="true">
+                    {label(chat)
+                      .split(/\s+/)
+                      .slice(0, 2)
+                      .map((word) => Array.from(word)[0])
+                      .join('')
+                      .toUpperCase()}
+                  </span>
+                  <div>
+                    <a href={chatHref('chats/' + encodeURIComponent(chat.chatId) + '/settings')}>{label(chat)}</a>
+                    <small>{chat.type === 'group' ? 'Group Chat' : 'Direct Chat'}</small>
+                  </div>
+                </div>
               )
             },
-            { id: 'type', header: 'Type', render: (c) => (c.type === 'group' ? 'Group' : 'Direct') },
-            { id: 'status', header: 'Access', render: (c) => c.status }
+            {
+              id: 'persona',
+              header: 'Persona',
+              render: (chat) => {
+                const id = chat.settings['character']?.value
+                if (typeof id !== 'string' || !id) return 'Unassigned'
+                return personas ? (personas.get(id) ?? 'Unavailable') : 'Loading…'
+              }
+            },
+            {
+              id: 'status',
+              header: 'Replies',
+              render: (chat) => (
+                <span className="directory-replies" data-active={chat.status === 'active'}>
+                  {chat.status === 'active' ? 'Active' : 'Pending'}
+                </span>
+              )
+            },
+            { id: 'activity', header: 'Last Inbound', render: (chat) => inbound(chat.lastInboundAt) },
+            {
+              id: 'settings',
+              header: 'Actions',
+              render: (chat) => (
+                <a
+                  className="directory-settings"
+                  aria-label={'Settings for ' + label(chat)}
+                  href={chatHref('chats/' + encodeURIComponent(chat.chatId) + '/settings')}
+                >
+                  Settings <ChevronRight size={14} aria-hidden="true" />
+                </a>
+              )
+            }
           ]}
           bulkActions={[
+            ...(!readbackFailed && personas?.size
+              ? [
+                  {
+                    id: 'assign',
+                    primary: true,
+                    label: 'Assign Persona',
+                    confirmMessage: 'Choose a persona for the selected chats.',
+                    configure: (
+                      <FormSelect
+                        label="Persona to assign"
+                        placeholder="Choose a persona"
+                        value={personaId}
+                        options={[...personas].map(([value, label]) => ({ value, label }))}
+                        onChange={setPersonaId}
+                      />
+                    ),
+                    confirmDisabled: !personaId,
+                    run: assignPersona,
+                    onFinish: reloadAssignments
+                  }
+                ]
+              : []),
             {
               id: 'activate',
               label: 'Activate',
               confirmMessage: 'Allow AIRA to respond in these selected chats under their sender policies?',
-              run: (c) => changeAccess(c, 'active')
+              run: (chat) => changeAccess(chat, 'active')
             },
             {
               id: 'pending',
               label: 'Set Pending',
               confirmMessage: 'Stop AIRA from answering in these selected chats?',
-              run: (c) => changeAccess(c, 'pending')
+              run: (chat) => changeAccess(chat, 'pending')
             }
           ]}
         />

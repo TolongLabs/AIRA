@@ -5,9 +5,11 @@ import { get, post, ownerImage } from '@/lib/api'
 import { toast, Toaster, useApi } from '@/lib/hooks'
 import { cn, num } from '@/lib/utils'
 import { Shell } from '@/components/shell'
-import { Button, Card, ConfirmAction, Empty, Kicker, Section, Spinner, Tabs } from '@/components/ui'
+import { Button, Card, ConfirmAction, Empty, Field, Input, Kicker, Section, Spinner, Tabs } from '@/components/ui'
 import { DashboardContext } from '@/dashboard/context'
 import { dashboardHref } from '@/dashboard/navigation'
+import { WorkspaceTools } from '@/dashboard/workspace-tools'
+import { FormSelect } from '@/dashboard/form-select'
 import '@/dashboard/library.css'
 
 /* The library was the last surface still served as generated HTML — 335 flat
@@ -1026,17 +1028,19 @@ function LibraryToolbar({ view }: { view: LibraryDashboardView }) {
   const graph = withQuery(dashboardHref('library/graph'), qs)
   const costs = withQuery(dashboardHref('library/costs'), qs)
   return (
-    <nav aria-label="Library sections" className="lib-dash-toolbar">
-      <a href={items} aria-current={view === 'items' ? 'page' : undefined}>
-        Items
-      </a>
-      <a href={graph} aria-current={view === 'graph' ? 'page' : undefined}>
-        Knowledge Graph
-      </a>
-      <a href={costs} aria-current={view === 'costs' ? 'page' : undefined}>
-        Learning Costs
-      </a>
-    </nav>
+    <WorkspaceTools>
+      <nav aria-label="Library sections" className="workspace-tabs">
+        <a href={items} aria-current={view === 'items' ? 'page' : undefined}>
+          Items
+        </a>
+        <a href={graph} aria-current={view === 'graph' ? 'page' : undefined}>
+          Knowledge Graph
+        </a>
+        <a href={costs} aria-current={view === 'costs' ? 'page' : undefined}>
+          Learning Costs
+        </a>
+      </nav>
+    </WorkspaceTools>
   )
 }
 
@@ -1353,20 +1357,30 @@ function LibraryDashboard({ view, selectedId, initialSearch, initialType, initia
           <div className="lib-dash-card">
             <h2>Collection</h2>
             <div className="lib-dash-searchrow">
-              <input
-                value={q}
-                placeholder="find anything…"
-                aria-label="Search the collection"
-                onChange={(e) => changeSearch(e.target.value)}
-              />
-              <select value={type} aria-label="Type" onChange={(e) => changeType(e.target.value)}>
-                <option value="all">all</option>
-                {data.types.map((t) => (
-                  <option key={t} value={t}>
-                    {typeLabel(t)} ({num(data.counts[t] ?? 0)})
-                  </option>
-                ))}
-              </select>
+              <Field label="Search" htmlFor="collection-search">
+                <Input
+                  id="collection-search"
+                  value={q}
+                  placeholder="Find titles, tags or terms"
+                  aria-label="Search the collection"
+                  onChange={(event) => changeSearch(event.target.value)}
+                />
+              </Field>
+              <Field label="Collection" htmlFor="collection-type">
+                <FormSelect
+                  id="collection-type"
+                  value={type}
+                  label="Collection"
+                  onChange={changeType}
+                  options={[
+                    { value: 'all', label: 'All Types' },
+                    ...data.types.map((kind) => ({
+                      value: kind,
+                      label: typeLabel(kind) + ' (' + num(data.counts[kind] ?? 0) + ')'
+                    }))
+                  ]}
+                />
+              </Field>
             </div>
             {!hits ? null : pageRows.length ? (
               <div className="lib-dash-rows">
@@ -1375,7 +1389,7 @@ function LibraryDashboard({ view, selectedId, initialSearch, initialType, initia
                     key={i.id}
                     href={libraryItemHref(i.id, searchQs)}
                     className="lib-dash-row"
-                    aria-current={decodedSelected === i.id ? 'true' : undefined}
+                    aria-current={(decodedSelected ?? pageRows[0]?.id) === i.id ? 'true' : undefined}
                   >
                     <b>{i.title}</b>
                     <span>{[i.sub, i.owner].filter(Boolean).join(' · ')}</span>
@@ -1429,14 +1443,28 @@ function LibraryDashboard({ view, selectedId, initialSearch, initialType, initia
           ) : (
             <div className="lib-dash-card">
               <h2>Selected Item</h2>
-              <Empty>Pick an entry to read it here.</Empty>
-              <div className="lib-dash-card" style={{ marginTop: '1rem' }}>
-                <h2>Filing Activity</h2>
+              {pageRows[0] ? (
+                <div className="lib-dash-selection">
+                  <h3>{pageRows[0].title}</h3>
+                  <p>{pageRows[0].sub || typeLabel(pageRows[0].type)}</p>
+                  <div className="lib-dash-actions">
+                    <Button asChild variant="primary">
+                      <a href={libraryItemHref(pageRows[0].id, searchQs)}>Open Reader</a>
+                    </Button>
+                    <Button asChild>
+                      <a href={libraryGraphHref(pageRows[0].id)}>View Connections</a>
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Empty>Pick an entry to read it here.</Empty>
+              )}
+              <div className="lib-dash-summary">
+                <h3>Filing Activity</h3>
                 <FilingActivity data={data} />
-              </div>
-              <div className="lib-dash-card" style={{ marginTop: '1rem' }}>
-                <h2>Learning Costs</h2>
-                <LedgerCosts data={data} />
+                <Button asChild>
+                  <a href={withQuery(dashboardHref('library/costs'), searchQs)}>View Learning Costs</a>
+                </Button>
               </div>
             </div>
           )}

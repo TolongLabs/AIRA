@@ -123,9 +123,9 @@ export default function Composer({ chat }: { chat: CoreChat }) {
   return (
     <section className="composer">
       <a href={back}>Chat Settings</a>
-      <h2 ref={heading} tabIndex={-1}>
+      <h1 ref={heading} tabIndex={-1}>
         {review ? 'Review Message' : 'Send Message'}
-      </h2>
+      </h1>
       <div className="compose-card">
         <span>To</span>
         <strong>{name}</strong>

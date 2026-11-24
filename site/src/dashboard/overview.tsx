@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { CSSProperties } from 'react'
 import type { CronJob, Dashboard } from '@/lib/api'
 import { core, type CoreChat } from '@/lib/core'
 import { useApi } from '@/lib/hooks'
@@ -69,7 +70,18 @@ export function Overview() {
                 <small>
                   {active}:{pending} active
                 </small>
-                <meter min={0} max={active + pending} value={active} aria-label="Active share of chats" />
+                <div className="overview-segments" aria-hidden="true">
+                  {[0, 1, 2, 3].map((part) => (
+                    <span
+                      key={part}
+                      style={
+                        {
+                          '--fill': Math.min(100, Math.max(0, ((4 * active) / (active + pending) - part) * 100)) + '%'
+                        } as CSSProperties
+                      }
+                    />
+                  ))}
+                </div>
               </div>
             )}
           </>
@@ -85,7 +97,7 @@ export function Overview() {
             : routines.loading
               ? 'Loading…'
               : next
-                ? new Date(next).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                ? new Date(next).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
                 : 'No upcoming run'}
         </strong>
         {next !== undefined && <span>Next Run</span>}

@@ -112,9 +112,12 @@ for (const engine of [chromium, firefox, webkit]) {
         const audit = await new AxeBuilder({ page })
           .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
           .analyze()
-        expect(audit.violations.map((row) => ({ id: row.id, targets: row.nodes.map((node) => node.target) }))).toEqual(
-          []
-        )
+        expect(
+          audit.violations.map((row) => ({
+            id: row.id,
+            targets: row.nodes.map((node) => [node.target, node.failureSummary])
+          }))
+        ).toEqual([])
         expect(faults).toEqual([])
       } finally {
         await browser.close()

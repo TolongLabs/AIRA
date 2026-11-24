@@ -760,6 +760,39 @@ function ChatRow({
     vm.settingValue('language', 'auto')
   ]
 
+  const accessControls = (
+    <>
+      <div className="border-b border-line-2 px-4 py-4">
+        <Toggle
+          checked={chat.status === 'active'}
+          disabled={!vm.canToggleReplies(busy)}
+          onChange={(on) =>
+            run(
+              () => core.setStatus(chat.chatId, on ? 'active' : 'pending'),
+              on ? 'Replies are on for this chat.' : 'Replies are off for this chat.'
+            )
+          }
+          label="Replies in this chat"
+          hint={
+            pack
+              ? 'Off: messages are kept, and no reply is sent.'
+              : 'Replies require a loaded character. Choose one in the Character tab.'
+          }
+        />
+      </div>
+      <ChatLabelField
+        vm={vm}
+        busy={busy}
+        onSave={(label) =>
+          run(
+            () => core.setLabel(chat.chatId, label),
+            label === '' ? 'Cleared label for this chat.' : 'Saved label for this chat.'
+          )
+        }
+      />
+    </>
+  )
+
   return (
     <div id={`chat-${chat.chatId}`} className="border-b border-line last:border-b-0">
       {conflict && (
@@ -790,79 +823,72 @@ function ChatRow({
           </Button>
         </section>
       )}
-      <button
-        type="button"
-        disabled={!onToggle}
-        aria-expanded={open}
-        onClick={onToggle}
-        className="flex w-full min-w-0 cursor-pointer items-center gap-3 border-0 bg-transparent px-4 py-3 text-left focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
-      >
-        <ChevronRight
-          aria-hidden
-          className={cn(
-            'size-4 shrink-0 text-faint transition-transform duration-150',
-            open && 'rotate-90 text-accent'
-          )}
-        />
-        <span className="min-w-0 flex-1">
-          <span className="flex items-baseline gap-2">
-            <b className="truncate font-serif text-[1.05rem] font-medium">{name}</b>
-            <span className="shrink-0 font-mono text-[0.66rem] tracking-[0.08em] text-faint uppercase">
-              {chat.type === 'dm' ? 'DM' : 'group'}
+      {onToggle ? (
+        <button
+          type="button"
+          disabled={!onToggle}
+          aria-expanded={open}
+          onClick={onToggle}
+          className="flex w-full min-w-0 cursor-pointer items-center gap-3 border-0 bg-transparent px-4 py-3 text-left focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+        >
+          <ChevronRight
+            aria-hidden
+            className={cn(
+              'size-4 shrink-0 text-faint transition-transform duration-150',
+              open && 'rotate-90 text-accent'
+            )}
+          />
+          <span className="min-w-0 flex-1">
+            <span className="flex items-baseline gap-2">
+              <b className="truncate font-serif text-[1.05rem] font-medium">{name}</b>
+              <span className="shrink-0 font-mono text-[0.66rem] tracking-[0.08em] text-faint uppercase">
+                {chat.type === 'dm' ? 'DM' : 'group'}
+              </span>
+              {chat.status === 'pending' && <span className="shrink-0 text-[0.72rem] text-amber">off</span>}
             </span>
-            {chat.status === 'pending' && <span className="shrink-0 text-[0.72rem] text-amber">off</span>}
+            {chat.type === 'dm' && (
+              <span className="block text-xs text-faint">
+                {chat.lastInboundAt
+                  ? 'Last message received ' + new Date(chat.lastInboundAt).toLocaleString()
+                  : 'No recorded incoming messages'}
+              </span>
+            )}
+            {chat.label && <span className="mt-0.5 block truncate text-[0.72rem] text-faint">{chat.waId}</span>}
           </span>
-          {chat.type === 'dm' && (
-            <span className="block text-xs text-faint">
-              {chat.lastInboundAt
-                ? 'Last message received ' + new Date(chat.lastInboundAt).toLocaleString()
-                : 'No recorded incoming messages'}
-            </span>
-          )}
-          {chat.label && <span className="mt-0.5 block truncate text-[0.72rem] text-faint">{chat.waId}</span>}
-        </span>
-        <span className="hidden shrink-0 items-center gap-2 sm:flex">
-          {facts.map((fact) => (
-            <span
-              key={fact}
-              className="max-w-[12rem] truncate rounded-full border border-line-2 px-2 py-0.5 font-mono text-[0.66rem] tracking-[0.04em] text-muted lowercase"
-            >
-              {fact}
-            </span>
-          ))}
-        </span>
-      </button>
+          <span className="hidden shrink-0 items-center gap-2 sm:flex">
+            {facts.map((fact) => (
+              <span
+                key={fact}
+                className="max-w-[12rem] truncate rounded-full border border-line-2 px-2 py-0.5 font-mono text-[0.66rem] tracking-[0.04em] text-muted lowercase"
+              >
+                {fact}
+              </span>
+            ))}
+          </span>
+        </button>
+      ) : (
+        <div className="chat-context">
+          <span className="directory-avatar" aria-hidden="true">
+            {name
+              .split(/\s+/)
+              .slice(0, 2)
+              .map((part) => Array.from(part)[0])
+              .join('')
+              .toUpperCase()}
+          </span>
+          <div>
+            <strong>{name}</strong>
+            <small>
+              {chat.type === 'dm' ? 'Direct Chat' : 'Group Chat'} · Replies {chat.status === 'active' ? 'On' : 'Off'}
+            </small>
+          </div>
+          <span>Changes Apply to This Chat</span>
+        </div>
+      )}
 
       {open && (
         <div className="border-t border-line">
-          <div className="border-b border-line-2 px-4 py-4">
-            <Toggle
-              checked={chat.status === 'active'}
-              disabled={!vm.canToggleReplies(busy)}
-              onChange={(on) =>
-                run(
-                  () => core.setStatus(chat.chatId, on ? 'active' : 'pending'),
-                  on ? 'Replies are on for this chat.' : 'Replies are off for this chat.'
-                )
-              }
-              label="Replies in this chat"
-              hint={
-                pack
-                  ? 'Off: messages are kept, and no reply is sent.'
-                  : 'Replies require a loaded character. Choose one in the Character tab.'
-              }
-            />
-          </div>
-          <ChatLabelField
-            vm={vm}
-            busy={busy}
-            onSave={(label) =>
-              run(
-                () => core.setLabel(chat.chatId, label),
-                label === '' ? 'Cleared label for this chat.' : 'Saved label for this chat.'
-              )
-            }
-          />
+          {onToggle && accessControls}
           <div className="flex flex-col sm:flex-row">
             <div
               role="tablist"
@@ -923,9 +949,29 @@ function ChatRow({
               role="tabpanel"
               className="min-w-0 flex-1 px-4 sm:px-6"
             >
+              {!onToggle && (
+                <h2 className="chat-section-title">{SECTIONS.find((section) => section.key === tab)?.label}</h2>
+              )}
+              {!onToggle && pack && (tab === 'character' || tab === 'reply') && (
+                <div className="chat-footer-link">
+                  <strong>Persona Tool Footer</strong>
+                  <span>{pack.displayName}</span>
+                  <a
+                    className="workspace-tool"
+                    href={dashboardHref('characters/' + encodeURIComponent(pack.id) + '/footer')}
+                  >
+                    Open Persona Tool Footer
+                  </a>
+                </div>
+              )}
               {tab === 'character' && (
                 <>
-                  <SettingRow vm={vm} name="character" label="Character" onClear={clear}>
+                  <SettingRow
+                    vm={vm}
+                    name="character"
+                    label={onToggle ? 'Character' : 'Character Persona'}
+                    onClear={clear}
+                  >
                     {characters.length && !onToggle ? (
                       <div className="persona-choices" role="group" aria-label="Choose a character">
                         {characters.map((persona) => (
@@ -1222,7 +1268,7 @@ function ChatRow({
                 <SettingRow
                   vm={vm}
                   name="quietHours"
-                  label="Quiet hours"
+                  label={onToggle ? 'Quiet hours' : 'Quiet period'}
                   hint="No scheduled or first message is sent in this window. Replies still go out."
                   onClear={clear}
                 >
@@ -1235,6 +1281,7 @@ function ChatRow({
               )}
               {tab === 'access' && (
                 <>
+                  {!onToggle && accessControls}
                   <SettingRow vm={vm} name="allowedSenders" label="Who may write">
                     {!onToggle ? (
                       <ChatAccess
@@ -1747,15 +1794,19 @@ export default function ChatsPage({
         </p>
       )
     if (compose) return <Composer chat={chat} />
-    const persona = new ChatSettingsViewModel(chat, characters).effectiveCharacterId
     return (
-      <>
-        <a href={chatHref('chats')}>Chat Directory</a>
-        <h2>Chat Settings</h2>
-        <a href={chatHref('chats/' + encodeURIComponent(chat.chatId) + '/send')}>Send Message</a>
-        {persona && (
-          <a href={dashboardHref('characters/' + encodeURIComponent(persona) + '/footer')}>Character Tool Footer</a>
-        )}
+      <section className="chat-detail">
+        <nav aria-label="Breadcrumb" className="studio-crumb">
+          <a href={chatHref('chats')}>Chat Directory</a>
+          <span aria-hidden="true"> · </span>
+          <span>{chat.label || 'Unnamed Chat'}</span>
+        </nav>
+        <div className="workspace-heading">
+          <h1>Chat Settings</h1>
+          <a className="workspace-tool" href={chatHref('chats/' + encodeURIComponent(chat.chatId) + '/send')}>
+            Send Message
+          </a>
+        </div>
         <ChatRow
           chat={chat}
           characters={characters}
@@ -1765,7 +1816,7 @@ export default function ChatsPage({
           open={true}
         />
         <Toaster />
-      </>
+      </section>
     )
   }
   return (

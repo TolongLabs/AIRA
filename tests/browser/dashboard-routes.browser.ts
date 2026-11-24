@@ -1,5 +1,5 @@
+import { mkdir } from 'node:fs/promises'
 import { createServer } from 'node:http'
-import type { AddressInfo } from 'node:net'
 import { resolve } from 'node:path'
 import { chromium } from 'playwright'
 import { expect } from 'playwright/test'
@@ -285,6 +285,17 @@ async function startFixture(
       }
       if (request.method === 'GET' && path === '/api/chats') {
         json(response, 200, state.chats)
+        return
+      }
+      if (request.method === 'GET' && path === '/api/send') {
+        json(response, 200, {
+          recipients: [{ target: 'whatsapp:fixture-group@g.us', name: 'Field Notes', kind: 'group' }],
+          files: [],
+          folders: ['Desktop', 'taildrop'],
+          recent: [],
+          max_bytes: 104857600,
+          max_message: 4000
+        })
         return
       }
       if (request.method === 'GET' && path === '/api/notices') {
@@ -615,9 +626,19 @@ it('system health and appearance open on direct paths and appearance persists', 
 
     await page.goto(fixture.origin + '/app/preview/system/health')
     await expect(page.getByRole('heading', { name: 'Service Health' })).toBeVisible()
-    await expect(page.getByText('Core')).toBeVisible()
+    await expect(page.getByText('Core', { exact: true })).toBeVisible()
     await expect(page.getByText('Gateway')).toBeVisible()
     await expect(page.getByText('active').first()).toBeVisible()
+
+    for (const action of ['Restart Service', 'Stop Service']) {
+      const trigger = page.getByRole('button', { name: action, exact: true })
+      await trigger.click()
+      const dialog = page.getByRole('dialog')
+      await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused()
+      await page.keyboard.press('Escape')
+      await expect(dialog).toHaveCount(0)
+      await expect(trigger).toBeFocused()
+    }
 
     await page.goto(fixture.origin + '/app/preview/system/appearance')
     await expect(page.getByRole('heading', { name: 'Appearance' })).toBeVisible()
@@ -661,6 +682,93 @@ it('resolves a bookmarked Library fragment after the canonical HTTP redirect and
     await page.goForward()
     await expect(page.getByText('fiction; fantasy')).toBeVisible()
     expect(page.url()).toBe(canonical)
+  } finally {
+    await browser.close()
+    await fixture.close()
+  }
+})
+
+it.each([
+  ['light', 1440, 810, 'light'],
+  ['dark', 1440, 810, 'dark'],
+  ['phone', 396, 704, 'light'],
+  ['phone-dark', 396, 704, 'dark'],
+  ['intermediate', 1024, 768, 'light']
+] as const)('matches Website workspace bounds on %s', async (name, width, height, theme) => {
+  const fixture = await startFixture(baseState())
+  const browser = await chromium.launch()
+  try {
+    const page = await browser.newPage({ reducedMotion: 'reduce' })
+    await page.route('**/*', (route) =>
+      new URL(route.request().url()).origin === fixture.origin ? route.continue() : route.abort()
+    )
+    await auth(page, fixture.origin)
+    const evidence = process.env.AIRA_DASHBOARD_EVIDENCE_DIR
+    if (evidence) await mkdir(evidence, { recursive: true })
+    const routes = [
+      ['overview', 'Overview'],
+      ['chats', 'Chat Directory'],
+      ['chats/defaults', 'Chat Defaults'],
+      ['chats/files', 'Send File'],
+      ['characters', 'Character Studio'],
+      ['library', 'Library'],
+      ['automations/routines', 'Automations'],
+      ['automations/notices', 'Automations'],
+      ['markets/watchlist', 'Markets'],
+      ['system/health', 'System'],
+      ['system/settings', 'System'],
+      ['system/appearance', 'Appearance']
+    ] as const
+
+    await page.setViewportSize({ width, height })
+    await page.evaluate('localStorage.setItem("tolongai-theme", ' + JSON.stringify(theme) + ')')
+    for (const [route, title] of routes) {
+      await page.goto(fixture.origin + '/app/preview/' + route)
+      await expect(page.getByRole('heading', { name: title, level: 1 })).toBeVisible()
+      await expect(page.locator('.dashboard-backdrop')).toBeVisible()
+      await expect(page.locator('.dashboard-view')).toBeVisible()
+      if (evidence) {
+        await expect(page.locator('.dashboard-view').getByText(/^Loading[^\n]*[….]$/)).toHaveCount(0)
+      }
+      await expect
+        .poll(() => page.locator('html').evaluate((element) => element.scrollWidth), {
+          message: route + ' exceeds the ' + name + ' viewport'
+        })
+        .toBeLessThanOrEqual(width)
+      if (route === 'overview' && width !== 1024) {
+        const health = page.locator('.overview-health')
+        await expect(health.locator('li')).toHaveCount(4)
+        const bounds = await health.boundingBox()
+        expect(Math.abs(bounds!.x - (width === 1440 ? 307 : 24))).toBeLessThanOrEqual(2)
+        expect(Math.abs(bounds!.y - (width === 1440 ? 84 : 80))).toBeLessThanOrEqual(2)
+        expect(Math.abs(bounds!.height - (width === 1440 ? 220 : 245))).toBeLessThanOrEqual(4)
+      }
+      if (route === 'chats' && width === 1440) {
+        const table = await page.locator('.selection-scroll').boundingBox()
+        expect(Math.abs(table!.x - 296)).toBeLessThanOrEqual(2)
+        expect(Math.abs(table!.y - 152)).toBeLessThanOrEqual(3)
+      }
+      if (route === 'system/appearance') {
+        const swatches = page.locator('.appearance-swatch')
+        await expect(swatches).toHaveCount(4)
+        const first = await swatches.nth(0).boundingBox()
+        const second = await swatches.nth(1).boundingBox()
+        expect(first!.y).toBe(second!.y)
+        expect(first!.height).toBe(width === 396 ? 95 : 140)
+      }
+      const expectedSelection = route.split('/')[0]
+      await expect(page.locator('aside nav a[aria-current="page"]')).toHaveAttribute(
+        'href',
+        '/app/preview/' + expectedSelection
+      )
+      if (evidence) {
+        await page.evaluate('document.fonts.ready.then(() => true)')
+        await page.screenshot({
+          path: resolve(evidence, route.replaceAll('/', '-') + '-' + name + '.png'),
+          animations: 'disabled'
+        })
+      }
+    }
   } finally {
     await browser.close()
     await fixture.close()
