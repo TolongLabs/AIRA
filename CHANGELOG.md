@@ -1,5 +1,49 @@
 # Changelog
 
+## [1.5.0](https://github.com/TolongLabs/AIRA/compare/v1.4.1...v1.5.0) (2026-11-24)
+
+
+### Features
+
+* **api:** add dashboard activity and portraits ([055a5bb](https://github.com/TolongLabs/AIRA/commit/055a5bbee0bd37d6d3c1c779f177016e9ebf6efa))
+* **api:** reconcile owner text submissions ([2ce41e8](https://github.com/TolongLabs/AIRA/commit/2ce41e8e4d6ab19a43ad02441eef1a4fe28ed01d))
+* **site:** connect dashboard preview workflows ([2374c88](https://github.com/TolongLabs/AIRA/commit/2374c8855fdcc40d4a29c8326cdba0a2575b45ce))
+* **site:** edit host settings and reply routes ([0ac4a83](https://github.com/TolongLabs/AIRA/commit/0ac4a83c6208ed476f45031d4a1d2d3532f27b3b))
+* **site:** protect preview data operations ([507b9f3](https://github.com/TolongLabs/AIRA/commit/507b9f3ffb3a067d6126fd77d98f0cda4f294e99))
+* **site:** reconcile state across dashboard views ([cc92619](https://github.com/TolongLabs/AIRA/commit/cc926191206f3e688986e87044b3acebeb0547e9))
+* **site:** refine dashboard workspaces ([d94dbf8](https://github.com/TolongLabs/AIRA/commit/d94dbf8bb3905d0adae5fe254d5fd359c2c5a3eb))
+* **site:** show running configuration revision ([7be604d](https://github.com/TolongLabs/AIRA/commit/7be604d1449f6546a1f3b0fa33fa755edd8d7f62))
+* **site:** stage dashboard routes under preview ([b7d2df2](https://github.com/TolongLabs/AIRA/commit/b7d2df22f7830d77538a4a80447dba4714f1106e))
+* **studio:** stage pack operations ([cc6ea18](https://github.com/TolongLabs/AIRA/commit/cc6ea186179fd02940695ff028ba9043ffd11253))
+
+
+### Bug Fixes
+
+* **deploy:** pin and verify dashboard switches ([7a4f080](https://github.com/TolongLabs/AIRA/commit/7a4f08099c72bcbcc6ea883d0c8462eeb35c3c06))
+* **deploy:** verify the active dashboard entry ([83add80](https://github.com/TolongLabs/AIRA/commit/83add801fa4a91644048c92c035467724d60010c))
+* **persona:** keep direct identity replies in role ([e90dbbb](https://github.com/TolongLabs/AIRA/commit/e90dbbb9a70be217aac6defa700629cf64c50fdb))
+* **site:** align dashboard with figma layouts ([269b002](https://github.com/TolongLabs/AIRA/commit/269b002d8b04d98875e325406398cf9027e52e4d))
+* **site:** feather the cursor glow trail ([0c07e10](https://github.com/TolongLabs/AIRA/commit/0c07e10933ccddb46dcc730e228b1f7fc1849aea))
+* **site:** finish missing routine checks ([38c06f0](https://github.com/TolongLabs/AIRA/commit/38c06f061bc7e0f0c99ca3f05c67adaf6752c8a1))
+* **site:** keep scoped settings in sync ([ff099b6](https://github.com/TolongLabs/AIRA/commit/ff099b6312ff3e36a5ab821266c86001c2bfb99d))
+* **site:** make the graph keyboard accessible ([b5c3b78](https://github.com/TolongLabs/AIRA/commit/b5c3b786be522938d59295ff92eb49d1d6b00685))
+* **site:** match the service health card surface ([68a9850](https://github.com/TolongLabs/AIRA/commit/68a98504a7a99b360cb4155a82c8601519b41394))
+* **site:** polish dashboard surfaces and charts ([dd9b889](https://github.com/TolongLabs/AIRA/commit/dd9b8890f5574564e02e4522154c0830ed71c8b8))
+* **site:** preserve legacy dashboard bookmarks ([d2781be](https://github.com/TolongLabs/AIRA/commit/d2781be95e47969f790d7460896e166a7bd69b8f))
+* **site:** reconcile host settings before save ([f614691](https://github.com/TolongLabs/AIRA/commit/f61469179974810197b069eabf30f792dbf71aae))
+* **site:** recover when a dashboard view fails ([6e8213a](https://github.com/TolongLabs/AIRA/commit/6e8213af2452ae630af60d62b29d99cd8e88a5cf))
+* **site:** redact caught workspace errors ([1d74cf1](https://github.com/TolongLabs/AIRA/commit/1d74cf1069c6eec9c3b75dd310589cfe2cef1492))
+* **site:** refine owner dashboard workflows ([f0ca0bc](https://github.com/TolongLabs/AIRA/commit/f0ca0bcc17d96761c26499db236c82bd55d06c09))
+* **site:** reflow notice controls within cards ([216a9dd](https://github.com/TolongLabs/AIRA/commit/216a9dd0c3d12a28c81729fbe2b3d9a3eaffff66))
+* **site:** restore focus across dashboard tasks ([911002a](https://github.com/TolongLabs/AIRA/commit/911002a9ad39acbb053b0baa3e35888bb18bc622))
+* **site:** restore pack edits and core settings ([5aa792e](https://github.com/TolongLabs/AIRA/commit/5aa792e37fb14a6b1da6100f15f033dbc8700a96))
+* **site:** wrap classic headings at phone widths ([f6e180c](https://github.com/TolongLabs/AIRA/commit/f6e180ca27aca17f6ae91c7235d770194e47b5d2))
+* **social:** verify videos attached to Facebook group posts ([d82a897](https://github.com/TolongLabs/AIRA/commit/d82a8977d8a13a8a9736019c68e99e13b8b6384c))
+* **studio:** coordinate footer updates ([8b8b8e6](https://github.com/TolongLabs/AIRA/commit/8b8b8e6bc38d2b338254ca15afad5caf56b431d8))
+* **studio:** merge drafts by changed field ([7ab085b](https://github.com/TolongLabs/AIRA/commit/7ab085b790ce4f73881488cee072e5ca10d1c22f))
+* **studio:** preserve linked pack values ([46298df](https://github.com/TolongLabs/AIRA/commit/46298df6e797761ba433ddea676ebcbc84f1775b))
+* **studio:** read files from legacy packs ([2a481d3](https://github.com/TolongLabs/AIRA/commit/2a481d3919343383dd29ed14df012dd5cfd8a8ae))
+
 ## [1.4.1](https://github.com/TolongLabs/AIRA/compare/v1.4.0...v1.4.1) (2026-11-23)
 
 
