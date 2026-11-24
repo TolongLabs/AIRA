@@ -1,3 +1,4 @@
+import { Loading } from '@/dashboard/loading'
 import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Bot, Cpu, FileText, HousePlug, Mic, Plus, Save, Trash2, TrendingUp, X } from 'lucide-react'
 import type { Chat, Settings } from '@/lib/api'
@@ -1906,11 +1907,7 @@ export default function SettingsPage() {
           {settings.error && (
             <Card className="border-down/40 p-4 text-down">Could not load settings: {settings.error}</Card>
           )}
-          {settings.loading && !settings.data && (
-            <div className="flex items-center gap-2 text-muted">
-              <Spinner /> loading…
-            </div>
-          )}
+          {settings.loading && !settings.data && <Loading />}
 
           {settings.data && (
             <>

@@ -1,5 +1,6 @@
+import { Loading } from '@/dashboard/loading'
 import { useEffect, useRef, useState } from 'react'
-import { Button, Card, Empty, Field, Input, Picker, Section, Segmented, Spinner, Toggle } from '@/components/ui'
+import { Button, Card, Empty, Field, Input, Picker, Section, Segmented, Toggle } from '@/components/ui'
 import { dashboardHref } from '@/dashboard/navigation'
 import { authHeaders, requestToken } from '@/lib/api'
 import { CHAT_FEATURE_DEFINITIONS } from '@/lib/chat-view-model'
@@ -965,9 +966,7 @@ export default function ChatDefaults({ initialScope = 'global' }: ChatDefaultsPr
         <div className="chat-defaults-editor dashboard-pane">
           <h2>{desc.title}</h2>
           {loading && !snapshot ? (
-            <p role="status" className="chat-defaults-state">
-              <Spinner /> Loading {desc.title.toLowerCase()}…
-            </p>
+            <Loading>Loading {desc.title.toLowerCase()}…</Loading>
           ) : error && !snapshot ? (
             <Empty
               title="Defaults unavailable"

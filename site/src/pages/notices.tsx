@@ -1,3 +1,5 @@
+import { Loading } from '@/dashboard/loading'
+import { scrollSurface } from '@/dashboard/scroll'
 import { useContext, useEffect, useMemo, useState } from 'react'
 import { Shell } from '@/components/shell'
 import { get, post } from '@/lib/api'
@@ -177,7 +179,7 @@ export default function NoticesPage() {
   useEffect(() => {
     if (!inDashboard || typeof window === 'undefined') return
     const saved = Number(sessionStorage.getItem('aira-automations-notices-scroll') ?? '')
-    if (Number.isFinite(saved) && saved > 0) window.scrollTo({ top: saved })
+    if (Number.isFinite(saved) && saved > 0) scrollSurface().scrollTo({ top: saved })
   }, [inDashboard])
 
   function changeFilter(next: string) {
@@ -191,7 +193,7 @@ export default function NoticesPage() {
 
   function rememberNoticesScroll() {
     try {
-      sessionStorage.setItem('aira-automations-notices-scroll', String(window.scrollY))
+      sessionStorage.setItem('aira-automations-notices-scroll', String(scrollSurface().scrollTop))
     } catch {
       /* private mode: the list simply starts at the top on return */
     }
@@ -293,6 +295,7 @@ export default function NoticesPage() {
    * the legacy MPA below stays byte-identical. Refused drafts keep their
    * pickers (cleared only on success); saves reload and verify the persisted
    * route before toasting. */
+  if (inDashboard && api.loading && !api.data) return <Loading layout="cards">Loading session notices…</Loading>
   if (inDashboard)
     return (
       <Shell page="notices" title="Session Notices">

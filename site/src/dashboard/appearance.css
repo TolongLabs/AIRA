@@ -61,7 +61,8 @@
 }
 
 .appearance-card:has(input:checked) {
-  border-color: #00877a;
+  border-color: var(--edge);
+  background: var(--tile-inset);
 }
 
 .appearance-card input {
@@ -265,10 +266,12 @@
 .dashboard-cursor-glow {
   position: absolute;
   inset: 0 auto auto 0;
-  width: 164px;
-  height: 164px;
+  width: 216px;
+  height: 180px;
   opacity: 0;
-  background: radial-gradient(circle, rgb(136 234 217 / 0.48), transparent 72%);
+  background:
+    radial-gradient(ellipse at 56% 46%, rgb(133 239 211 / 0.78), transparent 64%),
+    radial-gradient(ellipse at 32% 65%, rgb(116 197 219 / 0.5), transparent 58%);
   transition: opacity 160ms ease-out;
 }
 .dashboard-cursor-glow[data-visible='true'] {

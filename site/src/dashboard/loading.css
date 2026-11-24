@@ -1,0 +1,49 @@
+.workspace-loading {
+  display: block;
+  min-width: 0;
+  width: 100%;
+  padding: 12px 0;
+}
+.workspace-loading > [aria-hidden] {
+  display: grid;
+  gap: 9px;
+}
+.workspace-loading i {
+  display: block;
+  width: 100%;
+  height: 14px;
+  border-radius: 6px;
+  background: var(--tile-inset, var(--line));
+  animation: workspace-pulse 1.35s ease-in-out 3 alternate;
+}
+.workspace-loading i:nth-child(2) {
+  width: 82%;
+}
+.workspace-loading i:nth-child(3) {
+  width: 64%;
+}
+.workspace-loading[data-layout='cards'] > span[aria-hidden] {
+  grid-template-columns: repeat(auto-fit, minmax(min(130px, 100%), 1fr));
+}
+.workspace-loading[data-layout='cards'] i {
+  width: 100%;
+  height: clamp(100px, 16vh, 180px);
+  border-radius: 14px;
+}
+.workspace-loading[data-layout='metric'] i:first-child {
+  height: 42px;
+  width: 42%;
+}
+.insight-health .workspace-loading i {
+  background: #40675e;
+}
+@keyframes workspace-pulse {
+  to {
+    opacity: 0.48;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace-loading i {
+    animation: none;
+  }
+}

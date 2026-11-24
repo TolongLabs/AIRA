@@ -162,6 +162,15 @@ for (const engine of [chromium, firefox, webkit]) {
             .evaluate((el) => 'indeterminate' in el && el.indeterminate)
         ).toBe(true)
         await page.getByRole('button', { name: /Next/ }).click()
+        await expect
+          .poll(() =>
+            page
+              .getByRole('checkbox', { name: /Select this page/ })
+              .evaluate((el) => el === el.ownerDocument.activeElement)
+          )
+          .toBe(true)
+        const firstChat = page.locator('.directory-chat a').first()
+        expect(new URL((await firstChat.getAttribute('href'))!, origin).searchParams.get('page')).toBe('2')
         await page.getByRole('button', { name: /Previous/ }).click()
         expect(await selected.isChecked()).toBe(true)
         await page.getByRole('searchbox').fill('Field Notes')

@@ -1,3 +1,4 @@
+import { Loading } from '@/dashboard/loading'
 import { useContext, useEffect, useRef, useState } from 'react'
 import { DashboardContext } from '@/dashboard/context'
 import { FileUp, Send as SendIcon, X } from 'lucide-react'
@@ -180,9 +181,7 @@ export default function SendPage() {
       <div className={dashboard ? 'workspace-grid file-delivery' : undefined}>
         <Section title={dashboard ? 'File Delivery' : 'New send'}>
           {view.loading && !data ? (
-            <div className="flex items-center gap-2 text-muted">
-              <Spinner /> loading…
-            </div>
+            <Loading />
           ) : !data ? (
             <Empty title="The page could not load">{view.error ?? 'No answer from the server.'}</Empty>
           ) : (

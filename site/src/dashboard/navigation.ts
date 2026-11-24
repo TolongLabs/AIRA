@@ -14,9 +14,8 @@ export function dashboardHref(path: string) {
   return previewMount + '/' + path
 }
 
-export function chatHref(path: string) {
+export function chatHref(path: string, current = new URLSearchParams(location.search)) {
   const query = new URLSearchParams()
-  const current = new URLSearchParams(location.search)
   for (const key of ['search', 'status', 'order', 'page']) {
     const value = current.get(key)
     if (value) query.set(key, value)

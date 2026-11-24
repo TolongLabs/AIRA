@@ -1,3 +1,4 @@
+import { Loading } from '@/dashboard/loading'
 import { ChatAccess } from '@/dashboard/chat-access'
 import Composer from '@/dashboard/composer'
 import { chatHref, dashboardHref } from '@/dashboard/navigation'
@@ -1762,6 +1763,7 @@ export default function ChatsPage({
 
   if (footerId) {
     const pack = characters.find((row) => row.id === footerId)
+    if (!pack && packs.loading) return <Loading>Loading character…</Loading>
     if (!pack)
       return (
         <p role="status">
@@ -1787,6 +1789,7 @@ export default function ChatsPage({
   }
   if (selectedId) {
     const chat = all.find((row) => row.chatId === selectedId)
+    if (!chat && chats.loading) return <Loading>Loading chat settings…</Loading>
     if (!chat)
       return (
         <p role="status">

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Search } from 'lucide-react'
 import { get } from '@/lib/api'
 import { Field, Input, Spinner } from '@/components/ui'
@@ -22,6 +22,7 @@ export function SymbolSearch({
   hint?: string
   autoFocus?: boolean
 }) {
+  const inputId = useId()
   const [q, setQ] = useState('')
   const [region, setRegion] = useState('')
   const [hits, setHits] = useState<{ symbol: string; name: string; type: string; exchange: string }[]>([])
@@ -63,12 +64,13 @@ export function SymbolSearch({
 
   return (
     <div>
-      <Field label={label} hint={hint}>
+      <Field htmlFor={inputId} label={label} hint={hint}>
         <div className="flex max-w-2xl flex-wrap items-center gap-2">
           <div className="relative min-w-[13rem] flex-1">
             <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
             <Input
               value={q}
+              id={inputId}
               placeholder="dbs"
               autoFocus={autoFocus}
               onChange={(e) => setQ(e.target.value)}

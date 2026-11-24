@@ -1,3 +1,4 @@
+import { Loading } from '@/dashboard/loading'
 import { Input } from '@/components/ui'
 import ExpressionGallery from './expression-gallery'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -404,7 +405,7 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
   const preview = useMemo(() => buildPromptPreview(draft, activeMood), [draft, activeMood])
 
   if (mode === 'edit' && !id) return <p role="alert">No character id in the route.</p>
-  if (loading) return <p role="status">Loading…</p>
+  if (loading) return <Loading>Loading…</Loading>
   if (loadError) return <p role="alert">{loadError}</p>
 
   const title =
@@ -431,9 +432,11 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
           >
             Preview Conversation
           </button>
-          <a className="studio-button studio-primary" href="#studio-review">
-            Review Changes
-          </a>
+          {!readOnly && (
+            <a className="studio-button studio-primary" href="#studio-review">
+              Review Changes
+            </a>
+          )}
         </div>
       </div>
       {simError && (

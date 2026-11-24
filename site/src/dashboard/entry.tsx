@@ -1,6 +1,6 @@
 import { authHeaders, requestToken } from '@/lib/api'
 import { useCoreTransport } from '@/lib/core'
-import { lazy, startTransition, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, startTransition, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { MouseEvent } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
@@ -23,6 +23,8 @@ import { translateLegacyBookmark } from './legacy-bookmarks'
 import { dashboardHref, destinations, previewMount } from './navigation'
 import { WorkspaceErrorBoundary } from './workspace-error'
 import Appearance, { Backdrop } from './appearance'
+import { Loading } from './loading'
+import { scrollSurface } from './scroll'
 import { Overview } from './overview'
 import '@/styles.css'
 import './shell.css'
@@ -97,6 +99,8 @@ function applyLegacyBookmark(): boolean {
 
 applyLegacyBookmark()
 
+type ListPosition = { address: string; top: number; href: string; index: number }
+
 function Dashboard() {
   const [address, setAddress] = useState(() => location.pathname + location.search)
   const path = address.split('?')[0]!.slice(previewMount.length + 1)
@@ -122,17 +126,44 @@ function Dashboard() {
   }, [])
   useEffect(() => {
     function onPop() {
+      pendingPosition.current = history.state?.listPosition ?? null
+      focusOnNavigation.current = true
       startTransition(() => setAddress(location.pathname + location.search))
     }
     addEventListener('popstate', onPop)
     return () => removeEventListener('popstate', onPop)
   }, [])
   const focusOnNavigation = useRef(false)
-  useEffect(() => {
+  const pendingPosition = useRef<ListPosition | null>(null)
+  useLayoutEffect(() => {
     if (!focusOnNavigation.current) return
     focusOnNavigation.current = false
     document.getElementById('workspace')?.focus({ preventScroll: true })
-    window.scrollTo({ top: 0, behavior: 'instant' })
+    const surface = scrollSurface()
+    const position = pendingPosition.current
+    pendingPosition.current = null
+    surface.scrollTo({ top: 0, behavior: 'instant' })
+    if (!position || position.address !== location.pathname + location.search) return
+    const restore = () => {
+      const row = Array.from(surface.querySelectorAll('a')).filter((a) => a.href === position.href)[position.index ?? 0]
+      if (!row) return false
+      surface.scrollTop = position.top
+      row.focus({ preventScroll: true })
+      return true
+    }
+    if (restore()) return
+    const observer = new MutationObserver(() => {
+      if (restore()) observer.disconnect()
+    })
+    observer.observe(surface, { childList: true, subtree: true })
+    const cancel = () => observer.disconnect()
+    surface.addEventListener('pointerdown', cancel, { once: true })
+    surface.addEventListener('keydown', cancel, { once: true })
+    return () => {
+      observer.disconnect()
+      surface.removeEventListener('pointerdown', cancel)
+      surface.removeEventListener('keydown', cancel)
+    }
   }, [address])
 
   function follow(event: MouseEvent) {
@@ -164,7 +195,21 @@ function Dashboard() {
     drawer.current?.close()
     const target = url.pathname + url.search
     if (target === location.pathname + location.search) return
-    history.pushState(null, '', target)
+    const from = location.pathname + location.search
+    const returnTo: ListPosition | undefined = history.state?.returnTo
+    const position: ListPosition | undefined = link.closest('.directory, .automations-list, .lib-dash-rows')
+      ? {
+          address: from,
+          top: scrollSurface().scrollTop,
+          href: link.href,
+          index: Array.from(scrollSurface().querySelectorAll('a'))
+            .filter((a) => a.href === link.href)
+            .indexOf(link)
+        }
+      : undefined
+    if (position) history.replaceState({ ...history.state, listPosition: position }, '')
+    pendingPosition.current = returnTo?.address === target ? returnTo : null
+    history.pushState(position ? { returnTo: position } : null, '', target)
     focusOnNavigation.current = true
     startTransition(() => setAddress(target))
   }
@@ -252,7 +297,9 @@ function Dashboard() {
           <button aria-label="Open navigation" onClick={() => drawer.current?.showModal()}>
             <img alt="" src="/app/dashboard/glyph.svg" />
           </button>
-          <span>AIRA</span>
+          <span aria-hidden="true">
+            {chatRoute ? (chatRoute[2] === 'send' ? 'Send Message' : 'Chat Settings') : title}
+          </span>
         </header>
         <dialog ref={drawer} aria-label="Navigation">
           {nav(true)}
@@ -309,7 +356,7 @@ function Dashboard() {
               </div>
             )}
           <WorkspaceToolsContext.Provider value={toolsHost}>
-            <Suspense fallback={<p role="status">Loading…</p>}>
+            <Suspense key={section} fallback={<Loading layout="cards">Loading {title}…</Loading>}>
               <WorkspaceErrorBoundary key={address}>
                 <div className="dashboard-view">
                   {path === 'overview' ? (

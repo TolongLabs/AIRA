@@ -122,3 +122,13 @@ and links to the composer. The Character and Reply tabs link to the assigned per
 
 Dashboard service restart and stop open a confirmation dialog for the selected unit. Cancel or Escape returns to
 the service control. Only the confirmation submits the operation.
+
+The owner dashboard keeps its sidebar and workspace within the viewport. The workspace owns vertical scrolling,
+including reader controls, route focus and list-position restoration. Data requests expose named loading states.
+Overview visualizes reported service readiness, chat states, upcoming scheduled runs and library composition.
+The catalogue uses bundled Figma cover illustrations as decorative placeholders and fits five cards on desktop.
+
+On the full-height owner workspace the same seven-run fixture had median navigation load of 125 ms,
+service summary of 359 ms, first-route JavaScript of 438,212 decoded bytes and a p95 frame interval of 17 ms.
+Each met the legacy limits. The chat directory restores the exact originating link on history and breadcrumb
+return. On narrow screens routine and library detail links bring the selected panel into view.

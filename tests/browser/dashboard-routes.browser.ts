@@ -647,6 +647,7 @@ it('system health and appearance open on direct paths and appearance persists', 
     await lattice.check()
     await expect(page.locator('.dashboard-backdrop--lattice')).toBeVisible()
     await page.getByRole('button', { name: 'Apply', exact: true }).click()
+    await expect(lattice).toBeFocused()
     await page.reload()
     await expect(page.locator('.dashboard-backdrop--lattice')).toBeVisible()
     await expect(page.getByRole('radio', { name: /Lattice/ })).toBeChecked()
@@ -693,6 +694,7 @@ it.each([
   ['dark', 1440, 810, 'dark'],
   ['phone', 396, 704, 'light'],
   ['phone-dark', 396, 704, 'dark'],
+  ['short', 900, 510, 'light'],
   ['intermediate', 1024, 768, 'light']
 ] as const)('matches Website workspace bounds on %s', async (name, width, height, theme) => {
   const fixture = await startFixture(baseState())
@@ -735,13 +737,33 @@ it.each([
           message: route + ' exceeds the ' + name + ' viewport'
         })
         .toBeLessThanOrEqual(width)
-      if (route === 'overview' && width !== 1024) {
-        const health = page.locator('.overview-health')
-        await expect(health.locator('li')).toHaveCount(4)
-        const bounds = await health.boundingBox()
-        expect(Math.abs(bounds!.x - (width === 1440 ? 307 : 24))).toBeLessThanOrEqual(2)
-        expect(Math.abs(bounds!.y - (width === 1440 ? 84 : 80))).toBeLessThanOrEqual(2)
-        expect(Math.abs(bounds!.height - (width === 1440 ? 220 : 245))).toBeLessThanOrEqual(4)
+      expect(await page.locator('#workspace').evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1)
+      const shellBounds = await page.locator('#workspace').boundingBox()
+      expect(shellBounds!.height).toBe(height - (width <= 760 ? 72 : 16))
+      expect(await page.locator('html').evaluate((el) => el.scrollHeight)).toBe(height)
+      if (width > 760) {
+        expect((await page.locator('.dashboard-shell > aside').boundingBox())!.height).toBe(shellBounds!.height)
+      }
+      if (route === 'overview') {
+        const board = page.locator('.operations-board')
+        await expect(board.locator('.unit-matrix li')).toHaveCount(4)
+        const bounds = await board.boundingBox()
+        expect(shellBounds!.width - bounds!.width).toBeLessThan(70)
+        if (width > 760) expect(bounds!.y + bounds!.height).toBeGreaterThanOrEqual(height - 52)
+      }
+      if (route === 'characters') {
+        const grid = page.locator('.studio-grid')
+        await expect(grid.locator('.studio-art').first()).toBeVisible()
+        const columns = await grid.evaluate(
+          (el) => el.ownerDocument.defaultView!.getComputedStyle(el).gridTemplateColumns.split(' ').length
+        )
+        expect(columns).toBe(width === 1440 ? 5 : width === 396 ? 2 : 3)
+        expect(
+          await grid
+            .locator('img')
+            .first()
+            .evaluate((el) => ('naturalWidth' in el ? Number(el.naturalWidth) : 0))
+        ).toBeGreaterThan(0)
       }
       if (route === 'chats' && width === 1440) {
         const table = await page.locator('.selection-scroll').boundingBox()
