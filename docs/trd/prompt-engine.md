@@ -18,7 +18,7 @@ Real character packs are private. They never enter the repository, the release i
 
 | File        | Holds                                                                                                                                                           | Required |
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| `card.yml`  | Id, display name, aliases, languages, core identity, speech rules, default reply length, tool footer                                                            | Yes      |
+| `card.yml`  | Id, display name, aliases, languages, core identity, speech rules, default reply length, bubble capitals switch, tool footer                                    | Yes      |
 | `moods.yml` | The mood list: key, detection rules, tone guidance, openers, endings, faces, beats; face groups and beat lines                                                  | Yes      |
 | `lines.yml` | Fixed lines for errors, limits, refusals, busy, slow, unreadable media, fallback and unavailable. Optional `feedback` and research lines get neutral fallbacks. | Yes      |
 | `stickers/` | Expression images per mood, already converted to WhatsApp sticker format                                                                                        | No       |
@@ -171,7 +171,8 @@ record.
 9. Split into bubbles.
 10. Capitalise the first letter of each bubble and each paragraph. The step skips a bubble that starts with code, a link, a command or
     a mention or a list, and a first word that already holds a capital, such as `iPhone`. Leading markup, quote marks and emoji
-    are passed over. This holds for every pack, whatever its speech rules say.
+    are passed over. This holds whatever a pack's speech rules say. A pack whose card sets `capitaliseBubbles: false`
+    skips the step, and its replies keep the first letters the model wrote.
 11. Add the tool footer, below.
 
 The chain never rewrites meaning. It removes, trims and re-marks. A reply it cannot repair is replaced by a pack

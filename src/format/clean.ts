@@ -42,6 +42,8 @@ export interface CleanOptions {
   toolsOk?: string[]
   /** For a skill-style command: the tool it names. */
   commandTool?: string
+  /** False skips step 10: the card's `capitaliseBubbles`. */
+  capitals?: boolean
   /** The card's footer icon and labels. */
   footer?: { icon?: string; labels?: Record<string, string> }
   /** The chat's footer switch and emoji, and the URLs the turn read or found. */
@@ -569,7 +571,7 @@ export function cleanReply(text: string, options: CleanOptions): CleanReplyResul
     })
     if (trimmed) steps.push('bubbles_trimmed')
 
-    const capitalised = bubbles.map(capitaliseParagraphs)
+    const capitalised = options.capitals === false ? bubbles : bubbles.map(capitaliseParagraphs)
     if (capitalised.some((bubble, i) => bubble !== bubbles[i])) steps.push('capitals')
     if (footer !== undefined && capitalised.length > 0) {
       capitalised[capitalised.length - 1] = `${capitalised[capitalised.length - 1]}\n\n${footer}`
@@ -642,6 +644,7 @@ export function createReplyCleaner(
               ? ['web_search', 'read_page']
               : [...intakeKinds, ...(toolsOk ? toolsOk(context.turnId) : [])],
           ...(context.commandTool === undefined ? {} : { commandTool: context.commandTool }),
+          ...(context.character.card.capitaliseBubbles === false ? { capitals: false } : {}),
           ...(context.character.card.toolFooter ? { footer: context.character.card.toolFooter } : {}),
           footerOff: context.settings?.['features.toolFooter']?.value === false,
           ...(typeof context.settings?.['footerEmoji']?.value === 'string'
