@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { parse } from 'yaml'
 import { z } from 'zod'
 import type { ChatSession } from '../bench/chat.js'
-import { fourthWallBreak } from '../format/fourth-wall.js'
+import { fourthWallBreak, identityClaim } from '../format/fourth-wall.js'
 import { isoNow } from '../storage/database.js'
 
 // Live checks (docs/trd/harness.md#live-checks): fixed cases against real models, before a release.
@@ -59,9 +59,6 @@ export function loadLiveSet(path: string): LiveSet {
   return result.data as LiveSet
 }
 
-const SELF_AS_MACHINE =
-  /\b(?:i am|i'm|im|as)\s+(?:an?\s+|just\s+an?\s+|only\s+an?\s+)?(?:ai|a\.i\.|artificial intelligence|(?:large\s+)?language model|llm|bot|chatbot|virtual assistant|ai assistant|assistant)\b/i
-const SELF_AS_HUMAN = /\b(?:i am|i'm|im)\s+(?:a\s+)?(?:real\s+)?(?:human|real person)\b/i
 const HEADING = /^\s{0,3}#{1,6}\s/m
 const TABLE = /^\s*\|.*\|\s*$/m
 const LINK_TEXT = /\[[^\]\n]+\]\([^)\s]+\)/
@@ -74,12 +71,13 @@ export function personaFailures(reply: string, maxChars: number, toolNames: read
     failed.push('empty')
     return failed
   }
-  if (SELF_AS_MACHINE.test(text)) failed.push('names-itself-ai')
-  if (SELF_AS_HUMAN.test(text)) failed.push('claims-human')
+  const identity = identityClaim(text)
+  if (identity) failed.push(identity)
   if (HEADING.test(text)) failed.push('heading')
   if (TABLE.test(text)) failed.push('table')
   if (LINK_TEXT.test(text)) failed.push('link-text')
-  if (fourthWallBreak(text, toolNames) !== undefined) failed.push('breaks-fourth-wall')
+  const breach = fourthWallBreak(text, toolNames)
+  if (breach !== undefined && breach !== identity) failed.push('breaks-fourth-wall')
   if ([...text].length > maxChars) failed.push('too-long')
   return failed
 }
