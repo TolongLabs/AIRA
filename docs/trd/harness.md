@@ -131,7 +131,8 @@ Results are compared with the targets in the PRD (NFR-1). A benchmark does not g
 - Sets are YAML with a non-empty name and description and 1 to 50 non-empty prompts. `loadBenchSet` rejects anything
   else.
 - Prompts run in order through one local core session (`openChatSession`), which uses a scratch data folder unless a
-  test gives it one. Each prompt writes one row.
+  test gives it one. Each prompt writes one row. The local session reads that message's turn through its exact
+  internal chat ID and generated message ID; wall-clock adjustments cannot attribute a prior turn to a later prompt.
 - `p50` and `p90` are nearest-rank percentiles over delivered turns only. Cost and token totals cover all rows. A run
   with no input tokens reports a null cache hit rate.
 - `writeBenchResult` writes one JSON line per prompt row plus a final summary line with `"summary": true`. The file
