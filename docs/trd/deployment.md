@@ -14,7 +14,7 @@ one night.
 | `images-ok` | Re-reports the image result, so a skipped or failed build still fails the gate                                               | After `image`, always       |
 | `deploy`    | Deploys the pushed image on the host, through the self-hosted runner                                                         | Push to `main` only         |
 | `release`   | Version and changelog pull request from commit messages                                                                      | Push to `main`              |
-| `promote`   | Tags the image the host runs `vX.Y.Z`, `vX.Y` and `stable`, after the exact commit's CI passes                               | A release commit            |
+| `promote`   | Tags the image the host runs `vX.Y.Z`, `vX.Y` and `stable`, after the exact commit's CI passes                               | Published release or retry  |
 
 The hosted install gate loads the PR candidate locally or anonymously pulls the exact main SHA image,
 then runs `tests/install/smoke.py` on a non-root, non-1000 UID Ubuntu runner. It exercises the real CLI,
@@ -24,6 +24,11 @@ message or contacts a real model. The pinned Hermes upstream admission/group and
 run under an isolated profile root. An absent image or failed smoke fails `image` and therefore `images-ok`;
 the production runner cannot start before this gate. Release promotion waits for the exact main commit's
 successful CI run (including deployment) and re-tags the already-built manifest, not a newer `edge`.
+The target is the published version tag resolved to its commit, not the release workflow's triggering push SHA:
+release-please can create a release for a newer main commit while an earlier push workflow is running.
+A manual dispatch of `release` on `main` retries promotion of the latest published non-prerelease version only,
+without creating a release. Promotion serializes image tag writes and rechecks the latest release and its commit
+before writing; a superseded target is skipped and a moved tag or mismatched digest fails the job.
 
 ## Release Image
 
