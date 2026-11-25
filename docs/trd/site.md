@@ -224,6 +224,8 @@ Authenticated `GET /owner-api/core/health` retains its legacy envelope. In stand
 `capabilities`. Until the corresponding integration is implemented and verified, the boolean capability
 fields `hostOwnerService`, `subscriptionRunner`, `fileBrowser`, `gatewayConnection`, and `scheduler`
 are false; the dashboard must not call absent services or treat those capabilities as an error.
+Standalone model settings use the [typed owner operations](dashboard-state.md#typed-owner-operations), including
+saved/applied readback after a controlled activation; the old host settings editor is not an authority in this mode.
 A legacy response without the new fields selects the existing dashboard behavior.
 
 ## Owner Page Edits
