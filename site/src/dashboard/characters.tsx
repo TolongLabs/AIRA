@@ -1,11 +1,12 @@
 import { Loading } from '@/dashboard/loading'
-import { useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react'
+import { useContext, useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react'
 import { core, type CoreCharacter } from '@/lib/core'
 import { Input } from '@/components/ui'
 import { FormSelect } from './form-select'
 import { WorkspaceTools } from './workspace-tools'
 import { studioHref, studioPaths } from './studio-client'
 import { CreatePersona } from './studio-create'
+import { InstallationContext } from './context'
 import { motifs as covers, ProfileImage } from './profile-image'
 import './selection-table.css'
 import './studio.css'
@@ -19,6 +20,7 @@ function matches(row: CoreCharacter, query: string): boolean {
 }
 
 export default function Catalogue() {
+  const standalone = useContext(InstallationContext) === 'standalone'
   const catalogue = useRef<HTMLElement>(null)
   const [columns, setColumns] = useState(5)
   const [page, setPage] = useState(() =>
@@ -50,7 +52,7 @@ export default function Catalogue() {
       .characters()
       .then((data) => {
         if (!live) return
-        setRows(data.characters.filter((row) => row.id !== 'example' || row.source !== 'repository'))
+        setRows(data.characters.filter((row) => standalone || row.id !== 'example' || row.source !== 'repository'))
         setFaults(data.faults)
       })
       .catch(() => {
@@ -59,7 +61,7 @@ export default function Catalogue() {
     return () => {
       live = false
     }
-  }, [])
+  }, [standalone])
 
   useEffect(() => {
     const url = new URL(location.href)

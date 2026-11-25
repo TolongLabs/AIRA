@@ -1,13 +1,14 @@
 import { TimeField } from '@/dashboard/form-select'
 import { Loading } from '@/dashboard/loading'
-import { useEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useRef, useState } from 'react'
 import { Button, Card, Empty, Field, Input, Picker, Section, Segmented, Toggle } from '@/components/ui'
 import { dashboardHref } from '@/dashboard/navigation'
 import { authHeaders, requestToken } from '@/lib/api'
-import { CHAT_FEATURE_DEFINITIONS, personaChoices } from '@/lib/chat-view-model'
+import { CHAT_FEATURE_DEFINITIONS, personaChoices, standaloneTextFeature } from '@/lib/chat-view-model'
 import { CoreError, core, reasonText, type CoreCharacter, type CoreChat, type Resolved } from '@/lib/core'
 import { toast, Toaster } from '@/lib/hooks'
 import { cn } from '@/lib/utils'
+import { InstallationContext } from './context'
 import './chat-defaults.css'
 
 /* Shared defaults: one page for the global level and the DM and group type
@@ -492,6 +493,7 @@ function DefaultsForm({
   onSnapshot: (next: DefaultsSnapshot) => void
   onDiscard: () => void
 }) {
+  const standalone = useContext(InstallationContext) === 'standalone'
   const [busy, setBusy] = useState(false)
   const [conflict, setConflict] = useState<{ key: string; value: unknown; revision: string } | null>(null)
 
@@ -637,6 +639,12 @@ function DefaultsForm({
       </Section>
 
       <Section title="Reply">
+        {standalone && (
+          <p>
+            Standalone supports text replies only. Hermes owns group admission; stickers, reactions and scheduled
+            messages are unavailable.
+          </p>
+        )}
         <DefaultsRow label="Reply length" {...row('replyLength')} busy={busy} onClear={clear('replyLength')}>
           <SegmentedRow
             current={replyLength}
@@ -646,15 +654,17 @@ function DefaultsForm({
             onSave={(v) => void save('replyLength', v)()}
           />
         </DefaultsRow>
-        <DefaultsRow label="Expressions" {...row('expressions')} busy={busy} onClear={clear('expressions')}>
-          <ToggleRow
-            current={asBool(valueOf('expressions'), true)}
-            label="Send a sticker with replies"
-            hint="Off: text only."
-            busy={busy}
-            onSave={(v) => void save('expressions', v)()}
-          />
-        </DefaultsRow>
+        {!standalone && (
+          <DefaultsRow label="Expressions" {...row('expressions')} busy={busy} onClear={clear('expressions')}>
+            <ToggleRow
+              current={asBool(valueOf('expressions'), true)}
+              label="Send a sticker with replies"
+              hint="Off: text only."
+              busy={busy}
+              onSave={(v) => void save('expressions', v)()}
+            />
+          </DefaultsRow>
+        )}
         <DefaultsRow
           label="Tool footer"
           {...row('features.toolFooter')}
@@ -679,7 +689,7 @@ function DefaultsForm({
             />
           </DefaultsRow>
         )}
-        {groupScope && (
+        {!standalone && groupScope && (
           <>
             <DefaultsRow
               label="Free response"
@@ -745,30 +755,36 @@ function DefaultsForm({
         <DefaultsRow label="Memory" {...row('features.memory')} busy={busy} onClear={clear('features.memory')}>
           <ToggleRow
             current={asBool(valueOf('features.memory'), true)}
-            label="Learn and recall facts in this chat"
-            hint="Off: AIRA learns nothing new and recalls nothing here. Stored facts are kept."
+            label={standalone ? 'Recall and save facts in this chat' : 'Learn and recall facts in this chat'}
+            hint={
+              standalone
+                ? 'Automatic learning is unavailable. Explicit memory tools still work.'
+                : 'Off: AIRA learns nothing new and recalls nothing here. Stored facts are kept.'
+            }
             busy={busy}
             onSave={(v) => void save('features.memory', v)()}
           />
         </DefaultsRow>
-        <DefaultsRow
-          label="Memory page"
-          hint="Messages that close a memory episode (5 to 50)."
-          {...row('memory.pageMessages')}
-          busy={busy}
-          onClear={clear('memory.pageMessages')}
-        >
-          <NumberRow
-            key={draftKey('memory.pageMessages')}
-            current={asInt(valueOf('memory.pageMessages'), 25)}
-            min={5}
-            max={50}
-            unit="messages"
+        {!standalone && (
+          <DefaultsRow
             label="Memory page"
+            hint="Messages that close a memory episode (5 to 50)."
+            {...row('memory.pageMessages')}
             busy={busy}
-            onSave={(v) => save('memory.pageMessages', v)()}
-          />
-        </DefaultsRow>
+            onClear={clear('memory.pageMessages')}
+          >
+            <NumberRow
+              key={draftKey('memory.pageMessages')}
+              current={asInt(valueOf('memory.pageMessages'), 25)}
+              min={5}
+              max={50}
+              unit="messages"
+              label="Memory page"
+              busy={busy}
+              onSave={(v) => save('memory.pageMessages', v)()}
+            />
+          </DefaultsRow>
+        )}
       </Section>
 
       <Section title="Limits">
@@ -800,74 +816,80 @@ function DefaultsForm({
             onSave={(v) => void save('tools.maxPerMessage', Number(v))()}
           />
         </DefaultsRow>
-        <DefaultsRow
-          label="Default document format"
-          hint="Format for /doc when a message names none."
-          {...row('report.defaultFormat')}
-          busy={busy}
-          onClear={clear('report.defaultFormat')}
-        >
-          <SegmentedRow
-            current={reportFormat}
-            options={['pdf', 'markdown'] as const}
-            labels={{ pdf: 'PDF', markdown: 'Markdown' }}
-            busy={busy}
-            onSave={(v) => void save('report.defaultFormat', v)()}
-          />
-        </DefaultsRow>
-      </Section>
-
-      <Section title="Quiet hours">
-        <DefaultsRow
-          label="Quiet hours"
-          hint="No scheduled or first message is sent in this window. Replies still go out."
-          {...row('quietHours')}
-          busy={busy}
-          onClear={clear('quietHours')}
-        >
-          <QuietHoursRow
-            key={draftKey('quietHours')}
-            current={quietHours}
-            busy={busy}
-            onSave={(v) => void save('quietHours', v)()}
-          />
-        </DefaultsRow>
-      </Section>
-
-      <Section title="Reactions">
-        <DefaultsRow label="Reactions" {...row('reactions')} busy={busy} onClear={clear('reactions')}>
-          <ToggleRow
-            current={reactionsOn}
-            label="React to members' messages with an emoji"
-            busy={busy}
-            onSave={(v) => void save('reactions', v)()}
-          />
-        </DefaultsRow>
-        {reactionsOn && (
+        {!standalone && (
           <DefaultsRow
-            label="Chance"
-            hint={
-              chancePreset === null
-                ? `Current value: ${reactionsChance}%. Pick a preset to change.`
-                : 'How often a matching message gets a reaction.'
-            }
-            {...row('reactions.chance')}
+            label="Default document format"
+            hint="Format for /doc when a message names none."
+            {...row('report.defaultFormat')}
             busy={busy}
-            onClear={clear('reactions.chance')}
+            onClear={clear('report.defaultFormat')}
           >
             <SegmentedRow
-              current={chancePreset ?? '33'}
-              options={REACTION_CHANCES}
-              labels={REACTION_CHANCE_LABELS}
+              current={reportFormat}
+              options={['pdf', 'markdown'] as const}
+              labels={{ pdf: 'PDF', markdown: 'Markdown' }}
               busy={busy}
-              onSave={(v) => void save('reactions.chance', Number(v))()}
+              onSave={(v) => void save('report.defaultFormat', v)()}
             />
           </DefaultsRow>
         )}
       </Section>
 
+      {!standalone && (
+        <Section title="Quiet hours">
+          <DefaultsRow
+            label="Quiet hours"
+            hint="No scheduled or first message is sent in this window. Replies still go out."
+            {...row('quietHours')}
+            busy={busy}
+            onClear={clear('quietHours')}
+          >
+            <QuietHoursRow
+              key={draftKey('quietHours')}
+              current={quietHours}
+              busy={busy}
+              onSave={(v) => void save('quietHours', v)()}
+            />
+          </DefaultsRow>
+        </Section>
+      )}
+
+      {!standalone && (
+        <Section title="Reactions">
+          <DefaultsRow label="Reactions" {...row('reactions')} busy={busy} onClear={clear('reactions')}>
+            <ToggleRow
+              current={reactionsOn}
+              label="React to members' messages with an emoji"
+              busy={busy}
+              onSave={(v) => void save('reactions', v)()}
+            />
+          </DefaultsRow>
+          {reactionsOn && (
+            <DefaultsRow
+              label="Chance"
+              hint={
+                chancePreset === null
+                  ? `Current value: ${reactionsChance}%. Pick a preset to change.`
+                  : 'How often a matching message gets a reaction.'
+              }
+              {...row('reactions.chance')}
+              busy={busy}
+              onClear={clear('reactions.chance')}
+            >
+              <SegmentedRow
+                current={chancePreset ?? '33'}
+                options={REACTION_CHANCES}
+                labels={REACTION_CHANCE_LABELS}
+                busy={busy}
+                onSave={(v) => void save('reactions.chance', Number(v))()}
+              />
+            </DefaultsRow>
+          )}
+        </Section>
+      )}
+
       <Section title="Features">
-        {CHAT_FEATURE_DEFINITIONS.map((f) => (
+        {CHAT_FEATURE_DEFINITIONS.filter((f) => !standalone || standaloneTextFeature(f.key)).map((f) => (
           <DefaultsRow key={f.key} label={f.label} {...row(f.key)} busy={busy} onClear={clear(f.key)}>
             <ToggleRow
               current={asBool(valueOf(f.key), FEATURE_DEFAULTS[f.key] ?? false)}
