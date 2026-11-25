@@ -59,6 +59,31 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(result["outcome"], "ok")
         self.assertEqual(result["appliedRevision"], "fixture-revision")
 
+    def test_activation_timeout_reports_unconfirmed_completion_not_rollback(self):
+        args = main.build_parser().parse_args(["config", "activate", "--json"])
+        saved = {"savedRevision": "fixture-next", "appliedRevision": "fixture-previous", "activation": "idle"}
+        with (patch.object(configure, "selected_api", return_value=self.selection),
+              patch.object(configure, "api_call", return_value={"activation": "requested"}),
+              patch.object(configure, "readback", return_value=saved),
+              patch.object(configure, "ACTIVATE_POLL_SECONDS", 0)):
+            result = configure.run_config(args, "fixture-operation")
+        self.assertEqual(result["error"]["code"], "activation_failed")
+        self.assertIn("aira config get", result["error"]["recovery"])
+        self.assertNotIn("unchanged", result["error"]["recovery"])
+        self.assertIn("may still", result["error"]["recovery"])
+
+    def test_observed_activation_failure_reports_previous_revision_readback(self):
+        args = main.build_parser().parse_args(["config", "activate", "--json"])
+        saved = {"savedRevision": "fixture-next", "appliedRevision": "fixture-previous", "activation": "idle"}
+        failed = {**saved, "lastFailure": "activation_failed"}
+        with (patch.object(configure, "selected_api", return_value=self.selection),
+              patch.object(configure, "api_call", return_value={"activation": "requested"}),
+              patch.object(configure, "readback", side_effect=[saved, failed])):
+            result = configure.run_config(args, "fixture-operation")
+        self.assertEqual(result["error"]["code"], "activation_failed")
+        self.assertIn("core reported", result["error"]["message"].lower())
+        self.assertEqual(result["config"]["appliedRevision"], "fixture-previous")
+
     def test_invalid_price_and_recursive_local_url_refused(self):
         self.assertFalse(configure.valid_base_url("http://127.0.0.1:9881/v1"))
         self.assertFalse(configure.valid_base_url("https://fixture.invalid:99999/v1"))

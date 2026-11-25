@@ -432,12 +432,13 @@ def cmd_activate(selection, args, readings):
                     state = install.observe(selection["home"], selection["manifest"])["state"]
                     return ok_envelope("config", args.operation_id, state, [], [], None)
                 if latest.get("lastFailure") and latest.get("activation") == "idle":
-                    break
+                    raise operational_error("activation_failed", "The core reported an activation failure.",
+                                            "activate", "Run aira config get to verify the previous applied revision, then retry after correcting the saved configuration.")
             time.sleep(min(ACTIVATE_POLL_INTERVAL_S, max(0, deadline - time.monotonic())))
     raise operational_error("activation_failed",
                             "Activation did not reach the applied readback in time.",
                             "activate",
-                            "The previous applied revision is unchanged; check the readback and retry.")
+                            "The restart may still finish. Run aira config get to check the applied revision before retrying.")
 
 
 def check_scope(args):
