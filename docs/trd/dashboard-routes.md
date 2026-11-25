@@ -155,7 +155,8 @@ Dates and intensity labels align with the plot. Hover, keyboard focus, or tap on
 UTC date and inbound count, including zero. Future dates have no cell. Chart tooltips use an
 opaque, contrasting surface and stay inside the viewport. Only dates and aggregate counts leave the protected activity endpoint.
 
-The catalogue omits the built-in `example` template, which remains available for persona creation.
+The legacy catalogue omits the built-in `example` template, which remains available for persona creation.
+Standalone includes the read-only Example pack so a first-run owner can inspect it before configuring models or chats.
 Create opens a choice of agent instructions, manual entry or JSON import. Catalogue pages hold three rows at
 the current column count. Persona editor tabs show one section and retain unsaved fields across tab changes.
 The simulator uses the harness conversation layout and runs synthetic mood matching entirely in the browser.
