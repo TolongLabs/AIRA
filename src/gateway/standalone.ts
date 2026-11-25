@@ -13,10 +13,12 @@ const identifier = z
   .regex(/^[A-Za-z0-9@._:+-]+$/)
 const receiptSchema = z.strictObject({
   schemaVersion: z.literal(1),
-  adapterVersion: z.literal(STANDALONE_ADAPTER_VERSION),
+  state: z.literal('connected'),
+  adapterVersion: z.string().min(1).max(80),
   profile: profileId,
   verifiedAt: z.iso.datetime()
 })
+const disconnectReceipt = z.strictObject({ schemaVersion: z.literal(1), state: z.literal('disconnected') })
 const attachment = z.strictObject({
   schemaVersion: z.literal(1),
   adapterVersion: z.literal(STANDALONE_ADAPTER_VERSION),
@@ -34,7 +36,7 @@ const turnSchema = z.strictObject({
   text: z.string().trim().min(1).max(32_768)
 })
 export interface HermesRouteStatus {
-  state: 'connected' | 'disconnected'
+  state: 'connected' | 'disconnected' | 'invalid' | 'unsupported'
   adapterVersion: typeof STANDALONE_ADAPTER_VERSION | null
   profile: string | null
   verifiedAt: string | null
@@ -59,16 +61,19 @@ export function createStandaloneGateway(dataRoot: string, now: () => Date = () =
     try {
       const raw = readPrivateText(receiptPath, 4096)
       if (raw === undefined) return { ...detached }
-      const parsed = receiptSchema.safeParse(JSON.parse(raw))
-      if (!parsed.success) return { ...detached }
+      const value: unknown = JSON.parse(raw)
+      if (disconnectReceipt.safeParse(value).success) return { ...detached }
+      const parsed = receiptSchema.safeParse(value)
+      if (!parsed.success) return { ...detached, state: 'invalid' }
+      if (parsed.data.adapterVersion !== STANDALONE_ADAPTER_VERSION) return { ...detached, state: 'unsupported' }
       return {
         state: 'connected',
-        adapterVersion: parsed.data.adapterVersion,
+        adapterVersion: STANDALONE_ADAPTER_VERSION,
         profile: parsed.data.profile,
         verifiedAt: parsed.data.verifiedAt
       }
     } catch {
-      return { ...detached }
+      return { ...detached, state: 'invalid' }
     }
   }
 
@@ -88,11 +93,12 @@ export function createStandaloneGateway(dataRoot: string, now: () => Date = () =
         parsed.data.action === 'connect'
           ? {
               schemaVersion: 1,
+              state: 'connected',
               adapterVersion: STANDALONE_ADAPTER_VERSION,
               profile: parsed.data.profile,
               verifiedAt: now().toISOString()
             }
-          : { schemaVersion: 1, adapterVersion: null, profile: null, verifiedAt: null }
+          : { schemaVersion: 1, state: 'disconnected' }
       writePrivateText(receiptPath, JSON.stringify(receipt) + '\n', true)
     } catch {
       throw new StandaloneGatewayError(503, 'hermes_contract_failed')

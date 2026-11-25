@@ -58,7 +58,7 @@ export type StandaloneActivation = 'idle' | 'requested' | 'starting'
 /** The verified Hermes route receipt, as reported by authenticated owner health
  *  (docs/trd/system.md#standalone-hermes-transport). Absent until verified. */
 export interface StandaloneHermes {
-  state: 'connected' | 'disconnected'
+  state: 'connected' | 'disconnected' | 'invalid' | 'unsupported'
   adapterVersion: string | null
   profile: string | null
   verifiedAt: string | null

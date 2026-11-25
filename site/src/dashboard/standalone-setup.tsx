@@ -93,6 +93,8 @@ function configurationLabel(configuration: StandaloneConfiguration | undefined):
 function hermesLabel(health: CoreHealth | null): string {
   const hermes = health?.hermes
   if (!hermes) return 'Unknown'
+  if (hermes.state === 'invalid') return 'Invalid route receipt'
+  if (hermes.state === 'unsupported') return 'Unsupported adapter'
   if (hermes.state !== 'connected') return 'Not connected'
   return hermes.profile ? `Connected · ${hermes.profile}` : 'Connected'
 }
@@ -245,7 +247,7 @@ export function StandaloneOverview() {
           </>
         ) : (
           <>
-            <p className="m-0">Not connected. Verify with the dry-run first.</p>
+            <p className="m-0">{hermesLabel(health)}. Verify with the dry-run first.</p>
             <HermesCommands profile={hermes.profile} />
             <Button size="sm" variant="outline" onClick={reload}>
               Refresh status
@@ -323,7 +325,7 @@ export function StandaloneHealth() {
           <>
             <dl className="system-facts">
               <dt>State</dt>
-              <dd>{health.hermes.state === 'connected' ? 'Connected' : 'Not connected'}</dd>
+              <dd>{hermesLabel(health)}</dd>
               <dt>Profile</dt>
               <dd>{health.hermes.profile ?? '—'}</dd>
               <dt>Adapter</dt>

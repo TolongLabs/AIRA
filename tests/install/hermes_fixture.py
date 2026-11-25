@@ -55,11 +55,12 @@ async def test_local_adapter_consumes_and_delivers_only_to_the_selected_chat(tmp
     thread = threading.Thread(target=endpoint.serve_forever, daemon=True)
     thread.start()
     try:
-        selected, unrelated = tmp_path / "selected", tmp_path / "unrelated"
-        selected.mkdir()
+        selected, unrelated = tmp_path / "profiles" / "fixture", tmp_path / "profiles" / "unrelated"
+        selected.mkdir(parents=True)
         unrelated.mkdir()
         marker = selected / "aira-transport.json"
-        marker.write_text(json.dumps({"schemaVersion": 1, "profile": "fixture", "port": endpoint.server_port, "token": token}))
+        marker.write_text(json.dumps({"schemaVersion": 1, "profile": "fixture", "profileHome": str(selected),
+                                      "port": endpoint.server_port, "token": token}))
         marker.chmod(0o600)
         runner = _runner()
         adapter = _DummyAdapter(Platform.WHATSAPP)
@@ -83,6 +84,12 @@ async def test_local_adapter_consumes_and_delivers_only_to_the_selected_chat(tmp
             ambiguous = event("fixture-group@g.us", "fixture-b@lid", "m6", "ambiguous", "group")
             ambiguous.user_id = ""
             assert await runner._handle_message(ambiguous) is None
+            conflicting = event("fixture-group@g.us", "fixture-b@lid", "m9", "conflicting", "group")
+            conflicting.user_id = "fixture-c@lid"
+            assert await runner._handle_message(conflicting) is None
+            media_only = event("fixture-a@lid", "fixture-a@lid", "m10", "unsupported media")
+            media_only.media_types = ["image/png"]
+            assert await runner._handle_message(media_only) is None
             marker.write_text("intentionally invalid")
             assert await runner._handle_message(event("fixture-a@lid", "fixture-a@lid", "m7", "no fallback")) is None
         runner._handle_message_with_agent.assert_not_awaited()
