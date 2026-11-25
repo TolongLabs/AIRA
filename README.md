@@ -73,6 +73,7 @@
         <li><a href="#prerequisites">Prerequisites</a></li>
         <li><a href="#quick-setup">Quick Setup</a></li>
         <li><a href="#open-the-owner-dashboard">Open The Owner Dashboard</a></li>
+        <li><a href="#try-the-simulator">Try The Simulator (Development)</a></li>
         <li><a href="#run-tests">Run Tests</a></li>
       </ul>
     </li>
@@ -116,6 +117,7 @@ failure leaves a record, so a fault can be found after the fact and replayed off
 | Requirement Status     | [`docs/trd/traceability.md`](docs/trd/traceability.md), code, tests and gap per requirement       |
 | Decision Records       | [`docs/decisions/`](docs/decisions/README.md), one record per lasting choice, with its rationale  |
 | Runbook                | [`docs/RUNBOOK.md`](docs/RUNBOOK.md), host operations, dashboard checks and recovery              |
+| Installation           | [`docs/INSTALL.md`](docs/INSTALL.md), standalone setup, Hermes attachment and troubleshooting     |
 | Releases               | [GitHub Releases](https://github.com/TolongLabs/AIRA/releases) and [`CHANGELOG.md`](CHANGELOG.md) |
 
 <p align="right"><a href="#readme-top">&uarr;</a></p>
@@ -210,7 +212,7 @@ The dashboard screenshots use fictional chats and isolated settings. Each one fo
 </table>
 
 Character Studio edits identity, speech, moods and fixed lines. Its **Preview Conversation** shows a draft's configured
-mood openers. The model-backed simulator in the [quick setup](#quick-setup) runs the full reply pipeline.
+mood openers. The model-backed [developer simulator](#try-the-simulator) runs the full reply pipeline.
 
 <p align="right"><a href="#readme-top">&uarr;</a></p>
 
@@ -263,14 +265,14 @@ every partial one is named in [`docs/trd/traceability.md`](docs/trd/traceability
 Two processes do the work. **The gateway** receives and sends WhatsApp messages and calls the core as its model. **The
 core** owns the turn: it resolves the chat, builds the prompt, runs the loop, cleans the reply and returns it.
 
-| Item         | Value                                                                                   |
-| ------------ | --------------------------------------------------------------------------------------- |
-| Core         | One TypeScript service on Node 24, in one container                                     |
-| Transport    | Hermes Agent gateway and its WhatsApp bridge, on the host, at a pinned version          |
-| Attach Point | An OpenAI-compatible HTTP endpoint on `127.0.0.1:9881`                                  |
-| Store        | One SQLite file on a mounted data volume, written by the core only                      |
-| Model Loop   | Google Agent Development Kit (API runner) or the `claude` program (subscription runner) |
-| Judge Model  | A hosted small model for mood, memory admission and memory verification                 |
+| Item         | Value                                                                                                |
+| ------------ | ---------------------------------------------------------------------------------------------------- |
+| Core         | One TypeScript service on Node 24, in one container                                                  |
+| Transport    | Hermes Agent gateway on the host; legacy integration or pinned standalone text adapter               |
+| Attach Point | Legacy OpenAI-compatible endpoint; standalone authenticated text transport on a mapped loopback port |
+| Store        | One SQLite file on a mounted data volume, written by the core only                                   |
+| Model Loop   | Google Agent Development Kit (API runner); legacy also supports the `claude` subscription runner     |
+| Judge Model  | A hosted small model for mood, memory admission and memory verification                              |
 
 [`docs/TRD.md`](docs/TRD.md) is the contract: one module per subsystem, with the decisions and the rules that hold
 across all of them. The diagrams are indexed in [`docs/diagrams/`](docs/diagrams/README.md).
@@ -283,12 +285,13 @@ across all of them. The diagrams are indexed in [`docs/diagrams/`](docs/diagrams
 
 ```
 AIRA/
+├── aira                 portable host CLI launcher
 ├── config.yml           deployment settings, reviewed in git
 ├── .env.example         names of every secret, no values
 ├── characters/example/  one fictional character pack; real packs live on the data volume
 ├── prompts/             harness prompt blocks shared by all characters
 ├── src/                 the core service
-│   ├── gateway/             the OpenAI-compatible endpoint and delivery mapping
+│   ├── gateway/             legacy endpoint and standalone authenticated text transport
 │   ├── turn/                turn context, admission, the turn pipeline
 │   ├── character/           pack schema, loader, validator
 │   ├── prompt/              block assembly, mood detection, reply shape
@@ -313,7 +316,7 @@ AIRA/
 ├── bench/               benchmark sets
 ├── live/                live check sets, run before a release
 ├── scripts/             migration, replay, benchmark and operator tools
-├── deploy/              Dockerfile, compose file, gateway patches, host units
+├── deploy/              Dockerfile, Compose templates, CLI, gateway adapters and host units
 └── docs/                PRD, TRD, runbook, decisions, diagrams, images
 ```
 
@@ -323,20 +326,20 @@ AIRA/
 
 ### Tech Stack
 
-| Layer           | Technology                                                           |
-| --------------- | -------------------------------------------------------------------- |
-| Language        | TypeScript in strict mode, ES modules                                |
-| Runtime         | Node 24, with Bun as the package manager and script runner           |
-| Model Loop      | `@google/adk` for the API runner, and the Anthropic SDK for Claude   |
-| Tool Servers    | Model Context Protocol, through `@modelcontextprotocol/sdk`          |
-| Validation      | Zod for every config file, card, tool schema and model reply         |
-| Store           | SQLite through `better-sqlite3`                                      |
-| Analytics       | DuckDB, for report and benchmark scripts only                        |
-| Owner Dashboard | React 19, Vite 7, Tailwind CSS 4, Radix UI                           |
-| Tests           | Vitest for the core, Playwright for the built site                   |
-| Tooling         | Biome, Prettier, Husky, commitlint, gitleaks, Dependabot             |
-| Deployment      | One container image, deployed by a self-hosted GitHub Actions runner |
-| Off-Host Backup | An encrypted restic repository, at most 15 minutes old               |
+| Layer           | Technology                                                            |
+| --------------- | --------------------------------------------------------------------- |
+| Language        | TypeScript in strict mode, ES modules                                 |
+| Runtime         | Node 24, with Bun as the package manager and script runner            |
+| Model Loop      | `@google/adk` for the API runner, and the Anthropic SDK for Claude    |
+| Tool Servers    | Model Context Protocol, through `@modelcontextprotocol/sdk`           |
+| Validation      | Zod for every config file, card, tool schema and model reply          |
+| Store           | SQLite through `better-sqlite3`                                       |
+| Analytics       | DuckDB, for report and benchmark scripts only                         |
+| Owner Dashboard | React 19, Vite 7, Tailwind CSS 4, Radix UI                            |
+| Tests           | Vitest for the core, Playwright for the built site                    |
+| Tooling         | Biome, Prettier, Husky, commitlint, gitleaks, Dependabot              |
+| Deployment      | One container image; legacy CI deployment or standalone stable update |
+| Off-Host Backup | An encrypted restic repository, at most 15 minutes old                |
 
 <p align="right"><a href="#readme-top">&uarr;</a></p>
 
@@ -346,53 +349,35 @@ AIRA/
 
 ## Getting Started
 
-Try a DM on your computer before connecting a WhatsApp account.
+Start the private owner dashboard before connecting a model or WhatsApp account. Standalone installation is
+available from [v1.6.0](https://github.com/TolongLabs/AIRA/releases/tag/v1.6.0). It supports ordinary WhatsApp
+text after admission by the supported Hermes gateway. The existing legacy integration is unchanged.
 
 <a id="prerequisites"></a>
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) 24 and [Bun](https://bun.sh/) (version pinned in `package.json`)
-- A model API key
-- Optional: [Docker](https://www.docker.com/), for an installation that delivers replies to WhatsApp
+- Linux amd64 with systemd, Git and Python 3.10 or later
+- Local rootful [Docker Engine](https://docs.docker.com/engine/) with Compose v2 or later, enabled at boot
+- A non-root installation owner with Docker access and at least 2 GiB of free disk space
+
+No host Node.js, Bun, model key or Hermes installation is required to open the dashboard. Configure a model and
+attach Hermes separately when ready.
 
 <a id="quick-setup"></a>
 
 ### Quick Setup
 
-1. **Clone And Install.** Clone the repository and install the core dependencies.
+```sh
+git clone https://github.com/TolongLabs/AIRA.git
+cd AIRA
+./aira setup
+```
 
-   ```sh
-   git clone https://github.com/TolongLabs/AIRA.git
-   cd AIRA
-   bun install --frozen-lockfile
-   ```
-
-2. **Add Your Key.** In this fresh checkout, create a private environment file.
-
-   ```sh
-   install -m 600 .env.example .env
-   ```
-
-   Open `.env` in your editor and set `LLM_API_KEY`. The bundled `config.yml` selects Anthropic for the primary role.
-   For an OpenAI-compatible provider, set `llm.main.provider` to `openai-compatible` and set `llm.main.baseUrl`,
-   `llm.main.model` and `llm.main.effort` to values your provider supports.
-
-3. **Start The Simulator.** Run it from the repository root. Open the local address it prints, choose the direct chat
-   and send a message.
-
-   ```sh
-   bun run sim --character example
-   ```
-
-   The default address is `http://127.0.0.1:9900`. The public checkout includes the fictional **Example** pack. The
-   screenshots above use the private **AIRA** pack from the installed host. To try a pack of your own, place it in a
-   dedicated simulator data directory under `characters/<pack-id>/`, then pass
-   `--data <directory> --character <pack-id>`.
-
-For an installation that delivers replies to WhatsApp, connect the Hermes gateway and run the core with Docker Compose.
-The install guide covers the data volume, private configuration, gateway media mounts and health check.
-[Host Installation](docs/trd/deployment.md#install) · [Simulator Options](docs/trd/harness.md#whatsapp-simulator)
+Setup pulls the public `stable` image, creates a private installation and prints the actual dashboard URL. It finds
+free loopback ports if the defaults are occupied. The container starts independently of the terminal and resumes
+after boot when Docker is enabled. The CLI installs an owner-only launcher; use `./aira` from the checkout or the
+launcher path printed by setup if `aira` is not on your `PATH`.
 
 > **Never Commit `.env`, A Real Character Pack, Or Real Chat Data.** Only the fictional `example` pack belongs in
 > `characters/`.
@@ -401,24 +386,52 @@ The install guide covers the data volume, private configuration, gateway media m
 
 ### Open The Owner Dashboard
 
-On a host with AIRA and the Hermes owner service installed, open `http://127.0.0.1:9890/overview`. The published
-dashboard port is `AIRA_SITE_PORT` (default `9890`). To find yours, run `docker compose port aira 9890` in the host's
-install directory. If it differs, use that port on the host side of the SSH tunnel below. The canonical routes use
-`AIRA_DASHBOARD_ENTRY=dashboard`. The entry switch and its rollback are documented in the runbook.
-[Dashboard Entry Switch](docs/trd/deployment.md#dashboard-entry-recovery)
+1. Run `./aira dashboard` to discover and open the actual URL. On SSH, use the printed forwarding command on
+   your laptop, replacing the login placeholder. Keep the tunnel open.
+2. On the host, run `./aira dashboard --show-token` in an interactive owner terminal. Enter the credential in
+   the sign-in form and select **Save token**. Never put the token in a URL or share it.
+3. Follow the Overview tasks. In **System Settings**, save a main model and apply the saved revision. The
+   fictional **Example** pack is ready in Character Studio. A running dashboard does not mean the chatbot is active.
+4. If you have the exact supported public [Hermes v0.23.4](https://github.com/NousResearch/hermes-agent/releases/tag/v0.23.4)
+   and an independent configured profile, review `./aira attach-hermes --profile default --dry-run` before a
+   deliberate `--apply`. Substitute your selected profile name if needed.
 
-1. **Forward The Port.** From a laptop, forward the host's dashboard port. Replace `owner@your-host` with your SSH
-   login. Keep the SSH session open while using the dashboard.
+| Need                         | Command                         |
+| ---------------------------- | ------------------------------- |
+| Discover URL or verify state | `aira dashboard`, `aira status` |
+| Diagnose a failure           | `aira doctor`, `aira logs`      |
+| Manage saved settings        | `aira config get`               |
+| Resume or update             | `aira setup`, `aira update`     |
+| Restore a verified copy      | `aira restore --help`           |
 
-   ```sh
-   ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:9890:127.0.0.1:9890 owner@your-host
-   ```
+See the [installation and troubleshooting guide](docs/INSTALL.md) for the exact attachment, update and recovery
+steps, CLI flags and supported capabilities. Real account pairing and WhatsApp delivery were not part of the
+synthetic release verification. Existing legacy installations retain their owner authority and deployment channel:
+`aira status`, `aira dashboard`, `aira doctor` and `aira logs` discover them without restarting or migrating them.
 
-2. **Sign In.** Open `http://127.0.0.1:9890/overview` in the laptop browser. At the sign-in prompt, enter the Hermes
-   owner site token from the host's `~/.hermes/brain/.site-token` and select **Save token**.
-3. **Check The Models.** Open **System → Host Settings → Models** to inspect the primary and fallback routes.
-   **Credentials** lets you set or replace a key. **Apply saved changes** activates edits to the installed
-   configuration.
+<a id="try-the-simulator"></a>
+
+### Try The Simulator (Development)
+
+To run the model-backed simulator instead of the installed container, use a separate checkout with
+[Node.js](https://nodejs.org/) 24, [Bun](https://bun.sh/) (version pinned in `package.json`) and a model API key.
+
+```sh
+bun install --frozen-lockfile
+install -m 600 .env.example .env
+```
+
+Set `LLM_API_KEY` in the private `.env`. The bundled `config.yml` selects Anthropic for the primary role. For an
+OpenAI-compatible provider, configure `llm.main.provider`, `llm.main.baseUrl`, `llm.main.model` and `llm.main.effort`.
+
+```sh
+bun run sim --character example
+```
+
+Open the printed address (default `http://127.0.0.1:9900`) and choose the direct chat. Only the fictional
+**Example** pack is bundled. To try your own pack, place it in a dedicated simulator data directory under
+`characters/<pack-id>/` and pass `--data <directory> --character <pack-id>`.
+[Simulator Options](docs/trd/harness.md#whatsapp-simulator)
 
 <a id="run-tests"></a>
 
@@ -450,7 +463,8 @@ each gate's threshold are defined in [`docs/trd/harness.md`](docs/trd/harness.md
 
 Keep real packs on the data volume and credentials in the host's protected configuration. The runbook covers the
 private listener, snapshots, deployment health and rollback. The [operator runbook](docs/RUNBOOK.md) and
-[deployment contract](docs/trd/deployment.md) give the commands.
+[deployment contract](docs/trd/deployment.md) cover legacy operations; the [installation guide](docs/INSTALL.md)
+covers standalone setup and recovery.
 
 <p align="right"><a href="#readme-top">&uarr;</a></p>
 
@@ -508,6 +522,7 @@ first.
 | How far does each requirement stand? | [`docs/trd/traceability.md`](docs/trd/traceability.md), [`docs/READINESS.md`](docs/READINESS.md)     |
 | Why is it built this way?            | [`docs/decisions/`](docs/decisions/README.md)                                                        |
 | How is it deployed and operated?     | [`docs/RUNBOOK.md`](docs/RUNBOOK.md), [`docs/trd/deployment.md`](docs/trd/deployment.md)             |
+| How do I install or troubleshoot?    | [`docs/INSTALL.md`](docs/INSTALL.md)                                                                 |
 | How do I change or extend a part?    | [`docs/MAINTAINING.md`](docs/MAINTAINING.md)                                                         |
 | What are the house rules?            | [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md), [`docs/references/`](docs/references/)                 |
 | How do coding agents work here?      | [`AGENTS.md`](AGENTS.md)                                                                             |

@@ -5,6 +5,10 @@ Open `/app/preview/overview` on a staged install. With the dashboard entry enabl
 Selecting the classic entry restores the original site under `/app/`. See the [route map](../docs/trd/dashboard-routes.md),
 [state ownership matrix](../docs/trd/dashboard-state.md) and [design contract](../docs/DESIGN.md).
 
+For a new standalone installation, follow the [installation guide](../docs/INSTALL.md). The bundled site renders
+the keyless setup tasks and typed settings using the standalone owner credential. Legacy hosts keep their existing
+owner-service authorization. A standalone service does not expose unavailable legacy-only capabilities.
+
 Build the site from the repository root.
 
 ```sh
