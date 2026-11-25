@@ -223,6 +223,9 @@ profile stays stopped with an explicit start instruction. Never start a second g
 Verify using the installed adapter's synthetic local handshake against the actual mapped core port,
 not an arbitrary provider URL or a real message. On failure restore the exact prior touched files
 and service state, clear or restore the route receipt, return nonzero with safe recovery evidence.
+An owned private `<data>/standalone/attach-host.json` records the pinned source and Hermes root paths and
+selected profile; doctor rechecks the files and liveness against that record. It is not a credential or an
+authorization source. A missing, moved or foreign source/marker cannot count as an installed route.
 If rollback fails report exit 5 and the private backup location. The public adapter is limited to
 ordinary WhatsApp text after Hermes admission; the legacy integration and its broader capabilities
 remain unchanged. See [standalone Hermes transport](system.md#standalone-hermes-transport).

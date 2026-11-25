@@ -58,13 +58,20 @@ an ordinary admitted event even if the adapter, marker, request or response fail
 to the ordinary Hermes model. The pinned source and synthetic tests verify this before attachment.
 Unrelated, internal and explicit Hermes command paths are not AIRA model turns.
 
-The selected profile stores `aira-transport.json` (0600) with schema version 1, profile ID, mapped
-loopback core port and a separate random 256-bit gateway credential. The core generates
+The selected profile stores `aira-transport.json` (0600) with schema version 1, profile ID, canonical
+profile home, mapped loopback core port and a separate random 256-bit gateway credential. The marker
+is valid only in its recorded profile home (a named profile must match `profiles/<profile>`).
+The core generates
 `<data>/standalone/gateway.token` once with the same private-file rules as its owner credential; neither
 credential can stand in for the other. The adapter uses direct loopback HTTP with no redirect or proxy.
 It takes chat kind, chat ID, sender ID and message ID from the trusted normalized event/source
-(`event.sender_id()`, not text or a guessed sender). Missing or merged ambiguous identity, media-only,
-unaddressed or unsupported events yield no reply. Text is untrusted payload, never parsed as a scope marker.
+(`event.sender_id()`, not text or a guessed sender); a conflicting non-empty source sender is refused.
+Missing or merged ambiguous identity, media metadata, broadcasts, explicitly unaddressed or unsupported
+events yield no reply. Stock Hermes's WhatsApp `_build_message_event` calls `_should_process_message`
+before constructing the admitted group event, so the configured mention and group policy remains Hermes's
+authority. Text is untrusted payload, never parsed as a scope marker. Limit structured input and output
+to 32,768 text characters and 256 KiB JSON. The adapter uses a bounded 120-second local request and never
+retries a turn after an ambiguous failure. A core-produced reply is not a confirmed WhatsApp delivery receipt.
 
 | Endpoint                     | Contract                                                                                                                                                                                                                 |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -79,11 +86,15 @@ jobs, file/sticker delivery, voice or media hooks. Text-only output is the initi
 The core retains its usual per-chat isolation, message deduplication, pending-chat admission and explicit
 character binding. Route verification is not account pairing or real delivery.
 
-The private route receipt `<data>/standalone/hermes.json` contains version 1, adapter version, selected
-profile ID and verification timestamp. Authenticated owner health reports `hermes: {state, adapterVersion,
-profile, verifiedAt}`; a verified receipt reports connected (authenticated stateless route, not a persistent
-socket or proof of a running upstream process). Without that receipt it is disconnected. CLI doctor
-independently checks the selected profile's service liveness. The effective chatbot is ready only when
+The private route receipt `<data>/standalone/hermes.json` contains version 1 and explicit `connected` or
+`disconnected` state; a connected receipt includes adapter version, selected profile ID and verification
+timestamp. Authenticated owner health reports `hermes: {state, adapterVersion, profile, verifiedAt}`;
+an invalid or unsupported receipt is separately reported as `invalid` or `unsupported` and never enables turns.
+A verified receipt reports connected (authenticated stateless route, not a persistent socket or proof of a
+running upstream process). Without that receipt it is disconnected. CLI doctor independently checks the
+installed source, helper, marker and selected profile's service liveness using a private host attachment record.
+Hermes upgrades outside AIRA may remove the pinned insertion; the operator must verify the supported version
+and rerun dry-run before using an upgraded gateway. The effective chatbot is ready only when
 an applied model revision and the verified route exist; the actual model provider call is proven by
 a deterministic or explicitly configured test turn, not a health probe.
 
