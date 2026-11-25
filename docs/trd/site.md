@@ -230,6 +230,12 @@ A legacy response without the new fields selects the existing dashboard behavior
 
 ## Standalone First Run
 
+The standalone core marks its public static HTML document with a non-secret installation-mode
+attribute. This lets the shell select its initial views before any legacy host request; it grants
+no authorization and contains no capability or private state. Legacy static documents remain
+unchanged, so their existing initial render and credential prompt order are preserved. All actual
+readiness, capability and configuration data still requires the protected owner API.
+
 Use the existing dashboard shell and design system. A standalone Overview leads with a setup task
 panel and separate service, configuration, Hermes and chatbot status; the example pack is available
 in Studio before activation. Configure Models links to System Settings, where the typed standalone
