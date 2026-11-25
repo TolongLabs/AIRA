@@ -445,7 +445,7 @@ The owner site: its front end, write protection, hosting and footer editing. 10 
 
 ## Deployment
 
-Images, deploys, repository process, records of failures and retention checks. 17 records, in ID order.
+Images, deploys, repository process, records of failures and retention checks. 18 records, in ID order.
 
 | ID       | Date       | Decision                                                               | Status                   |
 | -------- | ---------- | ---------------------------------------------------------------------- | ------------------------ |
@@ -466,6 +466,7 @@ Images, deploys, repository process, records of failures and retention checks. 1
 | ADR-0177 | 2026-11-18 | [Give Production Dependencies Their Own Image Stage][ADR-0177]         | Accepted                 |
 | ADR-0178 | 2026-11-18 | [Open Release Pull Requests With a GitHub App Token][ADR-0178]         | Accepted                 |
 | ADR-0187 | 2026-11-25 | [Install with a Portable Host CLI][ADR-0187]                           | Accepted                 |
+| ADR-0190 | 2026-11-26 | [Promote the Published Release Commit][ADR-0190]                       | Accepted                 |
 
 [ADR-0163]: 0163-build-one-container-image-per-tagged-release.md
 [ADR-0164]: 0164-deploy-every-merge-to-main-through-a-self-hosted-runner.md
@@ -484,6 +485,7 @@ Images, deploys, repository process, records of failures and retention checks. 1
 [ADR-0177]: 0177-give-production-dependencies-their-own-image-stage.md
 [ADR-0178]: 0178-open-release-pull-requests-with-a-github-app-token.md
 [ADR-0187]: 0187-install-with-a-portable-host-cli.md
+[ADR-0190]: 0190-promote-the-published-release-commit.md
 
 ## Search Depth
 
