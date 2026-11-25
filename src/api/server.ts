@@ -2,6 +2,8 @@ import { readFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { extname, resolve, sep } from 'node:path'
 import { z } from 'zod'
+import type { InstallationMode } from '../config/installation-mode.js'
+import { verifyStandaloneOwnerToken } from '../config/standalone-owner.js'
 import type { Logger } from '../records/logger.js'
 import {
   createDashboardDiagnostics,
@@ -40,6 +42,10 @@ export interface SiteApiServerOptions extends SiteApiDeps {
   logger: Logger
   /** `site.allowedOrigins` */
   dashboardEntry?: boolean
+  /** Standalone authority. In standalone the dashboard entry is forced and auth is local-only. */
+  installationMode?: InstallationMode
+  /** The local owner secret, loaded once at start-up. Required in standalone. */
+  standaloneOwnerToken?: string
   allowedOrigins: readonly string[]
   /** The built site, served under /app/ (docs/trd/site.md#serving-the-site). Absent: no pages are served. */
   siteDir?: string
@@ -244,8 +250,11 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
         })
       )
     }
+    const standalone = options.installationMode === 'standalone'
+    // Standalone always serves the dashboard entry (docs/trd/site.md#standalone-owner-authentication).
+    const entry = standalone || options.dashboardEntry === true
     const dashboard = target.startsWith('/owner-api/core/')
-    const protectedEntry = options.dashboardEntry && (target.startsWith('/api/') || target.startsWith('/owner-api/'))
+    const protectedEntry = entry && (target.startsWith('/api/') || target.startsWith('/owner-api/'))
     if (dashboard || protectedEntry) {
       response.setHeader('cache-control', 'no-store')
       if (
@@ -255,10 +264,20 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
         return json(response, 403, { error: 'origin_refused' })
       const token = request.headers['x-tolongai-token']
       if (typeof token !== 'string' || !token.trim()) return json(response, 401, { error: 'owner_token_required' })
-      if (!options.ownerApiOrigin && !options.ownerApiSocket)
-        return json(response, 503, { error: 'owner_service_unconfigured' })
-      const auth = await authorizeOwner(options, token)
-      if (!auth.ok) return json(response, auth.status, { error: auth.code })
+      if (standalone) {
+        // The local credential never leaves this check: no host fallback, no host request.
+        if (!options.standaloneOwnerToken || !verifyStandaloneOwnerToken(options.standaloneOwnerToken, token))
+          return json(response, 401, { error: 'owner_token_required' })
+        // A valid local token grants the core prefix and the classic core API only. Host-owned
+        // operations do not exist in standalone, so they fail here, before any proxy, send or cron path.
+        if (!dashboard && target.startsWith('/owner-api/'))
+          return json(response, 503, { error: 'capability_unavailable' })
+      } else {
+        if (!options.ownerApiOrigin && !options.ownerApiSocket)
+          return json(response, 503, { error: 'owner_service_unconfigured' })
+        const auth = await authorizeOwner(options, token)
+        if (!auth.ok) return json(response, auth.status, { error: auth.code })
+      }
       if (dashboard) target = '/api/' + target.slice('/owner-api/core/'.length)
     }
     const path = target.split('?')[0] ?? '/'

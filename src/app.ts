@@ -11,6 +11,7 @@ import { credentialPurposes, deploymentSettings } from './config/dashboard-setti
 import { type InstallationMode, installationModeFromEnv } from './config/installation-mode.js'
 import { ConfigError, requireDeployable } from './config/loader.js'
 import type { Config } from './config/schema.js'
+import { ensureStandaloneOwnerToken } from './config/standalone-owner.js'
 import { createConfigStatus } from './config/status.js'
 import { expireFeedback, pruneFeedbackAnswers } from './feedback/store.js'
 import { createFeedbackSync, type FeedbackSync } from './feedback/sync.js'
@@ -217,6 +218,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   })
   const closers: (() => void | Promise<void>)[] = []
   try {
+    const standaloneOwnerToken = standalone ? ensureStandaloneOwnerToken(paths.root) : undefined
     for (const turnId of started.recovery.interruptedTurns) alerter.raise('turn_interrupted', { turnId })
 
     recoverStudioPacks({ paths, storage, now }, (id) => alerter.raise('pack_invalid', { pack: id }))
@@ -928,7 +930,9 @@ export async function createApp(options: AppOptions): Promise<App> {
       socialMirrors,
       allowedOrigins: config.site.allowedOrigins,
       marketsPath: config.owner.marketsConfig,
-      dashboardEntry: env.AIRA_DASHBOARD_ENTRY === 'dashboard',
+      dashboardEntry: standalone ? true : env.AIRA_DASHBOARD_ENTRY === 'dashboard',
+      installationMode,
+      ...(standaloneOwnerToken !== undefined ? { standaloneOwnerToken } : {}),
       ...(env.AIRA_OWNER_API_SOCKET ? { ownerApiSocket: env.AIRA_OWNER_API_SOCKET } : {}),
       ...(env.AIRA_OWNER_API_ORIGIN ? { ownerApiOrigin: env.AIRA_OWNER_API_ORIGIN } : {}),
       ...(options.channelDirectoryPath !== undefined ? { channelDirectoryPath: options.channelDirectoryPath } : {}),
