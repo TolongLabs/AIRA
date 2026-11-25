@@ -7,6 +7,27 @@ export interface MediaReading {
   transcript?: string
 }
 
+export type MediaWatchFailureDetail =
+  | { type: 'network' }
+  | { type: 'http_transient' }
+  | { type: 'rate_limit'; retryAfterMs?: number }
+  | { type: 'parse' }
+  | { type: 'http_client' }
+  | { type: 'auth' }
+  | { type: 'refusal' }
+  | { type: 'abort' }
+  | { type: 'timeout' }
+  | { type: 'unavailable' }
+  | { type: 'transient' }
+
+export class MediaWatchError extends ModelError {
+  readonly detail: MediaWatchFailureDetail
+  constructor(kind: ModelFailureKind, message: string, detail: MediaWatchFailureDetail, options?: ErrorOptions) {
+    super(kind, message, options)
+    this.detail = detail
+  }
+}
+
 export interface WatchUrlSource {
   url: string
   mimeType?: string
@@ -73,20 +94,52 @@ function sanitizeMessage(message: string, apiKey: string): string {
   return message.replaceAll(apiKey, '[redacted]')
 }
 
-function errorForStatus(status: number, bodyText: string, apiKey: string): ModelError {
+function parseRetryAfterMs(value: string | null, receiptMs: number): number | undefined {
+  if (value === null) return undefined
+  const trimmed = value.trim()
+  if (trimmed.length === 0) return undefined
+  if (/^\d+$/.test(trimmed)) {
+    const ms = Number(trimmed) * 1000
+    return Number.isFinite(ms) ? ms : undefined
+  }
+  const dateMs = Date.parse(trimmed)
+  if (!Number.isFinite(dateMs)) return undefined
+  // Date.parse accepts ISO dates, numeric fragments and impossible calendar dates. Only the HTTP-date
+  // wire forms are valid hints; compare with the parsed date to reject rollovers and weekday mismatches.
+  const date = new Date(dateMs)
+  const canonical = date.toUTCString()
+  const [weekday, day, month, year, time] = canonical.replace(',', '').split(' ')
+  const fullWeekday = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][date.getUTCDay()]
+  const obsolete = `${fullWeekday}, ${day}-${month}-${year?.slice(-2)} ${time} GMT`
+  const asctime = `${weekday} ${month} ${String(Number(day)).padStart(2, ' ')} ${time} ${year}`
+  if (trimmed !== canonical && trimmed !== obsolete && trimmed !== asctime) return undefined
+
+  const diff = dateMs - receiptMs
+  return Math.max(0, diff)
+}
+
+function errorForStatus(status: number, bodyText: string, apiKey: string, retryAfterMs?: number): MediaWatchError {
   let kind: ModelFailureKind
+  let detail: MediaWatchFailureDetail
   if (status === 401 || status === 403) {
     kind = 'auth'
+    detail = { type: 'auth' }
   } else if (status === 429) {
     kind = 'rate_limit'
+    detail =
+      retryAfterMs !== undefined && Number.isFinite(retryAfterMs)
+        ? { type: 'rate_limit', retryAfterMs }
+        : { type: 'rate_limit' }
   } else if (status === 408 || (status >= 500 && status <= 599)) {
     kind = 'transient'
+    detail = { type: 'http_transient' }
   } else {
     kind = 'malformed'
+    detail = { type: 'http_client' }
   }
-  const snippet = sanitizeMessage(bodyText.slice(0, 200), apiKey)
+  const snippet = sanitizeMessage(bodyText, apiKey).slice(0, 200)
   const message = snippet.length > 0 ? `HTTP ${status}: ${snippet}` : `HTTP ${status}`
-  return new ModelError(kind, message)
+  return new MediaWatchError(kind, message, detail)
 }
 
 function requestBodyFor(mediaPart: Record<string, unknown>, lowResolution = false): Record<string, unknown> {
@@ -133,10 +186,10 @@ export function toGenerateContentUrlBody(source: WatchUrlSource): Record<string,
   )
 }
 
-/** The reading from one response body. Throws ModelError('malformed') when it has none. Pure. */
+/** The reading from one response body. Throws MediaWatchError on any failure. Pure. */
 export function fromGenerateContentBody(body: unknown): { reading: MediaReading; usage: ModelUsage } {
   if (!isRecord(body)) {
-    throw new ModelError('malformed', 'response body is not an object')
+    throw new MediaWatchError('malformed', 'response body is not an object', { type: 'parse' })
   }
 
   if (
@@ -144,24 +197,24 @@ export function fromGenerateContentBody(body: unknown): { reading: MediaReading;
     typeof body.promptFeedback.blockReason === 'string' &&
     body.promptFeedback.blockReason.length > 0
   ) {
-    throw new ModelError('refusal', `prompt blocked: ${body.promptFeedback.blockReason}`)
+    throw new MediaWatchError('refusal', `prompt blocked: ${body.promptFeedback.blockReason}`, { type: 'refusal' })
   }
 
   const candidates = body.candidates
   if (!Array.isArray(candidates) || candidates.length === 0) {
-    throw new ModelError('malformed', 'response has no candidates')
+    throw new MediaWatchError('malformed', 'response has no candidates', { type: 'parse' })
   }
   const candidate = candidates[0]
   if (!isRecord(candidate)) {
-    throw new ModelError('malformed', 'first candidate is not an object')
+    throw new MediaWatchError('malformed', 'first candidate is not an object', { type: 'parse' })
   }
   if (candidate.finishReason === 'SAFETY') {
-    throw new ModelError('refusal', 'SAFETY')
+    throw new MediaWatchError('refusal', 'SAFETY', { type: 'refusal' })
   }
 
   const content = candidate.content
   if (!isRecord(content) || !Array.isArray(content.parts)) {
-    throw new ModelError('malformed', 'candidate has no content parts')
+    throw new MediaWatchError('malformed', 'candidate has no content parts', { type: 'parse' })
   }
 
   const textParts: string[] = []
@@ -172,23 +225,28 @@ export function fromGenerateContentBody(body: unknown): { reading: MediaReading;
   }
   const rawText = textParts.join('')
   if (rawText.trim().length === 0) {
-    throw new ModelError('malformed', 'response has no text')
+    throw new MediaWatchError('malformed', 'response has no text', { type: 'parse' })
   }
 
   let parsedJson: unknown
   try {
     parsedJson = JSON.parse(stripJsonFence(rawText))
   } catch (cause) {
-    throw new ModelError('malformed', 'reading text is not valid JSON', { cause })
+    throw new MediaWatchError('malformed', 'reading text is not valid JSON', { type: 'parse' }, { cause })
+  }
+
+  if (isRecord(parsedJson) && (parsedJson.transcript === null || parsedJson.transcript === '')) {
+    const { transcript: _omitted, ...rest } = parsedJson
+    parsedJson = rest
   }
 
   const validated = readingSchema.safeParse(parsedJson)
   if (!validated.success) {
-    throw new ModelError('malformed', 'reading failed validation')
+    throw new MediaWatchError('malformed', 'reading failed validation', { type: 'parse' })
   }
 
   const reading: MediaReading =
-    validated.data.transcript !== undefined
+    validated.data.transcript !== undefined && validated.data.transcript !== ''
       ? { description: validated.data.description, transcript: validated.data.transcript }
       : { description: validated.data.description }
 
@@ -209,7 +267,7 @@ export function createGeminiWatcher(options: GeminiWatcherOptions): MediaWatcher
 
   async function callModel(body: Record<string, unknown>, signal: AbortSignal): Promise<WatchResult> {
     if (signal.aborted) {
-      throw new ModelError('transient', 'aborted')
+      throw new MediaWatchError('transient', 'aborted', { type: 'abort' })
     }
 
     let response: Response
@@ -225,22 +283,25 @@ export function createGeminiWatcher(options: GeminiWatcherOptions): MediaWatcher
       })
     } catch (err) {
       if (isAbortError(err, signal)) {
-        throw new ModelError('transient', 'aborted', { cause: err })
+        throw new MediaWatchError('transient', 'aborted', { type: 'abort' }, { cause: err })
       }
       const message = sanitizeMessage(err instanceof Error ? err.message : 'network error', options.apiKey)
-      throw new ModelError('transient', message, { cause: err })
+      throw new MediaWatchError('transient', message, { type: 'network' }, { cause: err })
     }
 
     if (!response.ok) {
+      const receiptMs = Date.now()
+      const retryAfterMs =
+        response.status === 429 ? parseRetryAfterMs(response.headers.get('retry-after'), receiptMs) : undefined
       let bodyText = ''
       try {
         bodyText = await response.text()
       } catch (err) {
         if (isAbortError(err, signal)) {
-          throw new ModelError('transient', 'aborted', { cause: err })
+          throw new MediaWatchError('transient', 'aborted', { type: 'abort' }, { cause: err })
         }
       }
-      throw errorForStatus(response.status, bodyText, options.apiKey)
+      throw errorForStatus(response.status, bodyText, options.apiKey, retryAfterMs)
     }
 
     let rawText: string
@@ -248,17 +309,17 @@ export function createGeminiWatcher(options: GeminiWatcherOptions): MediaWatcher
       rawText = await response.text()
     } catch (err) {
       if (isAbortError(err, signal)) {
-        throw new ModelError('transient', 'aborted', { cause: err })
+        throw new MediaWatchError('transient', 'aborted', { type: 'abort' }, { cause: err })
       }
       const message = sanitizeMessage(err instanceof Error ? err.message : 'failed to read response', options.apiKey)
-      throw new ModelError('transient', message, { cause: err })
+      throw new MediaWatchError('transient', message, { type: 'network' }, { cause: err })
     }
 
     let json: unknown
     try {
       json = JSON.parse(rawText)
     } catch (cause) {
-      throw new ModelError('malformed', 'response body is not valid JSON', { cause })
+      throw new MediaWatchError('malformed', 'response body is not valid JSON', { type: 'parse' }, { cause })
     }
 
     const { reading, usage } = fromGenerateContentBody(json)
