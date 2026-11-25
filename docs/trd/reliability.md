@@ -21,6 +21,11 @@ below run inside the turn, in this order. The first failing check ends the turn 
   forwards only addressed group messages, and the core answers every group message it receives. See
   [System](system.md#gateway-contract).
 
+In standalone mode, service initialization and chatbot readiness are independent. Admission refuses gateway work
+before parsing while the chatbot lacks an applied model. This is an expected setup state, not a turn failure or a
+storage error. Legacy admission and shutdown retain their existing semantics. See
+[standalone service readiness](system.md#standalone-service-readiness).
+
 ## Mute And Quiet
 
 - Mute and quiet hours are settings. See [Data](data.md).
