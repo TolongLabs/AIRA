@@ -293,6 +293,12 @@ export function createGeminiWatcher(options: GeminiWatcherOptions): MediaWatcher
       const receiptMs = Date.now()
       const retryAfterMs =
         response.status === 429 ? parseRetryAfterMs(response.headers.get('retry-after'), receiptMs) : undefined
+      // These status codes alone establish the shared-key failure. Do not wait for an error body
+      // that could stall past the scheduling deadline and hide an already-observed denial or 429.
+      if (response.status === 429 || response.status === 401 || response.status === 403) {
+        void response.body?.cancel().catch(() => undefined)
+        throw errorForStatus(response.status, '', options.apiKey, retryAfterMs)
+      }
       let bodyText = ''
       try {
         bodyText = await response.text()

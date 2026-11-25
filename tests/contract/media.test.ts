@@ -1,6 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { createGeminiWatcher, fromGenerateContentBody, toGenerateContentBody } from '../../src/media/gemini-watcher.js'
+import {
+  createGeminiWatcher,
+  fromGenerateContentBody,
+  MediaWatchError,
+  type MediaWatcher,
+  toGenerateContentBody
+} from '../../src/media/gemini-watcher.js'
 import { mediaBlock, readMedia, readMediaUrl } from '../../src/media/intake.js'
 import {
   DEFAULT_MEDIA_LIMITS,
@@ -497,6 +503,51 @@ describe('media intake', () => {
       timeoutMs: 1000
     })
     expect(failureDetail(abort)).toMatchObject({ type: 'abort' })
+  })
+
+  it('classifies observed quota and auth statuses without waiting for a stalled error body', async () => {
+    vi.useFakeTimers()
+    try {
+      for (const status of [429, 403]) {
+        const cancel = vi.fn()
+        const pending = readMediaUrl(youtube, {
+          watcher: urlWatcher(
+            async () =>
+              new Response(new ReadableStream({ cancel }), {
+                status,
+                headers: { 'Retry-After': '2' }
+              })
+          ),
+          timeoutMs: 1000
+        })
+        await vi.runAllTimersAsync()
+        const result = await pending
+        expect(result).toMatchObject({
+          ok: false,
+          failureKind: status === 429 ? 'rate_limit' : 'auth',
+          failureDetail: status === 429 ? { type: 'rate_limit', retryAfterMs: 2000 } : { type: 'auth' }
+        })
+        expect(cancel).toHaveBeenCalledTimes(1)
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('uses typed unavailable detail without relying on an alternate watcher message', async () => {
+    const watcher: MediaWatcher = {
+      watch: async () => {
+        throw new Error('unused')
+      },
+      watchUrl: async () => {
+        throw new MediaWatchError('malformed', 'safe reason', { type: 'unavailable' })
+      }
+    }
+    expect(await readMediaUrl(youtube, { watcher, timeoutMs: 1000 })).toMatchObject({
+      ok: false,
+      reason: 'unavailable',
+      failureDetail: { type: 'unavailable' }
+    })
   })
 
   it('returns off when no watcher is configured', async () => {

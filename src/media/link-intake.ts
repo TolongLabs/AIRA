@@ -7,7 +7,7 @@ import { linkUrls, PLATFORM_NAME } from '../social/urls.js'
 import type { ModelCallRecord } from '../turn/types.js'
 import type { MediaUnreadable } from './files.js'
 import type { MediaReading, MediaWatcher, WatchUrlSource } from './gemini-watcher.js'
-import { type MediaOutcome, readMedia, readMediaUrl } from './intake.js'
+import { type MediaOutcome, readMedia } from './intake.js'
 import { type MediaKind, type MediaLimits, mediaKindOf } from './limits.js'
 import {
   DEFAULT_LINK_FIRST_SEGMENT_SECONDS,
@@ -16,9 +16,11 @@ import {
   DEFAULT_LINK_WATCH_MS,
   DEFAULT_MAX_LINK_SEGMENTS,
   formatClock,
+  type LinkSegmentEvidence,
   mergeLinkReadings,
   planLinkSegments
 } from './link-segments.js'
+import { watchLinkSegments } from './link-watch-scheduler.js'
 import { COMPRESSION_MAX_INPUT_BYTES, COMPRESSION_MAX_SECONDS, type CompressVideo, isMp4 } from './video-compression.js'
 import type { ShortDownload } from './youtube-short.js'
 
@@ -54,6 +56,7 @@ export interface LinkReading {
   mediaKind?: Extract<MediaKind, 'image' | 'video'>
   preview?: true
   reading?: MediaReading
+  youtubeEvidence?: LinkSegmentEvidence
   /** Set when the post was only partly read: a fixed sentence saying what was visible. */
   note?: string
 }
@@ -280,20 +283,22 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
 
   return {
     async read(texts, timeoutMs, allow, onMatch, observe) {
+      if (timeoutMs <= 0) return { readings: [], unreadable: [], calls: [] }
+      const endAt = performance.now() + timeoutMs
+      const remainingMs = () => Math.max(0, endAt - performance.now())
       const { target, disabled } = pickTarget(texts, options.findTarget, allow)
       // A link whose platform switch is off is plain text. Its skip is recorded before the selected lookup's ordinal.
       const skipAt = now()
       for (const [ordinal, entry] of disabled.entries()) {
         observe?.({ target: entry, started: skipAt, ended: skipAt, skip: 'platform_disabled', ordinal })
       }
-      if (!target) return { readings: [], unreadable: [], calls: [] }
+      if (!target || remainingMs() <= 0) return { readings: [], unreadable: [], calls: [] }
 
       onMatch?.()
+      if (remainingMs() <= 0) return { readings: [], unreadable: [], calls: [] }
 
       const controller = new AbortController()
-      const endAt = now().getTime() + Math.max(1, timeoutMs)
-      const timer = setTimeout(() => controller.abort(), Math.max(1, timeoutMs))
-      const remainingMs = () => Math.max(1, endAt - now().getTime())
+      const timer = setTimeout(() => controller.abort(), Math.ceil(remainingMs()))
 
       try {
         const started = now()
@@ -301,6 +306,7 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
         const lookup = await lookupWithTimeout(options.viewer, target, controller.signal, (value) => {
           trace = value
         })
+        const lookupFinishedAt = performance.now()
         observe?.({ target, started, ended: now(), lookup, trace, ordinal: disabled.length })
         if (lookup.status === 'none') return { readings: [], unreadable: [], calls: [] }
         if (lookup.status === 'failed') {
@@ -319,6 +325,20 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
         const modelResult = modelPostResult(toPostPortResult(post, { missing: lookup.missing }))
         const note = modelResult.note ? { note: modelResult.note } : {}
         const tried = triedOf(target, post)
+        if (controller.signal.aborted || remainingMs() <= 0) {
+          return {
+            readings: [],
+            ...(hasPostMetadata(post) ? { links: [{ post, result: modelResult, ...note }] } : {}),
+            unreadable: [
+              {
+                kind: post.platform === 'youtube' ? 'YouTube video' : `${PLATFORM_NAME[post.platform]} link`,
+                reason: 'unreadable'
+              }
+            ],
+            tried,
+            calls: []
+          }
+        }
         if (post.platform === 'youtube') {
           if (!options.watcher?.watchUrl) {
             return {
@@ -360,50 +380,60 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
                 fps: linkFps
               }))
 
-          const watchMs = Math.min(linkWatchMs, remainingMs())
-          const watchController = new AbortController()
-          const onOuterAbort = () => watchController.abort()
-          if (controller.signal.aborted) watchController.abort()
-          else controller.signal.addEventListener('abort', onOuterAbort, { once: true })
-          const watchTimer = setTimeout(() => watchController.abort(), watchMs)
-
-          const watchStartedAt = now()
-          let segmentOutcomes: { startedAt: Date; outcome: MediaOutcome }[]
-          try {
-            segmentOutcomes = await Promise.all(
-              sources.map(async (source) => {
-                const startedAt = now()
-                const outcome = await readMediaUrl(
-                  source,
-                  { watcher: options.watcher, timeoutMs: watchMs },
-                  watchController.signal
-                )
-                return { startedAt, outcome }
-              })
-            )
-          } finally {
-            clearTimeout(watchTimer)
-            controller.signal.removeEventListener('abort', onOuterAbort)
+          const canDownloadShort =
+            target.youtubeShort &&
+            rawStartSec === 0 &&
+            (knownDuration ?? 180) <= Math.min(maxLinkVideoSeconds, options.limits.maxVideoSeconds) &&
+            options.downloadShort
+          const watchDeadline = Math.min(
+            endAt,
+            lookupFinishedAt + Math.min(linkWatchMs, canDownloadShort ? 12_000 : Infinity)
+          )
+          const watchBudgetMs = Math.max(0, Math.round(watchDeadline - lookupFinishedAt))
+          const watched = await watchLinkSegments(sources, options.watcher, watchDeadline, controller.signal, now)
+          const elapsedWatchMs = Math.max(0, Math.round(performance.now() - lookupFinishedAt))
+          const calls: ModelCallRecord[] = []
+          const failureKinds: Partial<Record<ModelFailureKind, number>> = {}
+          let timedOut = 0
+          let cancelled = 0
+          let retried = 0
+          let recovered = 0
+          let sharedDenial = false
+          for (const { attempt, startedAt, outcome } of watched.attempts) {
+            if (attempt === 2) retried++
+            if (outcome.ok) {
+              if (attempt === 2) recovered++
+              calls.push({ ...okCall(outcome, startedAt), attempt })
+            } else {
+              if (outcome.failureKind) {
+                calls.push({ ...failCall(options.model, outcome.failureKind, outcome.durationMs, startedAt), attempt })
+                failureKinds[outcome.failureKind] = (failureKinds[outcome.failureKind] ?? 0) + 1
+              }
+              if (outcome.failureDetail?.type === 'timeout') timedOut++
+              if (outcome.failureDetail?.type === 'abort') cancelled++
+              if (outcome.failureKind === 'auth' || outcome.failureKind === 'refusal') sharedDenial = true
+            }
           }
 
-          const elapsedWatchMs = Math.max(0, now().getTime() - watchStartedAt.getTime())
-          const calls: ModelCallRecord[] = []
           const segmentReadings: (MediaReading | undefined)[] = []
           const partial: { kind: string; reason: MediaUnreadable }[] = []
           let hasUnavailable = false
+          let unresolvedRateLimit = false
+          let plannedSeconds = 0
+          let answeredSeconds = 0
 
           for (let i = 0; i < plan.segments.length; i++) {
             const segment = plan.segments[i]!
-            const { startedAt, outcome } = segmentOutcomes[i]!
-            if (outcome.ok) {
-              calls.push(okCall(outcome, startedAt))
+            const seconds = segment.endSec - segment.startSec
+            plannedSeconds += seconds
+            const outcome = watched.final[i]
+            if (outcome?.ok) {
               segmentReadings.push(outcome.reading)
+              answeredSeconds += seconds
             } else {
-              if (outcome.failureKind) {
-                calls.push(failCall(options.model, outcome.failureKind, outcome.durationMs, startedAt))
-              }
-              const reason: MediaUnreadable = outcome.reason === 'unavailable' ? 'unavailable' : 'unreadable'
+              const reason: MediaUnreadable = outcome?.reason === 'unavailable' ? 'unavailable' : 'unreadable'
               if (reason === 'unavailable') hasUnavailable = true
+              if (outcome?.failureKind === 'rate_limit') unresolvedRateLimit = true
               partial.push({
                 kind: `YouTube video part ${i + 1} (${formatClock(segment.startSec)}–${formatClock(segment.endSec)})`,
                 reason
@@ -418,14 +448,27 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
             segments: plan.segments.length,
             answered,
             failed,
-            watchMs: elapsedWatchMs
+            attempts: watched.attempts.length,
+            retried,
+            recovered,
+            timedOut,
+            cancelled,
+            failureKinds,
+            watchMs: elapsedWatchMs,
+            watchBudgetMs,
+            rateLimitStopped: watched.rateLimitStopped,
+            plannedSeconds,
+            answeredSeconds,
+            clipped: plan.clipped,
+            unknownLength: plan.unknownLength
           })
 
           const merged = mergeLinkReadings(plan, segmentReadings, knownDuration)
           if (merged) {
+            const youtubeEvidence: LinkSegmentEvidence = { plan, durationSec: knownDuration, readings: segmentReadings }
             return {
               readings: [],
-              links: [{ post, result: modelResult, mediaKind: 'video', reading: merged, ...note }],
+              links: [{ post, result: modelResult, mediaKind: 'video', reading: merged, youtubeEvidence, ...note }],
               unreadable: [],
               ...(partial.length > 0 ? { partial } : {}),
               tried,
@@ -434,20 +477,20 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
           }
 
           if (
-            target.youtubeShort &&
-            rawStartSec === 0 &&
-            (knownDuration ?? 180) <= Math.min(maxLinkVideoSeconds, options.limits.maxVideoSeconds) &&
-            options.downloadShort &&
-            !controller.signal.aborted
+            canDownloadShort &&
+            !sharedDenial &&
+            !unresolvedRateLimit &&
+            !controller.signal.aborted &&
+            remainingMs() > 0
           ) {
-            const file = await options
-              .downloadShort(target.id, controller.signal, options.limits.maxBytes)
-              .catch(() => undefined)
-            if (file && !controller.signal.aborted) {
+            const file = await canDownloadShort(target.id, controller.signal, options.limits.maxBytes).catch(
+              () => undefined
+            )
+            if (file && !controller.signal.aborted && remainingMs() > 0) {
               const startedAt = now()
               const outcome = await readMedia(
                 { ...file, ...(knownDuration !== null ? { durationSeconds: knownDuration } : {}) },
-                { watcher: options.watcher, limits: options.limits, timeoutMs: remainingMs() },
+                { watcher: options.watcher, limits: options.limits, timeoutMs: Math.ceil(remainingMs()) },
                 controller.signal
               )
               if (outcome.ok) {
@@ -490,7 +533,7 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
           headers?: Record<string, string> | null,
           rangeBytes?: number
         ): Promise<{ kind: 'video' | 'image'; reading: MediaReading } | undefined> {
-          if (!options.download || !options.watcher) return undefined
+          if (!options.download || !options.watcher || controller.signal.aborted || remainingMs() <= 0) return undefined
           let downloaded: { data: Buffer; contentType: string }
           try {
             const cap = expectedKind === 'video' ? videoDownloadLimit : options.limits.maxBytes
@@ -524,10 +567,11 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
             data = compressed
           }
           for (let attempt = 1; attempt <= 2; attempt++) {
+            if (controller.signal.aborted || remainingMs() <= 0) break
             const startedAt = now()
             const outcome = await readMedia(
               { data, contentType, ...(durationSeconds !== undefined ? { durationSeconds } : {}) },
-              { watcher: options.watcher, limits: options.limits, timeoutMs: remainingMs() },
+              { watcher: options.watcher, limits: options.limits, timeoutMs: Math.ceil(remainingMs()) },
               controller.signal
             )
             if (outcome.ok) {
