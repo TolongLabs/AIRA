@@ -8,7 +8,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import __version__, compose, install, launcher, operations
+from . import __version__, compose, configure, diagnostics, install, launcher, operations
 from .result import CommandError, args_error, conflict_error, emit, error_envelope, ok_envelope, operational_error
 
 
@@ -49,6 +49,42 @@ def build_parser():
     dashboard.add_argument("--show-token", action="store_true", help="Reveal the owned credential to an interactive TTY.")
     status = sub.add_parser("status", help="Read-only installation and runtime state.")
     _globals(status, True)
+    doctor = sub.add_parser("doctor", help="Run read-only installation diagnostics.")
+    _globals(doctor, True)
+    logs = sub.add_parser("logs", help="Read bounded redacted operation events.")
+    _globals(logs, True)
+    logs.add_argument("--component", choices=diagnostics.LOG_COMPONENTS)
+    logs.add_argument("--lines", type=int, default=50)
+    logs.add_argument("--follow", action="store_true")
+    config = sub.add_parser("config", help="Read and write typed owner configuration.")
+    _globals(config, True)
+    typed = config.add_subparsers(dest="config_command", required=True)
+    get = typed.add_parser("get", help="Read saved and applied configuration.")
+    _globals(get, True)
+    model = typed.add_parser("set-model", help="Save a model role without activating it.")
+    _globals(model, True)
+    model.add_argument("--role", required=True, choices=configure.ROLES)
+    model.add_argument("--provider", choices=configure.PROVIDERS)
+    model.add_argument("--model")
+    model.add_argument("--base-url")
+    model.add_argument("--effort")
+    model.add_argument("--deep-effort")
+    for name in ("input-price", "output-price", "cached-price"):
+        model.add_argument("--" + name)
+    model.add_argument("--expected-revision")
+    key = model.add_mutually_exclusive_group()
+    for name in ("key-stdin", "prompt-key", "clear-key"):
+        key.add_argument("--" + name, action="store_true")
+    model.add_argument("--disable", action="store_true")
+    activate = typed.add_parser("activate", help="Activate the saved model revision and verify it.")
+    _globals(activate, True)
+    activate.add_argument("--expected-revision")
+    character = typed.add_parser("set-character", help="Change the character at a settings scope.")
+    _globals(character, True)
+    character.add_argument("--level", required=True, choices=configure.LEVELS)
+    character.add_argument("--scope", default="")
+    character.add_argument("--pack", required=True)
+    character.add_argument("--expected-revision")
     return parser
 
 
@@ -69,6 +105,9 @@ def _envelope(command, op, report):
         result["management"] = report["management"]
     if report.get("release"):
         result["release"] = report["release"]
+    for key in ("hermesRoute", "chatbotReason"):
+        if report.get(key):
+            result[key] = report[key]
     return result
 
 
@@ -151,6 +190,14 @@ def main(argv=None, repo_root=None):
         elif command == "status":
             _, _, report = _report(args)
             result = _envelope("status", op, report)
+        elif command == "doctor":
+            result = diagnostics.run_doctor(args, op)
+        elif command == "logs":
+            result = diagnostics.run_logs(args, op)
+            if isinstance(result, int):
+                return result
+        elif command == "config":
+            result = configure.run_config(args, op)
         else:
             raise args_error("Select a command.", "Run aira --help.")
     except CommandError as err:
