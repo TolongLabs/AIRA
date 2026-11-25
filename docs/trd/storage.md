@@ -38,8 +38,26 @@ is copied off the host and brought back.
 The standalone owner credential and model configuration state are private non-SQLite stores under
 `<data>/standalone/`. The [owner authentication contract](site.md#standalone-owner-authentication)
 defines the token's permissions and lifetime; [model revision authority](dashboard-state.md#model-revision-authority)
-defines the versioned settings and separate credential files. Backup and restore must preserve these files without
-revealing their contents; the versioned coherent backup inventory is defined before enabling updates.
+defines the versioned settings and separate credential files. Backup and restore preserve these files without
+revealing their contents.
+
+### Standalone deploy backup
+
+The host update transaction holds `deploy.lock` and gracefully stops the sole writer before taking its coherent
+backup. Under `<data>/deploy-recovery/<operationId>/`, a private mode-0700 directory, stage a SQLite online-backup
+copy of `aira.db`, the complete `standalone/`, `characters/`, `files/` and `archive/` trees when present, and a
+version-1 JSON inventory of relative paths, file SHA-256, size and mode. Exclude disposable cache, earlier snapshots,
+and deploy-recovery itself. Reject symlinks, special files, non-owned entries and unsafe standalone permissions.
+The snapshot database must pass `PRAGMA integrity_check`; verify the inventory by independent readback, including
+directory modes and file hashes, before atomically publishing the backup. Credential and revision files retain their
+0600 modes; backup contents and the inventory are private, never emitted to logs or CI artifacts.
+
+Restore is a separate explicit recovery operation: verify the inventory and SQLite integrity before copying to a
+new, empty owned private destination, with the recorded file and directory modes. Verify the copy again. Never
+overwrite a running install or remove later writes; the operator can recover from the restored copy separately.
+The [update transaction](deployment.md#standalone-stable-update) never invokes restore automatically. Compatibility
+version 1 promises backward-compatible standalone storage across ordinary stable updates; a future incompatible
+format requires an explicit migration and a new compatibility label before deployment.
 
 ## Why SQLite, And Where DuckDB Fits
 
