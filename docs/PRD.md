@@ -65,9 +65,10 @@ per reply.
 ## User Workflow
 
 The portable onboarding milestone ([#393](https://github.com/TolongLabs/AIRA/issues/393)) adds a self-hosted
-Linux amd64 setup journey. It must prove dashboard-first independent startup, explicit model activation,
-a compatible selected Hermes profile, recovery and update with synthetic data, and preservation of the
-legacy owner installation. The release and public Getting Started remain gated on verified clean installation.
+Linux amd64 setup journey, released in v1.6.0 after verified clean installation. The [installation guide](INSTALL.md)
+covers dashboard-first independent startup, explicit model activation, selected stock Hermes v0.23.4 attachment,
+recovery and update. Standalone WhatsApp support is limited to ordinary admitted text and verified with synthetic
+admission and delivery, not a real account. The existing legacy owner installation retains its authority and features.
 
 1. A member writes in a DM, or mentions or replies to AIRA in a group.
 2. The gateway hands the message to AIRA with the chat's identity. AIRA never takes identity from the model.

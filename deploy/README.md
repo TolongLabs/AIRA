@@ -2,6 +2,11 @@
 
 Container and Compose files for running AIRA on a host.
 
+New standalone installations use the [host CLI](../docs/INSTALL.md), which copies `standalone.compose.yml` into an
+owned installation directory. It maps the owner's UID/GID, selects private loopback ports and uses a generated
+standalone owner credential. No existing legacy installation is converted. The host units and legacy Compose
+configuration below remain in use on legacy hosts.
+
 ## At a Glance
 
 | Item              | Location On The Host                                              |
@@ -15,12 +20,14 @@ Container and Compose files for running AIRA on a host.
 
 ## Files In This Folder
 
-| File          | Purpose                                                                                                                                                |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Dockerfile`  | Multi-stage Node 24 image running as non-root user `node`                                                                                              |
-| `compose.yml` | Single-service Compose definition bound to loopback 9881                                                                                               |
-| `host/`       | The systemd units that run the updater, and the user units that run the schedule reconciler every minute                                               |
-| `gateway/`    | AIRA's gateway helper modules (`brain/`), its gateway patch script (`patches.py`) and the schedule reconciler (`schedule.py`), with their Python tests |
+| File                     | Purpose                                                                                                                                                |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Dockerfile`             | Multi-stage Node 24 image running as non-root user `node`                                                                                              |
+| `compose.yml`            | Single-service Compose definition bound to loopback 9881                                                                                               |
+| `standalone.compose.yml` | Standalone private listeners, mapped owner UID/GID, bounded logs and restart policy                                                                    |
+| `cli/`                   | Standard-library Python host CLI for setup, discovery, typed configuration, diagnostics, attachment and update                                         |
+| `host/`                  | The systemd units that run the updater, and the user units that run the schedule reconciler every minute                                               |
+| `gateway/`               | AIRA's gateway helper modules (`brain/`), its gateway patch script (`patches.py`) and the schedule reconciler (`schedule.py`), with their Python tests |
 
 ## Main-branch deployment
 

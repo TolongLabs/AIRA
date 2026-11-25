@@ -3,8 +3,12 @@
 Operational procedures for running AIRA on the host. The TRD modules own each contract; this page tells the
 operator what to run, in order.
 
-Status: the host deploys on every push to `main` through the self-hosted runner. See
-[`docs/trd/deployment.md`](trd/deployment.md).
+For a new standalone installation, use the [installation and troubleshooting guide](INSTALL.md). It covers the
+private dashboard, host CLI, compatible Hermes attachment and explicit stable-image updates. Standalone uses its
+own owner credential; do not copy the legacy owner-service configuration into it.
+
+The procedures below describe the existing legacy host, which deploys on every push to `main` through the
+self-hosted runner. See [`docs/trd/deployment.md`](trd/deployment.md).
 
 ## Host Layout
 
@@ -36,11 +40,16 @@ One install lives in `~/aira/`: the compose file, `.env` (mode 600), `config.yml
 
 ## Install
 
-Follow [`docs/trd/deployment.md`](trd/deployment.md#install). Confirm each step that changes the host first.
+For standalone, follow [the three-command setup](INSTALL.md#install-and-open-the-dashboard). For an existing legacy
+host, follow [`docs/trd/deployment.md`](trd/deployment.md#install). Confirm each step that changes the host first.
 Point `gateway.hostDataDir` at the data folder's absolute path. When the install folder is not `~/aira`, edit
 `deploy/host/aira-schedule.path` to match before enabling the units.
 
 ## Configure
+
+Standalone model settings use saved and applied revisions, with credentials held in private installation state.
+See [configure a model](INSTALL.md#configure-a-model). The legacy configuration and owner-service authority below
+remain in use on existing legacy hosts.
 
 Configuration files, secrets, character packs and chat settings are specified in
 [`docs/trd/data.md`](trd/data.md). Change chat settings through the Chats page: each write validates like
