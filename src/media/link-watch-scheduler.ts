@@ -75,11 +75,21 @@ export async function watchLinkSegments(
     }
     void readMediaUrl(sources[ordinal]!, { watcher, timeoutMs: Math.ceil(timeLeft) }, controller.signal).then(
       (outcome) => {
-        // A local watch deadline aborts every outstanding call; distinguish it from an outer/auth cancellation.
-        const recorded =
-          !outcome.ok && outcome.failureDetail?.type === 'abort' && stopped === 'timeout'
-            ? { ...outcome, failureDetail: { type: 'timeout' as const } }
-            : outcome
+        // Timers may run late when the event loop stalls. Credit only readings completed by the monotonic
+        // deadline; work observed after it is a local timeout even if the timer has not fired yet.
+        const recorded: MediaOutcome =
+          outcome.ok && performance.now() >= deadline
+            ? {
+                ok: false,
+                kind: outcome.kind,
+                reason: 'unreadable',
+                failureKind: 'transient',
+                failureDetail: { type: 'timeout' },
+                durationMs: outcome.durationMs
+              }
+            : !outcome.ok && outcome.failureDetail?.type === 'abort' && stopped === 'timeout'
+              ? { ...outcome, failureDetail: { type: 'timeout' } }
+              : outcome
         completions.push({ sequence, ordinal, attempt, startedAt, outcome: recorded })
         wake?.()
       }

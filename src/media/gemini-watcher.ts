@@ -65,6 +65,20 @@ const WATCHER_INSTRUCTION = [
   'Answer with only a JSON object {"description": "...", "transcript": "..."}, leaving "transcript" out when there is no speech.'
 ].join(' ')
 
+// Explicit provider filtering reasons, not every non-STOP finish reason.
+const REFUSAL_FINISH_REASONS: ReadonlySet<string> = new Set([
+  'SAFETY',
+  'RECITATION',
+  'BLOCKLIST',
+  'PROHIBITED_CONTENT',
+  'SPII',
+  'IMAGE_SAFETY',
+  'IMAGE_PROHIBITED_CONTENT',
+  'IMAGE_RECITATION',
+  'ESCALATION',
+  'PUP_LIMITED_DISABLED'
+])
+
 const readingSchema = z.object({
   description: z.string().min(1).max(2000),
   transcript: z.string().max(6000).optional()
@@ -208,8 +222,8 @@ export function fromGenerateContentBody(body: unknown): { reading: MediaReading;
   if (!isRecord(candidate)) {
     throw new MediaWatchError('malformed', 'first candidate is not an object', { type: 'parse' })
   }
-  if (candidate.finishReason === 'SAFETY') {
-    throw new MediaWatchError('refusal', 'SAFETY', { type: 'refusal' })
+  if (typeof candidate.finishReason === 'string' && REFUSAL_FINISH_REASONS.has(candidate.finishReason)) {
+    throw new MediaWatchError('refusal', candidate.finishReason, { type: 'refusal' })
   }
 
   const content = candidate.content

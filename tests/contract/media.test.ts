@@ -505,6 +505,32 @@ describe('media intake', () => {
     expect(failureDetail(abort)).toMatchObject({ type: 'abort' })
   })
 
+  it('keeps explicitly filtered candidate finish reasons terminal without treating every non-STOP as refusal', () => {
+    for (const finishReason of [
+      'SAFETY',
+      'RECITATION',
+      'BLOCKLIST',
+      'PROHIBITED_CONTENT',
+      'SPII',
+      'IMAGE_SAFETY',
+      'IMAGE_PROHIBITED_CONTENT',
+      'IMAGE_RECITATION',
+      'ESCALATION',
+      'PUP_LIMITED_DISABLED'
+    ]) {
+      expect(() =>
+        fromGenerateContentBody({
+          candidates: [{ finishReason, content: { parts: [{ text: '{"description":"fixture"}' }] } }]
+        })
+      ).toThrowError(expect.objectContaining({ kind: 'refusal', detail: { type: 'refusal' } }))
+    }
+    expect(() =>
+      fromGenerateContentBody({
+        candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [{ text: '{"description":' }] } }]
+      })
+    ).toThrowError(expect.objectContaining({ kind: 'malformed', detail: { type: 'parse' } }))
+  })
+
   it('classifies observed quota and auth statuses without waiting for a stalled error body', async () => {
     vi.useFakeTimers()
     try {

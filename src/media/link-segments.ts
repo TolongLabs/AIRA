@@ -1,5 +1,5 @@
 import type { MediaReading } from './gemini-watcher.js'
-import { sanitizeMediaText } from './intake.js'
+import { sanitizeMediaText } from './text.js'
 
 export const DEFAULT_LINK_WATCH_MS = 22_000
 export const DEFAULT_LINK_SEGMENT_SECONDS = 180
@@ -7,8 +7,7 @@ export const DEFAULT_LINK_FIRST_SEGMENT_SECONDS = 60
 export const DEFAULT_MAX_LINK_SEGMENTS = 4
 export const DEFAULT_LINK_FPS = 0.25
 export const MIN_SEGMENT_SECONDS = 30
-export const MERGED_DESCRIPTION_CHARS = 1800
-export const MERGED_TRANSCRIPT_CHARS = 2400
+export const MERGED_EVIDENCE_CHARS = 4200
 
 export interface LinkSegmentPlanInput {
   durationSec: number | null
@@ -213,10 +212,12 @@ function prefixOf(coverage: string): string {
   return coverage ? `${coverage} ` : ''
 }
 
-/** Minimum exact coverage, labels and nonempty prose. Metadata yields to this reserve where it fits. */
-export function minimumLinkEvidenceChars(evidence: LinkSegmentEvidence): number {
-  const { coverage, descriptions } = evidenceParts(evidence)
-  return prefixOf(coverage).length + labelsSize(descriptions) + descriptions.length
+/** Reserve exact coverage, labels and nonempty prose where possible; otherwise the best compact coverage. */
+export function linkEvidenceReserve(evidence: LinkSegmentEvidence, budget: number): number {
+  const parts = evidenceParts(evidence)
+  const minimum = prefixOf(parts.coverage).length + labelsSize(parts.descriptions) + parts.descriptions.length
+  if (minimum <= budget) return minimum
+  return compactCandidates(evidence, parts).find((text) => text.length <= budget)?.length ?? 0
 }
 
 function textSize(parts: readonly EvidencePart[]): number {
@@ -255,16 +256,22 @@ function renderParts(parts: readonly EvidencePart[], budget: number): string {
   return parts.map((part, i) => part.label + clipLinkText(part.text, sizes[i]!)).join(' ')
 }
 
-function compactCoverage(evidence: LinkSegmentEvidence, parts: EvidenceParts, maxChars: number): string {
+function compactCandidates(evidence: LinkSegmentEvidence, parts: EvidenceParts): string[] {
   const { plan, durationSec } = evidence
   const first = plan.segments[0]
   const last = plan.segments[plan.segments.length - 1]
   const context =
     buildCoverageLine(plan, [], durationSec).replace(/:$/, '.') ||
     (first && last && first.startSec > 0 ? `Planned ${formatClock(first.startSec)}–${formatClock(last.endSec)}.` : '')
-  const counts = `${parts.descriptions.length}/${plan.segments.length} ranges read; ${parts.gapCount} not watched`
+  const readCount = `${parts.descriptions.length}/${plan.segments.length} ranges read`
+  const counts = `${readCount}; ${parts.gapCount} not watched`
   const flags = [...(plan.clipped ? ['clipped span'] : []), ...(plan.unknownLength ? ['length unknown'] : [])]
-  const candidates = [
+  // Even when successful labels cannot all fit, keep the actual known gaps and clipping context if possible.
+  const exact = parts.coverage.replace(/:$/, '.')
+  return [
+    ...(exact
+      ? [`${exact} Evidence compressed: ${readCount}.`, `${exact} Evidence compressed.`, `${exact} Compressed.`, exact]
+      : []),
     `Evidence compressed: ${counts}.${context ? ` ${context}` : ''}`,
     `${counts}; ${[...flags, 'compressed'].join('; ')}.`,
     'Coverage limited; evidence compressed.',
@@ -272,7 +279,10 @@ function compactCoverage(evidence: LinkSegmentEvidence, parts: EvidenceParts, ma
     'Compressed',
     '…'
   ]
-  return candidates.find((text) => text.length <= maxChars) ?? ''
+}
+
+function compactCoverage(evidence: LinkSegmentEvidence, parts: EvidenceParts, maxChars: number): string {
+  return compactCandidates(evidence, parts).find((text) => text.length <= maxChars) ?? ''
 }
 
 /**
@@ -329,8 +339,5 @@ export function mergeLinkReadings(
   results: readonly (MediaReading | undefined)[],
   durationSec: number | null
 ): MediaReading | undefined {
-  return renderLinkEvidence(
-    { plan, durationSec, readings: results },
-    MERGED_DESCRIPTION_CHARS + MERGED_TRANSCRIPT_CHARS
-  )
+  return renderLinkEvidence({ plan, durationSec, readings: results }, MERGED_EVIDENCE_CHARS)
 }

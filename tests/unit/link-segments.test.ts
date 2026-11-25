@@ -5,8 +5,7 @@ import {
   DEFAULT_LINK_SEGMENT_SECONDS,
   DEFAULT_MAX_LINK_SEGMENTS,
   LINK_TRANSCRIPT_PREFIX,
-  MERGED_DESCRIPTION_CHARS,
-  MERGED_TRANSCRIPT_CHARS,
+  MERGED_EVIDENCE_CHARS,
   mergeLinkReadings,
   planLinkSegments,
   renderLinkEvidence
@@ -154,9 +153,7 @@ describe('mergeLinkReadings', () => {
     expect(merged?.transcript).toContain('[4:00] tr3 ')
     const tr1Match = /\[0:00\] (.*?) \[4:00\]/.exec(merged!.transcript!)
     expect(tr1Match?.[1]).toMatch(/word…$/)
-    expect(merged!.description.length + (merged!.transcript?.length ?? 0)).toBeLessThanOrEqual(
-      MERGED_DESCRIPTION_CHARS + MERGED_TRANSCRIPT_CHARS
-    )
+    expect(merged!.description.length + (merged!.transcript?.length ?? 0)).toBeLessThanOrEqual(MERGED_EVIDENCE_CHARS)
   })
 
   it('names the parts not watched in the coverage line', () => {

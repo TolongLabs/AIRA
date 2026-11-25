@@ -8,6 +8,9 @@ import {
   type WatchUrlSource
 } from './gemini-watcher.js'
 import { type MediaFile, type MediaKind, type MediaLimits, mediaFault, mediaKindOf } from './limits.js'
+import { sanitizeMediaText } from './text.js'
+
+export { sanitizeMediaText } from './text.js'
 
 export interface MediaIntakeOptions {
   watcher?: MediaWatcher
@@ -226,10 +229,6 @@ export async function readMediaUrl(
   }
 
   return runWithTimeout((abortSignal) => watchUrl(source, abortSignal), 'video', options.timeoutMs, startedAt, signal)
-}
-
-export function sanitizeMediaText(text: string): string {
-  return text.replace(/<\/?media/gi, '').replace(/\r?\n|\r/g, ' ')
 }
 
 /** The readings as one labelled, untrusted block for prompt block 4. Empty string for no reading. */
