@@ -69,7 +69,9 @@ Every feedback poll writes one `job_run` row with kind `feedback_sync`, includin
 request. A rejected form row also writes one `failure` row without storing its answer text.
 
 A file the core could not read is a handled failure: one `failure` row of kind `media_unreadable`, stage `media`, and one
-`model_call` row of role `media` for each request to the media model. See [Models](models.md#media-watching).
+`model_call` row of role `media` for each request to the media model. See [Media Records](media-pipelines.md#media-records).
+Each actual YouTube attempt remains a model-call row even when its range recovers; partial failure rows represent
+only final missing intervals.
 
 A `failure` row is written for handled failures too. A retry that succeeds still leaves the failed attempt on record.
 The pipeline receives each attempt even when the runner throws. Each failed attempt keeps its redacted error in a

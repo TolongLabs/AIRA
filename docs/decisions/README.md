@@ -163,7 +163,7 @@ Process boundaries, the gateway contract, turns, tools, commands, models, reply 
 | ADR-0078 | 2026-11-17 | [Drop Schema Limits for Claude and Enforce Them With zod][ADR-0078]                     | Accepted                                                      |
 | ADR-0079 | 2026-11-17 | [Keep the API Transport as the Default][ADR-0079]                                       | Accepted                                                      |
 | ADR-0080 | 2026-11-17 | [Name What Intake Read in the Footer][ADR-0080]                                         | Accepted                                                      |
-| ADR-0081 | 2026-11-17 | [Watch YouTube Links in Parallel Segments][ADR-0081]                                    | Accepted                                                      |
+| ADR-0081 | 2026-11-17 | [Watch YouTube Links in Parallel Segments][ADR-0081]                                    | Accepted, partly superseded by [ADR-0189]                     |
 | ADR-0082 | 2026-11-17 | [Remove Config Keys That No Code Reads][ADR-0082]                                       | Accepted                                                      |
 | ADR-0083 | 2026-11-18 | [Set Deep Effort Levels for `/think`][ADR-0083]                                         | Accepted                                                      |
 | ADR-0084 | 2026-11-18 | [Follow One Redirect for Threads Short Links][ADR-0084]                                 | Accepted                                                      |
@@ -209,9 +209,11 @@ Process boundaries, the gateway contract, turns, tools, commands, models, reply 
 | ADR-0181 | 2026-11-23 | [Recover Malformed Replies Within the Turn Deadline][ADR-0181]                          | Accepted                                                      |
 | ADR-0185 | 2026-11-25 | [Let a Pack Switch Off Bubble Capitals][ADR-0185]                                       | Accepted                                                      |
 | ADR-0188 | 2026-11-25 | [Use a Fail-Closed Standalone Hermes Adapter][ADR-0188]                                 | Accepted                                                      |
+| ADR-0189 | 2026-11-26 | [Recover YouTube Watch Gaps][ADR-0189]                                                  | Accepted                                                      |
 
 [ADR-0185]: 0185-let-a-pack-switch-off-bubble-capitals.md
 [ADR-0188]: 0188-use-a-fail-closed-standalone-hermes-adapter.md
+[ADR-0189]: 0189-recover-youtube-watch-gaps.md
 [ADR-0181]: 0181-recover-malformed-api-replies.md
 [ADR-0180]: 0180-fetch-only-verified-youtube-shorts.md
 [ADR-0001]: 0001-build-the-core-as-a-typescript-service-on-node-24.md
