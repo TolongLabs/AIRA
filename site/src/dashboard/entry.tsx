@@ -16,7 +16,8 @@ import {
   Settings,
   Sun
 } from 'lucide-react'
-import { DashboardContext } from './context'
+import { DashboardContext, InstallationContext } from './context'
+import { CapabilityUnavailable, StandaloneHealth, StandaloneOverview, StandaloneSettings } from './standalone-setup'
 import { SidebarLinks } from './sidebar-links'
 import { WorkspaceToolsContext, WorkspaceTabs } from './workspace-tools'
 import { translateLegacyBookmark } from './legacy-bookmarks'
@@ -104,6 +105,8 @@ type ListPosition = { address: string; top: number; href: string; index: number 
 
 function Dashboard() {
   const [address, setAddress] = useState(() => location.pathname + location.search)
+  // Non-secret mode hint from the static document. Authenticated routes remain the authority.
+  const standalone = document.documentElement.dataset.airaInstallMode === 'standalone'
   const path = address.split('?')[0]!.slice(previewMount.length + 1)
   const section = path.split('/')[0]
   const routeTitles: Record<string, string> = {
@@ -240,6 +243,21 @@ function Dashboard() {
     : section === 'markets'
       ? views.markets
       : views[path as keyof typeof views]
+  /* Host-owned destinations stay reachable by URL in standalone but render a
+     capability notice and make no host request. */
+  const hostOnlyLabel =
+    section === 'library'
+      ? 'Library'
+      : section === 'markets'
+        ? 'Markets'
+        : section === 'automations'
+          ? 'Automations'
+          : path === 'chats/files'
+            ? 'Send File'
+            : chatRoute?.[2] === 'send'
+              ? 'Send Message'
+              : null
+  const hostOnly = standalone && hostOnlyLabel !== null
   function nav(mobile: boolean) {
     return (
       <>
@@ -262,12 +280,14 @@ function Dashboard() {
         </button>
         <SidebarLinks
           active={section}
-          entries={destinations.map(([key, label], index) => ({
-            key,
-            label,
-            href: dashboardHref(key),
-            Icon: icons[index]!
-          }))}
+          entries={destinations
+            .filter(([key]) => !standalone || (key !== 'library' && key !== 'automations' && key !== 'markets'))
+            .map(([key, label]) => ({
+              key,
+              label,
+              href: dashboardHref(key),
+              Icon: icons[destinations.findIndex(([entry]) => entry === key)]!
+            }))}
         />
         {mobile && path === 'chats' && (
           <nav aria-label="Chat tools" className="drawer-chat-tools">
@@ -287,99 +307,129 @@ function Dashboard() {
   }
   return (
     <DashboardContext.Provider value={true}>
-      <div className="dashboard-shell" data-compact={compact} onClick={follow}>
-        <a className="dashboard-skip" href="#workspace">
-          Skip to content
-        </a>
-        <Backdrop />
-        <ToastHost />
-        <aside>{nav(false)}</aside>
-        <header>
-          <button aria-label="Open navigation" onClick={() => drawer.current?.showModal()}>
-            <img alt="" src="/app/dashboard/glyph.svg" />
-          </button>
-          <span aria-hidden="true">
-            {chatRoute ? (chatRoute[2] === 'send' ? 'Send Message' : 'Chat Settings') : title}
-          </span>
-        </header>
-        <dialog ref={drawer} aria-label="Navigation">
-          {nav(true)}
-        </dialog>
-        <main id="workspace" data-page={path} tabIndex={-1}>
-          {!chatRoute && !edit && path !== 'characters/new' && path !== 'characters/import' && (
-            <div className="workspace-heading">
-              <h1>{title}</h1>
-              <div ref={setToolsHost} className="workspace-tools">
-                {section === 'automations' && (
-                  <WorkspaceTabs
-                    label="Automation views"
-                    entries={[
-                      {
-                        label: 'Routines',
-                        href: dashboardHref('automations/routines'),
-                        active: !path.startsWith('automations/notices')
-                      },
-                      {
-                        label: 'Session Notices',
-                        href: dashboardHref('automations/notices'),
-                        active: path.startsWith('automations/notices')
-                      }
-                    ]}
-                  />
-                )}
-                {section === 'system' && (
-                  <WorkspaceTabs
-                    label="System views"
-                    entries={[
-                      {
-                        label: 'Service Health',
-                        href: dashboardHref('system/health'),
-                        active: path === 'system' || path === 'system/health'
-                      },
-                      {
-                        label: 'Host Settings',
-                        href: dashboardHref('system/settings'),
-                        active: path === 'system/settings'
-                      },
-                      {
-                        label: 'Appearance',
-                        href: dashboardHref('system/appearance'),
-                        active: path === 'system/appearance'
-                      }
-                    ]}
-                  />
-                )}
-              </div>
-            </div>
-          )}
-          <WorkspaceToolsContext.Provider value={toolsHost}>
-            <Suspense key={section} fallback={<Loading layout="cards">Loading {title}…</Loading>}>
-              <WorkspaceErrorBoundary key={address}>
-                <div className="dashboard-view">
-                  {path === 'overview' ? (
-                    <Overview />
-                  ) : chatRoute ? (
-                    <ChatSettings selectedId={chatRoute[1]} />
-                  ) : path === 'characters/new' || path === 'characters/import' || edit ? (
-                    <StudioEditor
-                      mode={edit ? 'edit' : path === 'characters/new' ? 'create' : 'import'}
-                      id={edit?.[1]}
+      <InstallationContext.Provider value={standalone ? 'standalone' : 'legacy'}>
+        <div className="dashboard-shell" data-compact={compact} onClick={follow}>
+          <a className="dashboard-skip" href="#workspace">
+            Skip to content
+          </a>
+          <Backdrop />
+          <ToastHost />
+          <aside>{nav(false)}</aside>
+          <header>
+            <button aria-label="Open navigation" onClick={() => drawer.current?.showModal()}>
+              <img alt="" src="/app/dashboard/glyph.svg" />
+            </button>
+            <span aria-hidden="true">
+              {chatRoute ? (chatRoute[2] === 'send' ? 'Send Message' : 'Chat Settings') : title}
+            </span>
+          </header>
+          <dialog ref={drawer} aria-label="Navigation">
+            {nav(true)}
+          </dialog>
+          <main id="workspace" data-page={path} tabIndex={-1}>
+            {!chatRoute && !edit && path !== 'characters/new' && path !== 'characters/import' && (
+              <div className="workspace-heading">
+                <h1>{title}</h1>
+                <div ref={setToolsHost} className="workspace-tools">
+                  {section === 'automations' && (
+                    <WorkspaceTabs
+                      label="Automation views"
+                      entries={[
+                        {
+                          label: 'Routines',
+                          href: dashboardHref('automations/routines'),
+                          active: !path.startsWith('automations/notices')
+                        },
+                        {
+                          label: 'Session Notices',
+                          href: dashboardHref('automations/notices'),
+                          active: path.startsWith('automations/notices')
+                        }
+                      ]}
                     />
-                  ) : footer ? (
-                    <ChatSettings footerId={footer[1]} />
-                  ) : item || path === 'library/costs' ? (
-                    <Library selectedId={item?.[1]} view={item ? 'items' : 'costs'} />
-                  ) : View ? (
-                    <View />
-                  ) : (
-                    <p>Page unavailable.</p>
+                  )}
+                  {section === 'system' && (
+                    <WorkspaceTabs
+                      label="System views"
+                      entries={
+                        standalone
+                          ? [
+                              {
+                                label: 'Service Health',
+                                href: dashboardHref('system/health'),
+                                active: path === 'system' || path === 'system/health'
+                              },
+                              {
+                                label: 'System Settings',
+                                href: dashboardHref('system/settings'),
+                                active: path === 'system/settings'
+                              },
+                              {
+                                label: 'Appearance',
+                                href: dashboardHref('system/appearance'),
+                                active: path === 'system/appearance'
+                              }
+                            ]
+                          : [
+                              {
+                                label: 'Service Health',
+                                href: dashboardHref('system/health'),
+                                active: path === 'system' || path === 'system/health'
+                              },
+                              {
+                                label: 'Host Settings',
+                                href: dashboardHref('system/settings'),
+                                active: path === 'system/settings'
+                              },
+                              {
+                                label: 'Appearance',
+                                href: dashboardHref('system/appearance'),
+                                active: path === 'system/appearance'
+                              }
+                            ]
+                      }
+                    />
                   )}
                 </div>
-              </WorkspaceErrorBoundary>
-            </Suspense>
-          </WorkspaceToolsContext.Provider>
-        </main>
-      </div>
+              </div>
+            )}
+            <WorkspaceToolsContext.Provider value={toolsHost}>
+              <Suspense key={section} fallback={<Loading layout="cards">Loading {title}…</Loading>}>
+                <WorkspaceErrorBoundary key={address}>
+                  <div className="dashboard-view">
+                    {path === 'overview' && standalone ? (
+                      <StandaloneOverview />
+                    ) : (path === 'system' || path === 'system/health') && standalone ? (
+                      <StandaloneHealth />
+                    ) : path === 'system/settings' && standalone ? (
+                      <StandaloneSettings />
+                    ) : hostOnly ? (
+                      <CapabilityUnavailable label={hostOnlyLabel ?? 'This view'} />
+                    ) : path === 'overview' ? (
+                      <Overview />
+                    ) : chatRoute ? (
+                      <ChatSettings selectedId={chatRoute[1]} />
+                    ) : path === 'characters/new' || path === 'characters/import' || edit ? (
+                      <StudioEditor
+                        mode={edit ? 'edit' : path === 'characters/new' ? 'create' : 'import'}
+                        id={edit?.[1]}
+                      />
+                    ) : footer ? (
+                      <ChatSettings footerId={footer[1]} />
+                    ) : item || path === 'library/costs' ? (
+                      <Library selectedId={item?.[1]} view={item ? 'items' : 'costs'} />
+                    ) : View ? (
+                      <View />
+                    ) : (
+                      <p>Page unavailable.</p>
+                    )}
+                  </div>
+                </WorkspaceErrorBoundary>
+              </Suspense>
+            </WorkspaceToolsContext.Provider>
+          </main>
+        </div>
+      </InstallationContext.Provider>
     </DashboardContext.Provider>
   )
 }

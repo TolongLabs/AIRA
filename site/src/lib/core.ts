@@ -50,11 +50,88 @@ export interface CoreToolFeature {
   tools: { name: string; mode: 'implicit' | 'explicit' | 'both'; commands: string[] }[]
 }
 
+export type StandaloneInstallationMode = 'legacy' | 'standalone'
+export type StandaloneConfiguration = 'setup_required' | 'configured' | 'invalid' | 'pending_activation'
+export type StandaloneChatbot = 'inactive' | 'ready' | 'degraded'
+export type StandaloneActivation = 'idle' | 'requested' | 'starting'
+
+/** The verified Hermes route receipt, as reported by authenticated owner health
+ *  (docs/trd/system.md#standalone-hermes-transport). Absent until verified. */
+export interface StandaloneHermes {
+  state: 'connected' | 'disconnected'
+  adapterVersion: string | null
+  profile: string | null
+  verifiedAt: string | null
+}
+
+export interface StandaloneCapabilities {
+  hostOwnerService: boolean
+  subscriptionRunner: boolean
+  fileBrowser: boolean
+  gatewayConnection: boolean
+  scheduler: boolean
+}
+
 export interface CoreHealth {
   status: 'ready' | 'starting'
   version: string
   activeTurns: number
   roles: Record<string, { configured: boolean; breakerOpen: boolean }>
+  /** Standalone-only readiness shape. Absent on legacy, which keeps the legacy envelope. */
+  schemaVersion?: 1
+  installationMode?: StandaloneInstallationMode
+  configuration?: StandaloneConfiguration
+  chatbot?: StandaloneChatbot
+  chatbotReason?: string | null
+  appliedRevision?: string | null
+  capabilities?: StandaloneCapabilities
+  hermes?: StandaloneHermes
+}
+
+/** One model role as the standalone readback reports it: the full target plus
+ *  key presence only. Raw credentials are never returned
+ *  (docs/trd/dashboard-state.md#typed-owner-operations). */
+export interface StandaloneModelTarget {
+  provider: string
+  model: string
+  baseUrl: string
+  effort: string
+  deepEffort: string
+  usdPerMTokIn: number
+  usdPerMTokOut: number
+  usdPerMTokCached: number
+  credentialConfigured: boolean
+}
+
+export interface StandaloneModelPair {
+  main: StandaloneModelTarget | null
+  fallback: StandaloneModelTarget | null
+}
+
+/** The GET/PUT standalone-config envelope and the POST activate readback. */
+export interface StandaloneConfigState {
+  schemaVersion: 1
+  configuration: StandaloneConfiguration
+  savedRevision: string | null
+  appliedRevision: string | null
+  activation: StandaloneActivation
+  lastFailure: string | null
+  saved: StandaloneModelPair | null
+  applied: StandaloneModelPair | null
+}
+
+/** A model role as the dashboard writes it. `apiKey` is write-only: absent or
+ *  empty keeps the saved key, null clears it. A null role disables it. */
+export interface StandaloneModelInput {
+  provider: string
+  model: string
+  baseUrl: string
+  effort: string
+  deepEffort: string
+  usdPerMTokIn: number
+  usdPerMTokOut: number
+  usdPerMTokCached: number
+  apiKey?: string | null
 }
 
 export interface CoreConfigStatus {
@@ -111,6 +188,14 @@ function put<T>(path: string, body: unknown): Promise<T> {
   })
 }
 
+function post<T>(path: string, body: unknown): Promise<T> {
+  return call<T>(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+}
+
 export const core = {
   health: () => call<CoreHealth>('/api/health'),
   senders: (id: string) =>
@@ -149,7 +234,18 @@ export const core = {
       `/api/characters/${encodeURIComponent(id)}/footer`
     ),
   /** Deployment activation readback: opaque revisions and status only, no values or paths. */
-  config: () => call<CoreConfigStatus>('/api/config')
+  config: () => call<CoreConfigStatus>('/api/config'),
+  /** Standalone model revisions: sanitized saved/applied pairs, revision ids and activation status. */
+  standaloneConfig: () => call<StandaloneConfigState>('/api/standalone-config'),
+  /** Save a standalone model revision. The reply is the readback, not proof of activation. */
+  saveStandaloneConfig: (body: {
+    expectedRevision: string | null
+    main: StandaloneModelInput | null
+    fallback: StandaloneModelInput | null
+  }) => put<StandaloneConfigState>('/api/standalone-config', body),
+  /** Request activation of the saved revision. 202 means accepted, not applied: poll the readback. */
+  activateStandaloneConfig: (expectedRevision: string | null) =>
+    post<StandaloneConfigState>('/api/standalone-config/activate', { expectedRevision })
 }
 
 /** A reason code in plain words, for a toast. */
@@ -171,7 +267,10 @@ export function reasonText(error: unknown): string {
     not_found: 'That item no longer exists.',
     internal: 'The core hit an internal error while saving. Reload to check the current value.',
     origin_refused: 'This page is not on the core’s own address.',
-    host_refused: 'Open the site by its IP address, not a name.'
+    host_refused: 'Open the site by its IP address, not a name.',
+    model_config_invalid: 'That model setup is not valid. Check the fields and save again.',
+    activation_in_progress: 'An activation is already running. Wait for the readback to settle.',
+    capability_unavailable: 'Not available on this installation.'
   }
   const message = words[error.code] ?? `The core refused it (${error.code}).`
   return error.requestId ? message + ' Reference ' + error.requestId : message

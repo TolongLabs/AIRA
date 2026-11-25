@@ -45,6 +45,10 @@ export const CHAT_FEATURE_DEFINITIONS: readonly ChatFeatureDefinition[] = [
   }
 ]
 
+// Standalone can answer admitted text turns; the other adapter features require legacy host integrations.
+export const standaloneTextFeature = (key: string) =>
+  ['features.search', 'features.social', 'features.think'].includes(key)
+
 /** Presentation and validation helpers for one chat's resolved settings row. */
 export class ChatSettingsViewModel {
   constructor(

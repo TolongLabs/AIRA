@@ -1,15 +1,21 @@
 import { TimeField } from '@/dashboard/form-select'
 import { Loading } from '@/dashboard/loading'
 import { ChatAccess } from '@/dashboard/chat-access'
+import { InstallationContext } from '@/dashboard/context'
 import { ChatGlyph, motif, ProfileImage, PortraitUpload } from '@/dashboard/profile-image'
 import Composer from '@/dashboard/composer'
 import { chatHref, dashboardHref } from '@/dashboard/navigation'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import { ChevronRight, X } from 'lucide-react'
-import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { Shell } from '@/components/shell'
 import { Badge, Button, Card, Empty, Field, Input, Picker, Section, Segmented, Spinner, Toggle } from '@/components/ui'
-import { CHAT_FEATURE_DEFINITIONS, ChatSettingsViewModel, personaChoices } from '@/lib/chat-view-model'
+import {
+  CHAT_FEATURE_DEFINITIONS,
+  ChatSettingsViewModel,
+  personaChoices,
+  standaloneTextFeature
+} from '@/lib/chat-view-model'
 import {
   type CoreCharacter,
   type CoreChat,
@@ -714,18 +720,28 @@ function ChatRow({
 }) {
   const vm = useMemo(() => new ChatSettingsViewModel(chat, characters), [chat, characters])
   const toolFeatures = toolCatalog.data?.features ?? []
-  const sections = onToggle ? SECTIONS.filter((s) => s.key !== 'send') : SECTIONS
+  /* Standalone has no host send transport, so the Send Message tab is hidden
+     there and a direct #send hash or /send path falls back to Character. */
+  const standalone = useContext(InstallationContext) === 'standalone'
+  const sections = useMemo(
+    () =>
+      SECTIONS.filter((s) => (s.key !== 'send' || (!onToggle && !standalone)) && (!standalone || s.key !== 'quiet')),
+    [onToggle, standalone]
+  )
   const resolveTab = () =>
-    !onToggle && location.pathname.endsWith('/send')
+    !onToggle && !standalone && location.pathname.endsWith('/send')
       ? 'send'
       : (sections.find((s) => '#' + s.key === location.hash)?.key ?? 'character')
   const [tab, setTab] = useState<SectionKey>(resolveTab)
   useEffect(() => {
     if (onToggle) return
-    const change = () => setTab(SECTIONS.find((s) => '#' + s.key === location.hash)?.key ?? 'character')
+    const change = () => {
+      const next = sections.find((s) => '#' + s.key === location.hash)?.key ?? 'character'
+      setTab(next)
+    }
     addEventListener('hashchange', change)
     return () => removeEventListener('hashchange', change)
-  }, [onToggle])
+  }, [onToggle, sections])
   function chooseTab(next: SectionKey) {
     setTab(next)
     if (!onToggle)
@@ -1050,6 +1066,12 @@ function ChatRow({
               )}
               {tab === 'reply' && (
                 <>
+                  {standalone && (
+                    <p>
+                      Standalone supports text replies only. Hermes owns group admission; stickers, reactions and
+                      scheduled messages are unavailable.
+                    </p>
+                  )}
                   <SettingRow vm={vm} name="replyLength" label="Reply length" onClear={clear}>
                     <Segmented
                       options={['short', 'default', 'long'] as const}
@@ -1059,15 +1081,17 @@ function ChatRow({
                       labels={{ short: 'Short', default: 'Default', long: 'Long' }}
                     />
                   </SettingRow>
-                  <SettingRow vm={vm} name="expressions" label="Expressions" onClear={clear}>
-                    <Toggle
-                      checked={vm.settingValue('expressions', true)}
-                      disabled={busy}
-                      onChange={(v) => save('expressions', v)}
-                      label="Send a sticker with replies"
-                      hint="Off: text only."
-                    />
-                  </SettingRow>
+                  {!standalone && (
+                    <SettingRow vm={vm} name="expressions" label="Expressions" onClear={clear}>
+                      <Toggle
+                        checked={vm.settingValue('expressions', true)}
+                        disabled={busy}
+                        onChange={(v) => save('expressions', v)}
+                        label="Send a sticker with replies"
+                        hint="Off: text only."
+                      />
+                    </SettingRow>
+                  )}
                   <SettingRow vm={vm} name="features.toolFooter" label="Tool footer" onClear={clear}>
                     <Toggle
                       checked={vm.settingValue('features.toolFooter', true)}
@@ -1082,7 +1106,7 @@ function ChatRow({
                       <FooterEmojiField vm={vm} onSave={(v) => save('footerEmoji', v)} />
                     </SettingRow>
                   )}
-                  {chat.type === 'group' && (
+                  {!standalone && chat.type === 'group' && (
                     <>
                       <SettingRow vm={vm} name="freeResponse" label="Free response" onClear={clear}>
                         <Toggle
@@ -1134,37 +1158,46 @@ function ChatRow({
                       checked={vm.settingValue('features.memory', true)}
                       disabled={busy}
                       onChange={(v) => save('features.memory', v)}
-                      label="Learn and recall facts in this chat"
-                      hint="Off: AIRA learns nothing new and recalls nothing here. Stored facts are kept."
+                      label={standalone ? 'Recall and save facts in this chat' : 'Learn and recall facts in this chat'}
+                      hint={
+                        standalone
+                          ? 'Automatic learning is unavailable. Explicit memory tools still work.'
+                          : 'Off: AIRA learns nothing new and recalls nothing here. Stored facts are kept.'
+                      }
                     />
                   </SettingRow>
-                  <SettingRow
-                    vm={vm}
-                    name="memory.pageMessages"
-                    label="Memory page"
-                    hint="Messages that close a memory episode (5 to 50)."
-                    onClear={clear}
-                  >
-                    <NumberSettingField
-                      key={`${chat.settings['memory.pageMessages']?.level ?? 'unset'}:${vm.settingValue('memory.pageMessages', 25)}`}
-                      value={vm.settingValue('memory.pageMessages', 25)}
-                      min={5}
-                      max={50}
-                      unit="messages"
+                  {!standalone && (
+                    <SettingRow
+                      vm={vm}
+                      name="memory.pageMessages"
                       label="Memory page"
-                      busy={busy}
-                      onSave={(v) => save('memory.pageMessages', v)}
-                    />
-                  </SettingRow>
-                  <SettingRow vm={vm} name="reactions" label="Reactions" onClear={clear}>
-                    <Toggle
-                      checked={vm.settingValue('reactions', false)}
-                      disabled={busy}
-                      onChange={(v) => save('reactions', v)}
-                      label="React to members' messages with an emoji"
-                    />
-                  </SettingRow>
-                  {vm.settingValue('reactions', false) &&
+                      hint="Messages that close a memory episode (5 to 50)."
+                      onClear={clear}
+                    >
+                      <NumberSettingField
+                        key={`${chat.settings['memory.pageMessages']?.level ?? 'unset'}:${vm.settingValue('memory.pageMessages', 25)}`}
+                        value={vm.settingValue('memory.pageMessages', 25)}
+                        min={5}
+                        max={50}
+                        unit="messages"
+                        label="Memory page"
+                        busy={busy}
+                        onSave={(v) => save('memory.pageMessages', v)}
+                      />
+                    </SettingRow>
+                  )}
+                  {!standalone && (
+                    <SettingRow vm={vm} name="reactions" label="Reactions" onClear={clear}>
+                      <Toggle
+                        checked={vm.settingValue('reactions', false)}
+                        disabled={busy}
+                        onChange={(v) => save('reactions', v)}
+                        label="React to members' messages with an emoji"
+                      />
+                    </SettingRow>
+                  )}
+                  {!standalone &&
+                    vm.settingValue('reactions', false) &&
                     (() => {
                       const chance = vm.settingValue('reactions.chance', 33)
                       const preset = REACTION_CHANCES.includes(String(chance) as ReactionChancePreset)
@@ -1227,7 +1260,7 @@ function ChatRow({
                 </>
               )}
               {tab === 'features' &&
-                CHAT_FEATURE_DEFINITIONS.map((f) => {
+                CHAT_FEATURE_DEFINITIONS.filter((f) => !standalone || standaloneTextFeature(f.key)).map((f) => {
                   const postMedia = f.key === 'features.autofetch'
                   const socialKey = postMedia || f.key === 'features.social' ? (f.key as SocialCapabilityKey) : null
                   return (

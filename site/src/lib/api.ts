@@ -42,7 +42,7 @@ const pending = new Map<string, Promise<void>>()
 /** Ask for a token, once per storage key, no matter how many calls 401 at once. */
 export function requestToken(
   key: string = TOKEN_KEY,
-  message = 'This address needs the token from ~/.hermes/brain/.site-token'
+  message = 'This address needs the owner token: on the host run `aira dashboard --show-token`, or use the token from ~/.hermes/brain/.site-token'
 ): Promise<void> {
   const open = pending.get(key)
   if (open) return open

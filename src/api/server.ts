@@ -480,7 +480,7 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
       json(response, 405, { error: 'method_not_allowed' })
       return
     }
-    if (options.siteDir && options.dashboardEntry) {
+    if (options.siteDir && (options.dashboardEntry || options.installationMode === 'standalone')) {
       const redirect = entryAliases.get(path)
       if (redirect) {
         response.writeHead(302, { location: redirect + query, 'cache-control': 'no-store' }).end()
@@ -505,7 +505,11 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
       'x-content-type-options': 'nosniff',
       'referrer-policy': 'no-referrer'
     })
-    response.end(method === 'HEAD' ? undefined : file.body)
+    const body =
+      options.installationMode === 'standalone' && file.type.startsWith('text/html')
+        ? file.body.toString('utf8').replace('<html ', '<html data-aira-install-mode="standalone" ')
+        : file.body
+    response.end(method === 'HEAD' ? undefined : body)
   }
 
   return createServer((request, response) => {
