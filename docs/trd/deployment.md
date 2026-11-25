@@ -27,8 +27,8 @@ successful CI run (including deployment) and re-tags the already-built manifest,
 The target is the published version tag resolved to its commit, not the release workflow's triggering push SHA:
 release-please can create a release for a newer main commit while an earlier push workflow is running.
 A manual dispatch of `release` on `main` retries promotion of the latest published non-prerelease version only,
-without creating a release. Promotion serializes image tag writes and rechecks the latest release and its commit
-before writing; a superseded target is skipped and a moved tag or mismatched digest fails the job.
+without creating a release. Promotion serializes image tag writes without replacing pending jobs, and rechecks
+the latest release and its commit before writing; a superseded target is skipped and a moved tag or mismatched digest fails the job.
 
 ## Release Image
 
