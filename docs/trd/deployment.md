@@ -292,6 +292,35 @@ pass on a push to `main`. Deploys run one at a time. Like rokabot's, every merge
   a pull. With a stopped core, take a fresh verified SQLite backup from the host volume. A failed restore or
   an unhealthy previous version is recorded as `rollback_failed`.
 
+### Standalone stable update
+
+The host CLI uses the same deployment transaction on a host without Bun or Node. A legacy or CI-managed install
+keeps its existing updater and management channel: `aira update` reports that channel without changing it. Only an
+installed, authenticated, running standalone stable install can enter the portable update transaction. An explicit
+compatible local image is permitted for fixtures. The normal target is the public `stable` image.
+
+Under `deploy.lock`, record the actual container image ID and mapped ports, pin the previous image to an owned
+installation-specific local tag, pull the target without replacing the running container, and inspect its image
+ID and `io.tolonglabs.aira.standalone-contract=1` label. A missing or incompatible label refuses the update before
+service replacement. If the IDs match, report up to date. Pin the candidate to an installation-specific local tag,
+so neither an external pull nor a moved registry tag can silently change the transaction. Wait at most 120 seconds
+for idle; abort if not idle. Gracefully stop the old container and take a verified coherent private backup as defined
+in [Persistence](storage.md#standalone-deploy-backup). If backup fails, restart the unchanged previous container.
+
+Persist a private `update.json` journal before stopping, with the old and candidate image IDs, local tags, prior
+image selection and backup ID (no credentials). Change only the two owned image-selection lines in `.env`; retain
+the real ports, data, owner UID and all other configuration. Start the pinned candidate, check the actual image ID,
+service and owner health and built dashboard using the setup verifier, and run the existing deterministic isolated
+deployment probe inside the image in standalone mode. That probe uses a temporary database, example pack and fake
+gateway transport, and never sends or invokes a real provider. Commit the manifest only after verification.
+
+Any failure after stopping triggers recovery to the exact previous pinned image and verifies its health, owner
+authentication and unchanged ports. Report `update_rolled_back` (exit 1), or `rollback_failed` (exit 5) with the safe
+backup reference and journal retained. A later update first recovers an unfinished journal and never blindly starts
+another candidate. A routine rollback uses current data; it never restores an older snapshot over later writes.
+Do not prune images or mutate another project. Record the operation ID, stage, result and previous/candidate image
+IDs in the bounded private update log. There is no automatic stable update timer in the portable milestone.
+
 ## Shadow Period
 
 Not run. Cutover went ahead without this period and without the staging rehearsal (decision 2026-11-17). NFR-8
