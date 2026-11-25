@@ -148,6 +148,12 @@ model readiness. No configured main model means `setup_required`. A saved but no
 `pending_activation`, not a running configuration. See [Models](models.md#standalone-model-readiness).
 The store and the exact typed write/activation contract are frozen before implementing those operations.
 
+The standalone dashboard owner uses the per-install credential rather than the Hermes host credential.
+The existing browser token key and protected request boundary stay in place. See
+[standalone owner authentication](site.md#standalone-owner-authentication). Core settings and Studio
+operations have the same authority and revisions in both modes; legacy-only operations are unavailable
+in standalone until a capability contract is implemented and verified.
+
 ## Host settings, routines, notices, markets, and files
 
 These pages reach the host owner service through the core's same-origin

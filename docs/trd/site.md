@@ -196,6 +196,36 @@ workspaces on demand. The [site build instructions](../../site/README.md) cover 
 Clearing a character at global, type or chat level must leave each active chat that uses that binding
 with a loaded effective character. A more specific binding keeps its precedence.
 
+## Standalone Owner Authentication
+
+The installation mode in [Deployment](deployment.md#installation-modes) selects one authority.
+Legacy continues to verify the existing owner credential through the host owner service.
+An unavailable legacy authority fails closed; the local credential is never a fallback.
+
+A standalone core uses the dashboard entry and protects every `/api/` and `/owner-api/` route (including
+the classic API spelling) with the existing literal Host, Origin and `X-TolongAI-Token` checks. Missing or
+wrong credentials return 401. Denied Host or Origin returns 403. All protected responses use
+`Cache-Control: no-store`. Only public static dashboard documents and assets are anonymous.
+The token is compared in constant time and is never returned by an API. The local token cannot authorize
+a legacy host operation; authenticated requests under `/owner-api/` outside `/owner-api/core/` return
+503 `capability_unavailable` in standalone without contacting the host, including send, cron and settings writes.
+Legacy route behavior remains unchanged.
+
+The local owner token is 32 random bytes encoded as 64 lowercase hex characters in
+`<data>/standalone/owner.token`, newline-terminated, created once and read without accepting a symlink,
+non-regular file, incorrect owner, or group/other access. The private directory is mode 0700 and the
+credential is mode 0600. Rerunning or repairing the installation does not rotate the token.
+Invalid stored credentials fail startup rather than being replaced. The operator retrieves the credential
+only through the explicit interactive CLI command defined in [Deployment](deployment.md#standalone-cli).
+The browser keeps the existing storage key and sends the credential only on protected requests.
+
+Authenticated `GET /owner-api/core/health` retains its legacy envelope. In standalone it also includes
+`schemaVersion: 1`, `installationMode: standalone`, `configuration`, `chatbot`, `chatbotReason`, and
+`capabilities`. Until the corresponding integration is implemented and verified, the boolean capability
+fields `hostOwnerService`, `subscriptionRunner`, `fileBrowser`, `gatewayConnection`, and `scheduler`
+are false; the dashboard must not call absent services or treat those capabilities as an error.
+A legacy response without the new fields selects the existing dashboard behavior.
+
 ## Owner Page Edits
 
 The Settings editor keeps its selected file and unsaved buffer until Save or Revert. A failed read disables
