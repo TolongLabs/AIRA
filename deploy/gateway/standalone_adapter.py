@@ -10,17 +10,20 @@ import argparse
 import asyncio
 import http.client
 import json
+import logging
 import os
 import re
 import stat
 import sys
+from pathlib import Path
 
 ADAPTER_VERSION = "hermes-v0.23.4"
 MARKER_NAME = "aira-transport.json"
 PROFILE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 IDENTITY = re.compile(r"^[A-Za-z0-9@._:+-]{1,256}$")
 TOKEN = re.compile(r"^[0-9a-f]{64}$")
-MAX_RESPONSE = 65_536
+MAX_RESPONSE = 256 * 1024
+MAX_TEXT = 32_768
 
 
 def _unique(pairs):
@@ -33,6 +36,9 @@ def _unique(pairs):
 
 
 def read_marker(path):
+    path = Path(path).absolute()
+    if path.resolve(strict=False) != path:
+        raise ValueError("invalid marker location")
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, "rb") as handle:
         info = os.fstat(handle.fileno())
@@ -42,10 +48,12 @@ def read_marker(path):
     if len(raw) > 4096:
         raise ValueError("marker too large")
     value = json.loads(raw, object_pairs_hook=_unique)
-    if not isinstance(value, dict) or set(value) != {"schemaVersion", "profile", "port", "token"}:
+    if not isinstance(value, dict) or set(value) != {"schemaVersion", "profile", "profileHome", "port", "token"}:
         raise ValueError("invalid marker")
     if (type(value["schemaVersion"]) is not int or value["schemaVersion"] != 1
         or not isinstance(value["profile"], str) or not PROFILE.fullmatch(value["profile"])
+        or value["profileHome"] != str(path.parent)
+        or (value["profile"] != "default" and (path.parent.name != value["profile"] or path.parent.parent.name != "profiles"))
         or type(value["port"]) is not int or not 1 <= value["port"] <= 65535
         or not isinstance(value["token"], str) or not TOKEN.fullmatch(value["token"])):
         raise ValueError("invalid marker")
@@ -55,7 +63,10 @@ def read_marker(path):
 def _post(config, path, payload, timeout):
     connection = http.client.HTTPConnection("127.0.0.1", config["port"], timeout=timeout)
     try:
-        connection.request("POST", path, json.dumps(payload).encode("utf-8"), {
+        encoded = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        if len(encoded) > MAX_RESPONSE:
+            return None
+        connection.request("POST", path, encoded, {
             "Content-Type": "application/json", "Authorization": "Bearer " + config["token"]
         })
         response = connection.getresponse()
@@ -77,24 +88,31 @@ def _reply(value):
         or value["disposition"] != "reply"):
         return None
     reply = value["reply"]
-    if (not isinstance(reply, str) or not reply.strip() or len(reply) > 32_768
-        or reply.strip() == "NO_REPLY" or any(line.startswith("MEDIA:") for line in reply.splitlines())):
+    if (not isinstance(reply, str) or not reply.strip() or not _text_fits(reply)
+        or reply.strip() == "NO_REPLY" or any(line.lstrip().startswith("MEDIA:") for line in reply.splitlines())):
         return None
     return reply
+
+
+def _text_fits(text):
+    return len(text.encode("utf-16-le")) // 2 <= MAX_TEXT
 
 
 async def route(marker, event, source):
     try:
         config = read_marker(marker)
         if (_value(source.platform) != "whatsapp" or source.chat_type not in ("dm", "group")
-            or event.internal or event.media_urls or event.reply_expected is False
+            or event.internal or event.media_urls or event.media_types or event.reply_expected is False
+            or event.metadata.get("whatsapp_from_owner") is True
             or _value(event.message_type) != "text" or getattr(source, "is_bot", False)):
             return None
         sender = event.sender_id()
         if not all(isinstance(v, str) and IDENTITY.fullmatch(v)
                    for v in (source.chat_id, sender, event.message_id)):
             return None
-        if not isinstance(event.text, str) or not event.text.strip() or len(event.text) > 32_768:
+        if source.user_id not in (None, "", sender) or source.chat_id.lower().endswith("@broadcast"):
+            return None
+        if not isinstance(event.text, str) or not event.text.strip() or not _text_fits(event.text):
             return None
         payload = {
             "schemaVersion": 1, "profile": config["profile"], "platform": "whatsapp",
@@ -102,13 +120,16 @@ async def route(marker, event, source):
             "mid": event.message_id, "text": event.text,
         }
         response = await asyncio.wait_for(
-            asyncio.to_thread(_post, config, "/v1/aira/turn", payload, 55), timeout=60
+            asyncio.to_thread(_post, config, "/v1/aira/turn", payload, 115), timeout=120
         )
+        if response is None:
+            logging.getLogger(__name__).warning("aira.adapter.route_unavailable")
         return _reply(response)
     except asyncio.CancelledError:
         raise
     except Exception:
         # No exception content or message text is logged. The pinned caller consumes this event.
+        logging.getLogger(__name__).warning("aira.adapter.route_unavailable")
         return None
 
 

@@ -695,30 +695,34 @@ export async function createApp(options: AppOptions): Promise<App> {
       commands: createCommandRouter(registry, { timeZone: config.format.timeZone }),
       media: createTurnMedia({
         ...(mediaWatcher ? { watcher: mediaWatcher } : {}),
-        links: createLinkReader({
-          downloadShort,
-          compressVideo,
-          viewer,
-          findTarget: (text) => findLinkTarget([text], (entry) => socialLog.info('social.unknown_host', entry)),
-          ...(mediaWatcher ? { watcher: mediaWatcher } : {}),
-          download: (url, signal, maxBytes, headers, rangeBytes, source) =>
-            enabledMirrorAsset(url, source, socialMirrors) && !isDouyinRedirectMediaUrl(url)
-              ? socialAssetDownload(url, signal, maxBytes, headers, rangeBytes)
-              : socialMediaDownload(url, signal, maxBytes, headers),
-          model: mediaModel ?? '',
-          limits: {
-            ...DEFAULT_MEDIA_LIMITS,
-            maxVideoSeconds: config.media.maxVideoSeconds,
-            maxLinkVideoSeconds: config.media.maxLinkVideoSeconds,
-            linkWatchMs: config.media.linkWatchMs,
-            linkSegmentSeconds: config.media.linkSegmentSeconds,
-            linkFirstSegmentSeconds: config.media.linkFirstSegmentSeconds,
-            maxLinkSegments: config.media.maxLinkSegments,
-            linkFps: config.media.linkFps
-          },
-          logger,
-          now
-        }),
+        ...(!standalone
+          ? {
+              links: createLinkReader({
+                downloadShort,
+                compressVideo,
+                viewer,
+                findTarget: (text) => findLinkTarget([text], (entry) => socialLog.info('social.unknown_host', entry)),
+                ...(mediaWatcher ? { watcher: mediaWatcher } : {}),
+                download: (url, signal, maxBytes, headers, rangeBytes, source) =>
+                  enabledMirrorAsset(url, source, socialMirrors) && !isDouyinRedirectMediaUrl(url)
+                    ? socialAssetDownload(url, signal, maxBytes, headers, rangeBytes)
+                    : socialMediaDownload(url, signal, maxBytes, headers),
+                model: mediaModel ?? '',
+                limits: {
+                  ...DEFAULT_MEDIA_LIMITS,
+                  maxVideoSeconds: config.media.maxVideoSeconds,
+                  maxLinkVideoSeconds: config.media.maxLinkVideoSeconds,
+                  linkWatchMs: config.media.linkWatchMs,
+                  linkSegmentSeconds: config.media.linkSegmentSeconds,
+                  linkFirstSegmentSeconds: config.media.linkFirstSegmentSeconds,
+                  maxLinkSegments: config.media.maxLinkSegments,
+                  linkFps: config.media.linkFps
+                },
+                logger,
+                now
+              })
+            }
+          : {}),
         model: mediaModel ?? '',
         limits: { ...DEFAULT_MEDIA_LIMITS, maxVideoSeconds: config.media.maxVideoSeconds },
         gatewayDirs: config.media.gatewayDirs,

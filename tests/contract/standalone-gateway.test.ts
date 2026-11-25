@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from 'node:fs'
+import { readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
@@ -75,7 +75,7 @@ async function start(configured: boolean) {
     expect(result.status).toBe(200)
     return result.json()
   }
-  return { model, post, ownerCall, owner, token }
+  return { model, post, ownerCall, owner, token, root }
 }
 const attach = (action: 'connect' | 'disconnect' = 'connect') => ({
   schemaVersion: 1,
@@ -150,10 +150,34 @@ describe('standalone structured Hermes transport', () => {
     expect(JSON.stringify(alpha.body)).toMatch(/fixture reply alpha/i)
     expect(JSON.stringify(beta.body)).toMatch(/fixture reply beta/i)
     expect(core.model.requests).toHaveLength(2)
+    expect((await core.post('/v1/aira/turn', { ...turn('fixture-a', 'm3', 'wrong kind'), kind: 'group' })).status).toBe(
+      409
+    )
+    expect(core.model.requests).toHaveLength(2)
     expect(JSON.stringify(core.model.requests[0])).toContain('alpha-private-fixture')
     expect(JSON.stringify(core.model.requests[1])).not.toContain('alpha-private-fixture')
     expect((await core.post('/v1/aira/attach-check', attach('disconnect'))).status).toBe(200)
     expect((await core.post('/v1/aira/turn', turn('fixture-a', 'm3', 'after disconnect'))).status).toBe(503)
     expect(core.model.requests).toHaveLength(2)
+  })
+
+  it('distinguishes invalid or unsupported route receipts from a deliberate disconnect', async () => {
+    const core = await start(true)
+    const receipt = join(core.root, 'standalone', 'hermes.json')
+    writeFileSync(receipt, '{invalid', { mode: 0o600 })
+    expect(await core.ownerCall('health')).toMatchObject({ chatbot: 'inactive', hermes: { state: 'invalid' } })
+    writeFileSync(
+      receipt,
+      JSON.stringify({
+        schemaVersion: 1,
+        state: 'connected',
+        adapterVersion: 'different',
+        profile: 'fixture',
+        verifiedAt: new Date().toISOString()
+      })
+    )
+    expect(await core.ownerCall('health')).toMatchObject({ chatbot: 'inactive', hermes: { state: 'unsupported' } })
+    expect((await core.post('/v1/aira/attach-check', attach('disconnect'))).status).toBe(200)
+    expect(await core.ownerCall('health')).toMatchObject({ chatbot: 'inactive', hermes: { state: 'disconnected' } })
   })
 })

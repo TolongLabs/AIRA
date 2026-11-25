@@ -312,14 +312,20 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
       json(
         response,
         503,
-        { error: { code: options.standaloneReadiness?.().chatbotReason ?? 'model_setup_required' } },
+        {
+          error: {
+            code: !options.ready()
+              ? 'service_unavailable'
+              : (options.standaloneReadiness?.().chatbotReason ?? 'model_setup_required')
+          }
+        },
         log
       )
       return
     }
     let input: unknown
     try {
-      input = JSON.parse(await readBody(request, 128 * 1024))
+      input = JSON.parse(await readBody(request, 256 * 1024))
     } catch {
       json(response, 400, { error: { code: 'gateway_malformed' } }, log)
       return
@@ -331,15 +337,18 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
         return
       }
       parsed = adapter.parseTurn(input)
+      const known = getChatByWaId(storage, parsed.marker.chat)
+      if (known && known.type !== parsed.marker.kind)
+        throw new StandaloneGatewayError(409, 'gateway_chat_kind_conflict')
       const reply = await turns.handle(parsed)
       const content = reply.content
         .split(BUBBLE_BREAK)
         .join('\n')
-        .split('\n')
-        .filter((line) => !line.startsWith('MEDIA:'))
+        .split(/\r\n|[\r\n\u2028\u2029]/)
+        .filter((line) => !line.trimStart().startsWith('MEDIA:'))
         .join('\n')
         .trim()
-      const deliverable = content !== '' && content !== NO_REPLY
+      const deliverable = content !== '' && content !== NO_REPLY && content.length <= 32_768
       json(
         response,
         200,
@@ -419,9 +428,9 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
             503,
             {
               error: {
-                message: 'the chatbot is inactive: model setup required',
+                message: 'the standalone chatbot is inactive',
                 type: 'server_error',
-                code: 'model_setup_required'
+                code: options.standaloneReadiness?.().chatbotReason ?? 'model_setup_required'
               }
             },
             log

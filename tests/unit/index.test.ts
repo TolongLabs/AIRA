@@ -23,6 +23,8 @@ function makeStubApp(storage: Storage, overrides: Partial<App> = {}): App {
     storage,
     listen: async () => ({ address: '127.0.0.1', family: 'IPv4', port: 9881 }),
     listenSite: async () => undefined,
+    completeStartup: () => {},
+    failStartup: () => {},
     snapshot: async () => ({ id: 1, state: 'verified', file: 'snap.db' }),
     close: async () => {},
     ...overrides
