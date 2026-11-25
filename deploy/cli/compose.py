@@ -170,7 +170,7 @@ def _json_entries(out):
 
 
 def projects():
-    code, out, _ = run(["docker", "compose", "ls", "--all", "--format", "json"], timeout_s=10)
+    code, out, _ = run(["docker", "compose", "ls", "--all", "--format", "json"], timeout_s=30)
     if code != 0:
         raise RunError("unreachable")
     return [entry for entry in _json_entries(out) if isinstance(entry, dict)]
@@ -192,7 +192,7 @@ def detect_project(home):
 
 
 def ps_entries(home, project, service="aira"):
-    code, out, _ = compose_run(home, project, ["ps", "--all", "--format", "json", service], timeout_s=10)
+    code, out, _ = compose_run(home, project, ["ps", "--all", "--format", "json", service], timeout_s=30)
     if code != 0:
         raise RunError("unreachable")
     return [entry for entry in _json_entries(out) if isinstance(entry, dict)]
@@ -231,14 +231,14 @@ def published_bindings(home, project):
     result = {}
     if service_running(entries):
         for target in (9881, 9890):
-            code, out, _ = compose_run(home, project, ["port", "aira", str(target)], timeout_s=5)
+            code, out, _ = compose_run(home, project, ["port", "aira", str(target)], timeout_s=20)
             binding = _binding(out) if code == 0 else None
             if binding:
                 result[target] = binding
         return result
     cid = container_id(home, project)
     if cid:
-        code, out, _ = run(["docker", "inspect", "--format", "{{json .HostConfig.PortBindings}}", cid], 5)
+        code, out, _ = run(["docker", "inspect", "--format", "{{json .HostConfig.PortBindings}}", cid], 20)
         try:
             bindings = json.loads(out) if code == 0 else {}
             for target in (9881, 9890):
@@ -261,7 +261,7 @@ def container_image_id(home, project, service="aira"):
     cid = container_id(home, project, service)
     if not cid:
         return None
-    code, out, _ = run(["docker", "inspect", "--format", "{{.Image}}", cid], timeout_s=5)
+    code, out, _ = run(["docker", "inspect", "--format", "{{.Image}}", cid], timeout_s=20)
     image = out.strip()
     return image if code == 0 and re.fullmatch(r"sha256:[0-9a-f]{64}", image) else None
 
@@ -270,7 +270,7 @@ def restart_policy(home, project):
     cid = container_id(home, project)
     if not cid:
         return None
-    code, out, _ = run(["docker", "inspect", "--format", "{{.HostConfig.RestartPolicy.Name}}", cid], 5)
+    code, out, _ = run(["docker", "inspect", "--format", "{{.HostConfig.RestartPolicy.Name}}", cid], 20)
     return out.strip() if code == 0 else None
 
 
