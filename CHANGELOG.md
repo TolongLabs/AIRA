@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.6.0](https://github.com/TolongLabs/AIRA/compare/v1.5.0...v1.6.0) (2026-11-25)
+
+
+### Features
+
+* **auth:** isolate standalone owner authority ([3670095](https://github.com/TolongLabs/AIRA/commit/3670095559c52317e959c1932110639e05e90ee5))
+* **cli:** attach update and restore safely ([e66ede3](https://github.com/TolongLabs/AIRA/commit/e66ede336a225c52a4e6565ec0527907f14edce7))
+* **cli:** config and diagnostic commands ([d7738ea](https://github.com/TolongLabs/AIRA/commit/d7738ea6f36fb59814dd48247b0da770eead58da))
+* **cli:** install and discover standalone AIRA ([c802e4c](https://github.com/TolongLabs/AIRA/commit/c802e4cbac42f7733e118e2e19d06c7c018cd1c0))
+* **config:** persist standalone model revisions ([8dd0476](https://github.com/TolongLabs/AIRA/commit/8dd0476390b08f27235207f65be154c63379945b))
+* **core:** activate standalone model revisions ([9eb5b60](https://github.com/TolongLabs/AIRA/commit/9eb5b6059724796ee13f6b4fe87bf9b260ab0938))
+* **core:** boot standalone without model keys ([37ab555](https://github.com/TolongLabs/AIRA/commit/37ab555f6c0eefd2e4aabc9f23789ab824e04b81))
+* **format:** let a pack switch off bubble capitals ([4583d9c](https://github.com/TolongLabs/AIRA/commit/4583d9c05e7c7868e828fa618350d158b0b83259))
+* **gateway:** add pinned Hermes text adapter ([5cbc7a8](https://github.com/TolongLabs/AIRA/commit/5cbc7a8f415f65af3da19410994bca3d471b2894))
+* **gateway:** admit trusted standalone turns ([bcc58f2](https://github.com/TolongLabs/AIRA/commit/bcc58f2ad8f579df4394e2ce615f6422308dedda))
+* **site:** guide standalone setup ([9b01029](https://github.com/TolongLabs/AIRA/commit/9b01029742ed5d11e06fba44970fde57138e8d97))
+
+
+### Bug Fixes
+
+* **bench:** match turn by message identity ([d305479](https://github.com/TolongLabs/AIRA/commit/d305479d977374ab8b5a094e75c251dc3c2f44d2))
+* **cli:** allow bounded restart verification ([b9634a0](https://github.com/TolongLabs/AIRA/commit/b9634a02f7a2c1a558a92e261124645221a08e93))
+* **gateway:** bind standalone route identity ([b47e8f6](https://github.com/TolongLabs/AIRA/commit/b47e8f617b9e0530a4339e4a9dd74723e8294fab))
+* **site:** hide the example persona in chat settings ([cb76567](https://github.com/TolongLabs/AIRA/commit/cb76567ffc173d7ddc8da69effbb5169925f7500))
+
 ## [1.5.0](https://github.com/TolongLabs/AIRA/compare/v1.4.1...v1.5.0) (2026-11-24)
 
 
