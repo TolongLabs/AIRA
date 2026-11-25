@@ -233,6 +233,26 @@ describe('bench', () => {
     }
   })
 
+  it('correlates each turn when the wall clock moves backwards', async () => {
+    let offset = 60_000
+    const session = await openChatSession({
+      config: benchConfig(),
+      env: {},
+      now: () => new Date(Date.now() + offset),
+      clients: { main: queueModel([{ text: 'first' }, { text: 'second' }]) }
+    })
+    try {
+      const first = await session.send('one')
+      offset = -60_000
+      const second = await session.send('two')
+      expect(first.turn?.['state']).toBe('delivered')
+      expect(second.turn?.['state']).toBe('delivered')
+      expect(second.turn?.['turn_id']).not.toBe(first.turn?.['turn_id'])
+    } finally {
+      await session.close()
+    }
+  })
+
   it('openChatSession removes its scratch folder on close and uses distinct message ids per send', async () => {
     const before = new Set(readdirSync(tmpdir()).filter((name) => name.startsWith('aira-bench-')))
     const scratchSession = await openChatSession({
