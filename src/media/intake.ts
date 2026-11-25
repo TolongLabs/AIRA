@@ -48,7 +48,8 @@ function isUnavailableError(err: unknown): boolean {
   return (
     err instanceof ModelError &&
     err.kind === 'malformed' &&
-    /cannot fetch content|not available|private/i.test(err.message)
+    ((err instanceof MediaWatchError && err.detail.type === 'unavailable') ||
+      /cannot fetch content|not available|private/i.test(err.message))
   )
 }
 

@@ -167,7 +167,8 @@ export function createTurnMedia(options: TurnMediaOptions): TurnMedia {
 
     async readLink(texts, deadline, allow, onMatch, observe) {
       if (!options.links) return { readings: [], unreadable: [], calls: [] }
-      const timeoutMs = Math.max(1, effectiveTimeout(deadline))
+      const timeoutMs = effectiveTimeout(deadline)
+      if (timeoutMs <= 0) return { readings: [], unreadable: [], calls: [] }
       return options.links.read(texts, timeoutMs, allow, onMatch, observe)
     }
   }

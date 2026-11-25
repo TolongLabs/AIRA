@@ -1,6 +1,6 @@
 import type { MediaReading } from './gemini-watcher.js'
 
-export const DEFAULT_LINK_WATCH_MS = 12_000
+export const DEFAULT_LINK_WATCH_MS = 22_000
 export const DEFAULT_LINK_SEGMENT_SECONDS = 180
 export const DEFAULT_LINK_FIRST_SEGMENT_SECONDS = 60
 export const DEFAULT_MAX_LINK_SEGMENTS = 4
@@ -27,6 +27,12 @@ export interface LinkSegmentPlan {
   segments: LinkSegment[]
   clipped: boolean
   unknownLength: boolean
+}
+
+export interface LinkSegmentEvidence {
+  plan: LinkSegmentPlan
+  durationSec: number | null
+  readings: readonly (MediaReading | undefined)[]
 }
 
 /** Formats non-negative whole seconds as `m:ss` or `h:mm:ss`. Pure. */

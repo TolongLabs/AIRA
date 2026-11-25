@@ -297,6 +297,13 @@ describe('createTurnMedia', () => {
     expect(seenTimeouts[0]).toBeGreaterThanOrEqual(80)
     expect(seenTimeouts[0]).toBeLessThanOrEqual(105)
   })
+
+  it('does not invoke link lookup when the caller media budget is nonpositive', async () => {
+    const read = vi.fn(async () => ({ readings: [], unreadable: [], calls: [] }))
+    const { media } = setup(undefined, { links: { read } })
+    await media.readLink(['https://www.youtube.com/watch?v=fixture1234'], Date.now() - 1, { media: true, social: true })
+    expect(read).not.toHaveBeenCalled()
+  })
 })
 
 describe('mediaPromptText', () => {

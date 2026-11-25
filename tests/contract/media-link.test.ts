@@ -2,7 +2,12 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { parseConfig } from '../../src/config/loader.js'
-import { createGeminiWatcher, type MediaWatcher, toGenerateContentUrlBody } from '../../src/media/gemini-watcher.js'
+import {
+  createGeminiWatcher,
+  MediaWatchError,
+  type MediaWatcher,
+  toGenerateContentUrlBody
+} from '../../src/media/gemini-watcher.js'
 import { readMediaUrl } from '../../src/media/intake.js'
 import { DEFAULT_MEDIA_LIMITS } from '../../src/media/limits.js'
 import { createLinkReader, type LinkPostViewer, type LinkTarget } from '../../src/media/link-intake.js'
@@ -106,14 +111,15 @@ describe('media.maxLinkVideoSeconds configuration', () => {
     expect(parseConfig(withoutKey).media.maxLinkVideoSeconds).toBe(600)
   })
 
-  it('media link segment keys default to 12000, 180, 60 and 4 in schema and config.yml', () => {
+  it('media link segment keys default to 22000, 180, 60 and 4 in schema and config.yml', () => {
     const source = readFileSync('config.yml', 'utf8')
     const parsed = parseConfig(source)
-    expect(parsed.media.linkWatchMs).toBe(12000)
+    expect(parsed.media.linkWatchMs).toBe(22000)
     expect(parsed.media.linkSegmentSeconds).toBe(180)
     expect(parsed.media.linkFirstSegmentSeconds).toBe(60)
     expect(parsed.media.maxLinkSegments).toBe(4)
     expect(parsed.media.linkFps).toBe(0.25)
+    expect(parseConfig(source.replace(/linkWatchMs:\s*\d+/, 'linkWatchMs: 31000')).media.linkWatchMs).toBe(31000)
 
     const withoutKeys = source
       .replace(/\n\s*linkWatchMs:[^\n]*/, '')
@@ -122,7 +128,7 @@ describe('media.maxLinkVideoSeconds configuration', () => {
       .replace(/\n\s*maxLinkSegments:[^\n]*/, '')
       .replace(/\n\s*linkFps:[^\n]*/, '')
     const defaults = parseConfig(withoutKeys).media
-    expect(defaults.linkWatchMs).toBe(12000)
+    expect(defaults.linkWatchMs).toBe(22000)
     expect(defaults.linkSegmentSeconds).toBe(180)
     expect(defaults.linkFirstSegmentSeconds).toBe(60)
     expect(defaults.maxLinkSegments).toBe(4)
@@ -251,6 +257,105 @@ describe('gemini-watcher watchUrl and readMediaUrl', () => {
 
 describe('createLinkReader', () => {
   const baseLimits = { ...DEFAULT_MEDIA_LIMITS, maxVideoSeconds: 180, maxLinkVideoSeconds: 600 }
+
+  it('does not start lookup for a nonpositive reader budget', async () => {
+    const lookup = vi.fn(async () => ({ status: 'none' as const }))
+    const reader = createLinkReader({
+      viewer: { lookup },
+      findTarget: fakeFindTarget,
+      model: 'test',
+      limits: baseLimits
+    })
+    await expect(
+      reader.read(['https://www.youtube.com/watch?v=fixture1234'], 0, { media: true, social: true })
+    ).resolves.toMatchObject({ calls: [], readings: [], unreadable: [] })
+    expect(lookup).not.toHaveBeenCalled()
+  })
+
+  it('retries one eligible failed range with the same source and records both launched calls', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-26T00:00:00Z'))
+    vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    try {
+      const post = makePost({
+        platform: 'youtube',
+        id: 'retry1',
+        canonicalUrl: 'https://www.youtube.com/watch?v=retry1',
+        target: makeTarget('youtube', 'retry1'),
+        durationSec: 60
+      })
+      const seen: { url: string; startSec?: number; endSec?: number; fps?: number }[] = []
+      const watcher: MediaWatcher = {
+        async watch() {
+          throw new Error('unused')
+        },
+        async watchUrl(source) {
+          seen.push(source)
+          if (seen.length === 1) throw new MediaWatchError('transient', 'redacted', { type: 'network' })
+          return {
+            reading: { description: 'Recovered.' },
+            usage: { inputTokens: 1, outputTokens: 1, cachedTokens: 0 },
+            costUsd: 0,
+            model: 'test'
+          }
+        }
+      }
+      const reader = createLinkReader({
+        viewer: { lookup: async () => ({ status: 'found', post }) },
+        findTarget: fakeFindTarget,
+        watcher,
+        model: 'test',
+        limits: { ...baseLimits, linkWatchMs: 22000 }
+      })
+      const pending = reader.read(['https://www.youtube.com/watch?v=retry1'], 22000, { media: true, social: true })
+      await vi.advanceTimersByTimeAsync(750)
+      const result = await pending
+      expect(seen).toHaveLength(2)
+      expect(seen[1]).toEqual(seen[0])
+      expect(result.calls.map(({ attempt, failureKind }) => [attempt, failureKind])).toEqual([
+        [1, 'transient'],
+        [2, undefined]
+      ])
+      expect(result.unreadable).toEqual([])
+      expect(result.links?.[0]?.reading?.description).toBe('Recovered.')
+    } finally {
+      vi.restoreAllMocks()
+      vi.useRealTimers()
+    }
+  })
+
+  it('returns on deadline even when a watcher ignores cancellation', async () => {
+    vi.useFakeTimers()
+    try {
+      const post = makePost({
+        platform: 'youtube',
+        id: 'stubborn',
+        canonicalUrl: 'https://www.youtube.com/watch?v=stubborn',
+        target: makeTarget('youtube', 'stubborn'),
+        durationSec: 60
+      })
+      const watcher: MediaWatcher = {
+        async watch() {
+          throw new Error('unused')
+        },
+        watchUrl: () => new Promise(() => {})
+      }
+      const reader = createLinkReader({
+        viewer: { lookup: async () => ({ status: 'found', post }) },
+        findTarget: fakeFindTarget,
+        watcher,
+        model: 'test',
+        limits: { ...baseLimits, linkWatchMs: 22000 }
+      })
+      const pending = reader.read(['https://www.youtube.com/watch?v=stubborn'], 1000, { media: true, social: true })
+      await vi.advanceTimersByTimeAsync(1000)
+      const result = await pending
+      expect(result.unreadable).toEqual([{ kind: 'YouTube video', reason: 'unreadable' }])
+      expect(result.calls).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 
   it('watches verified Short bytes when the URL watcher fails', async () => {
     const target = { ...makeTarget('youtube', 'fixture1234'), youtubeShort: true as const }
@@ -1075,6 +1180,423 @@ describe('createLinkReader', () => {
     expect(JSON.stringify(logLines)).not.toContain(secretUrl)
     expect(JSON.stringify(res)).not.toContain(secretUrl)
   })
+})
+
+describe('bounded YouTube recovery contract', () => {
+  type Step = { ms: number; error?: ModelError } | { stubborn: true }
+  const success = (ms = 100): Step => ({ ms })
+  const transient = (ms = 100): Step => ({
+    ms,
+    error: new MediaWatchError('transient', 'raw synthetic error', { type: 'network' })
+  })
+  const quota = (ms: number, retryAfterMs?: number): Step => ({
+    ms,
+    error: new MediaWatchError('rate_limit', 'raw synthetic quota', {
+      type: 'rate_limit',
+      ...(retryAfterMs === undefined ? {} : { retryAfterMs })
+    })
+  })
+  const usage = { inputTokens: 10, outputTokens: 2, cachedTokens: 0 }
+  const start = 775
+  const starts = [775, 835, 1015, 1195]
+  const fixtureUrl = 'https://www.youtube.com/watch?v=synthetic123&t=775'
+  const flags = { media: true, social: true }
+
+  function fixture(
+    schedules: Step[][],
+    extra: {
+      watchMs?: number
+      lookupMs?: number
+      durationSec?: number
+      short?: boolean
+      offset?: number
+      platform?: 'youtube' | 'x'
+    } = {}
+  ) {
+    const offset = extra.offset ?? start
+    const id = 'synthetic12'
+    const platform = extra.platform ?? 'youtube'
+    const target = { ...makeTarget(platform, id, offset), ...(extra.short ? { youtubeShort: true as const } : {}) }
+    const url = platform === 'youtube' ? fixtureUrl : 'https://x.com/i/status/12345'
+    const canonicalUrl = platform === 'youtube' ? 'https://www.youtube.com/watch?v=synthetic12' : url
+    const post = makePost({ platform, id, target, canonicalUrl, durationSec: extra.durationSec ?? 1375 })
+    const calls: {
+      ordinal: number
+      attempt: number
+      at: number
+      source: Parameters<NonNullable<MediaWatcher['watchUrl']>>[0]
+      signal: AbortSignal
+    }[] = []
+    const logs: Record<string, unknown>[] = []
+    const counts = schedules.map(() => 0)
+    let inFlight = 0
+    let maxInFlight = 0
+    const answer = (ordinal: number) => ({
+      reading: { description: `RANGE_${ordinal}` },
+      usage,
+      costUsd: 0,
+      model: 'test'
+    })
+    const watchUrl: NonNullable<MediaWatcher['watchUrl']> = (source, signal) => {
+      const ordinal = schedules.length === 1 ? 0 : starts.indexOf(source.startSec ?? 0)
+      expect(ordinal).toBeGreaterThanOrEqual(0)
+      const attempt = ++counts[ordinal]!
+      calls.push({ ordinal, attempt, at: performance.now(), source: { ...source }, signal })
+      inFlight++
+      maxInFlight = Math.max(maxInFlight, inFlight)
+      const steps = schedules[ordinal]!
+      const step = steps[attempt - 1] ?? steps[steps.length - 1]!
+      if ('stubborn' in step) {
+        return new Promise(() => {})
+      }
+      return new Promise<ReturnType<typeof answer>>((resolve, reject) => {
+        const onAbort = () => {
+          clearTimeout(timer)
+          inFlight--
+          reject(new DOMException('aborted', 'AbortError'))
+        }
+        const timer = setTimeout(() => {
+          signal.removeEventListener('abort', onAbort)
+          inFlight--
+          if (step.error) reject(step.error)
+          else resolve(answer(ordinal))
+        }, step.ms)
+        signal.addEventListener('abort', onAbort, { once: true })
+      })
+    }
+    const lookup = vi.fn(async () => {
+      if (extra.lookupMs) await new Promise<void>((resolve) => setTimeout(resolve, extra.lookupMs))
+      return { status: 'found' as const, post }
+    })
+    const downloadShort = vi.fn(async () => ({ data: Buffer.from('synthetic'), contentType: 'video/mp4' }))
+    const download = vi.fn(async () => ({ data: Buffer.from('synthetic'), contentType: 'video/mp4' }))
+    const reader = createLinkReader({
+      viewer: { lookup },
+      findTarget: () => target,
+      watcher: { watchUrl, watch: async () => answer(99) },
+      model: 'test',
+      limits: {
+        ...DEFAULT_MEDIA_LIMITS,
+        maxVideoSeconds: 300,
+        ...(extra.watchMs === undefined ? {} : { linkWatchMs: extra.watchMs })
+      },
+      downloadShort,
+      download,
+      logger: createLogger({
+        level: 'info',
+        module: 'probe',
+        redactor: createRedactor(),
+        sink: (line) => logs.push(JSON.parse(line))
+      }),
+      now: () => new Date('2026-01-01T00:00:00Z') // wall-clock timestamps stay fixed while elapsed time moves
+    })
+    async function run(timeoutMs = 30000) {
+      const started = performance.now()
+      let elapsed = -1
+      const pending = reader.read([url], timeoutMs, flags).then((result) => {
+        elapsed = performance.now() - started
+        return result
+      })
+      await vi.runAllTimersAsync()
+      const result = await pending
+      expect(vi.getTimerCount()).toBe(0)
+      return { result, elapsed, stats: logs.find((log) => log['event'] === 'media.link_segments') }
+    }
+    return {
+      run,
+      reader,
+      calls,
+      lookup,
+      downloadShort,
+      download,
+      logs,
+      url,
+      get maxInFlight() {
+        return maxInFlight
+      }
+    }
+  }
+  function fakeTime() {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] })
+    vi.spyOn(Math, 'random').mockReturnValue(0.5)
+  }
+  // Restore fake timers independently for every case, even after a failing assertion.
+  function timeTest(name: string, body: () => Promise<void>) {
+    it(name, async () => {
+      fakeTime()
+      try {
+        await body()
+      } finally {
+        vi.restoreAllMocks()
+        vi.useRealTimers()
+      }
+    })
+  }
+
+  timeTest('keeps initial parallelism, nonzero offsets and a late initial success under the new default', async () => {
+    const f = fixture([[success(100)], [success(15000)], [success(500)], [success(1000)]])
+    const { result, elapsed, stats } = await f.run()
+    expect(f.calls.map((c) => [c.source.startSec, c.source.endSec, c.at, c.source.fps])).toEqual([
+      [775, 835, 0, 0.25],
+      [835, 1015, 0, 0.25],
+      [1015, 1195, 0, 0.25],
+      [1195, 1375, 0, 0.25]
+    ])
+    expect(f.maxInFlight).toBe(4)
+    expect(elapsed).toBe(15000)
+    expect(result.partial).toBeUndefined()
+    expect(result.calls).toHaveLength(4)
+    expect(stats).toMatchObject({
+      attempts: 4,
+      answered: 4,
+      retried: 0,
+      recovered: 0,
+      watchBudgetMs: 22000,
+      plannedSeconds: 600,
+      answeredSeconds: 600
+    })
+  })
+
+  timeTest('recovers two early failures chronologically before a slow initial sibling completes', async () => {
+    const f = fixture([
+      [success(9000)],
+      [transient(100), success(3000)],
+      [transient(200), success(4000)],
+      [success(1000)]
+    ])
+    const { result, elapsed, stats } = await f.run()
+    expect(f.calls.map(({ ordinal, attempt }) => [ordinal, attempt])).toEqual([
+      [0, 1],
+      [1, 1],
+      [2, 1],
+      [3, 1],
+      [1, 2],
+      [2, 2]
+    ])
+    const retryStarts = f.calls.filter((c) => c.attempt === 2)
+    expect(retryStarts.map((c) => c.at)).toEqual([850, 3850])
+    expect(retryStarts[0]?.source).toEqual(f.calls[1]?.source)
+    expect(retryStarts[1]?.source).toEqual(f.calls[2]?.source)
+    expect(elapsed).toBe(9000)
+    expect(f.maxInFlight).toBeLessThanOrEqual(4)
+    expect(result.calls.map((c) => c.attempt)).toEqual([1, 1, 1, 1, 2, 2])
+    expect(result.calls.filter((c) => c.failureKind === 'transient')).toHaveLength(2)
+    expect(result.partial).toBeUndefined()
+    expect(result.links?.[0]?.reading?.description).toMatch(/RANGE_0.*RANGE_1.*RANGE_2.*RANGE_3/)
+    expect(result.links?.[0]).toMatchObject({
+      youtubeEvidence: { readings: [0, 1, 2, 3].map((i) => ({ description: `RANGE_${i}` })) }
+    })
+    expect(stats).toMatchObject({
+      segments: 4,
+      answered: 4,
+      failed: 0,
+      attempts: 6,
+      retried: 2,
+      recovered: 2,
+      timedOut: 0,
+      cancelled: 0,
+      failureKinds: { transient: 2 },
+      rateLimitStopped: false,
+      plannedSeconds: 600,
+      answeredSeconds: 600,
+      clipped: false,
+      unknownLength: false
+    })
+    expect(JSON.stringify(f.logs)).not.toContain(f.url)
+    expect(JSON.stringify(f.logs)).not.toContain('raw synthetic')
+    expect(JSON.stringify(f.logs)).not.toContain('synthetic12')
+  })
+
+  timeTest('enforces the two-launch cap and leaves only exact final gaps when retries fail', async () => {
+    const f = fixture([
+      [success()],
+      [transient(100), transient(100)],
+      [transient(200), success()],
+      [transient(300), success()]
+    ])
+    const { result, stats } = await f.run()
+    expect(f.calls.filter((c) => c.attempt === 2).map((c) => c.ordinal)).toEqual([1, 2])
+    expect(result.partial).toEqual([
+      { kind: 'YouTube video part 2 (13:55–16:55)', reason: 'unreadable' },
+      { kind: 'YouTube video part 4 (19:55–22:55)', reason: 'unreadable' }
+    ])
+    expect(result.links?.[0]?.reading?.description).toContain('Not watched: 13:55–16:55, 19:55–22:55.')
+    expect(stats).toMatchObject({ attempts: 6, retried: 2, recovered: 1, failed: 2, answeredSeconds: 240 })
+  })
+
+  timeTest('checks retry headroom both before queueing and after the retry lane is released', async () => {
+    const short = fixture([[transient(500), success()]], { watchMs: 6000, durationSec: 60, offset: 0 })
+    await short.run()
+    expect(short.calls).toHaveLength(1)
+    const lane = fixture([[success()], [transient(100), success(5000)], [transient(200), success()], [success()]], {
+      watchMs: 10000
+    })
+    const { stats } = await lane.run()
+    expect(lane.calls.filter((c) => c.attempt === 2).map((c) => c.ordinal)).toEqual([1])
+    expect(stats).toMatchObject({ retried: 1, recovered: 1, failed: 1 })
+  })
+
+  timeTest('applies a valid Retry-After to all queued ranges and keeps only one retry lane', async () => {
+    const f = fixture([[success()], [transient(100), success(1000)], [quota(200, 2000), success(1000)], [success()]])
+    const { stats } = await f.run()
+    expect(f.calls.filter((c) => c.attempt === 2).map((c) => [c.ordinal, c.at])).toEqual([
+      [1, 2200],
+      [2, 3200]
+    ])
+    expect(stats).toMatchObject({
+      attempts: 6,
+      retried: 2,
+      recovered: 2,
+      rateLimitStopped: false,
+      failureKinds: { transient: 1, rate_limit: 1 }
+    })
+  })
+
+  timeTest(
+    'ignores missing, invalid or too-late quota hints and stops new retries on the second actual 429',
+    async () => {
+      for (const hint of [undefined, -1, Number.NaN, 30000]) {
+        const f = fixture([[quota(100, hint), success()]], { durationSec: 60, offset: 0 })
+        const { result } = await f.run()
+        expect(f.calls).toHaveLength(1)
+        expect(result.unreadable).toHaveLength(1)
+      }
+      const f = fixture([
+        [success()],
+        [transient(100), success()],
+        [quota(200, 1000), success()],
+        [quota(300), success()]
+      ])
+      const { result, stats } = await f.run()
+      expect(f.calls).toHaveLength(4)
+      expect(result.partial).toHaveLength(3)
+      expect(stats).toMatchObject({
+        attempts: 4,
+        retried: 0,
+        rateLimitStopped: true,
+        failureKinds: { transient: 1, rate_limit: 2 }
+      })
+    }
+  )
+
+  timeTest(
+    'never retries terminal failure kinds and aborts siblings after shared-key auth while retaining prior success',
+    async () => {
+      const terminal = [
+        new ModelError('budget', 'budget'),
+        new MediaWatchError('refusal', 'refusal', { type: 'refusal' }),
+        new MediaWatchError('malformed', 'parse', { type: 'parse' }),
+        new MediaWatchError('malformed', 'private', { type: 'unavailable' }),
+        new MediaWatchError('malformed', 'client', { type: 'http_client' }),
+        new MediaWatchError('transient', 'cancelled', { type: 'abort' }),
+        new MediaWatchError('transient', 'local timeout', { type: 'timeout' })
+      ]
+      for (const error of terminal) {
+        const f = fixture([[{ ms: 50, error }, success()]], { durationSec: 60, offset: 0 })
+        await f.run()
+        expect(f.calls).toHaveLength(1)
+      }
+      const f = fixture([
+        [success(50)],
+        [{ ms: 100, error: new ModelError('auth', 'auth') }],
+        [{ stubborn: true }],
+        [{ stubborn: true }]
+      ])
+      const { result, elapsed, stats } = await f.run()
+      expect(elapsed).toBe(100)
+      expect(f.calls).toHaveLength(4)
+      expect(f.calls.slice(2).every((c) => c.signal.aborted)).toBe(true)
+      expect(result.links?.[0]?.reading?.description).toContain('RANGE_0')
+      expect(result.partial).toHaveLength(3)
+      expect(stats).toMatchObject({ answered: 1, failed: 3, cancelled: 2, attempts: 4, retried: 0 })
+    }
+  )
+
+  timeTest(
+    'uses a monotonic outer deadline, cancels stubborn pending work and does not retry a local timeout',
+    async () => {
+      const f = fixture([[success()], [{ stubborn: true }], [{ stubborn: true }], [success()]], { lookupMs: 1000 })
+      const { result, elapsed, stats } = await f.run(8000)
+      expect(elapsed).toBe(8000)
+      expect(f.calls).toHaveLength(4)
+      expect(f.calls[1]?.signal.aborted).toBe(true)
+      expect(f.calls[2]?.signal.aborted).toBe(true)
+      expect(result.partial).toHaveLength(2)
+      expect(stats).toMatchObject({
+        attempts: 4,
+        retried: 0,
+        watchBudgetMs: 7000,
+        watchMs: 7000,
+        timedOut: 0,
+        cancelled: 2
+      })
+    }
+  )
+
+  timeTest('retains completed reading at the local watch deadline and records local timeouts separately', async () => {
+    const f = fixture([[success()], [{ stubborn: true }], [success()], [success()]], { watchMs: 4000 })
+    const { result, elapsed, stats } = await f.run()
+    expect(elapsed).toBe(4000)
+    expect(result.partial).toEqual([{ kind: 'YouTube video part 2 (13:55–16:55)', reason: 'unreadable' }])
+    expect(f.calls).toHaveLength(4)
+    expect(stats).toMatchObject({ attempts: 4, retried: 0, timedOut: 1, cancelled: 0, answered: 3, watchMs: 4000 })
+  })
+
+  timeTest('never starts lookup at nonpositive reader budget or media after a usable late lookup', async () => {
+    const f = fixture([[success()]], { durationSec: 60, offset: 0 })
+    await f.run(0)
+    await f.run(-100)
+    expect(f.lookup).not.toHaveBeenCalled()
+    for (const platform of ['youtube', 'x'] as const) {
+      const late = fixture([[success()]], { durationSec: 60, offset: 0, lookupMs: 150, platform })
+      const { result } = await late.run(100)
+      expect(late.lookup).toHaveBeenCalledTimes(1)
+      expect(late.calls).toHaveLength(0)
+      expect(late.download).not.toHaveBeenCalled()
+      expect(late.downloadShort).not.toHaveBeenCalled()
+      expect(result.calls).toEqual([])
+      expect(result.unreadable).toHaveLength(1)
+      expect(result.tried?.length).toBeGreaterThan(0)
+    }
+  })
+
+  timeTest(
+    'preserves the Short URL ceiling and byte fallback opportunity but excludes shared denial/quota and expiry',
+    async () => {
+      const short = fixture([[{ stubborn: true }]], { durationSec: 35, short: true, offset: 0, lookupMs: 1000 })
+      const { result, elapsed, stats } = await short.run()
+      expect(elapsed).toBe(13000)
+      expect(short.downloadShort).toHaveBeenCalledTimes(1)
+      expect(result.calls).toHaveLength(2)
+      expect(result.links?.[0]?.reading?.description).toBe('RANGE_99')
+      expect(result.links?.[0]).not.toHaveProperty('youtubeEvidence')
+      expect(stats).toMatchObject({ watchBudgetMs: 12000, attempts: 1, answered: 0 })
+      for (const error of [
+        new ModelError('auth', 'auth'),
+        new ModelError('refusal', 'refusal'),
+        new ModelError('rate_limit', 'quota')
+      ]) {
+        const f = fixture([[{ ms: 50, error }]], { durationSec: 35, short: true, offset: 0 })
+        await f.run()
+        expect(f.downloadShort).not.toHaveBeenCalled()
+        expect(f.calls).toHaveLength(1)
+      }
+      const expired = fixture([[{ stubborn: true }]], { durationSec: 35, short: true, offset: 0 })
+      await expired.run(1000)
+      expect(expired.downloadShort).not.toHaveBeenCalled()
+      for (const options of [
+        { short: false, offset: 0 },
+        { short: true, offset: 10 }
+      ]) {
+        const f = fixture([[{ ms: 50, error: new ModelError('malformed', 'private') }]], {
+          durationSec: 35,
+          ...options
+        })
+        await f.run()
+        expect(f.downloadShort).not.toHaveBeenCalled()
+      }
+    }
+  )
 })
 
 describe('turn pipeline link intake and media switch', () => {
