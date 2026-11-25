@@ -326,15 +326,13 @@ export function createLinkReader(options: LinkReaderOptions): LinkReader {
         const note = modelResult.note ? { note: modelResult.note } : {}
         const tried = triedOf(target, post)
         if (controller.signal.aborted || remainingMs() <= 0) {
+          if (post.platform !== 'youtube') {
+            return { readings: [], links: [{ post, result: modelResult, ...note }], unreadable: [], tried, calls: [] }
+          }
           return {
             readings: [],
             ...(hasPostMetadata(post) ? { links: [{ post, result: modelResult, ...note }] } : {}),
-            unreadable: [
-              {
-                kind: post.platform === 'youtube' ? 'YouTube video' : `${PLATFORM_NAME[post.platform]} link`,
-                reason: 'unreadable'
-              }
-            ],
+            unreadable: [{ kind: 'YouTube video', reason: options.watcher?.watchUrl ? 'unreadable' : 'off' }],
             tried,
             calls: []
           }

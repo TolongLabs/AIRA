@@ -270,7 +270,7 @@ function compactCandidates(evidence: LinkSegmentEvidence, parts: EvidenceParts):
   const exact = parts.coverage.replace(/:$/, '.')
   return [
     ...(exact
-      ? [`${exact} Evidence compressed: ${readCount}.`, `${exact} Evidence compressed.`, `${exact} Compressed.`, exact]
+      ? [`${exact} Evidence compressed: ${readCount}.`, `${exact} Evidence compressed.`, `${exact} Compressed.`]
       : []),
     `Evidence compressed: ${counts}.${context ? ` ${context}` : ''}`,
     `${counts}; ${[...flags, 'compressed'].join('; ')}.`,
