@@ -1,0 +1,39 @@
+# Standalone install template (docs/trd/deployment.md#fresh-setup-transaction).
+#
+# Installed as <home>/compose.yml by `aira setup`. Only the owned data volume
+# and the read-only staged config are mounted: absent host integrations must
+# not manufacture root-owned paths, and no Docker socket ever enters the
+# container. Both listeners bind loopback only. Values come from the private
+# staged .env; AIRA_DATA_DIR is an absolute host path.
+services:
+  aira:
+    # The release by default. An explicit --image overrides both parts.
+    image: ${AIRA_IMAGE:-ghcr.io/tolonglabs/aira}:${AIRA_VERSION:-stable}
+    restart: unless-stopped
+    # Longer than shutdown.graceMs in config.yml, so running turns can finish.
+    stop_grace_period: 30s
+    # The container process runs as the non-root installing owner.
+    user: '${AIRA_UID:-1000}:${AIRA_GID:-1000}'
+    environment:
+      AIRA_INSTALL_MODE: standalone
+      AIRA_DASHBOARD_ENTRY: dashboard
+    env_file: .env
+    mem_limit: 1g
+    read_only: true
+    tmpfs:
+      - /tmp
+    ports:
+      # The gateway endpoint, loopback only.
+      - '127.0.0.1:${AIRA_PORT:-9881}:9881'
+      # The site API, loopback only for the initial portable path.
+      - '127.0.0.1:${AIRA_SITE_PORT:-9890}:9890'
+    volumes:
+      # A host folder, so the core reads stickers and files at gateway.hostDataDir.
+      - ${AIRA_DATA_DIR:-./data}:/data
+      # The install's staged configuration, with gateway.hostDataDir set, read-only.
+      - ./config.yml:/app/config.yml:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
