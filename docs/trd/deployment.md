@@ -190,7 +190,9 @@ million tokens), and `--expected-revision UUID`. An omitted expected revision us
 `--clear-key` explicitly clears, and `--disable` disables the selected role. The key is never an argument.
 Empty key input retains the previous credential. A stale revision is a conflict, not an overwrite.
 `aira config activate [--expected-revision UUID]` requests the exact saved revision and waits up to
-60 seconds for the applied readback; a timeout/failure leaves the previous active state distinguishable.
+60 seconds for the applied readback. An observed activation failure preserves the previous applied revision.
+A readback timeout returns nonzero without claiming rollback: the restart may still complete. Run
+`aira config get` to determine the actual applied revision before retrying the same saved revision.
 `aira config set-character --level global|type|chat --scope SCOPE --pack ID` uses the existing scoped
 settings API and its revision check (global scope empty). Legacy config get and character setting use
 their established protected authority; standalone model editing does not rewrite legacy host config.

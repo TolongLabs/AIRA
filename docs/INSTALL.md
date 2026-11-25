@@ -64,7 +64,9 @@ An intentionally stopped container remains stopped, including after reboot. `air
 The Overview separates service, configuration, Hermes and chatbot state. A new service is running with
 `setup_required` configuration and an inactive chatbot. In **System Settings**, choose a main API model, enter its
 credential, save a revision and apply it. The saved revision is distinct from the applied revision until the core
-restarts and verifies it. Failed activation must not be treated as applied. Inspect the status and revision again.
+restarts and verifies it. A confirmed activation failure preserves the previous applied revision. A timeout means
+the CLI could not confirm completion; the restart can still finish. Run `aira config get` to read the actual applied
+revision before retrying. Do not assume a timeout rolled back the revision.
 
 The fictional Example pack is available in Character Studio. A global assignment is supported; real packs belong
 only on the private data volume. Connect Hermes only after choosing the desired settings.
