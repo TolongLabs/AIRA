@@ -1375,6 +1375,15 @@ describe('bounded YouTube recovery contract', () => {
     })
   })
 
+  timeTest('honors an explicit old 12-second watch override instead of silently increasing it', async () => {
+    const f = fixture([[success()], [success(15000)], [success()], [success()]], { watchMs: 12000 })
+    const { result, elapsed, stats } = await f.run()
+    expect(elapsed).toBe(12000)
+    expect(result.partial).toEqual([{ kind: 'YouTube video part 2 (13:55–16:55)', reason: 'unreadable' }])
+    expect(f.calls).toHaveLength(4)
+    expect(stats).toMatchObject({ watchBudgetMs: 12000, timedOut: 1, retried: 0 })
+  })
+
   timeTest('recovers two early failures chronologically before a slow initial sibling completes', async () => {
     const f = fixture([
       [success(9000)],
@@ -1496,6 +1505,20 @@ describe('bounded YouTube recovery contract', () => {
       })
     }
   )
+
+  timeTest('counts a second 429 from the retry lane and cancels other queued recovery', async () => {
+    const f = fixture([[success()], [quota(100, 0), quota(100)], [transient(200), success()], [success()]])
+    const { result, stats } = await f.run()
+    expect(f.calls.filter((c) => c.attempt === 2).map((c) => c.ordinal)).toEqual([1])
+    expect(result.partial).toHaveLength(2)
+    expect(stats).toMatchObject({
+      attempts: 5,
+      retried: 1,
+      recovered: 0,
+      rateLimitStopped: true,
+      failureKinds: { rate_limit: 2, transient: 1 }
+    })
+  })
 
   timeTest(
     'never retries terminal failure kinds and aborts siblings after shared-key auth while retaining prior success',
@@ -1639,6 +1662,16 @@ describe('bounded YouTube recovery contract', () => {
       expect(result.links?.[0]?.reading?.description).toBe('RANGE_99')
       expect(result.links?.[0]).not.toHaveProperty('youtubeEvidence')
       expect(stats).toMatchObject({ watchBudgetMs: 12000, attempts: 1, answered: 0 })
+      const unknown = fixture([[{ stubborn: true }]], { durationSec: null, short: true, offset: 0 })
+      const unknownRead = await unknown.run()
+      expect(unknown.downloadShort).toHaveBeenCalledTimes(1)
+      expect(unknownRead.stats).toMatchObject({ watchBudgetMs: 12000, unknownLength: true, attempts: 1 })
+      expect(unknownRead.result.links?.[0]?.reading?.description).toBe('RANGE_99')
+      const unresolvedQuota = fixture([[transient(), quota(100)]], { durationSec: 35, short: true, offset: 0 })
+      await unresolvedQuota.run()
+      expect(unresolvedQuota.calls).toHaveLength(2)
+      expect(unresolvedQuota.downloadShort).not.toHaveBeenCalled()
+
       for (const error of [
         new ModelError('auth', 'auth'),
         new ModelError('refusal', 'refusal'),
