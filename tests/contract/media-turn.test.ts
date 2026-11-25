@@ -109,10 +109,16 @@ describe('createTurnMedia', () => {
   })
 
   it('retries transient watcher calls on the loaded file and records every attempt', async () => {
-    const watch = vi.fn(answering('a bicycle').watch)
-    watch
-      .mockRejectedValueOnce(new ModelError('transient', 'reset'))
-      .mockRejectedValueOnce(new ModelError('transient', '503'))
+    const starts: number[] = []
+    const answer = answering('a bicycle').watch
+    // Measure retry delays on a monotonic clock. Record timestamps use wall time,
+    // which can move backwards while the test is running.
+    const watch = vi.fn<MediaWatcher['watch']>(async (...args) => {
+      const attempt = starts.push(performance.now())
+      if (attempt === 1) throw new ModelError('transient', 'reset')
+      if (attempt === 2) throw new ModelError('transient', '503')
+      return answer(...args)
+    })
     const { media } = setup({ watch }, { timeoutMs: 5_000 })
     const result = await media.read([file('a.jpg')], deadline())
 
@@ -125,7 +131,6 @@ describe('createTurnMedia', () => {
     ])
     expect(watch.mock.calls[1]?.[0]).toBe(watch.mock.calls[0]?.[0])
     expect(watch.mock.calls[2]?.[0]).toBe(watch.mock.calls[0]?.[0])
-    const starts = result.calls.map((call) => call.startedAt.getTime())
     expect(starts[1]! - starts[0]!).toBeGreaterThanOrEqual(245)
     expect(starts[2]! - starts[1]!).toBeGreaterThanOrEqual(495)
   })
