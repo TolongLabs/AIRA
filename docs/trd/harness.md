@@ -21,6 +21,12 @@ the real gateway would and reads the same responses. Everything behind the endpo
 
 A replay or simulator run that makes a live call fails. The harness counts live calls and asserts zero.
 
+The portable-core contract adds real-listener tests in a temporary data volume for standalone cold boot.
+With no model credentials or legacy owner service, the service reports ready and chatbot inactive; gateway
+work is refused before turn creation. Test legacy missing-key failure, invalid storage/deployment failures,
+and the legacy health envelope alongside the new readiness fields. Inactive startup and admission must make
+zero model calls. Later installer gates exercise the release image itself, not just an injected app.
+
 ## Recordings
 
 - Every model request is hashed from its role, model, prompt blocks, window, tool list and parameters.

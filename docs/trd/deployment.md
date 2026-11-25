@@ -67,6 +67,15 @@ The container's user has the same uid, so the core writes the data folder and th
 
 ![The host units, what triggers them and what they run](../diagrams/host-units.svg)
 
+## Installation Modes
+
+An install records its authority in the private Compose environment: `AIRA_INSTALL_MODE=standalone` for a new
+portable install, or `legacy` for the established host-managed install. An absent value means legacy; an
+unrecognized value is a deployment error. Discovery and updates never migrate this value implicitly.
+Standalone uses only the API model transport. Core service readiness is not evidence of model readiness;
+see [Models](models.md#standalone-model-readiness) and [System](system.md#standalone-service-readiness).
+The legacy installation instructions below remain valid for existing host-managed installations.
+
 ## Install
 
 Run by the operator on the host, with each step that changes the host confirmed first.

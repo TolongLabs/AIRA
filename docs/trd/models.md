@@ -14,6 +14,20 @@ Two transports behind one interface, the roles a model can play, routing, fallba
 Each role has its own key in `.env`. A role with no key is switched off, and features that need it say so in
 character.
 
+## Standalone Model Readiness
+
+In standalone mode the main model is optional at boot, but required before the chatbot can accept turns.
+A new install without an applied model revision starts with configuration `setup_required` and chatbot
+`inactive` (reason `model_setup_required`). A missing key or model is not a storage or deployment failure.
+The core must not dispatch a placeholder model or make a paid probe. Legacy API and subscription startup
+validation are unchanged. Standalone supports only the API main and optional API fallback transport;
+host-router and subscription transport are not standalone capabilities.
+
+For the initial cold-boot contract, a standalone main client exists only when an explicitly configured,
+validated model target and credential are available. The no-client branch must not invoke the turn runner,
+memory extraction, research model or another model path. The standalone saved/applied revision and credential
+authority is defined separately in [Dashboard state](dashboard-state.md#standalone-configuration).
+
 ## Transport Setting
 
 ```yaml

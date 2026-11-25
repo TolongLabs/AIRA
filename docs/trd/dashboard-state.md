@@ -139,6 +139,15 @@ Applying saved edits recreates the current image under the deploy lock. A failed
 previous files and image. The UI shows pending edits and distinguishes saved values from the running core.
 `/owner-api/core/config` retains its revision-only contract. Host-owned integrations keep their existing writers.
 
+## Standalone Configuration
+
+A new installation uses an explicit standalone authority rather than the legacy host settings socket.
+The low-level deploy configuration remains startup-only. The standalone model settings and its credential
+references will belong to a versioned private store under the data volume; an applied revision determines
+model readiness. No configured main model means `setup_required`. A saved but not applied revision is
+`pending_activation`, not a running configuration. See [Models](models.md#standalone-model-readiness).
+The store and the exact typed write/activation contract are frozen before implementing those operations.
+
 ## Host settings, routines, notices, markets, and files
 
 These pages reach the host owner service through the core's same-origin

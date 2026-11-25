@@ -27,6 +27,20 @@ How the processes fit together, what the gateway and the core promise each other
   the host with the owner's login and exposes it to the core on a loopback port. See [Models](models.md).
 - **Owner Tools:** market alerts, news digest, session notices and file sending keep running as they do today.
 
+## Standalone Service Readiness
+
+The legacy gateway contract below is unchanged. A standalone install separates the service being available
+from the chatbot accepting model work. Once storage, recovery, packs and service construction pass, the
+gateway health endpoint returns HTTP 200 with the existing `status: ready`, `activeTurns` and snapshot fields,
+plus `schemaVersion: 1`, `installationMode: standalone`, `configuration`, `chatbot` and `chatbotReason`
+(null when ready). Initial values are `setup_required`, `inactive`, `model_setup_required`, respectively.
+If the server is draining or not initialized, health retains HTTP 503.
+
+While the standalone chatbot is inactive, gateway POST entry points return HTTP 503, with
+`error.code: model_setup_required` for the chat-completions endpoint, before parsing, admission, or model calls.
+No auxiliary, scheduled, or autofetch request bypasses this gate. An authenticated standalone adapter contract
+must be proven before enabling any standalone transport; the legacy scope-marker contract is not relaxed.
+
 ## Gateway Contract
 
 The gateway calls `POST /v1/chat/completions` on the core. The shapes below were measured on the pinned, patched

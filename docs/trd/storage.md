@@ -147,6 +147,10 @@ image.
 ![Start-up checks disk and database, snapshots before pending migrations, applies them, then repairs
 interrupted turns, leases, snapshots, and files](../diagrams/storage-startup.svg)
 
+For standalone, step 6 establishes service readiness even when model configuration is incomplete.
+Storage, migrations, recovery and deployment validation remain mandatory. Model work must remain gated until
+activation. The dashboard can read the bundled example pack and private data without model credentials.
+
 ### Shutdown
 
 On SIGTERM the core stops admitting turns, lets running turns finish up to `shutdown.graceMs`, releases its
