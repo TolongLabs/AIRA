@@ -10,7 +10,8 @@ import { getChatByWaId } from '../settings/chats.js'
 import { type Storage, StorageError } from '../storage/database.js'
 import type { TurnService } from '../turn/pipeline.js'
 import { type GatewayRequest, MalformedRequestError, parseGatewayRequest } from './request.js'
-import { NO_REPLY, openStream, writeReply } from './response.js'
+import { BUBBLE_BREAK, NO_REPLY, openStream, writeReply } from './response.js'
+import { type StandaloneGateway, StandaloneGatewayError } from './standalone.js'
 
 // The OpenAI-compatible endpoint the gateway calls (docs/trd/system.md#gateway-contract).
 // A turn always gets status 200 with a deliverable reply. An error status is only for a request the core
@@ -28,6 +29,7 @@ export interface GatewayServerOptions {
   /** Standalone only. Legacy servers leave it absent and keep the exact legacy envelope. */
   installationMode?: InstallationMode
   standaloneReadiness?: () => StandaloneReadiness
+  standaloneGateway?: StandaloneGateway
   /** More fields for the health report, such as the newest snapshot. The updater reads them. */
   health?: () => Record<string, unknown>
   /** Called after each turn request has been answered. It must not throw. */
@@ -300,6 +302,62 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
     }
   }
 
+  async function standaloneRequest(request: IncomingMessage, response: ServerResponse, attach: boolean): Promise<void> {
+    const adapter = options.standaloneGateway
+    if (!adapter?.authorized(request.headers.authorization)) {
+      json(response, 401, { error: { code: 'gateway_auth_required' } }, log)
+      return
+    }
+    if (!options.ready() || (!attach && !options.chatbotReady?.())) {
+      json(
+        response,
+        503,
+        { error: { code: options.standaloneReadiness?.().chatbotReason ?? 'model_setup_required' } },
+        log
+      )
+      return
+    }
+    let input: unknown
+    try {
+      input = JSON.parse(await readBody(request, 128 * 1024))
+    } catch {
+      json(response, 400, { error: { code: 'gateway_malformed' } }, log)
+      return
+    }
+    let parsed: Extract<GatewayRequest, { type: 'turn' }> | undefined
+    try {
+      if (attach) {
+        json(response, 200, { schemaVersion: 1, hermes: adapter.attach(input) }, log)
+        return
+      }
+      parsed = adapter.parseTurn(input)
+      const reply = await turns.handle(parsed)
+      const content = reply.content
+        .split(BUBBLE_BREAK)
+        .join('\n')
+        .split('\n')
+        .filter((line) => !line.startsWith('MEDIA:'))
+        .join('\n')
+        .trim()
+      const deliverable = content !== '' && content !== NO_REPLY
+      json(
+        response,
+        200,
+        { schemaVersion: 1, disposition: deliverable ? 'reply' : 'no_reply', reply: deliverable ? content : null },
+        log
+      )
+      options.afterTurn?.()
+    } catch (error) {
+      if (error instanceof StandaloneGatewayError) {
+        json(response, error.status, { error: { code: error.code } }, log)
+      } else {
+        const chatId = parsed ? chatIdFor(parsed) : undefined
+        recordTurnFailure(error, 'status:500', chatId ? { chatId } : {})
+        json(response, 500, { error: { code: 'gateway_failed' } }, log)
+      }
+    }
+  }
+
   return createServer((request, response) => {
     const path = (request.url ?? '').split('?')[0]
     const standalone = options.installationMode === 'standalone'
@@ -337,7 +395,14 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
       )
       return
     }
+    if (standalone && request.method === 'POST' && (path === '/v1/aira/attach-check' || path === '/v1/aira/turn')) {
+      void standaloneRequest(request, response, path.endsWith('/attach-check')).catch(() =>
+        json(response, 500, { error: { code: 'gateway_failed' } }, log)
+      )
+      return
+    }
     if (
+      standalone &&
       request.method === 'POST' &&
       (path === '/v1/chat/completions' ||
         path === '/v1/aira/autofetch' ||
@@ -362,6 +427,10 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
             log
           )
         }
+        return
+      }
+      if (options.ready()) {
+        json(response, 403, { error: { code: 'capability_unavailable' } }, log)
         return
       }
     }

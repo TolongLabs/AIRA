@@ -37,6 +37,7 @@ export interface CoreToolOptions {
   feedback: FeedbackToolOptions
   searchDepth?: Config['search']['depth']
   identify?: IdentifyToolOptions
+  standaloneTextOnly?: boolean
 }
 
 const DEFAULT_OPTIONS: CoreToolOptions = {
@@ -58,16 +59,20 @@ export function registerCoreTools(
   registry.register(webSearchTool(ports, options.searchDepth))
   registry.register(readPageTool(ports))
   registry.register(readPostTool(ports))
-  registry.register(sendPhotoTool(storage, ports))
-  registry.register(reminderSetTool(storage, ports, logger))
-  registry.register(reminderListTool(storage))
-  registry.register(reminderCancelTool(storage, ports, logger))
+  if (!options.standaloneTextOnly) {
+    registry.register(sendPhotoTool(storage, ports))
+    registry.register(reminderSetTool(storage, ports, logger))
+    registry.register(reminderListTool(storage))
+    registry.register(reminderCancelTool(storage, ports, logger))
+  }
   registry.register(setMuteTool(storage))
-  registry.register(makeReportTool(storage, ports))
-  registry.register(feedbackLinkTool(options.feedback))
-  if (options.identify) registry.register(identifyImageTool(options.identify))
-  registry.register(researchStartTool(storage))
-  registry.register(reportPdfTool(ports))
+  if (!options.standaloneTextOnly) {
+    registry.register(makeReportTool(storage, ports))
+    registry.register(feedbackLinkTool(options.feedback))
+    if (options.identify) registry.register(identifyImageTool(options.identify))
+    registry.register(researchStartTool(storage))
+    registry.register(reportPdfTool(ports))
+  }
   registry.register(helpTool(registry))
   registry.register(listTool(registry))
 }

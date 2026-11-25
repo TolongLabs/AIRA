@@ -16,4 +16,5 @@ export interface StandaloneReadiness {
   chatbot: 'inactive' | 'ready' | 'degraded'
   chatbotReason: string | null
   appliedRevision: string | null
+  hermes?: import('../gateway/standalone.js').HermesRouteStatus
 }
