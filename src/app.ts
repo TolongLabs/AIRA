@@ -8,9 +8,10 @@ import { pendingStudioPacks, recoverStudioPacks } from './api/studio-packs.js'
 import { loadPacks, type PackSet } from './character/loader.js'
 import { writeUnavailableLine } from './character/unavailable.js'
 import { credentialPurposes, deploymentSettings } from './config/dashboard-settings.js'
-import { type InstallationMode, installationModeFromEnv } from './config/installation-mode.js'
+import { type InstallationMode, installationModeFromEnv, type StandaloneReadiness } from './config/installation-mode.js'
 import { ConfigError, requireDeployable } from './config/loader.js'
 import type { Config } from './config/schema.js'
+import { createStandaloneModelStore } from './config/standalone-models.js'
 import { ensureStandaloneOwnerToken } from './config/standalone-owner.js'
 import { createConfigStatus } from './config/status.js'
 import { expireFeedback, pruneFeedbackAnswers } from './feedback/store.js'
@@ -100,6 +101,8 @@ export interface AppOptions {
   config: Config
   /** Where secrets are read from, by name. */
   env: NodeJS.ProcessEnv
+  /** The service process schedules a graceful restart after an accepted standalone activation. */
+  onActivationRequested?: () => void
   version?: string
   /** The built site, served under /app/ on the site API's port. */
   siteDir?: string
@@ -135,6 +138,9 @@ export interface App {
   installationMode: InstallationMode
   /** False while the standalone chatbot has no applied model revision. Legacy mirrors service readiness. */
   chatbotReady: () => boolean
+  /** The process invokes this only after both listeners have bound successfully. */
+  completeStartup(): void
+  failStartup(): void
   /** The memory worker, when passive memory is on. Its timer runs it; a test or an operator may run one tick. */
   memory?: MemoryWorker
   /** The research worker. Its timer runs it; a test or an operator may run one tick. */
@@ -179,20 +185,25 @@ function modelClient(
 }
 
 export async function createApp(options: AppOptions): Promise<App> {
-  const { config } = options
   const installationMode = installationModeFromEnv(options.env)
   const standalone = installationMode === 'standalone'
-  if (standalone) requireDeployable(config, installationMode)
-  // Standalone never inherits legacy credentials or host service addresses. Its private store is a
-  // separate authority; until activation lands, no model credential is effective.
-  const env = standalone ? {} : options.env
+  if (standalone) requireDeployable(options.config, installationMode)
+  const standaloneModels = standalone
+    ? createStandaloneModelStore(options.config.storage.path, options.config)
+    : undefined
+  const modelBoot = standaloneModels?.beginBoot()
+  const config = modelBoot?.config ?? options.config
+  // Standalone never inherits legacy credentials or host service addresses.
+  const env = standalone ? (modelBoot?.env ?? {}) : options.env
   const now = options.now ?? (() => new Date())
-  const redactor = createRedactor({ secrets: secretsFromEnv(SECRET_NAMES, options.env) })
+  const redactor = createRedactor({
+    secrets: { ...secretsFromEnv(SECRET_NAMES, options.env), ...secretsFromEnv(SECRET_NAMES, env) }
+  })
   const logger = options.logger ?? createLogger({ level: config.log.level, module: 'core', redactor })
   if (redactor.weak.length > 0) logger.warn('records.weak_secret', { keys: redactor.weak })
   const configStatusHolder = createConfigStatus({
     config,
-    ...(options.configPath !== undefined ? { configPath: options.configPath } : {}),
+    ...(!standalone && options.configPath !== undefined ? { configPath: options.configPath } : {}),
     ...(options.configAppliedAt !== undefined ? { appliedAt: options.configAppliedAt } : {}),
     now
   })
@@ -277,14 +288,15 @@ export async function createApp(options: AppOptions): Promise<App> {
         deep: { client: deepClient, model: targetConfig.model, effort: deepEffort }
       }
     }
-    const mainRole = standalone
-      ? undefined
-      : buildRole(config.llm.main, env['LLM_API_KEY'], 'main', options.clients?.main)
-    if (!mainRole && !subscription && !standalone) {
+    const mainRole =
+      standalone && !modelBoot?.configured
+        ? undefined
+        : buildRole(config.llm.main, env['LLM_API_KEY'], 'main', options.clients?.main)
+    if (!mainRole && !subscription && (!standalone || modelBoot?.configured)) {
       throw new ConfigError('llm.main needs a model, a baseUrl and LLM_API_KEY in the environment')
     }
     const fallbackRole =
-      wrapperFallback || standalone
+      wrapperFallback || (standalone && !env.LLM_FALLBACK_API_KEY)
         ? undefined
         : buildRole(config.llm.fallback, env['LLM_FALLBACK_API_KEY'], 'fallback', options.clients?.fallback)
     for (const [role, target] of [
@@ -342,7 +354,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         throw new Error('model_setup_required: the chatbot is inactive')
       }
     }
-    if (standalone) {
+    if (standalone && !mainRole) {
       runner = inertRunner
     } else if (!subscription && !wrapperFallback) {
       runner = apiRunner(mainRole as RoleTargets, fallbackRole, breaker)
@@ -903,9 +915,34 @@ export async function createApp(options: AppOptions): Promise<App> {
     // Step 6: report ready. Service readiness is independent of chatbot readiness in standalone mode
     // (docs/trd/system.md#standalone-service-readiness): health reports ready while turns stay refused.
     let serviceReady = true
-    // This packet leaves the standalone transport inactive until the authenticated adapter and settings
-    // activation packets land, so the chatbot never becomes ready here.
+    let activationCommitted = !modelBoot?.claimed
+    const completeStartup = (): void => {
+      if (standaloneModels && modelBoot?.claimed && modelBoot.revision && !activationCommitted) {
+        standaloneModels.completeActivation(modelBoot.revision)
+        activationCommitted = true
+      }
+    }
+    const failStartup = (): void => {
+      if (standaloneModels && modelBoot?.claimed && modelBoot.revision && !activationCommitted)
+        standaloneModels.failActivation(modelBoot.revision)
+    }
+    // Model configuration and transport connection are separate. The authenticated adapter is integrated next.
     const chatbotReadyNow = (): boolean => (standalone ? false : serviceReady)
+    const standaloneReadiness = (): StandaloneReadiness => {
+      const snapshot = standaloneModels?.snapshot()
+      return {
+        configuration: snapshot?.configuration ?? 'setup_required',
+        chatbot: 'inactive',
+        chatbotReason: !activationCommitted
+          ? 'pending_activation'
+          : modelBoot?.configured
+            ? 'hermes_disconnected'
+            : snapshot?.configuration === 'invalid'
+              ? 'model_config_invalid'
+              : 'model_setup_required',
+        appliedRevision: snapshot?.appliedRevision ?? null
+      }
+    }
     const server = createGatewayServer({
       turns,
       storage,
@@ -914,6 +951,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       ready: () => serviceReady,
       chatbotReady: chatbotReadyNow,
       installationMode,
+      ...(standalone ? { standaloneReadiness } : {}),
       now,
       autofetch,
       afterTurn: refreshUnavailableLine,
@@ -932,6 +970,8 @@ export async function createApp(options: AppOptions): Promise<App> {
       marketsPath: config.owner.marketsConfig,
       dashboardEntry: standalone ? true : env.AIRA_DASHBOARD_ENTRY === 'dashboard',
       installationMode,
+      ...(standaloneModels ? { standaloneModels, standaloneReadiness } : {}),
+      ...(options.onActivationRequested ? { onActivationRequested: options.onActivationRequested } : {}),
       ...(standaloneOwnerToken !== undefined ? { standaloneOwnerToken } : {}),
       ...(env.AIRA_OWNER_API_SOCKET ? { ownerApiSocket: env.AIRA_OWNER_API_SOCKET } : {}),
       ...(env.AIRA_OWNER_API_ORIGIN ? { ownerApiOrigin: env.AIRA_OWNER_API_ORIGIN } : {}),
@@ -968,6 +1008,8 @@ export async function createApp(options: AppOptions): Promise<App> {
       registry,
       installationMode,
       chatbotReady: chatbotReadyNow,
+      completeStartup,
+      failStartup,
       ...(memory ? { memory } : {}),
       research: worker,
       feedback,
@@ -1016,6 +1058,10 @@ export async function createApp(options: AppOptions): Promise<App> {
     alerter.raise('deploy_health', {})
     for (const stop of closers) await stop()
     storage.close()
+    if (standaloneModels && modelBoot?.claimed && modelBoot.revision) {
+      standaloneModels.failActivation(modelBoot.revision)
+      throw new ConfigError('standalone model activation failed')
+    }
     throw error
   }
 }

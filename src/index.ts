@@ -20,6 +20,15 @@ export async function main(): Promise<void> {
   })
   const boot = createLogger({ level: 'info', module: 'boot', redactor })
   let app: App | undefined
+  let restarting = false
+  const onActivationRequested = (): void => {
+    if (restarting || !app) return
+    restarting = true
+    void app.close().then(
+      () => process.exit(0),
+      () => process.exit(1)
+    )
+  }
   const recordProcessFailure = (stage: string, error: unknown): void => {
     if (!app) return
     try {
@@ -50,6 +59,7 @@ export async function main(): Promise<void> {
       configPath,
       configAppliedAt: new Date(),
       env: process.env,
+      onActivationRequested,
       version: VERSION,
       ...(existsSync(siteDir) ? { siteDir } : {})
     })
@@ -59,6 +69,7 @@ export async function main(): Promise<void> {
     const siteAddress = await activeApp.listenSite(config.site.port, '0.0.0.0')
     if (siteAddress) boot.info('site_api.ready', { port: siteAddress.port })
     else boot.info('site_api.off')
+    activeApp.completeStartup()
 
     // A verified snapshot before a deploy: the updater sends this signal and waits for the snapshot.
     const onSnapshot = () => {
@@ -96,6 +107,14 @@ export async function main(): Promise<void> {
   } catch (error) {
     process.off('unhandledRejection', onUnhandledRejection)
     process.off('uncaughtException', onUncaughtException)
+    if (app) {
+      try {
+        app.failStartup()
+        await app.close()
+      } catch {
+        boot.error('core.start_cleanup_failed', {})
+      }
+    }
     boot.error('core.start_failed', { error })
     process.exitCode = 1
   }

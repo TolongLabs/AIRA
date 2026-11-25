@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import type { PackSet } from '../character/loader.js'
-import type { InstallationMode } from '../config/installation-mode.js'
+import type { InstallationMode, StandaloneReadiness } from '../config/installation-mode.js'
 import { readFeedback } from '../feedback/view.js'
 import { DEFAULT_TOOL_LABELS, plainLabel } from '../format/footer.js'
 import { listChatItems } from '../memory/store.js'
@@ -31,6 +31,7 @@ export interface SiteApiDeps {
   channelDirectoryPath?: string
   /** Standalone authority. Only standalone answers the extended health shape. */
   installationMode?: InstallationMode
+  standaloneReadiness?: () => StandaloneReadiness
   registry: ToolRegistry
   extractorAvailable?: boolean
   socialMirrors?: SocialMirrorSettings
@@ -111,6 +112,7 @@ function handleHealth(deps: SiteApiDeps): RouteResult {
     configuration: 'setup_required',
     chatbot: 'inactive',
     chatbotReason: 'model_setup_required',
+    ...deps.standaloneReadiness?.(),
     capabilities: {
       hostOwnerService: false,
       subscriptionRunner: false,
