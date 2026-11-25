@@ -94,6 +94,7 @@ RUN set -eu; \
     rm -f /tmp/restic
 
 FROM node:24-slim
+LABEL io.tolonglabs.aira.standalone-contract=1
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg fonts-noto-core fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=ytdlp /opt/yt-dlp /opt/yt-dlp
