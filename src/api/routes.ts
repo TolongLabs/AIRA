@@ -105,6 +105,7 @@ function handleHealth(deps: SiteApiDeps): RouteResult {
   // (docs/trd/site.md#standalone-owner-authentication). No success is invented:
   // configuration stays setup_required until the model store packet lands.
   if (deps.installationMode !== 'standalone') return ok(base)
+  const readiness = deps.standaloneReadiness?.()
   return ok({
     ...base,
     schemaVersion: 1,
@@ -112,12 +113,12 @@ function handleHealth(deps: SiteApiDeps): RouteResult {
     configuration: 'setup_required',
     chatbot: 'inactive',
     chatbotReason: 'model_setup_required',
-    ...deps.standaloneReadiness?.(),
+    ...readiness,
     capabilities: {
       hostOwnerService: false,
       subscriptionRunner: false,
       fileBrowser: false,
-      gatewayConnection: false,
+      gatewayConnection: readiness?.hermes?.state === 'connected',
       scheduler: false
     }
   })

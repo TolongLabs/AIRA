@@ -22,6 +22,7 @@ import { createFooterLinks } from './format/short-links.js'
 import { writeChatFlags } from './gateway/chat-flags.js'
 import { writeScheduleFile } from './gateway/schedule.js'
 import { createGatewayServer } from './gateway/server.js'
+import { createStandaloneGateway } from './gateway/standalone.js'
 import {
   createSystemOneClient,
   createSystemOneMemoryJudge,
@@ -230,6 +231,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   const closers: (() => void | Promise<void>)[] = []
   try {
     const standaloneOwnerToken = standalone ? ensureStandaloneOwnerToken(paths.root) : undefined
+    const standaloneGateway = standalone ? createStandaloneGateway(paths.root, now) : undefined
     for (const turnId of started.recovery.interruptedTurns) alerter.raise('turn_interrupted', { turnId })
 
     recoverStudioPacks({ paths, storage, now }, (id) => alerter.raise('pack_invalid', { pack: id }))
@@ -599,6 +601,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       {
         feedback: config.feedback,
         searchDepth: config.search.depth,
+        standaloneTextOnly: standalone,
         ...(serpKey
           ? {
               identify: {
@@ -626,11 +629,11 @@ export async function createApp(options: AppOptions): Promise<App> {
     closers.push(feedback.start(config.feedback.pollMinutes * 60_000))
     void feedback.tick()
     // The lessons and library tools, behind `features.lessons`. No lyrics provider is built: those two tools say so.
-    registerLessonTools(registry, { ...options.ports, filesDir: paths.files })
-    // The owner's market and coding-session tools, behind `features.owner`.
-    registerOwnerTools(registry, config.owner)
+    if (!standalone) registerLessonTools(registry, { ...options.ports, filesDir: paths.files })
+    // Host-dependent tools are not a supported standalone capability.
+    if (!standalone) registerOwnerTools(registry, config.owner)
     // External tool servers (docs/trd/tools.md#external-tool-servers). None is configured at launch.
-    if (config.mcp.servers.length > 0) {
+    if (!standalone && config.mcp.servers.length > 0) {
       const mcp = await connectMcpServers(config.mcp.servers, registry, logger)
       closers.push(() => mcp.close())
     }
@@ -652,18 +655,15 @@ export async function createApp(options: AppOptions): Promise<App> {
       now
     })
     // Stickers follow the text. PDF reports follow the sticker.
-    const cleaner = withStickers(
-      withAttachments(
-        createReplyCleaner(
-          config,
-          () => registry.toolNames(),
-          (turnId) => okToolsOfTurn(storage, turnId),
-          (turnId) => registry.takeSources(turnId)
-        ),
-        { storage, hostDataDir }
-      ),
-      { storage, hostDataDir, now }
+    const textCleaner = createReplyCleaner(
+      config,
+      () => registry.toolNames(),
+      (turnId) => okToolsOfTurn(storage, turnId),
+      (turnId) => registry.takeSources(turnId)
     )
+    const cleaner = standalone
+      ? textCleaner
+      : withStickers(withAttachments(textCleaner, { storage, hostDataDir }), { storage, hostDataDir, now })
 
     // Media watching (docs/trd/models.md#media-watching). With no model or no key, media is off: files get a note.
     const mediaModel = config.media.watcher.model
@@ -926,21 +926,28 @@ export async function createApp(options: AppOptions): Promise<App> {
       if (standaloneModels && modelBoot?.claimed && modelBoot.revision && !activationCommitted)
         standaloneModels.failActivation(modelBoot.revision)
     }
-    // Model configuration and transport connection are separate. The authenticated adapter is integrated next.
-    const chatbotReadyNow = (): boolean => (standalone ? false : serviceReady)
+    const chatbotReadyNow = (): boolean =>
+      serviceReady &&
+      (!standalone ||
+        (activationCommitted && Boolean(modelBoot?.configured) && standaloneGateway?.status().state === 'connected'))
     const standaloneReadiness = (): StandaloneReadiness => {
       const snapshot = standaloneModels?.snapshot()
+      const hermes = standaloneGateway?.status()
+      const active = chatbotReadyNow()
       return {
         configuration: snapshot?.configuration ?? 'setup_required',
-        chatbot: 'inactive',
-        chatbotReason: !activationCommitted
-          ? 'pending_activation'
-          : modelBoot?.configured
-            ? 'hermes_disconnected'
-            : snapshot?.configuration === 'invalid'
-              ? 'model_config_invalid'
-              : 'model_setup_required',
-        appliedRevision: snapshot?.appliedRevision ?? null
+        chatbot: active ? 'ready' : 'inactive',
+        chatbotReason: active
+          ? null
+          : !activationCommitted
+            ? 'pending_activation'
+            : modelBoot?.configured
+              ? 'hermes_disconnected'
+              : snapshot?.configuration === 'invalid'
+                ? 'model_config_invalid'
+                : 'model_setup_required',
+        appliedRevision: snapshot?.appliedRevision ?? null,
+        ...(hermes ? { hermes } : {})
       }
     }
     const server = createGatewayServer({
@@ -952,6 +959,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       chatbotReady: chatbotReadyNow,
       installationMode,
       ...(standalone ? { standaloneReadiness } : {}),
+      ...(standaloneGateway ? { standaloneGateway } : {}),
       now,
       autofetch,
       afterTurn: refreshUnavailableLine,
