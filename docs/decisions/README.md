@@ -413,7 +413,7 @@ The SQLite store, memory and forgetting, the lessons library, backups and the sh
 
 ## Site
 
-The owner site: its front end, write protection, hosting and footer editing. 7 records, in ID order.
+The owner site: its front end, write protection, hosting and footer editing. 10 records, in ID order.
 
 | ID       | Date       | Decision                                                              | Status   |
 | -------- | ---------- | --------------------------------------------------------------------- | -------- |
@@ -426,6 +426,7 @@ The owner site: its front end, write protection, hosting and footer editing. 7 r
 | ADR-0182 | 2026-11-23 | [Enforce Site Binding, Footer, and Cron Guards][ADR-0182]             | Accepted |
 | ADR-0183 | 2026-11-23 | [Route Owner Actions Through the Core Site][ADR-0183]                 | Accepted |
 | ADR-0184 | 2026-11-24 | [Use typed core commands for the dashboard][ADR-0184]                 | Accepted |
+| ADR-0186 | 2026-11-25 | [Select Owner Authority by Installation Mode][ADR-0186]               | Accepted |
 
 [ADR-0157]: 0157-keep-the-react-front-end-and-design-contract.md
 [ADR-0158]: 0158-require-a-literal-host-and-allowed-origin-for-site-writes.md
@@ -435,11 +436,12 @@ The owner site: its front end, write protection, hosting and footer editing. 7 r
 [ADR-0162]: 0162-abolish-site-token.md
 [ADR-0183]: 0183-route-owner-actions-through-the-core-site.md
 [ADR-0184]: 0184-use-typed-dashboard-commands.md
+[ADR-0186]: 0186-select-owner-authority-by-installation-mode.md
 [ADR-0182]: 0182-enforce-site-binding-footer-and-cron-guards.md
 
 ## Deployment
 
-Images, deploys, repository process, records of failures and retention checks. 16 records, in ID order.
+Images, deploys, repository process, records of failures and retention checks. 17 records, in ID order.
 
 | ID       | Date       | Decision                                                               | Status                   |
 | -------- | ---------- | ---------------------------------------------------------------------- | ------------------------ |
@@ -459,6 +461,7 @@ Images, deploys, repository process, records of failures and retention checks. 1
 | ADR-0176 | 2026-11-18 | [Run Live Checks Before a Release][ADR-0176]                           | Accepted                 |
 | ADR-0177 | 2026-11-18 | [Give Production Dependencies Their Own Image Stage][ADR-0177]         | Accepted                 |
 | ADR-0178 | 2026-11-18 | [Open Release Pull Requests With a GitHub App Token][ADR-0178]         | Accepted                 |
+| ADR-0187 | 2026-11-25 | [Install with a Portable Host CLI][ADR-0187]                           | Accepted                 |
 
 [ADR-0163]: 0163-build-one-container-image-per-tagged-release.md
 [ADR-0164]: 0164-deploy-every-merge-to-main-through-a-self-hosted-runner.md
@@ -476,6 +479,7 @@ Images, deploys, repository process, records of failures and retention checks. 1
 [ADR-0176]: 0176-run-live-checks-before-a-release.md
 [ADR-0177]: 0177-give-production-dependencies-their-own-image-stage.md
 [ADR-0178]: 0178-open-release-pull-requests-with-a-github-app-token.md
+[ADR-0187]: 0187-install-with-a-portable-host-cli.md
 
 ## Search Depth
 
