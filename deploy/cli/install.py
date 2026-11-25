@@ -390,6 +390,8 @@ def observe(home, manifest, quick=True):
     project = None
     bindings = {}
     image = None
+    route = None
+    chatbot_reason = None
     try:
         project = _project(home, manifest)
         if project:
@@ -404,10 +406,29 @@ def observe(home, manifest, quick=True):
                     status, body, _ = compose.http_get_json(url_for(bindings[9881], "/health"), timeout_s=3)
                     valid = status == 200 and isinstance(body, dict) and body.get("status") == "ready"
                     if valid and (mode != "standalone" or compose.is_standalone_health(body)):
-                        state["configuration"] = body.get("configuration", "configured" if mode == "legacy" else None)
-                        state["chatbot"] = body.get("chatbot", "ready" if mode == "legacy" else "inactive")
-                        if _owner_ready(home, mode, bindings):
+                        owner_body = None
+                        if mode == "standalone":
+                            token = read_owner_token(home / "data" / "standalone" / "owner.token")
+                            owner_ok, owner_body = compose.probe_owner_standalone(bindings[9890][1], token, deadline_s=5)
+                        else:
+                            owner_ok = _owner_ready(home, mode, bindings)
+                        if owner_ok:
                             state["service"] = "running"
+                            health = owner_body if isinstance(owner_body, dict) else body
+                            state["configuration"] = health.get("configuration", "configured" if mode == "legacy" else None)
+                            state["chatbot"] = health.get("chatbot", "ready" if mode == "legacy" else "inactive")
+                            if mode == "standalone":
+                                maybe_route = health.get("hermes") or {}
+                                if (isinstance(maybe_route, dict) and maybe_route.get("state") == "connected" and
+                                        maybe_route.get("adapterVersion") == "hermes-v0.23.4" and
+                                        isinstance(maybe_route.get("profile"), str) and re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", maybe_route["profile"])):
+                                    state["hermes"] = "connected"
+                                    route = {k: maybe_route.get(k) for k in ("state", "profile", "adapterVersion", "verifiedAt")}
+                                elif state["hermes"] == "detected":
+                                    state["hermes"] = "disconnected"
+                                reason = health.get("chatbotReason")
+                                if reason in ("hermes_disconnected", "model_setup_required", "model_config_invalid", "pending_activation"):
+                                    chatbot_reason = reason
                         else:
                             warnings.append("The authenticated owner health check failed.")
                 else:
@@ -431,10 +452,11 @@ def observe(home, manifest, quick=True):
     checks.append({"name": "service", "ok": state["service"] in ("running", "stopped")})
     if manifest and manifest.stage == "installed" and bindings and (
         bindings.get(9881, (None, None))[1] != manifest.corePort or
-        bindings.get(9890, (None, None))[1] != manifest.sitePort
+        bindings.get(9890, (None, None))[1] != manifest.sitePort or
+        (mode == "standalone" and image is not None and image != manifest.imageId)
     ):
         state["installation"] = "repair_required"
-        warnings.append("Observed ports differ from the committed manifest.")
+        warnings.append("Observed ports or image differ from the committed manifest.")
     management = manifest.management if manifest else None
     release = manifest.release if manifest else None
     if manifest is None:
@@ -445,7 +467,7 @@ def observe(home, manifest, quick=True):
             warnings.append("The configured image reference could not be validated.")
     return dict(state=state, checks=checks, warnings=warnings, dashboard=_dashboard(bindings),
                 manifest=manifest, project=project, mode=mode, bindings=bindings, imageId=image,
-                management=management, release=release)
+                management=management, release=release, hermesRoute=route, chatbotReason=chatbot_reason)
 
 
 def port_free(port):

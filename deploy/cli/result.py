@@ -197,11 +197,16 @@ def render_human(envelope: dict) -> None:
              ("installation", "service", "persistence", "configuration", "hermes", "chatbot")]
     sys.stdout.write("state: " + " ".join(parts) + "\n")
     for check in envelope.get("checks", []):
-        mark = "pass" if check.get("ok") else "fail"
+        mark = check.get("status") or ("pass" if check.get("ok") else "fail")
         reason = f" ({check['reason']})" if check.get("reason") else ""
         sys.stdout.write(f"check {mark}: {check.get('name', '?')}{reason}\n")
+        if check.get("recovery"):
+            sys.stdout.write(f"  recovery: {check['recovery']}\n")
     for warning in envelope.get("warnings", []):
         sys.stdout.write(f"warning: {warning}\n")
+    for key in ("config", "setting", "attach", "update", "backup"):
+        if key in envelope:
+            sys.stdout.write(f"{key}: " + json.dumps(envelope[key], indent=2, sort_keys=True) + "\n")
     dashboard = envelope.get("dashboard")
     if dashboard and dashboard.get("url"):
         sys.stdout.write(f"dashboard: {dashboard['url']}\n")
