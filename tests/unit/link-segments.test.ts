@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
+  clipLinkText,
   DEFAULT_LINK_FIRST_SEGMENT_SECONDS,
   DEFAULT_LINK_SEGMENT_SECONDS,
   DEFAULT_MAX_LINK_SEGMENTS,
+  LINK_TRANSCRIPT_PREFIX,
   MERGED_DESCRIPTION_CHARS,
   MERGED_TRANSCRIPT_CHARS,
   mergeLinkReadings,
-  planLinkSegments
+  planLinkSegments,
+  renderLinkEvidence
 } from '../../src/media/link-segments.js'
 
 const defaults = {
@@ -122,7 +125,7 @@ describe('planLinkSegments', () => {
 })
 
 describe('mergeLinkReadings', () => {
-  it('merges answered segments in order under clock labels with equal shares', () => {
+  it('merges answered segments with bounded floor and duration-weighted evidence', () => {
     const plan = planLinkSegments({ durationSec: 600, startSec: 0, ...defaults })
     const longText = (tag: string) => `${tag} ` + 'word '.repeat(300)
     const merged = mergeLinkReadings(
@@ -137,21 +140,23 @@ describe('mergeLinkReadings', () => {
     )
 
     expect(merged).toBeDefined()
-    const descShare = Math.floor(MERGED_DESCRIPTION_CHARS / 4)
-    const transcriptShare = Math.floor(MERGED_TRANSCRIPT_CHARS / 2)
     expect(merged?.description).toContain('[0:00–1:00] seg1 ')
     expect(merged?.description).toContain('[1:00–4:00] Second part.')
     expect(merged?.description).toContain('[4:00–7:00] seg3 ')
     expect(merged?.description).toContain('[7:00–10:00] Fourth part.')
     const seg1Match = /\[0:00–1:00\] (.*?) \[1:00–4:00\]/.exec(merged!.description)
-    expect(seg1Match?.[1]?.length).toBeLessThanOrEqual(descShare)
+    const seg3Match = /\[4:00–7:00\] (.*?) \[7:00–10:00\]/.exec(merged!.description)
+    expect(seg1Match?.[1]?.length).toBeGreaterThanOrEqual(160)
+    expect(seg3Match?.[1]?.length).toBeGreaterThan(seg1Match?.[1]?.length ?? Infinity)
     expect(seg1Match?.[1]).toMatch(/word…$/)
 
     expect(merged?.transcript).toContain('[0:00] tr1 ')
     expect(merged?.transcript).toContain('[4:00] tr3 ')
     const tr1Match = /\[0:00\] (.*?) \[4:00\]/.exec(merged!.transcript!)
-    expect(tr1Match?.[1]?.length).toBeLessThanOrEqual(transcriptShare)
     expect(tr1Match?.[1]).toMatch(/word…$/)
+    expect(merged!.description.length + (merged!.transcript?.length ?? 0)).toBeLessThanOrEqual(
+      MERGED_DESCRIPTION_CHARS + MERGED_TRANSCRIPT_CHARS
+    )
   })
 
   it('names the parts not watched in the coverage line', () => {
@@ -195,5 +200,40 @@ describe('mergeLinkReadings', () => {
     expect(merged).toBeDefined()
     expect('transcript' in merged!).toBe(false)
     expect(merged?.transcript).toBeUndefined()
+  })
+})
+
+describe('renderLinkEvidence', () => {
+  it('retains prose in unbroken CJK or emoji text without splitting Unicode', () => {
+    const text = clipLinkText('PREFIX ' + '漢😀'.repeat(100), 40)
+    expect(text.length).toBeGreaterThanOrEqual(35)
+    expect(text).toContain('漢😀')
+    expect(Array.from(text).some((char) => char.length === 1 && /[\uD800-\uDFFF]/u.test(char))).toBe(false)
+  })
+
+  it('keeps every exact normal gap and successful label within pressure and obeys even tiny budgets', () => {
+    const plan = planLinkSegments({ durationSec: 1700, startSec: 775, ...defaults })
+    const reading = (label: string) => ({
+      description: label + ' 😀'.repeat(400),
+      transcript: 'Speech ' + '𐐷'.repeat(300)
+    })
+    const evidence = {
+      plan,
+      durationSec: 1700,
+      readings: [reading('FIRST'), undefined, reading('THIRD'), reading('LAST')]
+    }
+    const full = renderLinkEvidence(evidence, 400)!
+    expect(full.description).toContain('Not watched: 13:55–16:55.')
+    expect(full.description).toContain('12:55–22:55 of 28:20')
+    expect(full.description).toMatch(/FIRST.*THIRD.*LAST/)
+    for (const budget of [0, 1, 10, 16, 40, 100, 400]) {
+      const value = renderLinkEvidence(evidence, budget)
+      const text = value
+        ? value.description + (value.transcript ? '\n' + LINK_TRANSCRIPT_PREFIX + value.transcript : '')
+        : ''
+      expect(text.length).toBeLessThanOrEqual(budget)
+      expect(Array.from(text).some((char) => char.length === 1 && /[\uD800-\uDFFF]/u.test(char))).toBe(false)
+      if (budget === 16) expect(text).toMatch(/limited|compressed/i)
+    }
   })
 })
