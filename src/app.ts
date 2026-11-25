@@ -8,7 +8,8 @@ import { pendingStudioPacks, recoverStudioPacks } from './api/studio-packs.js'
 import { loadPacks, type PackSet } from './character/loader.js'
 import { writeUnavailableLine } from './character/unavailable.js'
 import { credentialPurposes, deploymentSettings } from './config/dashboard-settings.js'
-import { ConfigError } from './config/loader.js'
+import { type InstallationMode, installationModeFromEnv } from './config/installation-mode.js'
+import { ConfigError, requireDeployable } from './config/loader.js'
 import type { Config } from './config/schema.js'
 import { createConfigStatus } from './config/status.js'
 import { expireFeedback, pruneFeedbackAnswers } from './feedback/store.js'
@@ -130,6 +131,9 @@ export interface App {
   paths: DataPaths
   turns: TurnService
   registry: ToolRegistry
+  installationMode: InstallationMode
+  /** False while the standalone chatbot has no applied model revision. Legacy mirrors service readiness. */
+  chatbotReady: () => boolean
   /** The memory worker, when passive memory is on. Its timer runs it; a test or an operator may run one tick. */
   memory?: MemoryWorker
   /** The research worker. Its timer runs it; a test or an operator may run one tick. */
@@ -174,9 +178,15 @@ function modelClient(
 }
 
 export async function createApp(options: AppOptions): Promise<App> {
-  const { config, env } = options
+  const { config } = options
+  const installationMode = installationModeFromEnv(options.env)
+  const standalone = installationMode === 'standalone'
+  if (standalone) requireDeployable(config, installationMode)
+  // Standalone never inherits legacy credentials or host service addresses. Its private store is a
+  // separate authority; until activation lands, no model credential is effective.
+  const env = standalone ? {} : options.env
   const now = options.now ?? (() => new Date())
-  const redactor = createRedactor({ secrets: secretsFromEnv(SECRET_NAMES, env) })
+  const redactor = createRedactor({ secrets: secretsFromEnv(SECRET_NAMES, options.env) })
   const logger = options.logger ?? createLogger({ level: config.log.level, module: 'core', redactor })
   if (redactor.weak.length > 0) logger.warn('records.weak_secret', { keys: redactor.weak })
   const configStatusHolder = createConfigStatus({
@@ -265,18 +275,22 @@ export async function createApp(options: AppOptions): Promise<App> {
         deep: { client: deepClient, model: targetConfig.model, effort: deepEffort }
       }
     }
-    const mainRole = buildRole(config.llm.main, env['LLM_API_KEY'], 'main', options.clients?.main)
-    if (!mainRole && !subscription) {
+    const mainRole = standalone
+      ? undefined
+      : buildRole(config.llm.main, env['LLM_API_KEY'], 'main', options.clients?.main)
+    if (!mainRole && !subscription && !standalone) {
       throw new ConfigError('llm.main needs a model, a baseUrl and LLM_API_KEY in the environment')
     }
-    const fallbackRole = wrapperFallback
-      ? undefined
-      : buildRole(config.llm.fallback, env['LLM_FALLBACK_API_KEY'], 'fallback', options.clients?.fallback)
+    const fallbackRole =
+      wrapperFallback || standalone
+        ? undefined
+        : buildRole(config.llm.fallback, env['LLM_FALLBACK_API_KEY'], 'fallback', options.clients?.fallback)
     for (const [role, target] of [
       ['main', mainRole],
       ['fallback', fallbackRole]
     ] as const) {
-      if (!target && config.llm[role].model !== '') logger.warn('model_role.off', { role, reason: 'no_key' })
+      if (!standalone && !target && config.llm[role].model !== '')
+        logger.warn('model_role.off', { role, reason: 'no_key' })
     }
     const breaker = createBreaker({
       breakerMs: config.llm.breakerMs,
@@ -320,7 +334,15 @@ export async function createApp(options: AppOptions): Promise<App> {
 
     let runner: TurnRunner
     let fallbackBreaker: Breaker | undefined
-    if (!subscription && !wrapperFallback) {
+    /** Guards the turn dependency while the standalone chatbot is inactive. The gateway refuses turns first. */
+    const inertRunner: TurnRunner = {
+      run: async () => {
+        throw new Error('model_setup_required: the chatbot is inactive')
+      }
+    }
+    if (standalone) {
+      runner = inertRunner
+    } else if (!subscription && !wrapperFallback) {
       runner = apiRunner(mainRole as RoleTargets, fallbackRole, breaker)
     } else {
       // The program on the host runs the loop and calls the tools through the core's tool server. The fallback
@@ -352,9 +374,11 @@ export async function createApp(options: AppOptions): Promise<App> {
         : wrapper
     }
     // Memory extraction needs a model behind a key: the main one, or on the subscription transport the fallback.
-    const extractionTarget = mainRole?.normal ?? fallbackRole?.normal
+    // Standalone stays inactive in this packet, so no extraction target is built from inherited credentials.
+    const extractionTarget = standalone ? undefined : (mainRole?.normal ?? fallbackRole?.normal)
 
     // The hosted judge, when its model and key are set. Without it the mood comes from rules and memory admits nothing.
+    // Standalone inactive builds no judge from inherited credentials.
     const judgeKey = env['TYPESAFE_API_KEY']
     const hosted =
       config.judge.model !== '' && judgeKey
@@ -386,8 +410,12 @@ export async function createApp(options: AppOptions): Promise<App> {
             }
           })
         : undefined
-    const moodJudge = options.judge ?? (hosted ? createSystemOneMoodJudge(hosted) : undefined)
-    const memoryJudge = options.memoryJudge ?? (hosted ? createSystemOneMemoryJudge(hosted) : undefined)
+    const moodJudge = standalone
+      ? undefined
+      : (options.judge ?? (hosted ? createSystemOneMoodJudge(hosted) : undefined))
+    const memoryJudge = standalone
+      ? undefined
+      : (options.memoryJudge ?? (hosted ? createSystemOneMemoryJudge(hosted) : undefined))
 
     // Tools: one registry. The prompt text about tools and the cleaner's name list come from it.
     // The gateway's schedule fires reminders from the wanted-jobs file (docs/trd/system.md#scheduled-turns). It is
@@ -530,7 +558,8 @@ export async function createApp(options: AppOptions): Promise<App> {
         }
       })
     })
-    closers.push(worker.start(1000))
+    // No background model work while the standalone chatbot is inactive.
+    if (!standalone) closers.push(worker.start(1000))
     registerCoreTools(
       registry,
       {
@@ -625,9 +654,10 @@ export async function createApp(options: AppOptions): Promise<App> {
     // Media watching (docs/trd/models.md#media-watching). With no model or no key, media is off: files get a note.
     const mediaModel = config.media.watcher.model
     const mediaKey = env['MEDIA_WATCHER_API_KEY']
-    const mediaWatcher =
-      options.mediaWatcher ??
-      (mediaModel !== null && mediaKey ? createGeminiWatcher({ apiKey: mediaKey, model: mediaModel }) : undefined)
+    const mediaWatcher = standalone
+      ? undefined
+      : (options.mediaWatcher ??
+        (mediaModel !== null && mediaKey ? createGeminiWatcher({ apiKey: mediaKey, model: mediaModel }) : undefined))
     if (!mediaWatcher) logger.warn('media.off', { reason: mediaModel === null ? 'no_model' : 'no_key' })
     else if (config.media.gatewayDirs.length === 0) logger.warn('media.no_gateway_dirs', {})
     for (const dir of config.media.gatewayDirs) {
@@ -868,14 +898,20 @@ export async function createApp(options: AppOptions): Promise<App> {
       await retentionRunning
     })
 
-    // Step 6: report ready.
-    let ready = true
+    // Step 6: report ready. Service readiness is independent of chatbot readiness in standalone mode
+    // (docs/trd/system.md#standalone-service-readiness): health reports ready while turns stay refused.
+    let serviceReady = true
+    // This packet leaves the standalone transport inactive until the authenticated adapter and settings
+    // activation packets land, so the chatbot never becomes ready here.
+    const chatbotReadyNow = (): boolean => (standalone ? false : serviceReady)
     const server = createGatewayServer({
       turns,
       storage,
       logger,
       redactor,
-      ready: () => ready,
+      ready: () => serviceReady,
+      chatbotReady: chatbotReadyNow,
+      installationMode,
       now,
       autofetch,
       afterTurn: refreshUnavailableLine,
@@ -902,7 +938,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       storage,
       paths,
       version: options.version ?? '0.0.0',
-      ready: () => ready,
+      ready: () => serviceReady,
       activeTurns: () => turns.active(),
       configStatus,
       deploymentSettings: (roles) => deploymentSettings(config, env, configStatus(), roles),
@@ -926,6 +962,8 @@ export async function createApp(options: AppOptions): Promise<App> {
       paths,
       turns,
       registry,
+      installationMode,
+      chatbotReady: chatbotReadyNow,
       ...(memory ? { memory } : {}),
       research: worker,
       feedback,
@@ -960,7 +998,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         if (closed) return
         closed = true
         // Stop admitting turns, let running turns finish, then stop the rest.
-        ready = false
+        serviceReady = false
         await turns.drain(config.shutdown.graceMs)
         server.closeAllConnections()
         if (server.listening) await new Promise((resolve) => server.close(resolve))
