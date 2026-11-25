@@ -8,9 +8,10 @@ describe('gateway helper modules', () => {
   it('pass their Python tests', () => {
     const run = spawnSync('python3', ['-m', 'unittest', 'discover', '-s', 'deploy/gateway/tests'], {
       encoding: 'utf8',
+      timeout: 15_000,
       env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' }
     })
     expect(run.error).toBeUndefined()
     expect(run.status, run.stderr).toBe(0)
-  })
+  }, 20_000)
 })

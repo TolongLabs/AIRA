@@ -37,6 +37,7 @@ jobs:
       - name: Install ffmpeg and ffprobe for media contract tests
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: bun run test
+      - run: python3 -m unittest discover -s tests/cli -p 'test_*.py'
 
   site:
     runs-on: ubuntu-24.04
@@ -93,7 +94,7 @@ jobs:
 
   image:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 35
     permissions:
       contents: read
       packages: write
@@ -124,6 +125,7 @@ jobs:
           build-args: AIRA_BUILD_SHA=${{ github.sha }}
           platforms: linux/amd64
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          load: ${{ github.event_name == 'pull_request' }}
           tags: |
             ghcr.io/tolonglabs/aira:sha-${{ env.SHORT_SHA }}
             ghcr.io/tolonglabs/aira:edge
@@ -141,6 +143,51 @@ jobs:
             echo "::error::$IMAGE is not publicly pullable. Set the package to Public: GitHub > Packages > aira > Package settings > Change visibility."
             exit 1
           fi
+          docker pull "$IMAGE:sha-${GITHUB_SHA::7}"
+
+      - name: Check out the supported Hermes version for synthetic QA
+        uses: actions/checkout@v7
+        with:
+          repository: NousResearch/hermes-agent
+          ref: 8fc0374447313e276f6b9a2764bfc750190c966a
+          path: hermes-fixture
+          persist-credentials: false
+
+      - name: Install the pinned public fixture dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/aira-uv"
+          "$RUNNER_TEMP/aira-uv/bin/pip" install uv==0.11.26
+          cd hermes-fixture
+          "$RUNNER_TEMP/aira-uv/bin/uv" sync --locked --python 3.14 --group dev --extra messaging
+          mkdir -m 700 "$RUNNER_TEMP/aira-hermes-profile"
+          printf 'gateway:\n  multiplex_profiles: false\n' > "$RUNNER_TEMP/aira-hermes-profile/config.yaml"
+
+      - name: Exercise exact image install, update, rollback and restore
+        run: |
+          CANDIDATE="aira-onboarding-candidate:${SHORT_SHA}"
+          docker tag "ghcr.io/tolonglabs/aira:sha-${SHORT_SHA}" "$CANDIDATE"
+          NEXT="aira-onboarding-next:${SHORT_SHA}"
+          BAD="aira-onboarding-bad:${SHORT_SHA}"
+          fixture="$(docker create "$CANDIDATE")"
+          docker commit --change 'LABEL io.tolonglabs.aira.fixture=next' "$fixture" "$NEXT"
+          docker rm -v "$fixture"
+          fixture="$(docker create "$NEXT")"
+          printf 'process.exit(1)\n' > "$RUNNER_TEMP/aira-probe-failure.js"
+          docker cp "$RUNNER_TEMP/aira-probe-failure.js" "$fixture:/app/dist/scripts/deploy-turn-probe.js"
+          docker commit "$fixture" "$BAD"
+          docker rm -v "$fixture"
+          python3 tests/install/smoke.py --image "$CANDIDATE" --home "$RUNNER_TEMP/aira-install" \
+            --hermes-dir "$GITHUB_WORKSPACE/hermes-fixture" --hermes-home "$RUNNER_TEMP/aira-hermes-profile" \
+            --update-image "$NEXT" --bad-image "$BAD"
+
+      - name: Verify the actual pinned Hermes admission and delivery pipeline
+        env:
+          HERMES_HOME: ${{ runner.temp }}/aira-hermes-profile
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          cp tests/install/hermes_fixture.py hermes-fixture/tests/gateway/test_aira_transport_spike.py
+          cd hermes-fixture
+          .venv/bin/pytest -q tests/gateway/test_aira_transport_spike.py tests/gateway/test_whatsapp_group_gating.py
 
   images-ok:
     needs: [image]
