@@ -678,7 +678,8 @@ def _existing(home, manifest, opts, checks, warnings, operation_id):
             raise conflict_error("port_conflict", "Existing ports cannot be changed by repeated setup.")
     if opts.image is not None:
         raise conflict_error("config_invalid", "Use aira update to change an installed image.")
-    if not compose.service_running(entries):
+    was_running = compose.service_running(entries)
+    if not was_running:
         if not entries:
             raise operational_error("service_start_failed", "The existing container is absent.", "start",
                                     "Repair the existing installation without replacing its configuration.")
@@ -686,7 +687,7 @@ def _existing(home, manifest, opts, checks, warnings, operation_id):
             compose.compose_start(home, project)
         except compose.PortInUseError as exc:
             raise conflict_error("port_conflict", "An existing published port is occupied.") from exc
-    verified = _verify(home, manifest, mode, project, checks, warnings, timeout=15)
+    verified = _verify(home, manifest, mode, project, checks, warnings, timeout=15 if was_running else 60)
     if manifest and mode == "standalone" and verified[1] != manifest.imageId:
         raise conflict_error("repair_required", "The running image differs from the committed install.",
                              recovery="Use aira update to recover an interrupted update; do not adopt a new image implicitly.")

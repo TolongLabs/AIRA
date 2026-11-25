@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { mkdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { AxeBuilder } from '@axe-core/playwright'
 import { chromium } from 'playwright'
@@ -41,6 +42,12 @@ it('walks standalone setup, saves private credentials and verifies activation af
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 810 }, reducedMotion: 'reduce' })
     const page = await context.newPage()
+    async function capture(name: string) {
+      const folder = process.env.AIRA_DASHBOARD_EVIDENCE_DIR
+      if (!folder) return
+      await mkdir(folder, { recursive: true })
+      await page.screenshot({ path: resolve(folder, name + '.png'), animations: 'disabled' })
+    }
     const hostRequests: string[] = []
     await page.route('**/*', (route) => {
       const url = new URL(route.request().url())
@@ -56,6 +63,7 @@ it('walks standalone setup, saves private credentials and verifies activation af
     await page.getByRole('button', { name: 'Save token' }).click()
     await page.getByText('Configure the main model.').waitFor()
     await page.getByText('aira attach-hermes --profile default --dry-run', { exact: true }).waitFor()
+    await capture('standalone-setup')
     await page.getByRole('link', { name: 'System Settings', exact: true }).click()
     const secret = 'synthetic-onboarding-key-canary'
     await page.locator('#standalone-main-provider').fill('openai-compatible')
@@ -72,6 +80,7 @@ it('walks standalone setup, saves private credentials and verifies activation af
     await cold.app.close()
     const applied = await boot(cold.port)
     await page.getByText('Running the saved revision.').waitFor()
+    await capture('standalone-models')
     expect(model.requests).toHaveLength(0)
     await page.setViewportSize({ width: 320, height: 704 })
     expect(await page.locator('html').evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(320)
