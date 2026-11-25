@@ -174,7 +174,8 @@ An explicit configured value overrides the default. No lookup starts for a nonpo
 A usable lookup arriving after expiry retains its disposition and available metadata, but starts no watcher or
 download. The finite lookup trace grace does not authorize work. Initial URL calls may use all remaining watch
 time. On expiry, cancel all pending attempts and retry waits, retain completed results, and return even if the
-watcher ignores cancellation. No attempt starts after expiry or return.
+watcher ignores cancellation. No attempt starts after expiry or return, and a reading completing after the
+monotonic deadline is not credited even if the local timeout callback has not fired.
 
 Each eligible failed range may retry once with the exact original URL, MIME, offsets, fps, model and prompt.
 A link permits at most two retry launches, with one retry in flight. Process completions as they arrive, queue
@@ -191,7 +192,8 @@ failure kind unchanged, and preserve sanitized unavailable detection. No retries
 parse/client errors, unavailable, auth/refusal, budget or off. An auth failure stops retries and aborts remaining
 URL calls while retaining completed readings. Parser accepts a nullable or empty transcript as omitted;
 description is required (1–2,000 characters), transcript at most 6,000 characters. Invalid JSON or schema
-remains malformed; explicit blocked/refused output remains refusal, not every non-STOP finish reason.
+remains malformed; explicit content-filter, recitation, escalation or account-policy blocks remain refusal,
+not every non-STOP finish reason. See the provider's [finish reason contract](https://ai.google.dev/api/generate-content#FinishReason).
 
 A 429 is retryable only with a valid, fitting Retry-After: nonnegative delay seconds or a valid HTTP-date
 relative to receipt time (past date means zero). Invalid, missing, negative, nonfinite and too-late hints do not
