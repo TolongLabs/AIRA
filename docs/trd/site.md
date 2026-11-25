@@ -251,6 +251,10 @@ file/send and host-settings views using authenticated capabilities; preserve all
 the standalone DTO is absent. A direct unsupported link shows an explicit capability-unavailable
 message, not fake empty data. The existing sign-in prompt includes the standalone TTY reveal path
 and the existing legacy credential path. See [dashboard design](../DESIGN.md#standalone-first-run).
+The standalone chat and defaults forms keep character, language, text length, context, memory recall,
+tool limits and supported text features. They hide controls for unproven adapter operations (stickers,
+reactions, group admission overrides, scheduled messages, media, host tools and external delivery), and
+describe the text-only limit and Hermes-owned group admission on those forms. Legacy controls are unchanged.
 
 ## Owner Page Edits
 
