@@ -9,7 +9,7 @@ import type { MediaReading, MediaWatcher } from './gemini-watcher.js'
 import { mediaBlock, readMedia, sanitizeMediaText } from './intake.js'
 import type { MediaKind, MediaLimits } from './limits.js'
 import { type LinkAllow, type LinkReader, type LinkReading, type LinkTried } from './link-intake.js'
-import { clipLinkText, LINK_TRANSCRIPT_PREFIX, minimumLinkEvidenceChars, renderLinkEvidence } from './link-segments.js'
+import { clipLinkText, LINK_TRANSCRIPT_PREFIX, linkEvidenceReserve, renderLinkEvidence } from './link-segments.js'
 
 // The media of one turn: which files are read, the reading of each, and the text for prompt block 4
 // (docs/trd/models.md#media-watching).
@@ -261,8 +261,8 @@ function formatYouTubeLines(link: LinkReading, share: number, source: string | u
   const evidence = link.youtubeEvidence!
   const videoPrefix = '  video: '
   const available = Math.max(0, share - videoPrefix.length)
-  const minimum = minimumLinkEvidenceChars(evidence)
-  const metadataCap = Math.min(450, Math.floor(share * 0.2), minimum <= available ? available - minimum : available)
+  const reserve = linkEvidenceReserve(evidence, available)
+  const metadataCap = Math.min(450, Math.floor(share * 0.2), available - reserve)
   const lines: string[] = []
   let used = 0
 

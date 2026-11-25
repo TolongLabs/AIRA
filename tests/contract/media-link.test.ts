@@ -11,7 +11,7 @@ import {
 import { readMediaUrl } from '../../src/media/intake.js'
 import { DEFAULT_MEDIA_LIMITS } from '../../src/media/limits.js'
 import { createLinkReader, type LinkPostViewer, type LinkTarget } from '../../src/media/link-intake.js'
-import { mergeLinkReadings } from '../../src/media/link-segments.js'
+import { formatClock, mergeLinkReadings } from '../../src/media/link-segments.js'
 import { createTurnMedia, mediaPromptText } from '../../src/media/turn-media.js'
 import { ModelError } from '../../src/models/types.js'
 import { createLogger } from '../../src/records/logger.js'
@@ -1560,6 +1560,56 @@ describe('bounded YouTube recovery contract', () => {
     expect(stats).toMatchObject({ attempts: 4, retried: 0, timedOut: 1, cancelled: 0, answered: 3, watchMs: 4000 })
   })
 
+  timeTest('does not credit a completion past the monotonic deadline when the timer callback is delayed', async () => {
+    let monotonic = 0
+    vi.spyOn(performance, 'now').mockImplementation(() => monotonic)
+    const target = makeTarget('youtube', 'fixture1234', 775)
+    const post = makePost({
+      platform: 'youtube',
+      id: target.id,
+      target,
+      canonicalUrl: 'https://www.youtube.com/watch?v=fixture1234',
+      durationSec: 1375
+    })
+    const resolvers: ((reading: {
+      reading: { description: string }
+      usage: typeof usage
+      costUsd: number
+      model: string
+    }) => void)[] = []
+    const watcher: MediaWatcher = {
+      watch: async () => {
+        throw new Error('unused')
+      },
+      watchUrl: () => new Promise((resolve) => resolvers.push(resolve))
+    }
+    const reader = createLinkReader({
+      viewer: { lookup: async () => ({ status: 'found', post }) },
+      findTarget: () => target,
+      watcher,
+      model: 'test',
+      limits: { ...DEFAULT_MEDIA_LIMITS, maxVideoSeconds: 300 }
+    })
+    const pending = reader.read([fixtureUrl], 1000, flags)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(resolvers).toHaveLength(4)
+    const response = (description: string) => ({ reading: { description }, usage, costUsd: 0, model: 'test' })
+    monotonic = 100
+    resolvers[0]!(response('Earlier'))
+    resolvers[2]!(response('Third'))
+    resolvers[3]!(response('Last'))
+    await vi.advanceTimersByTimeAsync(0)
+    // Monotonic time moves ahead, but no scheduled timeout callback has executed yet.
+    monotonic = 1001
+    resolvers[1]!(response('Too late'))
+    const result = await pending
+    expect(result.links?.[0]?.reading?.description).toContain('Earlier')
+    expect(result.links?.[0]?.reading?.description).not.toContain('Too late')
+    expect(result.partial).toEqual([{ kind: 'YouTube video part 2 (13:55–16:55)', reason: 'unreadable' }])
+    expect(result.calls[1]?.failureKind).toBe('transient')
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   timeTest('never starts lookup at nonpositive reader budget or media after a usable late lookup', async () => {
     const f = fixture([[success()]], { durationSec: 60, offset: 0 })
     await f.run(0)
@@ -1713,6 +1763,48 @@ describe('bounded YouTube recovery contract', () => {
     const partPrompt = mediaPromptText((await part.run()).result, 'unreadable', () => 'S1')
     expect(partPrompt).toContain('[0:30–2:00] RANGE_0')
   })
+
+  timeTest(
+    'retains exact custom-plan gaps before metadata or compressed successful labels when they still fit',
+    async () => {
+      const f = fixture([[success()]], { durationSec: 60, offset: 0, longEvidence: true })
+      const { result } = await f.run()
+      const link = result.links![0]!
+      const plan = {
+        segments: Array.from({ length: 100 }, (_, i) => ({ startSec: i * 30, endSec: (i + 1) * 30 })),
+        clipped: true,
+        unknownLength: false
+      }
+      const readings = plan.segments.map((_, i) => (i % 2 === 1 && i < 80 ? undefined : { description: `RANGE_${i}` }))
+      const gaps = plan.segments.filter((_, i) => readings[i] === undefined)
+      const expected = `Not watched: ${gaps.map((gap) => `${formatClock(gap.startSec)}–${formatClock(gap.endSec)}`).join(', ')}.`
+      const prompt = mediaPromptText(
+        {
+          ...result,
+          readings: Array.from({ length: 6 }, () => ({
+            kind: 'image' as const,
+            reading: { description: 'fixture image' }
+          })),
+          links: [
+            {
+              ...link,
+              reading: mergeLinkReadings(plan, readings, 4000),
+              youtubeEvidence: { plan, readings, durationSec: 4000 }
+            }
+          ]
+        },
+        'unreadable',
+        () => 'S1'
+      )
+      expect(prompt).toContain(expected)
+      expect(prompt).toContain('0:00–50:00 of 1:06:40')
+      expect(prompt).toContain('60/100 ranges read')
+      expect(prompt).toMatch(/compress/i)
+      assertLinkBudget(prompt, Math.floor(4500 / 7))
+      const item = linkItem(prompt)
+      expect(item.slice(0, item.indexOf('  video:')).length).toBeLessThan(60)
+    }
+  )
 
   timeTest(
     'compresses pathological custom coverage explicitly instead of implying unread successful ranges',
