@@ -68,13 +68,9 @@ function failureDetailFor(err: unknown, timedOut: boolean, signal?: AbortSignal)
     }
     return err.detail
   }
-  if (signal?.aborted || (err instanceof Error && err.name === 'AbortError')) return { type: 'abort' }
-  if (err instanceof Error && err.name === 'TimeoutError') return { type: 'timeout' }
-  if (err instanceof ModelError) {
+  if (err instanceof ModelError && err.kind !== 'transient') {
     if (isUnavailableError(err)) return { type: 'unavailable' }
     switch (err.kind) {
-      case 'transient':
-        return { type: 'transient' }
       case 'rate_limit':
         return { type: 'rate_limit' }
       case 'auth':
@@ -87,6 +83,9 @@ function failureDetailFor(err: unknown, timedOut: boolean, signal?: AbortSignal)
         return undefined
     }
   }
+  if (signal?.aborted || (err instanceof Error && err.name === 'AbortError')) return { type: 'abort' }
+  if (err instanceof Error && err.name === 'TimeoutError') return { type: 'timeout' }
+  if (err instanceof ModelError && err.kind === 'transient') return { type: 'transient' }
   return undefined
 }
 

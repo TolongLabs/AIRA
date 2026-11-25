@@ -116,7 +116,21 @@ function parseRetryAfterMs(value: string | null, receiptMs: number): number | un
     const ms = Number(trimmed) * 1000
     return Number.isFinite(ms) ? ms : undefined
   }
-  const dateMs = Date.parse(trimmed)
+  // All three HTTP-date formats use UTC. RFC 850's two-digit year is relative to receipt time
+  // (RFC 9110 §5.6.7), not Date.parse's fixed century pivot.
+  const rfc850 = /^([A-Za-z]+, \d{2}-[A-Za-z]{3}-)(\d{2})( \d{2}:\d{2}:\d{2} GMT)$/.exec(trimmed)
+  let dateMs: number
+  if (rfc850) {
+    const futureLimit = new Date(receiptMs)
+    futureLimit.setUTCFullYear(futureLimit.getUTCFullYear() + 50)
+    const twoDigits = Number(rfc850[2])
+    const year = Math.floor((futureLimit.getUTCFullYear() - twoDigits) / 100) * 100 + twoDigits
+    const parseYear = (value: number) => Date.parse(`${rfc850[1]}${value}${rfc850[3]}`)
+    dateMs = parseYear(year)
+    if (dateMs > futureLimit.getTime()) dateMs = parseYear(year - 100)
+  } else {
+    dateMs = Date.parse(trimmed.endsWith(' GMT') ? trimmed : `${trimmed} GMT`)
+  }
   if (!Number.isFinite(dateMs)) return undefined
   // Date.parse accepts ISO dates, numeric fragments and impossible calendar dates. Only the HTTP-date
   // wire forms are valid hints; compare with the parsed date to reject rollovers and weekday mismatches.

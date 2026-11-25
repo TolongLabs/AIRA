@@ -197,7 +197,7 @@ function formatDate(createdAt: string | null): string {
   return isoMatch ? isoMatch[0] : clean
 }
 
-function formatPostLine(link: LinkReading, budget: number): string {
+function formatPostLine(link: LinkReading, budget: number, omitEmpty = false): string {
   const { post } = link
   const platform = PLATFORM_NAME[post.platform]
   const author = formatAuthor(post)
@@ -237,6 +237,7 @@ function formatPostLine(link: LinkReading, budget: number): string {
   }
 
   const body = bodySegments.join(' | ')
+  if (omitEmpty && body.length === 0 && tailParts.length === 0) return author || date ? `- post (${meta})` : ''
   if (body.length === 0) return `${prefix}${tailParts.join(' | ')}`
   return `${prefix}${body}${suffix}`
 }
@@ -279,13 +280,12 @@ function formatYouTubeLines(link: LinkReading, share: number, source: string | u
   const url = sanitizeMediaText(link.post.canonicalUrl)
   if (source !== undefined) metadata(`- [${source}] ${url}`)
   const postLine = formatPostLine(link, metadataCap - used - 1)
-  // The canonical address and source label outrank a long title or author. Avoid charging the URL twice.
-  if (source === undefined && postLine.length > metadataCap - used - 1) metadata(`- post (YouTube): url: ${url}`)
-  const postMetadata =
-    lines.length > 0
-      ? formatPostLine({ ...link, post: { ...link.post, canonicalUrl: '' } }, metadataCap - used - 1)
-      : postLine
-  metadata(postMetadata)
+  // The canonical address and source label outrank a long title or author. Emit only one post line.
+  if (source === undefined) {
+    metadata(postLine.length > metadataCap - used - 1 ? `- post (YouTube): url: ${url}` : postLine)
+  } else {
+    metadata(formatPostLine({ ...link, post: { ...link.post, canonicalUrl: '' } }, metadataCap - used - 1, true))
+  }
   const note = link.note ?? link.result?.note
   if (note) metadata(`(${note})`)
 

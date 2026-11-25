@@ -396,6 +396,15 @@ describe('media intake', () => {
     try {
       const cases: Array<[string | undefined, { type: 'rate_limit'; retryAfterMs?: number }]> = [
         ['3', { type: 'rate_limit', retryAfterMs: 3000 }],
+        ['0', { type: 'rate_limit', retryAfterMs: 0 }],
+        ['Wednesday, 02-Jan-30 03:04:08 GMT', { type: 'rate_limit', retryAfterMs: 3000 }],
+        ['Wed Jan  2 03:04:08 2030', { type: 'rate_limit', retryAfterMs: 3000 }],
+        [
+          'Sunday, 02-Jan-50 03:04:08 GMT',
+          { type: 'rate_limit', retryAfterMs: Date.parse('2050-01-02T03:04:08Z') - Date.now() }
+        ],
+        ['Friday, 02-Jan-81 03:04:08 GMT', { type: 'rate_limit', retryAfterMs: 0 }],
+        ['Tue, 02 Jan 2030 03:04:08 GMT', { type: 'rate_limit' }],
         ['Wed, 02 Jan 2030 03:04:08 GMT', { type: 'rate_limit', retryAfterMs: 3000 }],
         ['Wed, 02 Jan 2030 03:04:04 GMT', { type: 'rate_limit', retryAfterMs: 0 }],
         [undefined, { type: 'rate_limit' }],
@@ -423,6 +432,26 @@ describe('media intake', () => {
       }
     } finally {
       vi.useRealTimers()
+    }
+  })
+
+  it('preserves an already rejected provider classification when outer abort races it', async () => {
+    for (const [kind, type] of [
+      ['auth', 'auth'],
+      ['rate_limit', 'rate_limit'],
+      ['refusal', 'refusal'],
+      ['malformed', 'parse']
+    ] as const) {
+      const outer = new AbortController()
+      const watcher: MediaWatcher = {
+        watch: async () => {
+          throw new Error('unused')
+        },
+        watchUrl: () => Promise.reject(new ModelError(kind, 'synthetic failure'))
+      }
+      const pending = readMediaUrl(youtube, { watcher, timeoutMs: 1000 }, outer.signal)
+      outer.abort()
+      expect(await pending).toMatchObject({ ok: false, failureKind: kind, failureDetail: { type } })
     }
   })
 

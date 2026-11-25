@@ -1213,6 +1213,10 @@ describe('bounded YouTube recovery contract', () => {
       short?: boolean
       offset?: number
       platform?: 'youtube' | 'x'
+      remoteMedia?: boolean
+      watchUrlOff?: boolean
+      noShortDownloader?: boolean
+      shortDownloadDelayMs?: number
     } = {}
   ) {
     const offset = extra.offset ?? start
@@ -1227,6 +1231,15 @@ describe('bounded YouTube recovery contract', () => {
       target,
       canonicalUrl,
       durationSec: extra.durationSec === undefined ? 1375 : extra.durationSec,
+      ...(extra.remoteMedia
+        ? {
+            videoCount: 1,
+            video: { url: 'https://video.example/clip.mp4', bytes: 1000, headers: null, hasAudio: true },
+            photoCount: 1,
+            photoUrls: ['https://img.example/photo.jpg'],
+            imageUrl: 'https://img.example/preview.jpg'
+          }
+        : {}),
       ...(extra.longEvidence
         ? {
             authorHandle: 'fixture' + '😀'.repeat(300),
@@ -1286,19 +1299,24 @@ describe('bounded YouTube recovery contract', () => {
       if (extra.lookupMs) await new Promise<void>((resolve) => setTimeout(resolve, extra.lookupMs))
       return { status: 'found' as const, post }
     })
-    const downloadShort = vi.fn(async () => ({ data: Buffer.from('synthetic'), contentType: 'video/mp4' }))
+    const downloadShort = vi.fn(async () => {
+      if (extra.shortDownloadDelayMs)
+        await new Promise<void>((resolve) => setTimeout(resolve, extra.shortDownloadDelayMs))
+      return { data: Buffer.from('synthetic'), contentType: 'video/mp4' }
+    })
+    const watchFile = vi.fn(async () => answer(99))
     const download = vi.fn(async () => ({ data: Buffer.from('synthetic'), contentType: 'video/mp4' }))
     const reader = createLinkReader({
       viewer: { lookup },
       findTarget: () => target,
-      watcher: { watchUrl, watch: async () => answer(99) },
+      watcher: { ...(extra.watchUrlOff ? {} : { watchUrl }), watch: watchFile },
       model: 'test',
       limits: {
         ...DEFAULT_MEDIA_LIMITS,
         maxVideoSeconds: 300,
         ...(extra.watchMs === undefined ? {} : { linkWatchMs: extra.watchMs })
       },
-      downloadShort,
+      ...(extra.noShortDownloader ? {} : { downloadShort }),
       download,
       logger: createLogger({
         level: 'info',
@@ -1327,6 +1345,7 @@ describe('bounded YouTube recovery contract', () => {
       lookup,
       downloadShort,
       download,
+      watchFile,
       logs,
       url,
       get maxInFlight() {
@@ -1506,6 +1525,25 @@ describe('bounded YouTube recovery contract', () => {
     }
   )
 
+  timeTest('lets a valid too-late quota hint cancel queued sibling recovery', async () => {
+    const f = fixture([[success()], [transient(100), success()], [quota(200, 30000), success()], [success()]])
+    const { stats } = await f.run()
+    expect(f.calls).toHaveLength(4)
+    expect(stats).toMatchObject({ attempts: 4, retried: 0, failed: 2 })
+  })
+
+  timeTest('orders recovery by due time and breaks same-due ties by segment ordinal', async () => {
+    const f = fixture([
+      [success()],
+      [transient(200), success()],
+      [transient(100), success()],
+      [transient(200), success()]
+    ])
+    // First retry is due earlier for ordinal 2; ordinals 1 and 3 share a due time.
+    await f.run()
+    expect(f.calls.filter((c) => c.attempt === 2).map((c) => c.ordinal)).toEqual([2, 1])
+  })
+
   timeTest('counts a second 429 from the retry lane and cancels other queued recovery', async () => {
     const f = fixture([[success()], [quota(100, 0), quota(100)], [transient(200), success()], [success()]])
     const { result, stats } = await f.run()
@@ -1638,15 +1676,29 @@ describe('bounded YouTube recovery contract', () => {
     await f.run(0)
     await f.run(-100)
     expect(f.lookup).not.toHaveBeenCalled()
-    for (const platform of ['youtube', 'x'] as const) {
-      const late = fixture([[success()]], { durationSec: 60, offset: 0, lookupMs: 150, platform })
+    for (const options of [
+      { platform: 'youtube' as const, short: true },
+      { platform: 'youtube' as const, short: true, watchUrlOff: true },
+      { platform: 'x' as const, remoteMedia: true },
+      { platform: 'x' as const }
+    ]) {
+      const late = fixture([[success()]], { durationSec: 60, offset: 0, lookupMs: 150, ...options })
       const { result } = await late.run(100)
       expect(late.lookup).toHaveBeenCalledTimes(1)
       expect(late.calls).toHaveLength(0)
+      expect(late.watchFile).not.toHaveBeenCalled()
       expect(late.download).not.toHaveBeenCalled()
       expect(late.downloadShort).not.toHaveBeenCalled()
       expect(result.calls).toEqual([])
-      expect(result.unreadable).toHaveLength(1)
+      expect(result.links).toHaveLength(1)
+      expect(result.links?.[0]?.reading).toBeUndefined()
+      expect
+        .soft(result.unreadable)
+        .toEqual(
+          options.platform === 'x'
+            ? []
+            : [{ kind: 'YouTube video', reason: options.watchUrlOff ? 'off' : 'unreadable' }]
+        )
       expect(result.tried?.length).toBeGreaterThan(0)
     }
   })
@@ -1698,6 +1750,40 @@ describe('bounded YouTube recovery contract', () => {
       }
     }
   )
+  timeTest('honors narrower Short URL limits and does not reserve byte time without a downloader', async () => {
+    const short = fixture([[{ stubborn: true }]], { durationSec: 35, short: true, offset: 0, watchMs: 4000 })
+    const capped = await short.run()
+    expect(capped.elapsed).toBe(4000)
+    expect(capped.stats).toMatchObject({ watchBudgetMs: 4000 })
+    expect(short.watchFile).toHaveBeenCalledTimes(1)
+    const noBytes = fixture([[success(15000)]], { durationSec: 35, short: true, offset: 0, noShortDownloader: true })
+    const long = await noBytes.run()
+    expect(long.stats).toMatchObject({ watchBudgetMs: 22000, answered: 1 })
+    expect(long.elapsed).toBe(15000)
+    expect(noBytes.watchFile).not.toHaveBeenCalled()
+  })
+
+  timeTest(
+    'does not watch downloaded Short bytes after outer expiry and permits fallback after a resolved quota',
+    async () => {
+      const late = fixture([[{ stubborn: true }]], {
+        durationSec: 35,
+        short: true,
+        offset: 0,
+        shortDownloadDelayMs: 2000
+      })
+      const expired = await late.run(13000)
+      expect(late.downloadShort).toHaveBeenCalledTimes(1)
+      expect(late.watchFile).not.toHaveBeenCalled()
+      expect(expired.result.calls).toHaveLength(1)
+      const resolved = fixture([[quota(100, 0), transient(100)]], { durationSec: 35, short: true, offset: 0 })
+      const recovered = await resolved.run()
+      expect(resolved.downloadShort).toHaveBeenCalledTimes(1)
+      expect(recovered.result.links?.[0]?.reading?.description).toBe('RANGE_99')
+      expect(recovered.result.calls).toHaveLength(3)
+    }
+  )
+
   function linkItem(prompt: string) {
     const lines = prompt.split('\n')
     const startAt = lines.findIndex((line) => line.startsWith('- [S1]'))
@@ -1786,6 +1872,48 @@ describe('bounded YouTube recovery contract', () => {
       assertLinkBudget(unknownPrompt, 4500)
     }
   )
+
+  timeTest('uses one post line without a source and omits empty metadata when a source is present', async () => {
+    const f = fixture([[success()]], { durationSec: 60, offset: 0, longEvidence: true })
+    const { result } = await f.run()
+    const withoutSource = mediaPromptText(result, 'unreadable')
+    expect(withoutSource.match(/^- post \(/gm)).toHaveLength(1)
+    expect(withoutSource).toContain('url: https://www.youtube.com/watch?v=synthetic12')
+    const link = result.links![0]!
+    const stripped = {
+      ...result,
+      links: [
+        {
+          ...link,
+          post: {
+            ...link.post,
+            authorHandle: '',
+            authorName: '',
+            createdAt: null,
+            text: '',
+            externalTitle: '',
+            replyCount: null
+          }
+        }
+      ]
+    }
+    const withSource = mediaPromptText(stripped, 'unreadable', () => 'S1')
+    expect(withSource).toContain('- [S1] https://www.youtube.com/watch?v=synthetic12')
+    expect(withSource).not.toMatch(/^- post \(/m)
+    expect(withSource).toContain('RANGE_0')
+    const attributed = {
+      ...stripped,
+      links: [
+        {
+          ...stripped.links[0]!,
+          post: { ...stripped.links[0]!.post, authorHandle: 'synthetic', createdAt: '2026-01-01T00:00:00Z' }
+        }
+      ]
+    }
+    const attribution = mediaPromptText(attributed, 'unreadable', () => 'S1')
+    expect(attribution).toContain('- post (YouTube @synthetic, 2026-01-01)')
+    expect(attribution).not.toContain('- post (YouTube @synthetic, 2026-01-01):')
+  })
 
   timeTest('keeps a whole short reading useful and marks a single nonzero-offset subspan', async () => {
     const full = fixture([[success()]], { durationSec: 60, offset: 0 })

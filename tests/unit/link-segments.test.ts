@@ -4,6 +4,7 @@ import {
   DEFAULT_LINK_FIRST_SEGMENT_SECONDS,
   DEFAULT_LINK_SEGMENT_SECONDS,
   DEFAULT_MAX_LINK_SEGMENTS,
+  formatClock,
   LINK_TRANSCRIPT_PREFIX,
   MERGED_EVIDENCE_CHARS,
   mergeLinkReadings,
@@ -206,6 +207,29 @@ describe('renderLinkEvidence', () => {
     expect(text.length).toBeGreaterThanOrEqual(35)
     expect(text).toContain('漢😀')
     expect(Array.from(text).some((char) => char.length === 1 && /[\uD800-\uDFFF]/u.test(char))).toBe(false)
+  })
+
+  it('explicitly reports compression when only a bare exact gap header would fit', () => {
+    const plan = {
+      segments: Array.from({ length: 16 }, (_, i) => ({ startSec: i * 60, endSec: (i + 1) * 60 })),
+      clipped: false,
+      unknownLength: false
+    }
+    const readings = plan.segments.map((_, i) => (i % 2 ? undefined : { description: 'Read range' }))
+    const evidence = { plan, readings, durationSec: 960 }
+    const exact =
+      'Not watched: ' +
+      plan.segments
+        .filter((_, i) => i % 2)
+        .map((gap) => `${formatClock(gap.startSec)}–${formatClock(gap.endSec)}`)
+        .join(', ') +
+      '.'
+    const compact = renderLinkEvidence(evidence, exact.length + 4)!
+    expect(compact.description).toMatch(/compress|coverage limited/i)
+    expect(compact.description).toContain('8/16 ranges read')
+    const room = renderLinkEvidence(evidence, exact.length + 25)!
+    expect(room.description).toContain(exact)
+    expect(room.description).toMatch(/compress/i)
   })
 
   it('keeps every exact normal gap and successful label within pressure and obeys even tiny budgets', () => {
