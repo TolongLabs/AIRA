@@ -5,16 +5,25 @@ one night.
 
 ## CI
 
-| Job         | Runs                                                                               | Trigger                     |
-| ----------- | ---------------------------------------------------------------------------------- | --------------------------- |
-| `check`     | Typecheck, lint, format, unit, contract and replay tests                           | Every push and pull request |
-| `scan`      | Secret scan of the repository history with gitleaks                                | Every push and pull request |
-| `site`      | Site typecheck and build                                                           | Every push and pull request |
-| `image`     | Builds the release image. On a push to `main` it pushes it as `sha-<7>` and `edge` | Every push and pull request |
-| `images-ok` | Re-reports the image result, so a skipped or failed build still fails the gate     | After `image`, always       |
-| `deploy`    | Deploys the pushed image on the host, through the self-hosted runner               | Push to `main` only         |
-| `release`   | Version and changelog pull request from commit messages                            | Push to `main`              |
-| `promote`   | Tags the image the host runs `vX.Y.Z`, `vX.Y` and `stable`                         | A release commit            |
+| Job         | Runs                                                                                                                         | Trigger                     |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| `check`     | Typecheck, lint, format, unit, contract and replay tests                                                                     | Every push and pull request |
+| `scan`      | Secret scan of the repository history with gitleaks                                                                          | Every push and pull request |
+| `site`      | Site typecheck and build                                                                                                     | Every push and pull request |
+| `image`     | Builds the release image and runs standalone clean-install smoke on that exact image. On main it pushes `sha-<7>` and `edge` | Every push and pull request |
+| `images-ok` | Re-reports the image result, so a skipped or failed build still fails the gate                                               | After `image`, always       |
+| `deploy`    | Deploys the pushed image on the host, through the self-hosted runner                                                         | Push to `main` only         |
+| `release`   | Version and changelog pull request from commit messages                                                                      | Push to `main`              |
+| `promote`   | Tags the image the host runs `vX.Y.Z`, `vX.Y` and `stable`, after the exact commit's CI passes                               | A release commit            |
+
+The hosted install gate loads the PR candidate locally or anonymously pulls the exact main SHA image,
+then runs `tests/install/smoke.py` on a non-root, non-1000 UID Ubuntu runner. It exercises the real CLI,
+protected service, occupied ports, model save/restart, selected stock Hermes profile dry-run/apply,
+deterministic synthetic transport, update/rollback and private backup/restore. It never sends a WhatsApp
+message or contacts a real model. The pinned Hermes upstream admission/group and platform delivery fixtures
+run under an isolated profile root. An absent image or failed smoke fails `image` and therefore `images-ok`;
+the production runner cannot start before this gate. Release promotion waits for the exact main commit's
+successful CI run (including deployment) and re-tags the already-built manifest, not a newer `edge`.
 
 ## Release Image
 
