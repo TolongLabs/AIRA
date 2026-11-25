@@ -141,18 +141,73 @@ previous files and image. The UI shows pending edits and distinguishes saved val
 
 ## Standalone Configuration
 
-A new installation uses an explicit standalone authority rather than the legacy host settings socket.
-The low-level deploy configuration remains startup-only. The standalone model settings and its credential
-references will belong to a versioned private store under the data volume; an applied revision determines
-model readiness. No configured main model means `setup_required`. A saved but not applied revision is
-`pending_activation`, not a running configuration. See [Models](models.md#standalone-model-readiness).
-The store and the exact typed write/activation contract are frozen before implementing those operations.
+Standalone keeps the same chat settings, character selection and Studio authority. The startup-only deploy
+configuration stays read-only; it is not an arbitrary file editor. The standalone owner uses the per-install
+credential, not the Hermes host credential. See [standalone owner authentication](site.md#standalone-owner-authentication).
+Host-only operations remain unavailable until their capabilities are verified.
 
-The standalone dashboard owner uses the per-install credential rather than the Hermes host credential.
-The existing browser token key and protected request boundary stay in place. See
-[standalone owner authentication](site.md#standalone-owner-authentication). Core settings and Studio
-operations have the same authority and revisions in both modes; legacy-only operations are unavailable
-in standalone until a capability contract is implemented and verified.
+### Model Revision Authority
+
+The core is the single writer of version 1 state under `<data>/standalone/`. Private `models.json` stores
+the saved, applied, requested and starting revision IDs, applied timestamp and last activation failure code.
+Each revision has an immutable `revisions/<uuid>.json` settings document and a separate
+`revisions/<uuid>.credentials.json` credential document. All files are mode 0600, directories 0700,
+owned by the install user, regular files only, no symlinks. Create complete revision files before
+atomically replacing the pointer; fsync writes and directory. An interrupted write cannot expose a partial
+revision as saved. Revision IDs are random, not derived from secret values. Preserve last known good
+and pending state; backup inventory must include every referenced revision.
+
+Only the API main and optional API fallback roles are editable initially. For each, the writable fields are
+`provider` (anthropic or openai-compatible), `model`, `baseUrl`, `effort`, `deepEffort`, and the three
+`usdPerMTok*` prices in the existing model target schema. Validate the full merged config with its
+existing schema, transport constraints and provider effort rules; base URLs must be absolute HTTP(S)
+without embedded credentials, query or fragment. Refuse the core's own local route. A model key is
+provided as optional `apiKey` in the write only: absent or empty means retain the prior key for that role,
+null means explicitly clear it. A null role disables it. A saved missing-key main is incomplete
+(`setup_required` after applying it), not a valid runnable client. No legacy environment credential fills
+the gap. A fallback cannot run in place of an unconfigured main. Model validation and activation make no
+paid provider request; a separate explicit model test or actual configured turn is required to establish
+provider-call success.
+
+### Typed Owner Operations
+
+Both the UI and host CLI use these protected routes, not direct edits or general-purpose host commands.
+
+| Method | Path                                         | Body and result                                                                                    |
+| ------ | -------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| GET    | `/owner-api/core/standalone-config`          | Sanitized saved/applied models, revision IDs, configuration and activation status                  |
+| PUT    | `/owner-api/core/standalone-config`          | `{ expectedRevision, main, fallback }`; strict model targets or null, optional write-only `apiKey` |
+| POST   | `/owner-api/core/standalone-config/activate` | `{ expectedRevision }`; 202 for accepted restart request, not applied success                      |
+
+The read and save envelope is
+`{ schemaVersion: 1, configuration, savedRevision, appliedRevision, activation, lastFailure, saved, applied }`.
+Revision IDs are UUID strings or null; `saved` and `applied` are null or model pairs with
+`main` and `fallback` fields, each null or a target plus `credentialConfigured: boolean`.
+No key or credential reference content is returned. `activation` is `idle`, `requested`, or `starting`.
+`lastFailure` is null or a safe reason code; never an upstream response. A stale expected revision returns
+409 `stale_revision`, invalid model fields return 400 `model_config_invalid`, and a running activation
+returns 409 `activation_in_progress`. The activation endpoint returns the same readback with HTTP 202.
+Legacy requests to these routes return 503 `capability_unavailable` without granting a second authority.
+
+### Controlled Activation
+
+Saving is separate from activating. If the saved ID differs from the applied ID, report
+`pending_activation` (unless stored data is invalid). Clicking Apply or the CLI activation operation
+requests the exact saved revision. The process schedules its own graceful stop only after the authenticated
+202 response is written. Docker's restart policy brings up a new core; no web route invokes Docker or
+a host subprocess. At boot the core atomically claims the requested revision, validates its files and builds
+the candidate runtime. Only after storage, both listeners and runtime construction succeed does it commit the
+applied pointer and clear the claim. No new gateway turn runs on a claimed but uncommitted revision.
+In-flight turns drain on their original applied revision.
+
+A construction failure keeps the old applied pointer, clears the claim with `activation_failed`, and
+restarts once on the last good applied state. If a process dies while a claim is present, the next boot
+marks that activation failed instead of looping; the saved candidate remains available for explicit retry.
+An invalid applied store reports `invalid` and an inactive chatbot when essential storage remains usable.
+Deployment or storage failure is still a failed service start. Never report a saved revision as applied
+on a successful HTTP write alone. UI and CLI poll the protected readback with a bounded deadline and
+compare the expected applied ID. The core reports model `configured` independently of Hermes connection;
+without a verified adapter, chatbot remains inactive with reason `hermes_disconnected`.
 
 ## Host settings, routines, notices, markets, and files
 

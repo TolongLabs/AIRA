@@ -37,7 +37,8 @@ is copied off the host and brought back.
 
 The standalone owner credential and model configuration state are private non-SQLite stores under
 `<data>/standalone/`. The [owner authentication contract](site.md#standalone-owner-authentication)
-defines the token's permissions and lifetime. Backup and restore must preserve these files without
+defines the token's permissions and lifetime; [model revision authority](dashboard-state.md#model-revision-authority)
+defines the versioned settings and separate credential files. Backup and restore must preserve these files without
 revealing their contents; the versioned coherent backup inventory is defined before enabling updates.
 
 ## Why SQLite, And Where DuckDB Fits

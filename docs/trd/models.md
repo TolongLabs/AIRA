@@ -23,10 +23,10 @@ The core must not dispatch a placeholder model or make a paid probe. Legacy API 
 validation are unchanged. Standalone supports only the API main and optional API fallback transport;
 host-router and subscription transport are not standalone capabilities.
 
-For the initial cold-boot contract, a standalone main client exists only when an explicitly configured,
+A standalone main client exists only when an explicitly configured,
 validated model target and credential are available. The no-client branch must not invoke the turn runner,
-memory extraction, research model or another model path. The standalone saved/applied revision and credential
-authority is defined separately in [Dashboard state](dashboard-state.md#standalone-configuration).
+memory extraction, research model or another model path. The saved/applied revision, credential authority and controlled activation are defined in
+[Dashboard state](dashboard-state.md#model-revision-authority).
 
 ## Transport Setting
 
