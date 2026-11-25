@@ -1,4 +1,5 @@
 import type { MediaReading } from './gemini-watcher.js'
+import { sanitizeMediaText } from './intake.js'
 
 export const DEFAULT_LINK_WATCH_MS = 22_000
 export const DEFAULT_LINK_SEGMENT_SECONDS = 180
@@ -103,14 +104,17 @@ export function planLinkSegments(input: LinkSegmentPlanInput): LinkSegmentPlan {
   return { segments, clipped, unknownLength: false }
 }
 
-function cutAtWord(raw: string, maxChars: number): string {
-  const text = raw.trim()
+/** Clips bounded evidence without splitting a Unicode scalar or a word where possible. */
+export function clipLinkText(raw: string, maxChars: number): string {
+  const text = raw.trim().toWellFormed()
+  maxChars = Math.floor(maxChars)
   if (maxChars <= 0) return ''
   if (text.length <= maxChars) return text
   if (maxChars === 1) return '…'
 
   const limit = maxChars - 1
-  const slice = text.slice(0, limit)
+  const end = /[\uD800-\uDBFF]/.test(text[limit - 1] ?? '') ? limit - 1 : limit
+  const slice = text.slice(0, end)
   if (/\s/.test(text[limit] ?? '')) {
     const candidate = slice.trimEnd()
     if (candidate.length > 0) return `${candidate}…`
@@ -123,7 +127,8 @@ function cutAtWord(raw: string, maxChars: number): string {
       break
     }
   }
-  if (lastSpace > 0) {
+  // Do not discard most of an allocated share for a distant space (e.g. CJK or an unbroken token).
+  if (lastSpace > 0 && lastSpace >= end - Math.min(32, Math.floor(end / 4))) {
     const candidate = slice.slice(0, lastSpace).trimEnd()
     if (candidate.length > 0) return `${candidate}…`
   }
@@ -159,50 +164,173 @@ function buildCoverageLine(plan: LinkSegmentPlan, gaps: readonly LinkSegment[], 
   return gapText || colonText
 }
 
-/** Merges answered segment readings in order with coverage notes and equal character shares. Pure. */
+interface EvidencePart {
+  label: string
+  text: string
+  seconds: number
+}
+interface EvidenceParts {
+  coverage: string
+  descriptions: EvidencePart[]
+  transcripts: EvidencePart[]
+  gapCount: number
+}
+
+export const LINK_TRANSCRIPT_PREFIX = '  transcript: '
+const PROSE_FLOOR = 160
+
+function evidenceParts(evidence: LinkSegmentEvidence): EvidenceParts {
+  const { plan, readings, durationSec } = evidence
+  const descriptions: EvidencePart[] = []
+  const transcripts: EvidencePart[] = []
+  const gaps: LinkSegment[] = []
+  const whole = plan.segments.length === 1 && !plan.clipped && !plan.unknownLength && plan.segments[0]?.startSec === 0
+  for (const [index, segment] of plan.segments.entries()) {
+    const reading = readings[index]
+    if (!reading) {
+      gaps.push(segment)
+      continue
+    }
+    const seconds = Math.max(1, segment.endSec - segment.startSec)
+    const start = formatClock(segment.startSec)
+    const end = formatClock(segment.endSec)
+    descriptions.push({
+      label: whole ? '' : `[${start}–${end}] `,
+      text: sanitizeMediaText(reading.description).trim().toWellFormed() || '…',
+      seconds
+    })
+    const speech = reading.transcript ? sanitizeMediaText(reading.transcript).trim().toWellFormed() : ''
+    if (speech) transcripts.push({ label: whole ? '' : `[${start}] `, text: speech, seconds })
+  }
+  return { coverage: buildCoverageLine(plan, gaps, durationSec), descriptions, transcripts, gapCount: gaps.length }
+}
+
+function labelsSize(parts: readonly EvidencePart[]): number {
+  return parts.reduce((sum, part) => sum + part.label.length, Math.max(0, parts.length - 1))
+}
+
+function prefixOf(coverage: string): string {
+  return coverage ? `${coverage} ` : ''
+}
+
+/** Minimum exact coverage, labels and nonempty prose. Metadata yields to this reserve where it fits. */
+export function minimumLinkEvidenceChars(evidence: LinkSegmentEvidence): number {
+  const { coverage, descriptions } = evidenceParts(evidence)
+  return prefixOf(coverage).length + labelsSize(descriptions) + descriptions.length
+}
+
+function textSize(parts: readonly EvidencePart[]): number {
+  return parts.reduce((sum, part) => sum + part.text.length, 0)
+}
+
+function floorSize(parts: readonly EvidencePart[]): number {
+  return parts.reduce((sum, part) => sum + Math.min(PROSE_FLOOR, part.text.length), 0)
+}
+
+/** Give each range a floor, then distribute spare characters by duration, reclaiming short ranges' excess. */
+function renderParts(parts: readonly EvidencePart[], budget: number): string {
+  const floor = Math.min(PROSE_FLOOR, Math.floor(budget / parts.length))
+  const sizes = parts.map((part) => Math.min(part.text.length, floor))
+  let remaining = budget - sizes.reduce((sum, size) => sum + size, 0)
+  while (remaining > 0) {
+    const active = parts.flatMap((part, i) => (sizes[i]! < part.text.length ? [i] : []))
+    if (active.length === 0) break
+    const totalSeconds = active.reduce((sum, i) => sum + parts[i]!.seconds, 0)
+    const available = remaining
+    for (const i of active) {
+      const part = parts[i]!
+      const add = Math.min(part.text.length - sizes[i]!, Math.floor((available * part.seconds) / totalSeconds))
+      sizes[i]! += add
+      remaining -= add
+    }
+    // Integer rounding can leave fewer characters than ranges. Spend them in chronological order.
+    if (remaining === available) {
+      for (const i of active) {
+        if (remaining === 0) break
+        sizes[i]!++
+        remaining--
+      }
+    }
+  }
+  return parts.map((part, i) => part.label + clipLinkText(part.text, sizes[i]!)).join(' ')
+}
+
+function compactCoverage(evidence: LinkSegmentEvidence, parts: EvidenceParts, maxChars: number): string {
+  const { plan, durationSec } = evidence
+  const first = plan.segments[0]
+  const last = plan.segments[plan.segments.length - 1]
+  const context =
+    buildCoverageLine(plan, [], durationSec).replace(/:$/, '.') ||
+    (first && last && first.startSec > 0 ? `Planned ${formatClock(first.startSec)}–${formatClock(last.endSec)}.` : '')
+  const counts = `${parts.descriptions.length}/${plan.segments.length} ranges read; ${parts.gapCount} not watched`
+  const flags = [...(plan.clipped ? ['clipped span'] : []), ...(plan.unknownLength ? ['length unknown'] : [])]
+  const candidates = [
+    `Evidence compressed: ${counts}.${context ? ` ${context}` : ''}`,
+    `${counts}; ${[...flags, 'compressed'].join('; ')}.`,
+    'Coverage limited; evidence compressed.',
+    'Coverage limited',
+    'Compressed',
+    '…'
+  ]
+  return candidates.find((text) => text.length <= maxChars) ?? ''
+}
+
+/**
+ * Renders the final URL readings directly within the item's remaining character budget.
+ * The budget includes the optional transcript line separator and prefix, but not the video prefix.
+ */
+export function renderLinkEvidence(evidence: LinkSegmentEvidence, maxChars: number): MediaReading | undefined {
+  const parts = evidenceParts(evidence)
+  const { descriptions, transcripts, coverage } = parts
+  if (descriptions.length === 0 || maxChars <= 0) return undefined
+  const budget = Math.floor(maxChars)
+  let prefix = prefixOf(coverage)
+  const labelChars = labelsSize(descriptions)
+  let prose = budget - prefix.length - labelChars
+  if (prose < descriptions.length) return { description: compactCoverage(evidence, parts, budget) }
+  const descFloor = floorSize(descriptions)
+  // Mark severe compression explicitly when the normal floor for successful descriptions cannot fit.
+  const compressed = 'Evidence compressed. '
+  if (prose < descFloor && prose >= descriptions.length + compressed.length) {
+    prefix += compressed
+    prose -= compressed.length
+  }
+
+  const totalDescription = textSize(descriptions)
+  const totalTranscript = textSize(transcripts)
+  const speechLabels = 1 + LINK_TRANSCRIPT_PREFIX.length + labelsSize(transcripts)
+  let descriptionBudget = Math.min(totalDescription, prose)
+  let transcriptBudget = 0
+  if (transcripts.length > 0 && prose >= descriptions.length + speechLabels + transcripts.length) {
+    const available = prose - speechLabels
+    const speechFloor = floorSize(transcripts)
+    const targetDescription =
+      available >= descFloor + speechFloor
+        ? Math.max(descFloor, Math.floor(available * 0.4))
+        : Math.floor((available * descFloor) / (descFloor + speechFloor))
+    const minimumSpeech = Math.min(totalTranscript, transcripts.length)
+    descriptionBudget = Math.min(
+      totalDescription,
+      Math.max(descriptions.length, Math.min(available - minimumSpeech, targetDescription))
+    )
+    transcriptBudget = Math.min(totalTranscript, available - descriptionBudget)
+    // Short speech or description gives its unused allocation to the other kind of evidence.
+    descriptionBudget = Math.min(totalDescription, available - transcriptBudget)
+  }
+  const description = prefix + renderParts(descriptions, descriptionBudget)
+  return transcriptBudget > 0
+    ? { description, transcript: renderParts(transcripts, transcriptBudget) }
+    : { description }
+}
+
+/** Derived reading for legacy consumers; final prompt rendering uses the original structured evidence. */
 export function mergeLinkReadings(
   plan: LinkSegmentPlan,
   results: readonly (MediaReading | undefined)[],
   durationSec: number | null
 ): MediaReading | undefined {
-  const answeredItems: { segment: LinkSegment; reading: MediaReading }[] = []
-  const gaps: LinkSegment[] = []
-
-  for (let i = 0; i < plan.segments.length; i++) {
-    const segment = plan.segments[i]!
-    const reading = results[i]
-    if (reading) answeredItems.push({ segment, reading })
-    else gaps.push(segment)
-  }
-
-  if (answeredItems.length === 0) return undefined
-
-  if (plan.segments.length === 1 && !plan.clipped && !plan.unknownLength && gaps.length === 0) {
-    const only = answeredItems[0]!.reading
-    const transcript = only.transcript?.trim()
-    return transcript ? { description: only.description, transcript } : { description: only.description }
-  }
-
-  const descShare = Math.floor(MERGED_DESCRIPTION_CHARS / answeredItems.length)
-  const coverage = buildCoverageLine(plan, gaps, durationSec)
-  const descParts = answeredItems.map(
-    ({ segment, reading }) =>
-      `[${formatClock(segment.startSec)}–${formatClock(segment.endSec)}] ${cutAtWord(reading.description, descShare)}`
+  return renderLinkEvidence(
+    { plan, durationSec, readings: results },
+    MERGED_DESCRIPTION_CHARS + MERGED_TRANSCRIPT_CHARS
   )
-  const description = coverage ? `${coverage} ${descParts.join(' ')}` : descParts.join(' ')
-
-  const transcriptItems = answeredItems.filter(
-    (item): item is { segment: LinkSegment; reading: MediaReading & { transcript: string } } =>
-      typeof item.reading.transcript === 'string' && item.reading.transcript.trim().length > 0
-  )
-  if (transcriptItems.length === 0) return { description }
-
-  const transcriptShare = Math.floor(MERGED_TRANSCRIPT_CHARS / transcriptItems.length)
-  const transcript = transcriptItems
-    .map(
-      ({ segment, reading }) => `[${formatClock(segment.startSec)}] ${cutAtWord(reading.transcript, transcriptShare)}`
-    )
-    .join(' ')
-
-  return { description, transcript }
 }

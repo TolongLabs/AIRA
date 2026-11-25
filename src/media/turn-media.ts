@@ -9,6 +9,7 @@ import type { MediaReading, MediaWatcher } from './gemini-watcher.js'
 import { mediaBlock, readMedia, sanitizeMediaText } from './intake.js'
 import type { MediaKind, MediaLimits } from './limits.js'
 import { type LinkAllow, type LinkReader, type LinkReading, type LinkTried } from './link-intake.js'
+import { clipLinkText, LINK_TRANSCRIPT_PREFIX, minimumLinkEvidenceChars, renderLinkEvidence } from './link-segments.js'
 
 // The media of one turn: which files are read, the reading of each, and the text for prompt block 4
 // (docs/trd/models.md#media-watching).
@@ -255,6 +256,47 @@ function formatThreadLines(post: SocialPost, budget: number): string[] {
   })
 }
 
+/** Structured YouTube evidence owns its final share; metadata never forces a second tail clip. */
+function formatYouTubeLines(link: LinkReading, share: number, source: string | undefined): string[] {
+  const evidence = link.youtubeEvidence!
+  const videoPrefix = '  video: '
+  const available = Math.max(0, share - videoPrefix.length)
+  const minimum = minimumLinkEvidenceChars(evidence)
+  const metadataCap = Math.min(450, Math.floor(share * 0.2), minimum <= available ? available - minimum : available)
+  const lines: string[] = []
+  let used = 0
+
+  function metadata(line: string) {
+    const remaining = metadataCap - used - 1 // the newline before the next metadata or video line
+    if (remaining <= 0) return
+    const text = clipLinkText(sanitizeMediaText(line), remaining)
+    if (text) {
+      lines.push(text)
+      used += text.length + 1
+    }
+  }
+
+  const url = sanitizeMediaText(link.post.canonicalUrl)
+  if (source !== undefined) metadata(`- [${source}] ${url}`)
+  const postLine = formatPostLine(link, metadataCap - used - 1)
+  // The canonical address and source label outrank a long title or author. Avoid charging the URL twice.
+  if (source === undefined && postLine.length > metadataCap - used - 1) metadata(`- post (YouTube): url: ${url}`)
+  const postMetadata =
+    lines.length > 0
+      ? formatPostLine({ ...link, post: { ...link.post, canonicalUrl: '' } }, metadataCap - used - 1)
+      : postLine
+  metadata(postMetadata)
+  const note = link.note ?? link.result?.note
+  if (note) metadata(`(${note})`)
+
+  const reading = renderLinkEvidence(evidence, available - used)
+  if (reading) {
+    lines.push(videoPrefix + reading.description)
+    if (reading.transcript) lines.push(LINK_TRANSCRIPT_PREFIX + reading.transcript)
+  }
+  return lines
+}
+
 function formatLinkLines(link: LinkReading, share: number): string[] {
   // The earlier posts of a thread hold the content a reply builds on, so they take up to half the post's share.
   const threadBudget = link.post.thread.length > 0 ? Math.floor(share * (link.reading ? 0.2 : 0.5)) : 0
@@ -319,6 +361,7 @@ export function mediaPromptText(
     const linkLines = links.flatMap((link) => {
       const url = link.post.canonicalUrl
       const source = sourceForUrl?.(url)
+      if (link.youtubeEvidence) return formatYouTubeLines(link, share, source)
       const header = source === undefined ? [] : [`- [${source}] ${url}`]
       return [...header, ...formatLinkLines(link, share - (header[0]?.length ?? 0))]
     })
