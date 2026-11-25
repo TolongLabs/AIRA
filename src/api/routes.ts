@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import type { PackSet } from '../character/loader.js'
+import type { InstallationMode } from '../config/installation-mode.js'
 import { readFeedback } from '../feedback/view.js'
 import { DEFAULT_TOOL_LABELS, plainLabel } from '../format/footer.js'
 import { listChatItems } from '../memory/store.js'
@@ -28,6 +29,8 @@ export interface SiteApiDeps {
   onWrite?: () => void
   /** Optional read-only gateway channel directory JSON for fallback chat names. */
   channelDirectoryPath?: string
+  /** Standalone authority. Only standalone answers the extended health shape. */
+  installationMode?: InstallationMode
   registry: ToolRegistry
   extractorAvailable?: boolean
   socialMirrors?: SocialMirrorSettings
@@ -91,11 +94,30 @@ function readChannelDirectory(path: string): Map<string, string> {
 }
 
 function handleHealth(deps: SiteApiDeps): RouteResult {
-  return ok({
+  const base = {
     status: deps.ready() ? 'ready' : 'starting',
     version: deps.version,
     activeTurns: deps.activeTurns(),
     roles: deps.roles()
+  }
+  // Standalone keeps the legacy envelope and adds its readiness shape
+  // (docs/trd/site.md#standalone-owner-authentication). No success is invented:
+  // configuration stays setup_required until the model store packet lands.
+  if (deps.installationMode !== 'standalone') return ok(base)
+  return ok({
+    ...base,
+    schemaVersion: 1,
+    installationMode: 'standalone',
+    configuration: 'setup_required',
+    chatbot: 'inactive',
+    chatbotReason: 'model_setup_required',
+    capabilities: {
+      hostOwnerService: false,
+      subscriptionRunner: false,
+      fileBrowser: false,
+      gatewayConnection: false,
+      scheduler: false
+    }
   })
 }
 
