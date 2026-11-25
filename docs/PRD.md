@@ -48,6 +48,8 @@ person cannot maintain it, and a second maintainer cannot learn it.
 6. **Testable Without Users:** a harness simulates, replays and benchmarks AIRA offline, and gates changes.
 7. **Safe Across Restarts:** a restart, a full disk or a lost disk loses nothing that was acknowledged.
 8. **Maintainable By Two:** a public repository, clear documents, and a codebase both maintainers can read.
+9. **Portable Onboarding:** a supported Hermes user can install, sign in, configure, attach deliberately, diagnose and
+   update AIRA without source builds, manual port discovery or a persistent terminal.
 
 ## Target Users
 
@@ -61,6 +63,11 @@ Volume is small: 4 to 16 chat turns a day across about 4 active chats. Reliabili
 per reply.
 
 ## User Workflow
+
+The portable onboarding milestone ([#393](https://github.com/TolongLabs/AIRA/issues/393)) adds a self-hosted
+Linux amd64 setup journey. It must prove dashboard-first independent startup, explicit model activation,
+a compatible selected Hermes profile, recovery and update with synthetic data, and preservation of the
+legacy owner installation. The release and public Getting Started remain gated on verified clean installation.
 
 1. A member writes in a DM, or mentions or replies to AIRA in a group.
 2. The gateway hands the message to AIRA with the chat's identity. AIRA never takes identity from the model.

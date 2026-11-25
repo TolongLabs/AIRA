@@ -87,6 +87,87 @@ a browser URL, logs or a subprocess argument. The CLI reads the token file inter
 standalone probes, not a new authorization mechanism. Legacy owner credentials remain under their existing
 authority. The complete host-command contract is extended here before implementing the installer.
 
+### Install Discovery and Host State
+
+The default is `~/aira/`. If it is a source checkout rather than an install, use
+`~/.local/share/aira/install/`. An explicit `--home` takes precedence over `AIRA_HOME`.
+Otherwise use an owned locator at `$XDG_CONFIG_HOME/aira/cli.json` (fallback `~/.config/aira/cli.json`),
+then the default candidates; conflicting plausible installations require a selection. Read-only commands
+do not create a locator, manifest, lock or install directory. An install without a manifest but with the
+established Compose, environment and config files is legacy. Adoption preserves the actual Compose project,
+published ports, image, configuration and service state.
+
+Version 1 `install.json` contains only `schemaVersion`, `installId`, `mode`, `project`, `management`
+(`stable` or `ci`), `release`, `imageId`, `sitePort`, `corePort`, `uid`, `gid`, and `stage`
+(`prepared` or `installed`). During preparation, image ID and the actual mapping may be unknown; candidate
+ports are not committed as actual ports until verified. No credential or health status belongs in the manifest.
+Reruns reconcile observed Compose state with the manifest; `repair_required` describes staged or mismatched state.
+Any owned file write is private, atomic and fsynced; refuse symlink or unowned targets. Mutating operations
+use the same bounded exclusive host `deploy.lock` as the updater. Read-only operations never take a write lock.
+
+The installed launcher and runtime templates belong to the current owner under
+`~/.local/share/aira/cli/` (versioned runtime), with an executable launcher in `~/.local/bin/aira`.
+Never modify shell startup or install system packages implicitly. The checkout launcher uses the same modules.
+If PATH omits the installed command, print its exact path. Existing unrelated paths are not overwritten.
+
+### Fresh Setup Transaction
+
+Support Linux amd64, Python 3 standard library, rootful Docker with Compose v2 and a service enabled at boot
+on a systemd host. Detect missing Python/Docker/Compose, permission denial, daemon failure and unsupported host
+before provisioning; report remediation, not implicit sudo or group changes. Verify disk space and writable
+owned installation paths. Detect Hermes separately; its absence does not prevent dashboard setup.
+
+Fresh portable installs use a standalone Compose template installed as `compose.yml`, a generated private
+`.env`, the existing core config template with an absolute host data path, and a private `data/` directory.
+Bind the two ports to loopback, keep `restart: unless-stopped`, and map the container process UID/GID to the
+non-root installing user. Mount only the owned data and read-only configuration; absent host integrations
+must not manufacture root-owned paths. The legacy template and existing host mounts remain unchanged.
+No Docker socket in the container.
+
+Reserve site port 9890 and core port 9881 by default; scan upward within 9881–9999, skipping the other
+assigned port. Explicit `--site-port` or `--core-port` is exact or reports `port_conflict`. Docker bind
+results are authoritative; retry a fresh automatic assignment up to three times when a concurrent listener
+wins. Do not move committed ports on rerun or update. The fresh default image is
+`ghcr.io/tolonglabs/aira:stable`; explicit `--image REF` may use a locally loaded candidate image for
+integration tests (otherwise pull the specified reference). An incompatible image is a failed setup, not
+a successful HTML probe. Pull under a bounded 20 minute budget, start within 60 seconds and verify health
+within 60 seconds. No paid model probe.
+
+Setup stages: discover and preflight; plan under lock; prepare/pull; start and verify; commit/report.
+Keep private staged state after interruption; never delete prior user data to retry. Verify actual
+published mappings through Compose, service health with the standalone readiness schema, and authenticated
+`/owner-api/core/health`. On success commit actual ports and image ID. Check daemon boot enablement:
+a healthy service without verified persistence stays running and returns `persistence_degraded` with
+exit 1 and the actual URL. An explicit setup on an intentionally stopped install may start it; dashboard,
+status and doctor report stopped without starting. A healthy legacy setup does not pull, rewrite inputs,
+or restart the service. Existing management channel remains authoritative.
+
+`aira dashboard` prints the mapped `http://127.0.0.1:<sitePort>/overview` URL. On SSH/headless, print
+the mapped-port SSH forwarding example. Only a usable local desktop invokes the browser; `--no-open`
+suppresses it. JSON and non-interactive invocations do not open the browser by default. Opener failure
+is a warning after service verification. Expose only private loopback access for the initial portable path.
+
+### CLI Results and Commands
+
+Global flags: `--home PATH`, `--json`, `--non-interactive`. `--help` and `--version` are install-independent.
+`setup` takes `--site-port`, `--core-port`, `--image`, `--no-open`; `dashboard` takes
+`--open`, `--no-open`, `--show-token`. `status` and `doctor` are read-only. Config, attach, logs,
+and update follow their typed contracts as integrated, not generic file or host operations.
+
+For non-streaming `--json`, stdout is one object with `schemaVersion: 1`, `command`, `outcome`
+(`ok` or `error`), `operationId`, `state`, `checks`, `warnings`, and `dashboard` when observed.
+State dimensions are independent: `installation` (not_installed, installing, installed, repair_required),
+`service` (starting, running, stopped, unhealthy), `persistence` (verified, degraded, unknown),
+`configuration` (setup_required, configured, invalid, pending_activation), `hermes` (not_detected,
+detected, unsupported, disconnected, connected), and `chatbot` (inactive, ready, degraded).
+Report the reason when unknown, incomplete or degraded; do not guess unavailable runtime fields.
+An error includes `code`, `stage`, `operationId`, `retryable`, safe `message`, `recovery`,
+`exitClass`, and a safe log reference. Human progress is on stderr; no raw subprocess output,
+secret, token, environment or private chat identity. Stable exits: 0 success (including expected unconfigured
+state and stopped status); 2 invalid arguments; 3 prerequisite/unsupported host; 4 conflict/refused;
+1 operational failure, including rolled-back failure; 5 rollback failed/manual recovery. Identity and
+actual health are observed, never inferred from the manifest or tag.
+
 ## Install
 
 Run by the operator on the host, with each step that changes the host confirmed first.

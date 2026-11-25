@@ -27,6 +27,12 @@ work is refused before turn creation. Test legacy missing-key failure, invalid s
 and the legacy health envelope alongside the new readiness fields. Inactive startup and admission must make
 zero model calls. Later installer gates exercise the release image itself, not just an injected app.
 
+The host CLI unit suite uses Python stdlib unittest and fake subprocess/API ports (no Docker daemon or
+real install). A separate candidate-image suite runs the actual CLI on a disposable Linux amd64 user with
+real rootful Docker/Compose, loopback HTTP, missing keys, alternate UID/GID, collisions, failed setup retry,
+credential denial, and state persistence. A Docker restart is not an OS reboot; the latter requires its own
+disposable VM evidence. A failed or skipped required install gate cannot merge.
+
 ## Recordings
 
 - Every model request is hashed from its role, model, prompt blocks, window, tool list and parameters.

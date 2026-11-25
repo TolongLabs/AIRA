@@ -100,6 +100,18 @@ The list lives in `src/records/kinds.ts`. Alert delivery follows the Deployment 
 
 An unknown-host social path match logs the platform and hostname. Paths and queries stay out of the log.
 
+### Host CLI Operations
+
+The host CLI logs before an install exists in `$XDG_STATE_HOME/aira/operations.jsonl` (fallback
+`~/.local/state/aira/operations.jsonl`), mode 0600 under a private directory. Concurrent append and rotation
+are serialized. Keep the active log and at most four rotated files, each at most 2 MiB. Event fields are
+UTC timestamp, level, component (setup, cli, core, gateway, update), operation ID, stage, stable reason,
+outcome, attempt, duration, retryability, safe image/build metadata and a safe message. Do not log child
+process output, request bodies, credentials, raw environment, chat identities, names or message content.
+Record failures even if retry succeeds. Durable deploy/audit records keep their existing retention contract.
+The component reader outputs bounded normalized redacted events; a missing source is not a healthy result.
+No external telemetry or automatic diagnostic upload.
+
 ## Redaction
 
 - WhatsApp ids and phone-like strings are replaced with stable hashes. Configured secrets are masked. Anything
