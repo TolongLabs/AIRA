@@ -137,10 +137,15 @@ export interface ChatSession {
 
 type TurnRow = Record<string, unknown>
 
-function readNewestTurn(app: App): { turn: TurnRow | undefined; toolCalls: number; tools: string[] } {
+function readMessageTurn(
+  app: App,
+  chatId: string,
+  mid: string
+): { turn: TurnRow | undefined; toolCalls: number; tools: string[] } {
   return app.storage.read((db) => {
-    const sql = 'SELECT * FROM turn ORDER BY received_at DESC, rowid DESC LIMIT 1'
-    const turn = db.prepare(sql).get() as TurnRow | undefined
+    const sql =
+      'SELECT t.* FROM inbound_message m JOIN turn t ON t.turn_id = m.turn_id WHERE m.chat_id = ? AND m.mid = ?'
+    const turn = db.prepare(sql).get(chatId, mid) as TurnRow | undefined
     if (!turn || typeof turn['turn_id'] !== 'string') {
       return { turn: undefined, toolCalls: 0, tools: [] }
     }
@@ -160,6 +165,7 @@ export async function openChatSession(options: {
   dataDir?: string
   chat?: { waId: string; kind: 'dm' | 'group' }
   character?: string
+  now?: () => Date
 }): Promise<ChatSession> {
   const scratch = options.dataDir === undefined
   const dataDir = options.dataDir ?? mkdtempSync(join(tmpdir(), 'aira-bench-'))
@@ -170,7 +176,7 @@ export async function openChatSession(options: {
 
   let app: App
   try {
-    app = await createApp({ config, env: options.env, clients: options.clients })
+    app = await createApp({ config, env: options.env, clients: options.clients, now: options.now })
   } catch (error) {
     if (scratch) rmSync(dataDir, { recursive: true, force: true })
     throw error
@@ -197,7 +203,6 @@ export async function openChatSession(options: {
     let seq = 0
     // A message id is stored once per chat. A run id keeps two sessions on one data folder from repeating one.
     const run = Date.now().toString(36)
-    let lastTurnId: unknown
 
     return {
       toolNames: app.registry.toolNames(),
@@ -224,10 +229,8 @@ export async function openChatSession(options: {
           content = ''
         }
         const ms = Math.round(performance.now() - start)
-        const newest = readNewestTurn(app)
-        // A request that opened no turn must not be reported with the numbers of the turn before it.
-        if (newest.turn?.['turn_id'] === lastTurnId) return { content, ms, turn: undefined, toolCalls: 0, tools: [] }
-        lastTurnId = newest.turn?.['turn_id']
+        // A wall-clock adjustment must not make a previous turn look newer than this message's turn.
+        const newest = readMessageTurn(app, chat.chatId, mid)
         return { content, ms, turn: newest.turn, toolCalls: newest.toolCalls, tools: newest.tools }
       },
       async close() {
