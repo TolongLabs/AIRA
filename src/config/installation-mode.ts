@@ -10,3 +10,10 @@ export function installationModeFromEnv(env: NodeJS.ProcessEnv = process.env): I
   if (raw === 'legacy' || raw === 'standalone') return raw
   throw new ConfigError('AIRA_INSTALL_MODE must be "legacy" or "standalone"')
 }
+
+export interface StandaloneReadiness {
+  configuration: 'setup_required' | 'configured' | 'invalid' | 'pending_activation'
+  chatbot: 'inactive' | 'ready' | 'degraded'
+  chatbotReason: string | null
+  appliedRevision: string | null
+}

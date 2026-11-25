@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { z } from 'zod'
-import type { InstallationMode } from '../config/installation-mode.js'
+import type { InstallationMode, StandaloneReadiness } from '../config/installation-mode.js'
 import type { Autofetch, AutofetchBatch } from '../media/autofetch.js'
 import type { FailureKind } from '../records/kinds.js'
 import type { Logger } from '../records/logger.js'
@@ -27,6 +27,7 @@ export interface GatewayServerOptions {
   chatbotReady?: () => boolean
   /** Standalone only. Legacy servers leave it absent and keep the exact legacy envelope. */
   installationMode?: InstallationMode
+  standaloneReadiness?: () => StandaloneReadiness
   /** More fields for the health report, such as the newest snapshot. The updater reads them. */
   health?: () => Record<string, unknown>
   /** Called after each turn request has been answered. It must not throw. */
@@ -317,7 +318,8 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
             installationMode: 'standalone',
             configuration: chatbotActive ? 'configured' : 'setup_required',
             chatbot: chatbotActive ? 'ready' : 'inactive',
-            chatbotReason: chatbotActive ? null : 'model_setup_required'
+            chatbotReason: chatbotActive ? null : 'model_setup_required',
+            ...options.standaloneReadiness?.()
           },
           log
         )

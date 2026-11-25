@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { extname, resolve, sep } from 'node:path'
 import { z } from 'zod'
 import type { InstallationMode } from '../config/installation-mode.js'
+import { StandaloneModelError, type StandaloneModelStore } from '../config/standalone-models.js'
 import { verifyStandaloneOwnerToken } from '../config/standalone-owner.js'
 import type { Logger } from '../records/logger.js'
 import {
@@ -46,6 +47,8 @@ export interface SiteApiServerOptions extends SiteApiDeps {
   installationMode?: InstallationMode
   /** The local owner secret, loaded once at start-up. Required in standalone. */
   standaloneOwnerToken?: string
+  standaloneModels?: StandaloneModelStore
+  onActivationRequested?: () => void
   allowedOrigins: readonly string[]
   /** The built site, served under /app/ (docs/trd/site.md#serving-the-site). Absent: no pages are served. */
   siteDir?: string
@@ -282,6 +285,29 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
     }
     const path = target.split('?')[0] ?? '/'
     if (dashboard) {
+      if (path === '/api/standalone-config' || path === '/api/standalone-config/activate') {
+        const store = options.standaloneModels
+        if (!standalone || !store) return json(response, 503, { error: 'capability_unavailable' })
+        const activation = path.endsWith('/activate')
+        if (!activation && request.method === 'GET') return json(response, 200, store.snapshot())
+        if (request.method !== (activation ? 'POST' : 'PUT'))
+          return json(response, 405, { error: 'method_not_allowed' })
+        if (activation && !options.onActivationRequested)
+          return json(response, 503, { error: 'activation_unavailable' })
+        const data = await readJson(request, 32 * 1024)
+        if ('error' in data) return json(response, data.status, { error: data.error })
+        try {
+          const result = activation ? store.requestActivation(data.body) : store.save(data.body)
+          if (activation && result.activation === 'requested' && options.onActivationRequested) {
+            response.once('finish', options.onActivationRequested)
+            return json(response, 202, result)
+          }
+          return json(response, 200, result)
+        } catch (error) {
+          if (error instanceof StandaloneModelError) return json(response, error.status, { error: error.code })
+          return json(response, 503, { error: 'configuration_unavailable' })
+        }
+      }
       if (path === '/api/activity') {
         if (request.method !== 'GET') return json(response, 405, { error: 'method_not_allowed' })
         return json(response, 200, inboundActivity(options))
