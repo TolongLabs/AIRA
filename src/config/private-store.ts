@@ -36,6 +36,10 @@ export function ensurePrivateDirectory(path: string): void {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
   }
+  assertPrivateDirectory(path)
+}
+
+export function assertPrivateDirectory(path: string): void {
   const stats = lstatSync(path)
   if (!stats.isDirectory() || !owned(stats, 0o700))
     throw new Error('standalone private state directory must be owned and mode 0700')
