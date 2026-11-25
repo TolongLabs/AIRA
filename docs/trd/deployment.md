@@ -168,6 +168,37 @@ state and stopped status); 2 invalid arguments; 3 prerequisite/unsupported host;
 1 operational failure, including rolled-back failure; 5 rollback failed/manual recovery. Identity and
 actual health are observed, never inferred from the manifest or tag.
 
+### Typed Configuration and Diagnostics Commands
+
+`aira config get` reads the selected authenticated core's sanitized saved/applied state. In standalone,
+`aira config set-model --role main|fallback --provider anthropic|openai-compatible --model ID
+--base-url URL` saves the specified full role and preserves the other role, with optional
+`--effort`, `--deep-effort`, `--input-price`, `--output-price`, `--cached-price` (nonnegative USD per
+million tokens), and `--expected-revision UUID`. An omitted expected revision uses a fresh readback.
+`--key-stdin` reads one bounded secret from stdin, `--prompt-key` uses a protected interactive prompt,
+`--clear-key` explicitly clears, and `--disable` disables the selected role. The key is never an argument.
+Empty key input retains the previous credential. A stale revision is a conflict, not an overwrite.
+`aira config activate [--expected-revision UUID]` requests the exact saved revision and waits up to
+60 seconds for the applied readback; a timeout/failure leaves the previous active state distinguishable.
+`aira config set-character --level global|type|chat --scope SCOPE --pack ID` uses the existing scoped
+settings API and its revision check (global scope empty). Legacy config get and character setting use
+their established protected authority; standalone model editing does not rewrite legacy host config.
+
+`aira doctor` returns ordered checks with `name`, `status` (ok, warning, failed, not_applicable),
+`reason`, `durationMs` and `recovery`. Check runtime and Docker, selection and owned files, actual
+Compose state/image/mapping, service and protected owner health, configuration/revision, persistence,
+and Hermes compatibility/route. Required failures return nonzero. Expected unconfigured models and
+missing optional integrations are warnings, not a false healthy chatbot. Reads do not start or
+restart a stopped service, install software, contact a paid model, or send a message.
+
+`aira logs --component setup|cli|core|gateway|update --lines N [--follow]` reads bounded redacted
+recent events. Default is 50, maximum 1000. Setup/CLI/update use the private operation log; core
+and gateway use the selected container's bounded log driver, normalizing allowlisted timestamp,
+module/event, level and safe reason only. No raw log/exception, message or turn/chat identity is
+printed. Missing sources return `component_unavailable`; stopped containers remain readable when
+their logs exist. `--json --follow` emits one versioned event per line until interrupted; other
+JSON commands emit one result object. The reader does not upload anything.
+
 ### Hermes Attachment Transaction
 
 `aira attach-hermes --profile NAME --dry-run` checks the selected standalone install, pinned public
