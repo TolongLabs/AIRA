@@ -88,6 +88,19 @@ class InstallerTests(unittest.TestCase):
             install.ensure_private_dir(root)
         self.assertEqual(root.stat().st_mode & 0o777, 0o755)
 
+    def test_runtime_bundle_is_immutable_and_only_replaces_owned_launcher(self):
+        target, shim, _ = launcher.install_runtime(str(REPO))
+        initial = shim.read_bytes()
+        main_file = target / "cli" / "main.py"
+        before = main_file.stat().st_mtime_ns
+        self.assertEqual(launcher.install_runtime(str(REPO))[0], target)
+        self.assertEqual(main_file.stat().st_mtime_ns, before)
+        self.assertEqual(shim.read_bytes(), initial)
+        main_file.write_text("foreign fixture")
+        with self.assertRaises(CommandError):
+            launcher.install_runtime(str(REPO))
+        self.assertEqual(shim.read_bytes(), initial)
+
     def test_unrelated_directory_is_not_overwritten(self):
         unrelated = self.root / "unrelated"
         unrelated.mkdir(mode=0o700)

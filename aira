@@ -3,6 +3,7 @@
 from pathlib import Path
 import sys
 
+sys.dont_write_bytecode = True
 repo = Path(__file__).resolve().parent
 sys.path.insert(0, str(repo / "deploy"))
 

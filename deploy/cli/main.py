@@ -8,7 +8,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import __version__, compose, configure, diagnostics, install, launcher, operations
+from . import __version__, backup, compose, configure, diagnostics, hermes, install, launcher, operations, update
 from .result import CommandError, args_error, conflict_error, emit, error_envelope, ok_envelope, operational_error
 
 
@@ -85,6 +85,22 @@ def build_parser():
     character.add_argument("--scope", default="")
     character.add_argument("--pack", required=True)
     character.add_argument("--expected-revision")
+    attach = sub.add_parser("attach-hermes", help="Verify or attach a supported Hermes profile.")
+    _globals(attach, True)
+    attach.add_argument("--profile", required=True)
+    attach.add_argument("--hermes-dir")
+    attach.add_argument("--hermes-home")
+    apply = attach.add_mutually_exclusive_group(required=True)
+    apply.add_argument("--dry-run", action="store_true")
+    apply.add_argument("--apply", action="store_true")
+    attach.add_argument("--yes", action="store_true")
+    update_parser = sub.add_parser("update", help="Verify and switch a standalone stable release.")
+    _globals(update_parser, True)
+    update_parser.add_argument("--image", help="Explicit loaded compatible fixture image.")
+    restore = sub.add_parser("restore", help="Verify and copy a backup to a new private directory.")
+    _globals(restore, True)
+    restore.add_argument("--backup-id", required=True)
+    restore.add_argument("--destination", required=True)
     return parser
 
 
@@ -173,6 +189,23 @@ def cmd_dashboard(args, op):
     return result
 
 
+def cmd_restore(args, op):
+    home, _ = install.resolve_home(args.home)
+    manifest = install.read_manifest(home)
+    if not manifest or manifest.mode != "standalone" or manifest.stage != "installed":
+        raise conflict_error("capability_unavailable", "Restore needs an installed standalone service.")
+    destination = install.canonical(args.destination)
+    if destination == home or home in destination.parents or destination in home.parents:
+        raise conflict_error("restore_refused", "The restore destination must be outside the live installation.")
+    backup_id = backup._check_operation_id(args.backup_id)
+    with install.DeployLock(home):
+        backup.restore_backup(home / "data" / "deploy-recovery" / backup_id, destination)
+    report = install.observe(home, manifest)
+    result = _envelope("restore", op, report)
+    result["backup"] = {"backupId": backup_id, "restoredCopy": True}
+    return result
+
+
 def main(argv=None, repo_root=None):
     raw = list(sys.argv[1:] if argv is None else argv)
     op = operations.new_operation_id()
@@ -198,6 +231,13 @@ def main(argv=None, repo_root=None):
                 return result
         elif command == "config":
             result = configure.run_config(args, op)
+        elif command == "attach-hermes":
+            result = hermes.run_attach(args, op)
+        elif command == "update":
+            home, _ = install.resolve_home(args.home)
+            result = update.update_command(args, home, install.read_manifest(home), op)
+        elif command == "restore":
+            result = cmd_restore(args, op)
         else:
             raise args_error("Select a command.", "Run aira --help.")
     except CommandError as err:
@@ -208,7 +248,8 @@ def main(argv=None, repo_root=None):
         result = error_envelope(command, op, operational_error("path_unwritable", "Installation state could not be read.",
                                                                command, "Check the selected installation and permissions."))
     reference = result["operationId"]
-    log = operations.log_event("setup" if command == "setup" else "cli", reference,
+    component = {"setup": "setup", "update": "update", "restore": "update", "attach-hermes": "gateway"}.get(command, "cli")
+    log = operations.log_event(component, reference,
                                result.get("error", {}).get("stage", command),
                                result.get("error", {}).get("code", "ok"), result["outcome"])
     if log is None:

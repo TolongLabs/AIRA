@@ -136,7 +136,7 @@ def error_envelope(command: str, operation_id: str, err: CommandError,
         "message": err.message,
         "recovery": err.recovery,
         "exitClass": exit_name(err.exit_code),
-        "log": err.log_ref or "aira logs --component " + ("setup" if command == "setup" else "cli"),
+        "log": err.log_ref or "aira logs --component " + {"setup": "setup", "update": "update", "restore": "update", "attach-hermes": "gateway"}.get(command, "cli"),
     }
     return envelope
 

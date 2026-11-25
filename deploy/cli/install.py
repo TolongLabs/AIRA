@@ -424,6 +424,9 @@ def observe(home, manifest, quick=True):
                                         isinstance(maybe_route.get("profile"), str) and re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", maybe_route["profile"])):
                                     state["hermes"] = "connected"
                                     route = {k: maybe_route.get(k) for k in ("state", "profile", "adapterVersion", "verifiedAt")}
+                                elif isinstance(maybe_route, dict) and maybe_route.get("state") in ("invalid", "unsupported"):
+                                    state["hermes"] = "unsupported" if maybe_route["state"] == "unsupported" else "disconnected"
+                                    warnings.append("The Hermes route receipt is " + maybe_route["state"] + "; run aira doctor.")
                                 elif state["hermes"] == "detected":
                                     state["hermes"] = "disconnected"
                                 reason = health.get("chatbotReason")
@@ -532,7 +535,7 @@ def _ref_from_env(known):
 def _runtime(opts, warnings):
     if opts.repo_root and is_checkout_dir(Path(opts.repo_root)):
         _, _, notes = launcher.install_runtime(opts.repo_root)
-        warnings.extend(notes)
+        warnings.extend(note for note in notes if note not in warnings)
 
 
 def _fresh_values(home, image_ref, site, core):
@@ -684,6 +687,9 @@ def _existing(home, manifest, opts, checks, warnings, operation_id):
         except compose.PortInUseError as exc:
             raise conflict_error("port_conflict", "An existing published port is occupied.") from exc
     verified = _verify(home, manifest, mode, project, checks, warnings, timeout=15)
+    if manifest and mode == "standalone" and verified[1] != manifest.imageId:
+        raise conflict_error("repair_required", "The running image differs from the committed install.",
+                             recovery="Use aira update to recover an interrupted update; do not adopt a new image implicitly.")
     if not manifest:
         management, release = management_for_ref(_ref_from_env(compose.parse_env_file(home / ".env")))
         manifest = Manifest(installId=uuid.uuid4().hex, mode=mode, project=project,
@@ -717,6 +723,9 @@ def run_setup(opts):
         stage = "plan"
         with DeployLock(home):
             manifest = read_manifest(home)
+            if manifest and manifest.mode == "standalone" and os.path.lexists(home / "update.json"):
+                raise conflict_error("repair_required", "An unfinished update needs recovery.",
+                                     recovery="Run aira update; it recovers the prior pinned image before starting another candidate.")
             if manifest and manifest.stage == "prepared":
                 result = _fresh(home, manifest, opts, checks, warnings, op)
             elif looks_like_install(home):
