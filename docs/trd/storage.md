@@ -48,7 +48,8 @@ backup. Under `<data>/deploy-recovery/<operationId>/`, a private mode-0700 direc
 copy of `aira.db`, the complete `standalone/`, `characters/`, `files/` and `archive/` trees when present, and a
 version-1 JSON inventory of relative paths, file SHA-256, size and mode. Exclude disposable cache, earlier snapshots,
 and deploy-recovery itself. Reject symlinks, special files, non-owned entries and unsafe standalone permissions.
-The snapshot database must pass `PRAGMA integrity_check`; verify the inventory by independent readback, including
+The snapshot is a self-contained SQLite file (DELETE journal mode, no WAL/SHM sidecars) and must pass
+`PRAGMA integrity_check` without changing the published copy; verify the inventory by independent readback, including
 directory modes and file hashes, before atomically publishing the backup. Credential and revision files retain their
 0600 modes; backup contents and the inventory are private, never emitted to logs or CI artifacts.
 
