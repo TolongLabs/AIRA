@@ -1,7 +1,7 @@
 # ADR-0081: Watch YouTube Links in Parallel Segments
 
 - **Date:** 2026-11-17
-- **Status:** Accepted
+- **Status:** Accepted, partly superseded by [ADR-0189](0189-recover-youtube-watch-gaps.md)
 - **Group:** [Architecture](README.md#architecture)
 
 ## Decision

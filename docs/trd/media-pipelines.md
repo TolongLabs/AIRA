@@ -96,16 +96,11 @@ media folders.
    failure kind when it failed. Every unreadable file is one `failure` row with kind `media_unreadable`, stage
    `media`, handled by `line:unreadableMedia`, and a message with the kind of file and the reason, never the path.
    The turn itself stays `delivered`. An `auth` failure of the media role also alerts the operator. A YouTube
-   segment is its own request and its own `model_call` row. A segment that fails while another answers is one
-   `failure` row of kind `media_unreadable`, handled by `coverage:partial`, with no note in block 4.
-10. **Long YouTube videos.** A span longer than `media.linkSegmentSeconds` (180) is split: a first segment of
-    `media.linkFirstSegmentSeconds` (60), then segments of 180 s, a last segment under 30 s joining the one before,
-    and at most `media.maxLinkSegments` (4). All segments are watched at once, each with its own `video_metadata`
-    offsets and a frame rate of `media.linkFps` (0.25, one frame every 4 s, for spans up to 10 minutes), with no
-    retry. They share one budget, `media.linkWatchMs` (12,000), from the end of the lookup, never past the link
-    reader's timeout. Code merges the answered segments in order under clock labels, and the description names the
-    parts not watched. Only when every segment fails is the video unreadable. A video of unknown length is watched
-    for one segment from its start offset, and the description says so.
+   segment attempt is its own request and its own `model_call` row. Only a final missing segment while another
+   answers is one `failure` row of kind `media_unreadable`, handled by `coverage:partial`.
+10. **Long YouTube videos.** The initial ranges run in parallel, with bounded same-range recovery only for
+    eligible fast failures. Keep final readings in chronological order, and name any missing ranges in block 4.
+    See [YouTube Links](#youtube-links) for the planner, deadlines, recovery, and evidence contract.
 
 ![How attached files and shared links are read at intake, with limits and refusals](../diagrams/media-intake.svg)
 
@@ -159,28 +154,77 @@ link needs `features.social` (`src/media/link-intake.ts`, `src/turn/pipeline.ts`
 A failed lookup adds one unreadable note with the platform and the reason `link`. It writes no model call, and no
 log or note carries the URL (`src/media/link-intake.ts`).
 
-A YouTube video is watched from its URL, never downloaded. The start offset comes from the `t` or `start` parameter
-or a `#t=` fragment, in seconds or clock form (`src/social/urls.ts`). The span is capped at
+A YouTube video is watched from its URL, except for the verified Short fallback below. The start offset comes
+from the `t` or `start` parameter or a `#t=` fragment, in seconds or clock form (`src/social/urls.ts`). The span is capped at
 `media.maxLinkVideoSeconds` from that offset. A longer video is clipped, never refused.
 
 The span is split by `planLinkSegments`: one short first segment (`media.linkFirstSegmentSeconds`, 60), then full
 segments (`media.linkSegmentSeconds`, 180). A last segment under 30 s joins the one before. At most
 `media.maxLinkSegments` (4) are kept; the rest stays unwatched (`src/media/link-segments.ts`).
 
-All kept segments are watched at once. Each call sends its own `video_metadata` offsets at `media.linkFps` (0.25)
-and low media resolution. The segments share one budget, `media.linkWatchMs` (12,000), counted from the end of the
-lookup and never past the link timeout. There is no retry (`src/media/link-intake.ts`,
-`src/media/gemini-watcher.ts`).
+All kept segments are initially watched at once. Each call sends its own `video_metadata` offsets at
+`media.linkFps` (0.25) and low media resolution. Preserve the selected URL, start offset, plan and single whole-video
+request. An unknown-length video gets one segment from its start offset and an explicit unknown-length label.
 
-Code merges the answered segments in order under clock labels. The merged text names the parts not watched: clipped
-ranges, failed segments and unknown length (`src/media/link-segments.ts`).
+#### Watch Deadline And Recovery
 
-A failed segment is one `failure` row, handled by `coverage:partial`, with no note in block 4. It still leaves its
-own `model_call` row. Only when every segment fails is the video unreadable. A private or removed video fails as
-`unavailable` (`src/media/link-intake.ts`, `src/turn/pipeline.ts`).
+The outer deadline is monotonic, set at link-reader entry from the effective media timeout. Lookup consumes it.
+The URL deadline is the earlier of that outer deadline and the end of lookup plus `media.linkWatchMs` (22,000 ms).
+An explicit configured value overrides the default. No lookup starts for a nonpositive caller or reader budget.
+A usable lookup arriving after expiry retains its disposition and available metadata, but starts no watcher or
+download. The finite lookup trace grace does not authorize work. Initial URL calls may use all remaining watch
+time. On expiry, cancel all pending attempts and retry waits, retain completed results, and return even if the
+watcher ignores cancellation. No attempt starts after expiry or return.
 
-A video of unknown length is watched for one segment from its start offset. The description says the length is
-unknown (`src/media/link-segments.ts`).
+Each eligible failed range may retry once with the exact original URL, MIME, offsets, fps, model and prompt.
+A link permits at most two retry launches, with one retry in flight. Process completions as they arrive, queue
+by earliest due time then segment order, and release the initial slot before retrying. Default concurrent URL
+calls never exceed four. Delay a retry by 500–1,000 ms with jitter; require at least 5,000 ms of watch time
+after the wait, both when queuing and when launching. Do not extend either deadline.
+
+The watcher exposes a media-local discriminated detail (`type` field) on `MediaWatchError.detail` (a
+`ModelError`): `network`, `http_transient` (408/5xx), `rate_limit` (with optional finite `retryAfterMs`), `parse`, `http_client`,
+`abort`, `auth`, or `refusal`. Intake exposes the same detail on failed `MediaOutcome.failureDetail`, also
+distinguishing local `timeout`, `unavailable`, and plain alternate-watcher `transient`. Only network,
+HTTP transient and unaborted plain transient failures are eligible outside rate limits. Keep the durable
+failure kind unchanged, and preserve sanitized unavailable detection. No retries for local timeout, abort,
+parse/client errors, unavailable, auth/refusal, budget or off. An auth failure stops retries and aborts remaining
+URL calls while retaining completed readings. Parser accepts a nullable or empty transcript as omitted;
+description is required (1–2,000 characters), transcript at most 6,000 characters. Invalid JSON or schema
+remains malformed; explicit blocked/refused output remains refusal, not every non-STOP finish reason.
+
+A 429 is retryable only with a valid, fitting Retry-After: nonnegative delay seconds or a valid HTTP-date
+relative to receipt time (past date means zero). Invalid, missing, negative, nonfinite and too-late hints do not
+authorize a retry for that range. A valid hint postpones every queued/new retry until its due time (and local
+minimum backoff). A second actual 429, including initial attempts, stops all queued and new retries. Existing
+in-flight calls may settle. Do not log raw response headers or provider content.
+
+For an eligible verified zero-offset Short with available byte downloader and duration within the existing
+limits (unknown duration uses the existing 180 s estimate), cap the entire URL watch/recovery window at the
+earlier of 12,000 ms, the configured watch limit, and remaining outer time. If no URL reading answered, the
+existing verified Short download/read may use the remaining outer time, unless there was any auth/refusal or
+an unresolved rate limit in the final URL outcomes. Neither download nor byte watch may start after expiry.
+Preserve identity, size and duration checks. Normal or nonzero-offset videos do not use this fallback.
+
+#### Coverage And Evidence
+
+Keep the plan, known duration and one final reading slot per original segment as internal
+`LinkSegmentEvidence` (`plan`, `durationSec`, `readings`). A successful URL watch attaches this to
+`LinkReading.youtubeEvidence` alongside its derived legacy reading; a byte fallback does not fabricate
+URL coverage. Recovered ranges replace their failed slot; successful slots appear once in chronological
+order. Only final missing ranges beside answered ones become `coverage:partial` rows. All failed means
+ordinary unreadable (private or removed videos use `unavailable`), not a reading from metadata.
+
+Coverage means a valid reading of a requested interval, not proof of perceiving every frame or sentence.
+Render structured evidence directly at the final item budget, reserving missing intervals, clip boundary
+and unknown length first, then labels and nonempty prose for each successful range. No second whole-string
+tail clipping. Keep the exact normal-plan interval labels. Under extreme pressure, use compact counts and
+explicit evidence compression, not false unseen or fully watched claims. Share remaining prose proportionally
+to successful interval duration, with a target 160-character description floor where possible, and allocate
+speech only to nonempty transcripts. Metadata is limited to the smaller of 450 characters and 20% of the
+item's share, including labels and separators. The existing 4,500-character shared evidence budget and equal
+per-item shares stay in force. Other media formatting, untrusted labels, footer and prompt ceiling stay unchanged.
+A short full single-range watch needs no clock labels; a nonzero offset retains subspan context.
 
 ![One YouTube link watched in parallel segments under one time budget](../diagrams/youtube-watch.svg)
 
@@ -243,10 +287,10 @@ and the shared link's own when a redirect resolved it (`src/turn/pipeline.ts`).
 | Video length           | `media.maxVideoSeconds`, 300                       | Refused as `too long` (`src/media/limits.ts`)                                           |
 | Audio length           | Code default, 600 seconds                          | Refused as `too long`, only when the sender reported one (`src/media/limits.ts`)        |
 | One media read         | `media.timeoutMs`, 30000, at most two thirds left  | The read fails and the file is unreadable (`src/media/turn-media.ts`)                   |
-| All YouTube segments   | `media.linkWatchMs`, 12000                         | Running segments abort; answered ones still merge (`src/media/link-intake.ts`)          |
+| All YouTube segments   | `media.linkWatchMs`, 22000                         | Running segments abort; answered ones still merge (`src/media/link-intake.ts`)          |
 | Photos from one link   | Code `MAX_LINK_PHOTOS`, 4                          | The rest are named as not watched (`src/media/link-intake.ts`)                          |
 | Photos kept per post   | Code `MAX_POST_PHOTOS`, 20                         | The rest are dropped (`src/social/parsers.ts`)                                          |
-| Media text in block 4  | Code `MEDIA_TEXT_BUDGET`, 4,500 characters         | Clipped evenly across the turn's items (`src/media/turn-media.ts`)                      |
+| Media text in block 4  | Code `MEDIA_TEXT_BUDGET`, 4,500 characters         | Bounded shares across the turn's readable items (`src/media/turn-media.ts`)             |
 | Watcher answer         | 120 words, 300-word transcript, schema 2,000 chars | Over-long text fails validation; the file is unreadable (`src/media/gemini-watcher.ts`) |
 
 An attached video's length is never checked: a gateway attachment names only a kind and a path, so no duration
@@ -257,12 +301,19 @@ are not read, and each one gets the unreadable note with the reason `off`. The t
 
 ### Media Records
 
-- Every request to the media model is one `model_call` row with role `media`. It carries the tokens and a cost of 0. A failed call carries its failure kind. Each YouTube segment is its own row (`src/media/turn-media.ts`,
-  `src/media/link-intake.ts`).
+- Every request to the media model is one `model_call` row with role `media`. It carries the tokens and a cost
+  of 0. A failed call carries its failure kind. Each YouTube segment attempt is its own row
+  (`src/media/turn-media.ts`, `src/media/link-intake.ts`).
 - Every unreadable file is one `failure` row: kind `media_unreadable`, stage `media`, handled by
   `line:unreadableMedia`. Its message names the kind of file and the reason (`src/turn/pipeline.ts`).
-- A failed segment beside an answered one is one `failure` row handled by `coverage:partial`
-  (`src/turn/pipeline.ts`).
+- A YouTube URL initial attempt records `attempt: 1`; retry records `attempt: 2`. A queued attempt that
+  never launches has no row. A recovered range retains both model-call rows but no partial failure row.
+  Each final missing range beside an answered one has one `coverage:partial` failure row.
+- The URL-free `media.link_segments` event records `segments`, `answered`, `failed`, `attempts`, `retried`,
+  `recovered`, `timedOut`, `cancelled`, `failureKinds` (bounded durable enum counts), `watchMs`,
+  `watchBudgetMs`, `rateLimitStopped`, `plannedSeconds`, `answeredSeconds`, `clipped`, and `unknownLength`.
+  Counts reflect actual URL attempts and final gaps, not byte fallback or skipped lookups. No link, identifier,
+  raw error, header or media text enters this event.
 - The turn itself stays `delivered`.
 - An `auth` failure of the media role also alerts the operator (`src/turn/pipeline.ts`).
 - Never stored: the file, its path, the link URL. Logs carry platform and reason only
@@ -667,7 +718,7 @@ The [model configuration](models.md#configuration) owns the overall turn deadlin
 | `media.maxVideoSeconds`         | 300                     | Longest video that is watched                                      |
 | `media.maxLinkVideoSeconds`     | 600                     | Longest span watched from a YouTube link                           |
 | `YOUTUBE_API_KEY` (env)         | unset                   | Without it, YouTube reply lookup fails as `not_configured`         |
-| `media.linkWatchMs`             | 12000                   | Total watcher time for YouTube segments after lookup               |
+| `media.linkWatchMs`             | 22000                   | Total watcher time for YouTube segments after lookup               |
 | `media.linkFirstSegmentSeconds` | 60                      | Seconds in the first segment                                       |
 | `media.linkSegmentSeconds`      | 180                     | Seconds per later segment                                          |
 | `media.maxLinkSegments`         | 4                       | Maximum segments per link                                          |

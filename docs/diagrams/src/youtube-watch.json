@@ -30,7 +30,7 @@
       "from": "watcher",
       "id": "m4",
       "label": "answered segment readings",
-      "note": "One 12 s budget for all; no retry; each segment is its own model_call row",
+      "note": "One 22 s bounded window; eligible fast failures retry in one lane (max 2); each attempt recorded",
       "to": "intake",
       "variant": "return",
       "y": 400
@@ -38,8 +38,8 @@
     {
       "from": "intake",
       "id": "m5",
-      "label": "merged description",
-      "note": "Clock labels in order; gaps and clipping named; all failed means unreadable",
+      "label": "structured range evidence",
+      "note": "Coverage first; each successful range retained within item budget; all failed means unreadable",
       "to": "block",
       "y": 480
     }
@@ -49,7 +49,7 @@
     { "id": "intake", "label": "Turn Intake", "sublabel": "pipeline.ts, link-intake.ts", "type": "backend" },
     { "id": "viewer", "label": "SocialPostViewer", "sublabel": "lookup, cache, yt-dlp", "type": "backend" },
     { "id": "watcher", "label": "Media Watcher", "sublabel": "Gemini file_data URL", "type": "cloud" },
-    { "id": "block", "label": "Prompt Block 4", "sublabel": "mergeLinkReadings", "type": "backend" }
+    { "id": "block", "label": "Prompt Block 4", "sublabel": "coverage-aware rendering", "type": "backend" }
   ],
   "schema_version": 1
 }

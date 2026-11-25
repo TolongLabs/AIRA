@@ -13,7 +13,7 @@
     { "from": "paths", "id": "e9", "label": "file", "to": "checks" },
     { "from": "checks", "id": "e10", "label": "ok", "to": "read" },
     { "from": "checks", "id": "e11", "label": "no", "role": "error", "to": "unreadable" },
-    { "from": "read", "id": "e12", "label": "text", "to": "block" },
+    { "from": "read", "id": "e12", "label": "evidence", "to": "block" },
     { "from": "read", "id": "e13", "label": "failed", "role": "error", "to": "unreadable" },
     { "from": "unreadable", "id": "e14", "label": "note", "to": "block" }
   ],
@@ -82,13 +82,20 @@
       "sublabel": "post or video",
       "type": "cloud"
     },
-    { "col": 5, "id": "read", "label": "Watch", "lane": "watch", "sublabel": "Gemini model", "type": "cloud" },
+    {
+      "col": 5,
+      "id": "read",
+      "label": "Watch",
+      "lane": "watch",
+      "sublabel": "bounded watch / recovery",
+      "type": "cloud"
+    },
     {
       "col": 5,
       "id": "block",
       "label": "Block 4 Text",
       "lane": "prompt",
-      "sublabel": "4,500 chars shared",
+      "sublabel": "coverage / 4,500 chars",
       "type": "backend"
     },
     {

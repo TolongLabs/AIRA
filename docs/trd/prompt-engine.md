@@ -69,7 +69,10 @@ The system prompt is assembled in a fixed order. Blocks 1 to 3 are stable per ch
 - **Media in block 4.** When the sender attached files, block 4 ends with a line telling the model to speak of them
   as things it saw or heard itself, without mentioning the description, then a `<media untrusted="true">` block: one
   line per file with its kind and description, and the transcript on a second line when there is speech. Line breaks and `<media` tags are stripped from the text. The whole block is
-  clipped to 4,500 characters, shared evenly between the files, so media cannot push the prompt over its ceiling.
+  bounded to 4,500 evidence characters, shared evenly between readable files and links. YouTube URL evidence
+  is structured until final formatting: reserve explicit coverage gaps, clipped and unknown-length labels, and
+  each successful interval before allocating prose. Bound metadata and render directly within the item share;
+  never tail-clip the merged evidence a second time. See [Coverage And Evidence](media-pipelines.md#coverage-and-evidence).
   A file or link that could not be opened adds a plain outcome note. The model expresses the outcome in character. A message that holds only a file has no text,
   and a model API refuses an empty message, so the model sees `(no text, only a file)` in its place. See
   [Models](models.md#media-watching).
