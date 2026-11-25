@@ -141,6 +141,10 @@ describe('synthetic turn (D1)', () => {
     expect(parseGatewayRequest(syntheticTurnBody()).type).toBe('turn')
     await probeTurn()
   }, 15000)
+
+  it('verifies the standalone structured transport in a disposable store', async () => {
+    expect(await probeTurn('standalone')).toBe('standalone')
+  }, 15000)
 })
 
 describe('site health (D2)', () => {
