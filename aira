@@ -1,0 +1,12 @@
+#!/usr/bin/env python3
+"""AIRA checkout launcher; installed launcher uses the same private runtime."""
+from pathlib import Path
+import sys
+
+repo = Path(__file__).resolve().parent
+sys.path.insert(0, str(repo / "deploy"))
+
+from cli.main import main
+
+if __name__ == "__main__":
+    sys.exit(main(repo_root=str(repo)))
