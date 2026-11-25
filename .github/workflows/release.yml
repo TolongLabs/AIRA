@@ -3,12 +3,14 @@ name: release
 on:
   push:
     branches: [main]
+  workflow_dispatch: {}
 
 permissions:
   contents: read
 
 jobs:
   release:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -20,19 +22,18 @@ jobs:
     outputs:
       created: ${{ steps.rp.outputs.release_created }}
       tag: ${{ steps.rp.outputs.tag_name }}
-      major: ${{ steps.rp.outputs.major }}
-      minor: ${{ steps.rp.outputs.minor }}
       sha: ${{ steps.rp.outputs.sha }}
     steps:
       # A PR opened with GITHUB_TOKEN never triggers CI, so the release App's token opens it
       # (docs/references/git-workflow.md#release-pull-requests). Without the App the fallback still runs.
       - id: app-token
-        if: vars.RELEASE_APP_ID != '' && env.HAS_APP_KEY == 'true'
+        if: github.event_name == 'push' && vars.RELEASE_APP_ID != '' && env.HAS_APP_KEY == 'true'
         uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
       - id: rp
+        if: github.event_name == 'push'
         uses: googleapis/release-please-action@v5
         with:
           token: ${{ steps.app-token.outputs.token || github.token }}
@@ -41,21 +42,53 @@ jobs:
 
   promote:
     needs: [release]
-    if: needs.release.outputs.created == 'true' && needs.release.outputs.sha == github.sha
+    if: needs.release.outputs.created == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 70
+    concurrency:
+      group: aira-release-promote
+      queue: max
+      cancel-in-progress: false
     permissions:
       contents: read
       actions: read
       packages: write
     steps:
-      - name: Wait for the exact release commit's CI to pass
+      # release-please can see a later main commit than the push that started this workflow.
+      # Manual dispatch retries only the latest published version without creating a new release.
+      - name: Resolve published release
+        id: target
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          CREATED_TAG: ${{ needs.release.outputs.tag }}
+          CREATED_SHA: ${{ needs.release.outputs.sha }}
+        run: |
+          tag="$(gh release view --json tagName,isDraft,isPrerelease --jq 'if .isDraft or .isPrerelease then empty else .tagName end')"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo '::error::No supported published release to promote.'
+            exit 1
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == push && "$tag" != "$CREATED_TAG" ]]; then
+            echo '::notice::Release superseded; skipping promotion.'
+            exit 0
+          fi
+          sha="$(gh api "repos/$GH_REPO/commits/$tag" --jq .sha)"
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ || ( "$GITHUB_EVENT_NAME" == push && "$sha" != "$CREATED_SHA" ) ]]; then
+            echo '::error::Published tag does not resolve to the expected release commit.'
+            exit 1
+          fi
+          printf 'tag=%s\nsha=%s\n' "$tag" "$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for the exact release commit's CI to pass
+        if: steps.target.outputs.sha != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_SHA: ${{ steps.target.outputs.sha }}
         run: |
           for i in $(seq 1 120); do
-            state="$(gh run list --workflow ci.yml --event push --commit "$GITHUB_SHA" --limit 5 \
+            state="$(gh run list --workflow ci.yml --event push --branch main --commit "$RELEASE_SHA" --limit 5 \
               --json status,conclusion --jq '.[0] | if . == null then "pending" elif .status == "completed" then .conclusion else "pending" end')"
             if [ "$state" = success ]; then exit 0; fi
             if [ "$state" != pending ] && [ -n "$state" ]; then
@@ -68,9 +101,11 @@ jobs:
           exit 1
 
       - name: Set up Buildx
+        if: steps.target.outputs.sha != ''
         uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
+        if: steps.target.outputs.sha != ''
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -79,13 +114,15 @@ jobs:
 
       # Re-tags the image the host already builds for this commit; nothing is rebuilt.
       - name: Tag the release
+        if: steps.target.outputs.sha != ''
         env:
-          TAG: ${{ needs.release.outputs.tag }}
-          MAJOR: ${{ needs.release.outputs.major }}
-          MINOR: ${{ needs.release.outputs.minor }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.target.outputs.tag }}
+          RELEASE_SHA: ${{ steps.target.outputs.sha }}
         run: |
           IMAGE="ghcr.io/tolonglabs/aira"
-          SRC="$IMAGE:sha-${GITHUB_SHA::7}"
+          SRC="$IMAGE:sha-${RELEASE_SHA::7}"
           for i in $(seq 1 80); do
             if docker buildx imagetools inspect "$SRC" > /dev/null 2>&1; then
               break
@@ -96,8 +133,16 @@ jobs:
             fi
             sleep 15
           done
+          digest="$(docker buildx imagetools inspect "$SRC" --format '{{json .Manifest.Digest}}')"
+          latest="$(gh release view --json tagName --jq .tagName)"
+          if [[ "$latest" != "$TAG" ]]; then
+            echo '::notice::Release superseded; skipping promotion.'
+            exit 0
+          fi
+          test "$(gh api "repos/$GH_REPO/commits/$TAG" --jq .sha)" = "$RELEASE_SHA"
           docker buildx imagetools create \
-            -t "$IMAGE:$TAG" -t "$IMAGE:v$MAJOR.$MINOR" -t "$IMAGE:stable" \
+            -t "$IMAGE:$TAG" -t "$IMAGE:${TAG%.*}" -t "$IMAGE:stable" \
             "$SRC"
-          test "$(docker buildx imagetools inspect "$IMAGE:stable" --format '{{json .Manifest.Digest}}')" = \
-               "$(docker buildx imagetools inspect "$SRC" --format '{{json .Manifest.Digest}}')"
+          for alias in "$TAG" "${TAG%.*}" stable; do
+            test "$(docker buildx imagetools inspect "$IMAGE:$alias" --format '{{json .Manifest.Digest}}')" = "$digest"
+          done
