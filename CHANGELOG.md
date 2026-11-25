@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.6.1](https://github.com/TolongLabs/AIRA/compare/v1.6.0...v1.6.1) (2026-11-25)
+
+
+### Bug Fixes
+
+* **cli:** report uncertain activation readback truthfully ([45a3951](https://github.com/TolongLabs/AIRA/commit/45a3951617b01e78b64f8bee6e9f1d24ea2e9b75))
+* **media:** classify watcher failures ([29cf8d0](https://github.com/TolongLabs/AIRA/commit/29cf8d0304bb77a2142923da010f9ff16f016237))
+* **media:** close watch review edge cases ([a2d019f](https://github.com/TolongLabs/AIRA/commit/a2d019f2ba2b38311c54d8294325e401c4d9fe88))
+* **media:** preserve youtube range evidence ([7116c15](https://github.com/TolongLabs/AIRA/commit/7116c15d6649456f045b3435c1aa298d8027ba5c))
+* **media:** recover youtube watch gaps ([c9c25a2](https://github.com/TolongLabs/AIRA/commit/c9c25a225a88f67cc2e7f32db1b9d6bbdaf96fac))
+* **media:** resolve specialist watch findings ([3453d83](https://github.com/TolongLabs/AIRA/commit/3453d836afd401cb411af2c75f1e1fbb7308b2a4))
+
 ## [1.6.0](https://github.com/TolongLabs/AIRA/compare/v1.5.0...v1.6.0) (2026-11-25)
 
 
