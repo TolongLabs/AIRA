@@ -55,6 +55,8 @@ directory modes and file hashes, before atomically publishing the backup. Creden
 Restore is a separate explicit recovery operation: verify the inventory and SQLite integrity before copying to a
 new, empty owned private destination, with the recorded file and directory modes. Verify the copy again. Never
 overwrite a running install or remove later writes; the operator can recover from the restored copy separately.
+`aira restore --backup-id <operationId> --destination <new-directory>` performs this verified copy under the
+selected install's deploy lock; the destination must be outside the live installation and already private or new.
 The [update transaction](deployment.md#standalone-stable-update) never invokes restore automatically. Compatibility
 version 1 promises backward-compatible standalone storage across ordinary stable updates; a future incompatible
 format requires an explicit migration and a new compatibility label before deployment.
