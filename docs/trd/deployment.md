@@ -168,6 +168,34 @@ state and stopped status); 2 invalid arguments; 3 prerequisite/unsupported host;
 1 operational failure, including rolled-back failure; 5 rollback failed/manual recovery. Identity and
 actual health are observed, never inferred from the manifest or tag.
 
+### Hermes Attachment Transaction
+
+`aira attach-hermes --profile NAME --dry-run` checks the selected standalone install, pinned public
+Hermes source tree, exact original or already-applied adapter file, profile scope and authenticated
+route prerequisites without writing files, restarting, or contacting a real messaging account.
+Optional `--hermes-dir PATH` and `--hermes-home PATH` select the public source checkout and profile root;
+the ordinary defaults are the Hermes source beneath its default home and the default Hermes home.
+A default profile with unrelated/multiplexed profiles is not automatically restarted; only an
+independent selected profile is supported. Unverified versions and scopes fail without changes.
+
+`aira attach-hermes --profile NAME --apply` is a deliberate apply; confirmation is required on a TTY,
+or `--yes` with explicit non-interactive apply. The install must be standalone. Hold its shared deploy
+lock and a bounded source-tree lock while modifying shared adapter source. Preserve the exact original
+source and selected profile marker in an owned private backup under
+`<data>/standalone/attach-backups/<operationId>/`. Verify source SHA/version and apply only the exact
+reviewed adapter insertion plus its public helper module. Refuse any unfamiliar patch or helper.
+Write the selected profile marker atomically. No legacy config, model/provider list, account credentials
+or unrelated profile is edited. The selected gateway's existing service state is preserved: restart only
+a running independent profile using its pinned Hermes command, and verify its liveness; a stopped
+profile stays stopped with an explicit start instruction. Never start a second gateway for the same account.
+
+Verify using the installed adapter's synthetic local handshake against the actual mapped core port,
+not an arbitrary provider URL or a real message. On failure restore the exact prior touched files
+and service state, clear or restore the route receipt, return nonzero with safe recovery evidence.
+If rollback fails report exit 5 and the private backup location. The public adapter is limited to
+ordinary WhatsApp text after Hermes admission; the legacy integration and its broader capabilities
+remain unchanged. See [standalone Hermes transport](system.md#standalone-hermes-transport).
+
 ## Install
 
 Run by the operator on the host, with each step that changes the host confirmed first.

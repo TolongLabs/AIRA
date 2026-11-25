@@ -79,7 +79,7 @@ Where the record came from.
 
 ## Architecture
 
-Process boundaries, the gateway contract, turns, tools, commands, models, reply formatting, media and social readers. 123 records, in ID order.
+Process boundaries, the gateway contract, turns, tools, commands, models, reply formatting, media and social readers. 124 records, in ID order.
 
 | ID       | Date       | Decision                                                                                | Status                                                        |
 | -------- | ---------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
@@ -208,8 +208,10 @@ Process boundaries, the gateway contract, turns, tools, commands, models, reply 
 | ADR-0180 | 2026-11-23 | [Fetch Only Verified YouTube Shorts][ADR-0180]                                          | Accepted                                                      |
 | ADR-0181 | 2026-11-23 | [Recover Malformed Replies Within the Turn Deadline][ADR-0181]                          | Accepted                                                      |
 | ADR-0185 | 2026-11-25 | [Let a Pack Switch Off Bubble Capitals][ADR-0185]                                       | Accepted                                                      |
+| ADR-0188 | 2026-11-25 | [Use a Fail-Closed Standalone Hermes Adapter][ADR-0188]                                 | Accepted                                                      |
 
 [ADR-0185]: 0185-let-a-pack-switch-off-bubble-capitals.md
+[ADR-0188]: 0188-use-a-fail-closed-standalone-hermes-adapter.md
 [ADR-0181]: 0181-recover-malformed-api-replies.md
 [ADR-0180]: 0180-fetch-only-verified-youtube-shorts.md
 [ADR-0001]: 0001-build-the-core-as-a-typescript-service-on-node-24.md
