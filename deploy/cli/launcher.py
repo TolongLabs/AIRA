@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
+import shutil
+import tempfile
 from pathlib import Path
 
 from . import __version__ as CLI_VERSION
@@ -51,38 +54,65 @@ def is_our_shim(path):
 def shim_text(target):
     return (
         "#!/usr/bin/env python3\n" + SHIM_MARKER + "\n"
-        "import runpy\nimport sys\n"
+        "import runpy\nimport sys\nsys.dont_write_bytecode = True\n"
         f"sys.path.insert(0, {str(target)!r})\n"
         "runpy.run_module('cli.main', run_name='__main__')\n"
     )
 
 
 def install_runtime(repo_root):
-    from .install import atomic_write_text, check_owned, ensure_private_dir
+    from .install import DeployLock, atomic_write_text, check_owned, ensure_private_dir, fsync_dir, read_owned_text
     from .result import conflict_error
 
-    target = runtime_dir()
-    modules = target / "cli"
     source = Path(repo_root) / "deploy" / "cli"
     if not (source / "main.py").is_file():
         raise conflict_error("config_invalid", "The checkout CLI bundle is incomplete.")
-    ensure_private_dir(runtime_root())
-    if target.exists() and not (target / "runtime.json").is_file():
-        raise conflict_error("install_ambiguous", "The versioned CLI runtime path belongs to unknown files.")
-    ensure_private_dir(target)
-    ensure_private_dir(modules)
-    atomic_write_text(target / "runtime.json", json.dumps({"version": CLI_VERSION}) + "\n")
+    files = {}
     for item in source.glob("*.py"):
         if item.is_symlink() or not item.is_file():
             continue
-        atomic_write_text(modules / item.name, item.read_text(encoding="utf-8"))
+        files["cli/" + item.name] = item.read_text(encoding="utf-8")
     for source_path, name in (
         (Path(repo_root) / "deploy" / "standalone.compose.yml", "standalone.compose.yml"),
         (Path(repo_root) / "config.yml", "config.template.yml"),
+        (Path(repo_root) / "deploy" / "gateway" / "standalone_adapter.py", "standalone_adapter.py"),
+        (Path(repo_root) / "deploy" / "gateway" / "standalone_patch.py", "standalone_patch.py"),
     ):
-        atomic_write_text(target / name, source_path.read_text(encoding="utf-8"))
+        files[name] = source_path.read_text(encoding="utf-8")
+    digest = hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest()
+    target = runtime_dir(CLI_VERSION + "-" + digest[:16])
+    ensure_private_dir(runtime_root())
+    metadata = json.dumps({"version": CLI_VERSION, "digest": digest}, sort_keys=True) + "\n"
+    files["runtime.json"] = metadata
+    files["aira"] = shim_text(target)
+    with DeployLock(runtime_root()):
+        if not os.path.lexists(target):
+            staging = Path(tempfile.mkdtemp(prefix=".runtime-", dir=runtime_root()))
+            try:
+                ensure_private_dir(staging / "cli")
+                for name, contents in files.items():
+                    atomic_write_text(staging / name, contents, mode=0o700 if name == "aira" else 0o600)
+                fsync_dir(staging)
+                staging.rename(target)
+                fsync_dir(runtime_root())
+            finally:
+                if staging.exists():
+                    shutil.rmtree(staging)
+        # An existing digest is reusable only if every owned byte matches.
+        for directory in (target, target / "cli"):
+            check_owned(directory, "runtime directory")
+            if not directory.is_dir() or directory.stat().st_mode & 0o777 != 0o700:
+                raise conflict_error("install_ambiguous", "The immutable CLI runtime has unsafe permissions.")
+        for name, contents in files.items():
+            file = target / name
+            try:
+                matching = read_owned_text(file, private=name != "aira") == contents
+                matching = matching and (file.stat().st_mode & 0o777 == (0o700 if name == "aira" else 0o600))
+            except (OSError, ValueError):
+                matching = False
+            if not matching:
+                raise conflict_error("install_ambiguous", "The immutable CLI runtime does not match the reviewed bundle.")
     fallback = target / "aira"
-    atomic_write_text(fallback, shim_text(target), mode=0o700)
     dest = bin_path()
     dest.parent.mkdir(parents=True, exist_ok=True)
     check_owned(dest.parent, "launcher directory")

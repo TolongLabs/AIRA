@@ -257,9 +257,14 @@ def check_hermes(selection=None, owner_ok=False):
             health = configure.api_call(selection, "GET", "/owner-api/core/health")
             route = health.get("hermes") or {}
             if route.get("state") == "connected" and route.get("adapterVersion") == "hermes-v0.23.4":
-                return check_result("hermes", "ok", "route_verified", timer.elapsed_ms())
-        except CommandError:
-            return check_result("hermes", "warning", "route_unverified", timer.elapsed_ms(), "Run aira attach-hermes --dry-run with the selected profile.")
+                from .hermes import inspect_attachment
+                running = inspect_attachment(selection, route)
+                return check_result("hermes", "ok" if running else "warning", "route_verified" if running else "route_verified_gateway_stopped",
+                                    timer.elapsed_ms(), "" if running else "Start the selected Hermes gateway explicitly when ready.")
+            if route.get("state") in ("invalid", "unsupported"):
+                return check_result("hermes", "failed", "hermes_" + route["state"], timer.elapsed_ms(), "Verify the pinned source and repeat dry-run.")
+        except (CommandError, OSError, ValueError):
+            return check_result("hermes", "failed", "route_unverified", timer.elapsed_ms(), "Run aira attach-hermes --dry-run with the selected profile.")
     state, reason = install.detect_hermes()
     if state == "detected":
         return check_result("hermes", "warning", "hermes_detected_not_verified", timer.elapsed_ms(),
