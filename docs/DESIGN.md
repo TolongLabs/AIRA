@@ -56,6 +56,20 @@ WhatsApp simulator opens in a new tab so previewing never loses editor state. Li
 items and their graph, Automations pairs routines with session notices, Markets groups
 watchlists with alerts and digests, and System gathers health, host settings, and appearance.
 
+## Standalone First Run
+
+The existing shell, tokens and seven destinations remain the visual authority. On a new standalone
+installation, Overview uses the existing dominant diagnostic pane for setup tasks, with four concise
+status labels for service, models, Hermes and chatbot. State is never conveyed by color alone.
+The primary task links to System Settings, where the existing field, input, button and error patterns
+edit model targets and a write-only password field. A saved revision is distinct from the applied
+revision; applying displays pending progress and rechecks the server, not a premature success toast.
+The Hermes task is a selectable command block, copy action and status, with no host execution.
+Use the existing Studio, Chat Defaults and pending Chat Directory links to select a character and
+enable a chat. Host-only destinations are hidden or clearly unavailable in standalone and retain their
+existing routes and visual treatment in legacy. On phone, the tasks stack with full-width fields;
+loading, offline, error, retry and keyboard states follow the shared controls.
+
 ## Tables and bulk actions
 
 Tables support multi-select with pagination once the page limit is exceeded, and selection

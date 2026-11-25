@@ -41,6 +41,52 @@ While the standalone chatbot is inactive, gateway POST entry points return HTTP 
 No auxiliary, scheduled, or autofetch request bypasses this gate. An authenticated standalone adapter contract
 must be proven before enabling any standalone transport; the legacy scope-marker contract is not relaxed.
 
+## Standalone Hermes Transport
+
+The legacy pinned patched gateway and OpenAI-compatible scope-marker path remain unchanged. The portable
+path targets the public Hermes Agent v0.23.4 source at
+[`8fc0374447313e276f6b9a2764bfc750190c966a`](https://github.com/NousResearch/hermes-agent/tree/8fc0374447313e276f6b9a2764bfc750190c966a)
+in a local independent profile. This is the candidate compatibility contract, not a release claim.
+
+The public `post_gateway_admission` hook runs after identity and sender admission and supplies a routed
+profile snapshot, but intentionally fails open if a plugin raises or is unhandled. A plain custom provider
+also loses trusted event identity. The minimal pinned adapter under `deploy/gateway/` therefore inserts a
+small selective branch in `gateway/run_inbound_consumer.py` inside its routed profile scope. The base
+file SHA-256 is `792de0590d946b1dc1b3232af0e00c53988ba5cd1bee44b28195326e71a58489`.
+An absent AIRA profile marker leaves the original hook unchanged; an attached WhatsApp profile consumes
+an ordinary admitted event even if the adapter, marker, request or response fails. It never falls through
+to the ordinary Hermes model. The pinned source and synthetic tests verify this before attachment.
+Unrelated, internal and explicit Hermes command paths are not AIRA model turns.
+
+The selected profile stores `aira-transport.json` (0600) with schema version 1, profile ID, mapped
+loopback core port and a separate random 256-bit gateway credential. The core generates
+`<data>/standalone/gateway.token` once with the same private-file rules as its owner credential; neither
+credential can stand in for the other. The adapter uses direct loopback HTTP with no redirect or proxy.
+It takes chat kind, chat ID, sender ID and message ID from the trusted normalized event/source
+(`event.sender_id()`, not text or a guessed sender). Missing or merged ambiguous identity, media-only,
+unaddressed or unsupported events yield no reply. Text is untrusted payload, never parsed as a scope marker.
+
+| Endpoint                     | Contract                                                                                                                                                                                                                 |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| POST `/v1/aira/attach-check` | Bearer gateway credential; strict `{schemaVersion:1, adapterVersion:'hermes-v0.23.4', profile, action:'connect'\|'disconnect'}`; records or clears the verified route and returns safe status. No turn or model request. |
+| POST `/v1/aira/turn`         | Same credential, exact attached profile; strict `{schemaVersion:1, profile, platform:'whatsapp', kind:'dm'\|'group', chat, sender, mid, text}`; one normal core turn on trusted structured metadata.                     |
+| Turn result                  | HTTP 200 `{schemaVersion:1, disposition:'reply'\|'no_reply', reply:string\|null}`; null means nothing delivered. Refused, unknown or failed response never invites a second Hermes model.                                |
+
+Reject missing/wrong gateway credential with 401, unsupported version/profile with 400 or 403, malformed
+typed input with 400, inactive chatbot with 503 and a safe reason. No standalone legacy-marker path can
+admit turns even when models are configured; standalone attachment does not enable legacy autofetch,
+jobs, file/sticker delivery, voice or media hooks. Text-only output is the initial supported capability.
+The core retains its usual per-chat isolation, message deduplication, pending-chat admission and explicit
+character binding. Route verification is not account pairing or real delivery.
+
+The private route receipt `<data>/standalone/hermes.json` contains version 1, adapter version, selected
+profile ID and verification timestamp. Authenticated owner health reports `hermes: {state, adapterVersion,
+profile, verifiedAt}`; a verified receipt reports connected (authenticated stateless route, not a persistent
+socket or proof of a running upstream process). Without that receipt it is disconnected. CLI doctor
+independently checks the selected profile's service liveness. The effective chatbot is ready only when
+an applied model revision and the verified route exist; the actual model provider call is proven by
+a deterministic or explicitly configured test turn, not a health probe.
+
 ## Gateway Contract
 
 The gateway calls `POST /v1/chat/completions` on the core. The shapes below were measured on the pinned, patched

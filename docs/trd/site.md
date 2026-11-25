@@ -228,6 +228,24 @@ Standalone model settings use the [typed owner operations](dashboard-state.md#ty
 saved/applied readback after a controlled activation; the old host settings editor is not an authority in this mode.
 A legacy response without the new fields selects the existing dashboard behavior.
 
+## Standalone First Run
+
+Use the existing dashboard shell and design system. A standalone Overview leads with a setup task
+panel and separate service, configuration, Hermes and chatbot status; the example pack is available
+in Studio before activation. Configure Models links to System Settings, where the typed standalone
+model revision form replaces the legacy host editor. The form distinguishes saved, applied,
+invalid and pending revisions and displays recoverable activation failures. It never retrieves raw
+credentials; empty key input means unchanged and a deliberate clear removes it from the saved revision.
+
+The Hermes panel shows the verified profile/version/route receipt if available and exact host CLI
+dry-run and apply instructions. It does not run host commands. Refresh the authenticated health
+readback after the operator runs them. New chat identity appears as pending and the owner must select
+a character and enable the chat. Standalone gates legacy-only library, market, routine, notices,
+file/send and host-settings views using authenticated capabilities; preserve all legacy views when
+the standalone DTO is absent. A direct unsupported link shows an explicit capability-unavailable
+message, not fake empty data. The existing sign-in prompt includes the standalone TTY reveal path
+and the existing legacy credential path. See [dashboard design](../DESIGN.md#standalone-first-run).
+
 ## Owner Page Edits
 
 The Settings editor keeps its selected file and unsaved buffer until Save or Revert. A failed read disables
