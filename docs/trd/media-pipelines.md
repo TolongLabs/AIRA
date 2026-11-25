@@ -171,8 +171,9 @@ request. An unknown-length video gets one segment from its start offset and an e
 The outer deadline is monotonic, set at link-reader entry from the effective media timeout. Lookup consumes it.
 The URL deadline is the earlier of that outer deadline and the end of lookup plus `media.linkWatchMs` (22,000 ms).
 An explicit configured value overrides the default. No lookup starts for a nonpositive caller or reader budget.
-A usable lookup arriving after expiry retains its disposition and available metadata, but starts no watcher or
-download. The finite lookup trace grace does not authorize work. Initial URL calls may use all remaining watch
+A usable lookup arriving after expiry starts no watcher or download. A found social post retains its ordinary
+text-only disposition; YouTube retains available metadata and reports unreadable (or off if no URL watcher).
+The finite lookup trace grace does not authorize work. Initial URL calls may use all remaining watch
 time. On expiry, cancel all pending attempts and retry waits, retain completed results, and return even if the
 watcher ignores cancellation. No attempt starts after expiry or return, and a reading completing after the
 monotonic deadline is not credited even if the local timeout callback has not fired.
@@ -196,8 +197,10 @@ remains malformed; explicit content-filter, recitation, escalation or account-po
 not every non-STOP finish reason. See the provider's [finish reason contract](https://ai.google.dev/api/generate-content#FinishReason).
 
 A 429 is retryable only with a valid, fitting Retry-After: nonnegative delay seconds or a valid HTTP-date
-relative to receipt time (past date means zero). Invalid, missing, negative, nonfinite and too-late hints do not
-authorize a retry for that range. A valid hint postpones every queued/new retry until its due time (and local
+relative to receipt time (past date means zero), including obsolete HTTP-date forms interpreted in UTC per
+[RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html#section-5.6.7). Invalid, missing, negative, nonfinite
+and too-late hints do not authorize a retry for that range. A valid hint postpones every queued/new retry
+until its due time (and local
 minimum backoff). A second actual 429, including initial attempts, stops all queued and new retries. Existing
 in-flight calls may settle. Do not log raw response headers or provider content.
 
@@ -221,8 +224,9 @@ Coverage means a valid reading of a requested interval, not proof of perceiving 
 Render structured evidence directly at the final item budget, reserving missing intervals, clip boundary
 and unknown length first, then labels and nonempty prose for each successful range. No second whole-string
 tail clipping. Keep the exact normal-plan interval labels. Under extreme pressure, use compact counts and
-explicit evidence compression, not false unseen or fully watched claims. Share remaining prose proportionally
-to successful interval duration, with a target 160-character description floor where possible, and allocate
+explicit evidence compression, not false unseen or fully watched claims. Keep exact gaps when a compression
+notice can also fit; otherwise use the compact count and coverage-limited statement. Share remaining prose
+proportionally to successful interval duration, with a target 160-character description floor where possible, and allocate
 speech only to nonempty transcripts. Metadata is limited to the smaller of 450 characters and 20% of the
 item's share, including labels and separators. The existing 4,500-character shared evidence budget and equal
 per-item shares stay in force. Other media formatting, untrusted labels, footer and prompt ceiling stay unchanged.
