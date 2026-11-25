@@ -1,5 +1,12 @@
 import { ModelError, type ModelFailureKind, type ModelUsage } from '../models/types.js'
-import type { MediaReading, MediaWatcher, WatchResult, WatchUrlSource } from './gemini-watcher.js'
+import {
+  type MediaReading,
+  MediaWatchError,
+  type MediaWatcher,
+  type MediaWatchFailureDetail,
+  type WatchResult,
+  type WatchUrlSource
+} from './gemini-watcher.js'
 import { type MediaFile, type MediaKind, type MediaLimits, mediaFault, mediaKindOf } from './limits.js'
 
 export interface MediaIntakeOptions {
@@ -19,6 +26,7 @@ export type MediaOutcome =
       kind?: MediaKind
       reason: MediaFailureReason
       failureKind?: ModelFailureKind
+      failureDetail?: MediaWatchFailureDetail
       error?: unknown
       durationMs: number
     }
@@ -42,6 +50,40 @@ function isUnavailableError(err: unknown): boolean {
     err.kind === 'malformed' &&
     /cannot fetch content|not available|private/i.test(err.message)
   )
+}
+
+function elapsedMs(startedAt: number): number {
+  return Math.max(0, Math.round(performance.now() - startedAt))
+}
+
+function failureDetailFor(err: unknown, timedOut: boolean, signal?: AbortSignal): MediaWatchFailureDetail | undefined {
+  if (timedOut) return { type: 'timeout' }
+  if (err instanceof MediaWatchError) {
+    if (isUnavailableError(err)) {
+      return { type: 'unavailable' }
+    }
+    return err.detail
+  }
+  if (signal?.aborted || (err instanceof Error && err.name === 'AbortError')) return { type: 'abort' }
+  if (err instanceof Error && err.name === 'TimeoutError') return { type: 'timeout' }
+  if (err instanceof ModelError) {
+    if (isUnavailableError(err)) return { type: 'unavailable' }
+    switch (err.kind) {
+      case 'transient':
+        return { type: 'transient' }
+      case 'rate_limit':
+        return { type: 'rate_limit' }
+      case 'auth':
+        return { type: 'auth' }
+      case 'refusal':
+        return { type: 'refusal' }
+      case 'malformed':
+        return { type: 'parse' }
+      case 'budget':
+        return undefined
+    }
+  }
+  return undefined
 }
 
 async function runWithTimeout(
@@ -69,18 +111,16 @@ async function runWithTimeout(
     }
   }
 
+  let onControllerAbort: (() => void) | undefined
   const abortPromise = new Promise<never>((_resolve, reject) => {
     if (controller.signal.aborted) {
-      reject(new ModelError('transient', 'aborted'))
+      reject(new MediaWatchError('transient', 'aborted', { type: 'abort' }))
       return
     }
-    controller.signal.addEventListener(
-      'abort',
-      () => {
-        reject(new ModelError('transient', 'aborted'))
-      },
-      { once: true }
-    )
+    onControllerAbort = () => {
+      reject(new MediaWatchError('transient', 'aborted', { type: 'abort' }))
+    }
+    controller.signal.addEventListener('abort', onControllerAbort, { once: true })
   })
 
   try {
@@ -91,22 +131,27 @@ async function runWithTimeout(
       reading: result.reading,
       usage: result.usage,
       model: result.model,
-      durationMs: Date.now() - startedAt
+      durationMs: elapsedMs(startedAt)
     }
   } catch (err) {
     const failureKind: ModelFailureKind = timedOut ? 'transient' : err instanceof ModelError ? err.kind : 'transient'
     const reason = !timedOut && isUnavailableError(err) ? 'unavailable' : 'unreadable'
+    const failureDetail = failureDetailFor(err, timedOut, signal)
     return {
       ok: false,
       kind,
       reason,
       failureKind,
+      ...(failureDetail !== undefined ? { failureDetail } : {}),
       error: err,
-      durationMs: Date.now() - startedAt
+      durationMs: elapsedMs(startedAt)
     }
   } finally {
     clearTimeout(timer)
     signal?.removeEventListener('abort', onAbort)
+    if (onControllerAbort !== undefined) {
+      controller.signal.removeEventListener('abort', onControllerAbort)
+    }
   }
 }
 
@@ -116,7 +161,7 @@ export async function readMedia(
   options: MediaIntakeOptions,
   signal?: AbortSignal
 ): Promise<MediaOutcome> {
-  const startedAt = Date.now()
+  const startedAt = performance.now()
   const kind = mediaKindOf(file.contentType)
 
   if (!options.watcher) {
@@ -124,7 +169,7 @@ export async function readMedia(
       ok: false,
       ...(kind !== undefined ? { kind } : {}),
       reason: 'off',
-      durationMs: Date.now() - startedAt
+      durationMs: elapsedMs(startedAt)
     }
   }
 
@@ -134,12 +179,12 @@ export async function readMedia(
       ok: false,
       ...(kind !== undefined ? { kind } : {}),
       reason: faultReason(fault),
-      durationMs: Date.now() - startedAt
+      durationMs: elapsedMs(startedAt)
     }
   }
 
   if (kind === undefined) {
-    return { ok: false, reason: 'unsupported type', durationMs: Date.now() - startedAt }
+    return { ok: false, reason: 'unsupported type', durationMs: elapsedMs(startedAt) }
   }
 
   return runWithTimeout(
@@ -157,14 +202,25 @@ export async function readMediaUrl(
   options: Pick<MediaIntakeOptions, 'watcher' | 'timeoutMs'>,
   signal?: AbortSignal
 ): Promise<MediaOutcome> {
-  const startedAt = Date.now()
+  const startedAt = performance.now()
   const watchUrl = options.watcher?.watchUrl
   if (!watchUrl) {
     return {
       ok: false,
       kind: 'video',
       reason: 'off',
-      durationMs: Date.now() - startedAt
+      durationMs: elapsedMs(startedAt)
+    }
+  }
+  if (signal?.aborted) {
+    return {
+      ok: false,
+      kind: 'video',
+      reason: 'unreadable',
+      failureKind: 'transient',
+      failureDetail: { type: 'abort' },
+      error: new MediaWatchError('transient', 'aborted', { type: 'abort' }),
+      durationMs: elapsedMs(startedAt)
     }
   }
 

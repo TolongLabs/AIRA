@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createGeminiWatcher, fromGenerateContentBody, toGenerateContentBody } from '../../src/media/gemini-watcher.js'
-import { mediaBlock, readMedia } from '../../src/media/intake.js'
+import { mediaBlock, readMedia, readMediaUrl } from '../../src/media/intake.js'
 import {
   DEFAULT_MEDIA_LIMITS,
   type MediaFile,
@@ -24,6 +24,7 @@ const recordings = JSON.parse(
 ) as RecordedBodies
 
 const fakeKey = 'test-gemini-secret-key-000'
+const youtube = { url: 'https://www.youtube.com/watch?v=synthetic_123', mimeType: 'video/mp4' }
 const defaultLimits: MediaLimits = {
   ...DEFAULT_MEDIA_LIMITS,
   maxVideoSeconds: 180
@@ -258,6 +259,246 @@ describe('gemini-watcher', () => {
 })
 
 describe('media intake', () => {
+  function failureDetail(outcome: Awaited<ReturnType<typeof readMediaUrl>>) {
+    return outcome.ok ? undefined : outcome.failureDetail
+  }
+
+  function urlWatcher(fetch: typeof globalThis.fetch) {
+    return createGeminiWatcher({ apiKey: fakeKey, model: 'gemini-3.5-flash-lite', fetch })
+  }
+
+  async function urlFailure(fetch: typeof globalThis.fetch) {
+    return readMediaUrl(youtube, { watcher: urlWatcher(fetch), timeoutMs: 1000 })
+  }
+
+  it('omits null or empty transcript and retains valid transcript strings', async () => {
+    for (const transcript of [null, '']) {
+      const outcome = await readMedia(makeFile(), {
+        watcher: urlWatcher(
+          async () =>
+            new Response(
+              JSON.stringify({
+                candidates: [
+                  { content: { parts: [{ text: JSON.stringify({ description: 'A synthetic scene.', transcript }) }] } }
+                ]
+              })
+            )
+        ),
+        limits: defaultLimits,
+        timeoutMs: 1000
+      })
+      expect(outcome).toMatchObject({ ok: true, reading: { description: 'A synthetic scene.' } })
+      expect(outcome.ok && outcome.reading).not.toHaveProperty('transcript')
+    }
+    const outcome = await readMedia(makeFile(), {
+      watcher: urlWatcher(
+        async () =>
+          new Response(
+            JSON.stringify({
+              candidates: [{ content: { parts: [{ text: '{"description":"Speech.","transcript":"hello"}' }] } }]
+            })
+          )
+      ),
+      limits: defaultLimits,
+      timeoutMs: 1000
+    })
+    expect(outcome).toMatchObject({ ok: true, reading: { description: 'Speech.', transcript: 'hello' } })
+  })
+
+  it('classifies malformed readings, invalid schemas, invalid JSON, and blocked responses as parse or refusal', async () => {
+    const invalid = [
+      '{"description":""}',
+      '{"description":42}',
+      '{"description":"x","transcript":42}',
+      '{"transcript":"missing description"}',
+      JSON.stringify({ description: 'x'.repeat(2001) }),
+      JSON.stringify({ description: 'x', transcript: 'y'.repeat(6001) })
+    ]
+    for (const payload of invalid) {
+      const result = await urlFailure(
+        async () =>
+          new Response(
+            JSON.stringify({
+              candidates: [{ content: { parts: [{ text: payload }] } }]
+            })
+          )
+      )
+      expect(result).toMatchObject({ ok: false, failureKind: 'malformed' })
+      expect(failureDetail(result)).toMatchObject({ type: 'parse' })
+    }
+    const invalidJson = await urlFailure(async () => new Response('{'))
+    expect(invalidJson).toMatchObject({ ok: false, failureKind: 'malformed' })
+    expect(failureDetail(invalidJson)).toMatchObject({ type: 'parse' })
+    for (const body of [
+      { promptFeedback: { blockReason: 'SAFETY' } },
+      { candidates: [{ finishReason: 'SAFETY', content: { parts: [{ text: '{"description":"x"}' }] } }] }
+    ]) {
+      const result = await urlFailure(async () => new Response(JSON.stringify(body)))
+      expect(result).toMatchObject({ ok: false, failureKind: 'refusal' })
+      expect(failureDetail(result)).toMatchObject({ type: 'refusal' })
+    }
+    const maxTokens = await urlFailure(
+      async () =>
+        new Response(
+          JSON.stringify({
+            candidates: [
+              { finishReason: 'MAX_TOKENS', content: { parts: [{ text: '{"description":"valid clipped reading"}' }] } }
+            ]
+          })
+        )
+    )
+    expect(maxTokens).toMatchObject({ ok: true, reading: { description: 'valid clipped reading' } })
+  })
+
+  it('exposes discriminated transport, status, auth, client, and unavailable details without changing durable kinds', async () => {
+    const cases: Array<[number, string, string, string]> = [
+      [408, 'transient', 'http_transient', 'unreadable'],
+      [500, 'transient', 'http_transient', 'unreadable'],
+      [503, 'transient', 'http_transient', 'unreadable'],
+      [400, 'malformed', 'http_client', 'unreadable'],
+      [404, 'malformed', 'unavailable', 'unavailable'],
+      [401, 'auth', 'auth', 'unreadable'],
+      [403, 'auth', 'auth', 'unreadable']
+    ]
+    for (const [status, failureKind, type, reason] of cases) {
+      const body = status === 404 ? 'video is private' : `provider body ${fakeKey}`
+      const result = await urlFailure(async () => new Response(body, { status }))
+      expect(result).toMatchObject({ ok: false, reason, failureKind })
+      expect(failureDetail(result)).toMatchObject({ type })
+      expect(JSON.stringify(result)).not.toContain(fakeKey)
+    }
+    const network = await urlFailure(async () => {
+      throw new Error(`socket ${fakeKey}`)
+    })
+    expect(network).toMatchObject({ ok: false, failureKind: 'transient' })
+    expect(failureDetail(network)).toMatchObject({ type: 'network' })
+    expect(JSON.stringify(network)).not.toContain(fakeKey)
+    const urlSeen: string[] = []
+    const watcher = urlWatcher(async (input) => {
+      urlSeen.push(String(input))
+      return new Response('denied', { status: 403 })
+    })
+    const auth = await readMediaUrl(youtube, { watcher, timeoutMs: 1000 })
+    expect(urlSeen).toHaveLength(1)
+    expect(urlSeen[0]).not.toContain(fakeKey)
+    expect(JSON.stringify(auth)).not.toContain(fakeKey)
+  })
+
+  it('parses valid numeric and HTTP-date Retry-After values against receipt time only', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2030-01-02T03:04:05.000Z'))
+    try {
+      const cases: Array<[string | undefined, { type: 'rate_limit'; retryAfterMs?: number }]> = [
+        ['3', { type: 'rate_limit', retryAfterMs: 3000 }],
+        ['Wed, 02 Jan 2030 03:04:08 GMT', { type: 'rate_limit', retryAfterMs: 3000 }],
+        ['Wed, 02 Jan 2030 03:04:04 GMT', { type: 'rate_limit', retryAfterMs: 0 }],
+        [undefined, { type: 'rate_limit' }],
+        ['nonsense', { type: 'rate_limit' }],
+        ['-1', { type: 'rate_limit' }],
+        ['Infinity', { type: 'rate_limit' }],
+        ['1e3', { type: 'rate_limit' }],
+        ['1.5', { type: 'rate_limit' }],
+        ['2030-01-02', { type: 'rate_limit' }],
+        ['Sat, 31 Feb 2030 00:00:00 GMT', { type: 'rate_limit' }]
+      ]
+      for (const [header, detail] of cases) {
+        const result = await urlFailure(
+          async () =>
+            new Response('quota', {
+              status: 429,
+              headers: header === undefined ? {} : { 'retry-after': header }
+            })
+        )
+        expect(result).toMatchObject({ ok: false, failureKind: 'rate_limit' })
+        expect(failureDetail(result)).toMatchObject(detail)
+        if (!Object.hasOwn(detail, 'retryAfterMs')) {
+          expect(failureDetail(result)).not.toHaveProperty('retryAfterMs')
+        }
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('distinguishes local timeout and outer abort and does not call the watcher for a pre-aborted URL', async () => {
+    vi.useFakeTimers()
+    const hanging = urlWatcher(
+      async (_input, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), {
+            once: true
+          })
+        })
+    )
+    try {
+      const timeoutPromise = readMediaUrl(youtube, { watcher: hanging, timeoutMs: 25 })
+      await vi.advanceTimersByTimeAsync(25)
+      const timeout = await timeoutPromise
+      expect(timeout).toMatchObject({ ok: false, failureKind: 'transient' })
+      expect(failureDetail(timeout)).toMatchObject({ type: 'timeout' })
+
+      const controller = new AbortController()
+      const abortPromise = readMediaUrl(youtube, { watcher: hanging, timeoutMs: 1000 }, controller.signal)
+      controller.abort()
+      const aborted = await abortPromise
+      expect(aborted).toMatchObject({ ok: false, failureKind: 'transient' })
+      expect(failureDetail(aborted)).toMatchObject({ type: 'abort' })
+    } finally {
+      vi.useRealTimers()
+    }
+    let called = false
+    const controller = new AbortController()
+    controller.abort()
+    const preAbortedWatcher = {
+      watch: async () => {
+        throw new Error('unexpected attachment')
+      },
+      watchUrl: async () => {
+        called = true
+        throw new Error('unexpected URL call')
+      }
+    }
+    const outcome = await readMediaUrl(youtube, { watcher: preAbortedWatcher, timeoutMs: 1000 }, controller.signal)
+    expect(outcome).toMatchObject({ ok: false })
+    expect(failureDetail(outcome)).toMatchObject({ type: 'abort' })
+    expect(called).toBe(false)
+  })
+
+  it('preserves plain transient failures from alternate watchers as transient details', async () => {
+    const alternate = {
+      watch: async () => {
+        throw new ModelError('transient', 'temporary synthetic failure')
+      },
+      watchUrl: async () => {
+        throw new ModelError('transient', 'temporary synthetic failure')
+      }
+    }
+    const outcome = await readMediaUrl(youtube, { watcher: alternate, timeoutMs: 1000 })
+    expect(outcome).toMatchObject({ ok: false, failureKind: 'transient' })
+    expect(failureDetail(outcome)).toMatchObject({ type: 'transient' })
+    const terminal = await readMediaUrl(youtube, {
+      watcher: {
+        ...alternate,
+        watchUrl: async () => {
+          throw new ModelError('budget', 'budget')
+        }
+      },
+      timeoutMs: 1000
+    })
+    expect(terminal).toMatchObject({ ok: false, failureKind: 'budget' })
+    expect(failureDetail(terminal)).toBeUndefined()
+    const abort = await readMediaUrl(youtube, {
+      watcher: {
+        ...alternate,
+        watchUrl: async () => {
+          throw new DOMException('cancelled', 'AbortError')
+        }
+      },
+      timeoutMs: 1000
+    })
+    expect(failureDetail(abort)).toMatchObject({ type: 'abort' })
+  })
+
   it('returns off when no watcher is configured', async () => {
     const outcome = await readMedia(makeFile(), { limits: defaultLimits, timeoutMs: 1000 })
     expect(outcome).toMatchObject({ ok: false, kind: 'image', reason: 'off' })
