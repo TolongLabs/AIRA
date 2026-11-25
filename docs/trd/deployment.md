@@ -76,6 +76,17 @@ Standalone uses only the API model transport. Core service readiness is not evid
 see [Models](models.md#standalone-model-readiness) and [System](system.md#standalone-service-readiness).
 The legacy installation instructions below remain valid for existing host-managed installations.
 
+## Standalone CLI
+
+The portable host launcher is a root executable `aira` backed by standard-library Python 3 modules.
+It reads the selected install, not the source checkout or an unrelated Hermes profile. New installations
+use the explicit standalone mode and existing ones remain legacy. The explicit
+`aira dashboard --show-token` action reveals the local credential only to an interactive installation
+owner TTY (including authorized interactive SSH); it never reveals it to JSON output, unattended callers,
+a browser URL, logs or a subprocess argument. The CLI reads the token file internally for protected
+standalone probes, not a new authorization mechanism. Legacy owner credentials remain under their existing
+authority. The complete host-command contract is extended here before implementing the installer.
+
 ## Install
 
 Run by the operator on the host, with each step that changes the host confirmed first.

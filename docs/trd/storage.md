@@ -35,6 +35,11 @@ is copied off the host and brought back.
 - All of these sit on one data volume on the host's local disk. The database is never placed on a network file
   system.
 
+The standalone owner credential and model configuration state are private non-SQLite stores under
+`<data>/standalone/`. The [owner authentication contract](site.md#standalone-owner-authentication)
+defines the token's permissions and lifetime. Backup and restore must preserve these files without
+revealing their contents; the versioned coherent backup inventory is defined before enabling updates.
+
 ## Why SQLite, And Where DuckDB Fits
 
 | Need                                                   | SQLite                | DuckDB                                                     |
