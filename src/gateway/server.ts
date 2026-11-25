@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { z } from 'zod'
+import type { InstallationMode } from '../config/installation-mode.js'
 import type { Autofetch, AutofetchBatch } from '../media/autofetch.js'
 import type { FailureKind } from '../records/kinds.js'
 import type { Logger } from '../records/logger.js'
@@ -22,6 +23,10 @@ export interface GatewayServerOptions {
   redactor: Redactor
   /** True once start-up has passed every step. The health endpoint reports it. */
   ready: () => boolean
+  /** Standalone only: true once an applied model revision authorizes turns. Absent means inactive. */
+  chatbotReady?: () => boolean
+  /** Standalone only. Legacy servers leave it absent and keep the exact legacy envelope. */
+  installationMode?: InstallationMode
   /** More fields for the health report, such as the newest snapshot. The updater reads them. */
   health?: () => Record<string, unknown>
   /** Called after each turn request has been answered. It must not throw. */
@@ -296,8 +301,28 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
 
   return createServer((request, response) => {
     const path = (request.url ?? '').split('?')[0]
+    const standalone = options.installationMode === 'standalone'
+    const chatbotActive = !standalone || (options.chatbotReady?.() ?? false)
     if (request.method === 'GET' && path === '/health') {
       const ready = options.ready()
+      if (standalone) {
+        json(
+          response,
+          ready ? 200 : 503,
+          {
+            ...options.health?.(),
+            status: ready ? 'ready' : 'starting',
+            activeTurns: turns.active(),
+            schemaVersion: 1,
+            installationMode: 'standalone',
+            configuration: chatbotActive ? 'configured' : 'setup_required',
+            chatbot: chatbotActive ? 'ready' : 'inactive',
+            chatbotReason: chatbotActive ? null : 'model_setup_required'
+          },
+          log
+        )
+        return
+      }
       json(
         response,
         ready ? 200 : 503,
@@ -309,6 +334,34 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
         log
       )
       return
+    }
+    if (
+      request.method === 'POST' &&
+      (path === '/v1/chat/completions' ||
+        path === '/v1/aira/autofetch' ||
+        path === '/v1/aira/autofetch/claim' ||
+        path === '/v1/aira/autofetch/complete')
+    ) {
+      // Standalone with no applied model: refuse before parsing, without a turn record or a reply.
+      if (options.ready() && !chatbotActive) {
+        if (path === '/v1/aira/autofetch/claim' || path === '/v1/aira/autofetch/complete') {
+          json(response, 503, { accepted: false }, log)
+        } else {
+          json(
+            response,
+            503,
+            {
+              error: {
+                message: 'the chatbot is inactive: model setup required',
+                type: 'server_error',
+                code: 'model_setup_required'
+              }
+            },
+            log
+          )
+        }
+        return
+      }
     }
     if (request.method === 'POST' && path === '/v1/chat/completions') {
       if (!options.ready()) {

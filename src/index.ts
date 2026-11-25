@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { type App, createApp } from './app.js'
+import { installationModeFromEnv } from './config/installation-mode.js'
 import { loadConfig, requireDeployable } from './config/loader.js'
 import { createLogger } from './records/logger.js'
 import { createRedactor } from './records/redact.js'
@@ -39,9 +40,10 @@ export async function main(): Promise<void> {
   process.on('uncaughtException', onUncaughtException)
 
   try {
+    const installationMode = installationModeFromEnv(process.env)
     const configPath = process.env['AIRA_CONFIG'] ?? 'config.yml'
     const config = loadConfig(configPath, { logger: boot })
-    requireDeployable(config)
+    requireDeployable(config, installationMode)
     const siteDir = resolve('site/dist')
     app = await createApp({
       config,

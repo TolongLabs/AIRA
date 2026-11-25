@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import { parse } from 'yaml'
 import { createLogger, type Logger } from '../records/logger.js'
+import type { InstallationMode } from './installation-mode.js'
 import { type Config, configSchema } from './schema.js'
 
 /** A deployment fault in config.yml. Start-up stops with this one message. */
@@ -96,10 +97,18 @@ export function loadConfig(path: string, options: { logger?: Logger } = {}): Con
 /**
  * Checks the values that are empty in the repository and set at install.
  * The service calls this at start-up; tests and the harness load the file without it.
+ * In standalone mode the main model is optional at boot and the transport is api only
+ * (docs/trd/models.md#standalone-model-readiness): a missing key or model is setup state, not a fault.
  */
-export function requireDeployable(config: Config): void {
+export function requireDeployable(config: Config, mode: InstallationMode = 'legacy'): void {
   if (!isAbsolute(config.gateway.hostDataDir)) {
     throw new ConfigError('gateway.hostDataDir must be set to the absolute path of the data volume on the host')
+  }
+  if (mode === 'standalone') {
+    if (config.llm.transport !== 'api' || config.llm.fallbackTransport !== 'api') {
+      throw new ConfigError('standalone installation supports only the api transport')
+    }
+    return
   }
   if (config.llm.transport === 'api' && config.llm.main.provider !== 'aira-router') {
     for (const key of ['provider', 'model', 'baseUrl'] as const) {
