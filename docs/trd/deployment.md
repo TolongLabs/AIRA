@@ -116,6 +116,8 @@ use the same bounded exclusive host `deploy.lock` as the updater. Read-only oper
 
 The installed launcher and runtime templates belong to the current owner under
 `~/.local/share/aira/cli/` (versioned runtime), with an executable launcher in `~/.local/bin/aira`.
+Publish a content-addressed runtime directory atomically before changing the launcher; verify an existing
+bundle rather than rewriting its modules. A failed staging operation leaves the previous launcher usable.
 Never modify shell startup or install system packages implicitly. The checkout launcher uses the same modules.
 If PATH omits the installed command, print its exact path. Existing unrelated paths are not overwritten.
 
