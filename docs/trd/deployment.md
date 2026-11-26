@@ -253,11 +253,15 @@ The candidate [typed protocol](system.md#standalone-typed-delivery) is selected 
 version 1 remains the default. Protocol migration has the same exclusive canonical source and prior-evidence
 requirements as version migration. The core issues the route ID in the synthetic v2 handshake, and the final
 private marker and host receipt retain that exact ID and negotiated capabilities. An incomplete or refused
-handshake (including use against a v1-only core) rolls back the complete prior adapter transaction. An
-unfinished v2 marker is present but inert, so neither v1 nor Hermes can fall through. Keep it inert until the
+handshake (including use against a v1-only core) rolls back the complete prior adapter transaction. Stop a
+running selected gateway before changing executable bytes; resume it with the reviewed adapter and provisional
+marker. An unfinished v2 marker is present but inert for either reviewed adapter, so neither can fall through
+to Hermes. Keep it inert until the
 core receipt, helper/source, host receipt and selected service liveness have been verified. The final atomic
 marker publication is the commit point; no fallible rollback after the new route can dispatch. On failure restore
 the prior core receipt, source/helper and service while the marker is inert, then restore the prior marker last.
+If the prior running gateway was unpatched and had no marker, restore its original files and absence of a marker
+before resuming stock Hermes; it cannot enforce a provisional AIRA marker. Verify its original running state.
 No public compatibility claim until the actual adapter tests pass.
 
 `aira attach-hermes --profile NAME --apply` is a deliberate apply; confirmation is required on a TTY,
