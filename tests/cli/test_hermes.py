@@ -55,7 +55,8 @@ class AttachmentTests(unittest.TestCase):
         paths["source"].write_text("original\n")
         paths["source"].chmod(0o644)
         self.report = {"state": {"service": "running", "installation": "installed", "hermes": "connected"},
-                       "dashboard": None, "hermesRoute": {"state": "connected", "profile": "fixture"}}
+                       "dashboard": None, "hermesRoute": {"state": "connected", "profile": "fixture",
+                                                           "adapterVersion": "hermes-v0.23.4"}}
         self.plan = {"home": home, "manifest": None, "sourceDir": source, "profile": "fixture",
                      "paths": paths, "report": self.report, "kind": "original", "running": False,
                      "original": {name: hermes._read(path, optional=True) for name, path in paths.items()},
@@ -105,6 +106,31 @@ class AttachmentTests(unittest.TestCase):
         self.assertEqual(self.plan["paths"]["source"].read_text(), "original\n")
         for name in ("helper", "marker", "receipt", "host"):
             self.assertFalse(self.plan["paths"][name].exists(), name)
+
+    def test_wrong_version_owner_readback_rolls_back_despite_successful_handshake(self):
+        self.report["hermesRoute"]["adapterVersion"] = "hermes-v0.23.3"
+        result = self.run_attach()
+        self.assertEqual(result.get("error", {}).get("code"), "attach_failed")
+        self.assertEqual(self.plan["paths"]["source"].read_text(), "original\n")
+        for name in ("helper", "marker", "receipt", "host"):
+            self.assertFalse(self.plan["paths"][name].exists(), name)
+
+    def test_failed_version_transition_restores_prior_attachment_bytes_and_modes(self):
+        prior = {"source": (b"prior source\n", 0o644), "helper": (b"prior helper\n", 0o644),
+                 "marker": (b"prior marker\n", 0o600), "receipt": (b"prior receipt\n", 0o600),
+                 "host": (b"prior host\n", 0o600)}
+        for name, record in prior.items():
+            hermes._write(self.plan["paths"][name], record)
+        self.plan["original"] = prior
+        self.plan["desired"] = {"source": prior["source"], "helper": (b"new helper\n", 0o644),
+                                "marker": prior["marker"], "host": (b"new host\n", 0o600)}
+        self.plan["adapter"].ADAPTER_VERSION = "hermes-v0.23.2"
+        self.plan["running"] = True
+        result = self.run_attach()
+        self.assertEqual(result.get("error", {}).get("code"), "attach_failed")
+        self.assertEqual(self.commands, ["restart", "restart"])
+        for name, record in prior.items():
+            self.assertEqual(hermes._read(self.plan["paths"][name]), record, name)
 
 
 if __name__ == "__main__":

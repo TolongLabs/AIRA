@@ -153,14 +153,32 @@ jobs:
           path: hermes-fixture
           persist-credentials: false
 
+      - name: Check out Hermes v0.23.3 candidate for synthetic QA
+        uses: actions/checkout@v7
+        with:
+          repository: NousResearch/hermes-agent
+          ref: caafe5389ae585ef77387a962aee05b1bcf17029
+          path: hermes-fixture-0233
+          persist-credentials: false
+
+      - name: Check out Hermes v0.23.2 candidate for synthetic QA
+        uses: actions/checkout@v7
+        with:
+          repository: NousResearch/hermes-agent
+          ref: ae2a81ccc00e9b7c06301523e5bb09608397149c
+          path: hermes-fixture-0232
+          persist-credentials: false
+
       - name: Install the pinned public fixture dependencies
         run: |
           python3 -m venv "$RUNNER_TEMP/aira-uv"
           "$RUNNER_TEMP/aira-uv/bin/pip" install uv==0.11.26
-          cd hermes-fixture
-          "$RUNNER_TEMP/aira-uv/bin/uv" sync --locked --python 3.14 --group dev --extra messaging
-          mkdir -m 700 "$RUNNER_TEMP/aira-hermes-profile"
-          printf 'gateway:\n  multiplex_profiles: false\n' > "$RUNNER_TEMP/aira-hermes-profile/config.yaml"
+          for suffix in '' -0233 -0232; do
+            (cd "hermes-fixture${suffix}" && "$RUNNER_TEMP/aira-uv/bin/uv" sync --locked --python 3.14 --group dev --extra messaging)
+            profile="$RUNNER_TEMP/aira-hermes-profile${suffix}"
+            mkdir -m 700 "$profile"
+            printf 'gateway:\n  multiplex_profiles: false\n' > "$profile/config.yaml"
+          done
 
       - name: Exercise exact image install, update, rollback and restore
         run: |
@@ -180,14 +198,26 @@ jobs:
             --hermes-dir "$GITHUB_WORKSPACE/hermes-fixture" --hermes-home "$RUNNER_TEMP/aira-hermes-profile" \
             --update-image "$NEXT" --bad-image "$BAD"
 
-      - name: Verify the actual pinned Hermes admission and delivery pipeline
+      - name: Exercise additional exact stock attachments
+        run: |
+          for minor in 3 2; do
+            suffix="-023${minor}"
+            python3 tests/install/smoke.py --image "aira-onboarding-candidate:${SHORT_SHA}" \
+              --home "$RUNNER_TEMP/aira-install${suffix}" \
+              --hermes-dir "$GITHUB_WORKSPACE/hermes-fixture${suffix}" \
+              --hermes-home "$RUNNER_TEMP/aira-hermes-profile${suffix}" \
+              --adapter-version "hermes-v0.23.${minor}"
+          done
+
+      - name: Verify the actual pinned Hermes admission and delivery pipelines
         env:
-          HERMES_HOME: ${{ runner.temp }}/aira-hermes-profile
           PYTHONDONTWRITEBYTECODE: '1'
         run: |
-          cp tests/install/hermes_fixture.py hermes-fixture/tests/gateway/test_aira_transport_spike.py
-          cd hermes-fixture
-          .venv/bin/pytest -q tests/gateway/test_aira_transport_spike.py tests/gateway/test_whatsapp_group_gating.py
+          for suffix in '' -0233 -0232; do
+            fixture="hermes-fixture${suffix}"
+            cp tests/install/hermes_fixture.py "$fixture/tests/gateway/test_aira_transport_spike.py"
+            (cd "$fixture" && .venv/bin/pytest -q tests/gateway/test_aira_transport_spike.py tests/gateway/test_whatsapp_group_gating.py)
+          done
 
   images-ok:
     needs: [image]

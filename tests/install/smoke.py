@@ -33,6 +33,7 @@ from pathlib import Path
 SITE_WANT = 9890
 CORE_WANT = 9881
 ADAPTER_VERSION = "hermes-v0.23.4"
+ADAPTER_VERSIONS = ("hermes-v0.23.2", "hermes-v0.23.3", ADAPTER_VERSION)
 PROFILE = "smoke-fixture"
 CHAT = "smoke-fixture-a"
 CANARY_MODEL = "smoke-canary-v1"
@@ -291,6 +292,8 @@ def main() -> int:
     parser.add_argument("--home", required=True, help="Fresh private owned path in runner temp.")
     parser.add_argument("--hermes-dir", type=Path, help="Disposable pinned upstream checkout.")
     parser.add_argument("--hermes-home", type=Path, help="Disposable independent Hermes profile root.")
+    parser.add_argument("--adapter-version", choices=ADAPTER_VERSIONS, default=ADAPTER_VERSION,
+                        help="Expected exact version for the selected public stock fixture.")
     parser.add_argument("--update-image", help="Loaded compatible second candidate.")
     parser.add_argument("--bad-image", help="Loaded candidate with a failing isolated deploy probe.")
     args = parser.parse_args()
@@ -473,27 +476,60 @@ def main() -> int:
         if args.hermes_dir:
             profile = "default"
             source = args.hermes_dir / "gateway" / "run_inbound_consumer.py"
+            helper = source.with_name("aira_transport.py")
             marker = args.hermes_home / "aira-transport.json"
             original = source.read_bytes()
             options = ["attach-hermes", "--home", str(home), "--profile", profile,
                        "--hermes-dir", str(args.hermes_dir), "--hermes-home", str(args.hermes_home)]
             code, plan = run_json(launcher, [*options, "--dry-run"], STEP_TIMEOUT_S)
-            check(code == 0 and plan.get("attach", {}).get("dryRun") is True,
+            check(code == 0 and plan.get("attach", {}).get("dryRun") is True
+                  and plan.get("attach", {}).get("adapterVersion") == args.adapter_version,
                   "hermes_dry_run_failed", "Pinned Hermes dry-run failed.")
-            check(source.read_bytes() == original and not marker.exists(), "dry_run_mutation", "Dry-run changed its source or profile.")
+            check(source.read_bytes() == original and not marker.exists() and not helper.exists(),
+                  "dry_run_mutation", "Dry-run changed its source or profile.")
+
+            # The running synthetic core retains its original gateway credential. Change only the disposable
+            # fixture's on-disk gateway credential to force a real failed handshake after the candidate writes.
+            # The normal attachment transaction must restore the exact original source and private files.
+            tokenpath = home / "data/standalone/gateway.token"
+            token_bytes = tokenpath.read_bytes()
+            wrong_token = "0" * 64 if gateway_token != "0" * 64 else "1" * 64
+            SECRETS.append(wrong_token)
+            host_record = home / "data/standalone/attach-host.json"
+            route_record = home / "data/standalone/hermes.json"
+            before = {p: p.read_bytes() if p.exists() else None for p in (helper, marker, host_record, route_record)}
+            try:
+                tokenpath.write_text(wrong_token + "\n")
+                code, failed = run_json(launcher, [*options, "--apply", "--yes"], STEP_TIMEOUT_S)
+                check(code == 1 and failed.get("error", {}).get("code") == "attach_failed",
+                      "hermes_rollback_failed", "The refused handshake did not report verified rollback.")
+                check(source.read_bytes() == original and all(
+                    (p.read_bytes() if p.exists() else None) == contents for p, contents in before.items()),
+                    "hermes_rollback_failed", "Failed attachment changed its original source or private state.")
+            finally:
+                tokenpath.write_bytes(token_bytes)
+
             code, applied = run_json(launcher, [*options, "--apply", "--yes"], STEP_TIMEOUT_S)
             check(code == 0 and applied.get("state", {}).get("hermes") == "connected"
+                  and applied.get("attach", {}).get("adapterVersion") == args.adapter_version
                   and applied.get("attach", {}).get("gatewayRunning") is False,
                   "hermes_attach_failed", "Selected stopped Hermes profile did not attach safely.")
             check(source.read_bytes() != original and marker.is_file() and marker.stat().st_mode & 0o777 == 0o600,
                   "hermes_marker_failed", "Pinned source or private marker was not installed.")
-        attach = {"schemaVersion": 1, "adapterVersion": ADAPTER_VERSION,
+            attached = {p: p.read_bytes() for p in (source, helper, marker, host_record)}
+            code, repeated = run_json(launcher, [*options, "--apply", "--yes"], STEP_TIMEOUT_S)
+            check(code == 0 and repeated.get("attach", {}).get("adapterVersion") == args.adapter_version
+                  and repeated.get("attach", {}).get("changes") == []
+                  and all(p.read_bytes() == data for p, data in attached.items()),
+                  "hermes_repeat_failed", "Repeated attachment did not preserve its source and selected marker.")
+        attach = {"schemaVersion": 1, "adapterVersion": args.adapter_version,
                   "profile": profile, "action": "connect"}
         code, _ = http_gateway(core_port, "/v1/aira/attach-check", owner_token, attach)
         check(code == 401, "credential_not_separated",
               f"Attach-check accepted the owner credential: {code}.", "Use a compatible image.")
         code, body = http_gateway(core_port, "/v1/aira/attach-check", gateway_token, attach)
-        check(code == 200, "attach_failed", "Synthetic attach-check failed.", "Run aira doctor.")
+        check(code == 200 and body is not None and body.get("hermes", {}).get("adapterVersion") == args.adapter_version,
+              "attach_failed", "Synthetic attach-check did not read back the selected version.", "Run aira doctor.")
         turn = {"schemaVersion": 1, "profile": profile, "platform": "whatsapp",
                 "kind": "dm", "chat": CHAT, "sender": CHAT, "mid": "m1",
                 "text": "smoke pending fixture"}

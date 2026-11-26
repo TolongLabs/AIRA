@@ -17,7 +17,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 
 from . import DEFAULT_CORE_PORT, DEFAULT_SITE_PORT, PORT_SCAN_MAX, LOCK_WAIT_TIMEOUT_S
-from . import compose, launcher, operations
+from . import compose, hermes_versions, launcher, operations
 from .result import (
     CommandError, args_error, blank_state, conflict_error, error_envelope,
     ok_envelope, operational_error, prereq_error, progress,
@@ -420,12 +420,18 @@ def observe(home, manifest, quick=True):
                             if mode == "standalone":
                                 maybe_route = health.get("hermes") or {}
                                 if (isinstance(maybe_route, dict) and maybe_route.get("state") == "connected" and
-                                        maybe_route.get("adapterVersion") == "hermes-v0.23.4" and
+                                        maybe_route.get("adapterVersion") in hermes_versions.ADAPTER_VERSIONS and
                                         isinstance(maybe_route.get("profile"), str) and re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", maybe_route["profile"])):
                                     state["hermes"] = "connected"
                                     route = {k: maybe_route.get(k) for k in ("state", "profile", "adapterVersion", "verifiedAt")}
+                                elif isinstance(maybe_route, dict) and maybe_route.get("state") == "connected":
+                                    state["hermes"] = ("unsupported" if maybe_route.get("adapterVersion") not in
+                                                        hermes_versions.ADAPTER_VERSIONS else "disconnected")
+                                    state["chatbot"] = "inactive"
+                                    warnings.append("The Hermes route is unverified; run aira doctor.")
                                 elif isinstance(maybe_route, dict) and maybe_route.get("state") in ("invalid", "unsupported"):
                                     state["hermes"] = "unsupported" if maybe_route["state"] == "unsupported" else "disconnected"
+                                    state["chatbot"] = "inactive"
                                     warnings.append("The Hermes route receipt is " + maybe_route["state"] + "; run aira doctor.")
                                 elif state["hermes"] == "detected":
                                     state["hermes"] = "disconnected"
