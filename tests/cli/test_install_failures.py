@@ -6,6 +6,7 @@ Every external boundary is mocked; assertions check behavior and recovery.
 import contextlib
 import io
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -384,18 +385,39 @@ class BrowserOpenTests(TempEnv):
         result = self.envelope()
         with (patch.dict(os.environ, {"DISPLAY": ":0"}, clear=False),
               patch("shutil.which", return_value="/usr/bin/xdg-open") as which,
-              patch.object(compose, "run", return_value=(0, "", "")) as run):
+              patch.object(main.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as run):
             main._open(self.args(open=True), result)
         which.assert_called_once_with("xdg-open")
         run.assert_called_once()
         self.assertEqual(run.call_args.args[0],
                          ["/usr/bin/xdg-open", "http://127.0.0.1:9890/overview"])
+        self.assertEqual(run.call_args.kwargs, {
+            "stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
+            "timeout": 15, "check": False,
+        })
+        self.assertEqual(result["warnings"], [])
+
+    def test_successful_opener_descendant_cannot_hold_cli_output_pipes(self):
+        opener = self.root / "xdg-open"
+        opener.write_text("#!/bin/sh\n(sleep 2) &\nexit 0\n")
+        opener.chmod(0o700)
+        result = self.envelope()
+        real_run = subprocess.run
+
+        def bounded_run(*args, **kwargs):
+            # Shorten only this test's timeout; the child would still hold captured pipes.
+            return real_run(*args, **{**kwargs, "timeout": 0.5})
+
+        with (patch.dict(os.environ, {"DISPLAY": ":0"}, clear=False),
+              patch("shutil.which", return_value=str(opener)),
+              patch.object(subprocess, "run", side_effect=bounded_run)):
+            main._open(self.args(open=True), result)
         self.assertEqual(result["warnings"], [])
 
     def test_headless_never_launches_and_warns_only_on_open(self):
         with (patch.dict(os.environ, {"SSH_CONNECTION": "1", "DISPLAY": ":0"}, clear=False),
               patch("shutil.which", side_effect=AssertionError("no desktop lookup")),
-              patch.object(compose, "run", side_effect=AssertionError("no desktop launch"))):
+              patch.object(main.subprocess, "run", side_effect=AssertionError("no desktop launch"))):
             quiet = self.envelope()
             main._open(self.args(), quiet)
             self.assertEqual(quiet["warnings"], [])
@@ -407,22 +429,33 @@ class BrowserOpenTests(TempEnv):
         for argv in (self.args(json=True), self.args(no_open=True, open=True)):
             with (patch.dict(os.environ, {"DISPLAY": ":0"}, clear=False),
                   patch("shutil.which", side_effect=AssertionError("must not look up")),
-                  patch.object(compose, "run", side_effect=AssertionError("must not launch"))):
+                  patch.object(main.subprocess, "run", side_effect=AssertionError("must not launch"))):
                 main._open(argv, self.envelope())
 
     def test_missing_opener_and_failed_launch_warn_without_throwing(self):
         with (patch.dict(os.environ, {"DISPLAY": ":0"}, clear=False),
               patch("shutil.which", return_value=None),
-              patch.object(compose, "run", side_effect=AssertionError("must not run"))):
+              patch.object(main.subprocess, "run", side_effect=AssertionError("must not run"))):
             result = self.envelope()
             main._open(self.args(open=True), result)
             self.assertTrue(any("browser_open_failed" in w for w in result["warnings"]))
         with (patch.dict(os.environ, {"DISPLAY": ":0"}, clear=False),
               patch("shutil.which", return_value="/usr/bin/xdg-open"),
-              patch.object(compose, "run", side_effect=compose.RunError("failed"))):
+              patch.object(main.subprocess, "run", side_effect=OSError("synthetic failure"))):
             failed = self.envelope()
             main._open(self.args(open=True), failed)
             self.assertTrue(any("browser_open_failed" in w for w in failed["warnings"]))
+        for outcome in (SimpleNamespace(returncode=3), subprocess.TimeoutExpired("fixture-opener", 15)):
+            result = self.envelope()
+            with (patch.dict(os.environ, {"DISPLAY": ":0"}, clear=False),
+                  patch("shutil.which", return_value="/usr/bin/xdg-open"),
+                  patch.object(main.subprocess, "run") as run):
+                if isinstance(outcome, Exception):
+                    run.side_effect = outcome
+                else:
+                    run.return_value = outcome
+                main._open(self.args(open=True), result)
+            self.assertTrue(any("browser_open_failed" in w for w in result["warnings"]))
 
 
 class CredentialRevealTests(TempEnv):
