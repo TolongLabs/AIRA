@@ -5,9 +5,9 @@
 
 ### Features
 
-* **gateway:** add route-owned reminders ([9c81dc3](https://github.com/TolongLabs/AIRA/commit/9c81dc3a34ee9cd30b580da1bc64da937c7f9c0c)), closes [#402](https://github.com/TolongLabs/AIRA/issues/402)
-* **gateway:** admit bounded direct media ([dfccf47](https://github.com/TolongLabs/AIRA/commit/dfccf47456c0682ff055dec41c2acf84b03d5674)), closes [#402](https://github.com/TolongLabs/AIRA/issues/402)
-* **models:** add optional media role ([325fd3d](https://github.com/TolongLabs/AIRA/commit/325fd3d41a434b05182474bc85dbc31bab45372d)), closes [#402](https://github.com/TolongLabs/AIRA/issues/402)
+* **gateway:** add route-owned reminders ([9c81dc3](https://github.com/TolongLabs/AIRA/commit/9c81dc3a34ee9cd30b580da1bc64da937c7f9c0c)), refs [#402](https://github.com/TolongLabs/AIRA/issues/402)
+* **gateway:** admit bounded direct media ([dfccf47](https://github.com/TolongLabs/AIRA/commit/dfccf47456c0682ff055dec41c2acf84b03d5674)), refs [#402](https://github.com/TolongLabs/AIRA/issues/402)
+* **models:** add optional media role ([325fd3d](https://github.com/TolongLabs/AIRA/commit/325fd3d41a434b05182474bc85dbc31bab45372d)), refs [#402](https://github.com/TolongLabs/AIRA/issues/402)
 
 ## [1.7.1](https://github.com/TolongLabs/AIRA/compare/v1.7.0...v1.7.1) (2026-11-26)
 
