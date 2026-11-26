@@ -1,4 +1,4 @@
-import type { CoreCharacter, CoreChat, Resolved } from './core.js'
+import type { CoreCharacter, CoreChat, Resolved, StandaloneControls } from './core.js'
 
 export interface ChatFeatureDefinition {
   key: string
@@ -46,9 +46,10 @@ export const CHAT_FEATURE_DEFINITIONS: readonly ChatFeatureDefinition[] = [
 ]
 
 // Standalone enables text features and explicitly negotiated portable operations.
-export const standaloneChatFeature = (key: string, reportDocuments = false) =>
+export const standaloneChatFeature = (key: string, controls: StandaloneControls) =>
   ['features.search', 'features.social', 'features.think'].includes(key) ||
-  (key === 'features.reports' && reportDocuments)
+  (key === 'features.reports' && controls.reportDocuments) ||
+  (key === 'features.media' && controls.inboundMedia)
 
 /** Presentation and validation helpers for one chat's resolved settings row. */
 export class ChatSettingsViewModel {

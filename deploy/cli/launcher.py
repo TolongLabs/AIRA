@@ -78,6 +78,7 @@ def install_runtime(repo_root):
         (Path(repo_root) / "deploy" / "gateway" / "standalone_adapter.py", "standalone_adapter.py"),
         (Path(repo_root) / "deploy" / "gateway" / "standalone_typed_adapter.py", "standalone_typed_adapter.py"),
         (Path(repo_root) / "deploy" / "gateway" / "standalone_document_adapter.py", "standalone_document_adapter.py"),
+        (Path(repo_root) / "deploy" / "gateway" / "standalone_media_adapter.py", "standalone_media_adapter.py"),
         (Path(repo_root) / "deploy" / "gateway" / "standalone_patch.py", "standalone_patch.py"),
     ):
         files[name] = source_path.read_text(encoding="utf-8")

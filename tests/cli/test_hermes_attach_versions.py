@@ -15,6 +15,7 @@ from deploy.cli.result import CommandError
 OLD_HEAD = "ae2a81ccc00e9b7c06301523e5bb09608397149c"
 CURRENT_HEAD = "8fc0374447313e276f6b9a2764bfc750190c966a"
 TARGET = "gateway/run_inbound_consumer.py"
+DIRECT_MEDIA = ["text", "document", "receive-image", "receive-audio", "receive-video", "receive-pdf"]
 
 
 class AttachVersionPlanningTests(unittest.TestCase):
@@ -60,6 +61,7 @@ class AttachVersionPlanningTests(unittest.TestCase):
         self.report = {"state": {"service": "running", "installation": "installed"}, "dashboard": {}}
         self.head = OLD_HEAD
         self.dirty = False
+        self.running = False
         self.args = SimpleNamespace(home=str(self.home), repo_root=self.repo, profile="default",
                                     hermes_dir=str(self.source), hermes_home=str(self.root))
 
@@ -76,7 +78,7 @@ class AttachVersionPlanningTests(unittest.TestCase):
             stack.enter_context(patch.object(hermes.install, "observe", return_value=self.report))
             stack.enter_context(patch.object(hermes, "_modules", return_value=self.mods))
             stack.enter_context(patch.object(hermes, "_process", side_effect=process))
-            stack.enter_context(patch.object(hermes, "_profile_status", return_value=False))
+            stack.enter_context(patch.object(hermes, "_profile_status", return_value=self.running))
             return hermes._plan(self.args)
 
     def prior_attachment(self, version, protocol=1, capabilities=None):
@@ -84,6 +86,8 @@ class AttachVersionPlanningTests(unittest.TestCase):
         capabilities = capabilities or ["text"]
         if protocol == 1:
             rendered = hermes_versions.render_helper(self.template, version)
+        elif capabilities == DIRECT_MEDIA:
+            rendered = hermes_versions.render_media_helper(self.template, self.mods["document"], self.mods["media"], version)
         elif capabilities == ["text", "document"]:
             rendered = hermes_versions.render_document_helper(self.template, self.mods["document"], version)
         else:
@@ -164,6 +168,154 @@ class AttachVersionPlanningTests(unittest.TestCase):
         self.args.capabilities = "text,document"
         with self.assertRaises(CommandError):
             self.plan()
+
+    def test_direct_media_selection_is_explicit_and_omission_preserves_verified_selection(self):
+        self.args.protocol = "v2"
+        text = self.plan()
+        self.assertEqual(text["capabilities"], ["text"])
+        self.prior_attachment("hermes-v0.23.2", protocol=2, capabilities=["text", "document"])
+        self.args.capabilities = ",".join(DIRECT_MEDIA)
+        plan = self.plan()
+        self.assertEqual(plan["capabilities"], DIRECT_MEDIA)
+        self.assertEqual(plan["adapter"].CAPABILITIES, DIRECT_MEDIA)
+        self.assertEqual(json.loads(plan["provisional"][0])["capabilities"], DIRECT_MEDIA)
+        self.assertIsNone(json.loads(plan["desired"]["host"][0])["routeId"])
+        self.assertNotEqual(plan["original"]["helper"], plan["desired"]["helper"])
+        self.assertEqual(json.loads(self.marker.read_text())["capabilities"], ["text", "document"])
+        self.assertIn("direct inbound media", hermes._detail(plan, False)["verification"])
+
+        self.prior_attachment("hermes-v0.23.2", protocol=2, capabilities=DIRECT_MEDIA)
+        del self.args.capabilities
+        self.running = True
+        identical = self.plan()
+        self.assertEqual(identical["capabilities"], DIRECT_MEDIA)
+        self.assertEqual(identical["original"], {**identical["original"], **identical["desired"]})
+        self.running = False
+        self.args.capabilities = "text"
+        text_again = self.plan()
+        self.assertEqual(text_again["desired"]["helper"], text["desired"]["helper"])
+        self.assertIsNone(json.loads(text_again["desired"]["marker"][0])["routeId"])
+
+        self.args.protocol = "v1"
+        del self.args.capabilities
+        downgrade = self.plan()
+        self.assertEqual(json.loads(downgrade["provisional"][0])["capabilities"], DIRECT_MEDIA)
+        self.assertEqual(downgrade["typedAdapter"].CAPABILITIES, DIRECT_MEDIA)
+        self.assertEqual(json.loads(downgrade["desired"]["marker"][0])["schemaVersion"], 1)
+
+    def test_media_migration_requires_stopped_exclusive_checkout_and_exact_prior_receipt(self):
+        self.prior_attachment("hermes-v0.23.2", protocol=2, capabilities=["text", "document"])
+        self.args.protocol = "v2"
+        self.args.capabilities = ",".join(DIRECT_MEDIA)
+        self.running = True
+        self.assert_refused_unchanged("hermes_unsupported")
+        self.running = False
+        other = self.root / "profiles/other/aira-transport.json"
+        other.parent.mkdir(parents=True, mode=0o700)
+        install.atomic_write_text(other, "synthetic other profile")
+        self.assert_refused_unchanged("hermes_contract_failed")
+        other.unlink()
+        receipt = json.loads(self.receipt.read_text())
+        install.atomic_write_text(self.receipt, json.dumps({**receipt, "capabilities": ["text"]}))
+        self.assert_refused_unchanged("hermes_profile_conflict")
+
+    def test_media_attachment_cannot_be_requested_with_v1(self):
+        self.args.protocol = "v1"
+        self.args.capabilities = ",".join(DIRECT_MEDIA)
+        with self.assertRaises(CommandError):
+            self.plan()
+
+    def test_media_version_reattach_rotates_route_and_preserves_capabilities_until_apply(self):
+        self.args.protocol = "v2"
+        for previous, head, desired in (("hermes-v0.23.4", OLD_HEAD, "hermes-v0.23.2"),
+                                        ("hermes-v0.23.2", CURRENT_HEAD, "hermes-v0.23.4")):
+            with self.subTest(previous=previous, desired=desired):
+                self.prior_attachment(previous, protocol=2, capabilities=DIRECT_MEDIA)
+                self.head = head
+                before = {path: path.read_bytes()
+                          for path in (self.target, self.helper, self.marker, self.host, self.receipt)}
+                plan = self.plan()
+                self.assertEqual(plan["capabilities"], DIRECT_MEDIA)
+                self.assertEqual(plan["adapter"].ADAPTER_VERSION, desired)
+                self.assertIsNone(json.loads(plan["desired"]["marker"][0])["routeId"])
+                self.assertEqual({path: path.read_bytes() for path in before}, before)
+
+    def apply_media_plan(self, plan, post, observed):
+        self.args.apply = self.args.yes = self.args.json = self.args.non_interactive = True
+        with (patch.object(hermes, "_plan", return_value=plan),
+              patch.object(hermes, "_profile_status", return_value=False),
+              patch.object(hermes, "_gateway_command") as gateway,
+              patch.object(plan["adapter"], "_post", side_effect=post),
+              patch.object(install, "observe", return_value=observed),
+              patch.object(hermes.operations, "log_event", return_value="fixture")):
+            result = hermes.run_attach(self.args, "9" * 32)
+        gateway.assert_not_called()
+        return result
+
+    def test_old_core_refusal_restores_exact_prior_attachment_when_media_is_selected(self):
+        self.prior_attachment("hermes-v0.23.2", protocol=2, capabilities=["text", "document"])
+        self.args.protocol = "v2"
+        self.args.capabilities = ",".join(DIRECT_MEDIA)
+        plan = self.plan()
+        attempts = []
+
+        def post(_config, path, body, _timeout):
+            attempts.append((path, body["capabilities"]))
+            raise ValueError("synthetic unsupported capability")
+
+        result = self.apply_media_plan(plan, post, self.report)
+        self.assertEqual(attempts, [("/v2/aira/attach-check", DIRECT_MEDIA)])
+        self.assertEqual(result["error"]["code"], "attach_failed")
+        for name, record in plan["original"].items():
+            self.assertEqual(hermes._read(plan["paths"][name]), record, name)
+
+    def test_stopped_media_attachment_publishes_new_route_and_can_reattach_identically(self):
+        self.prior_attachment("hermes-v0.23.2", protocol=2, capabilities=["text", "document"])
+        self.args.protocol = "v2"
+        self.args.capabilities = ",".join(DIRECT_MEDIA)
+        plan = self.plan()
+        new_id = "87654321-4321-4321-8321-cba987654321"
+        route = {**self.report["hermesRoute"], "capabilities": DIRECT_MEDIA, "routeId": new_id}
+
+        def post(_config, path, body, _timeout):
+            self.assertEqual(path, "/v2/aira/attach-check")
+            self.assertEqual(body["capabilities"], DIRECT_MEDIA)
+            self.assertEqual(hermes._read(self.marker), plan["provisional"])
+            install.atomic_write_text(self.receipt, json.dumps({"schemaVersion": 2,
+                **{k: v for k, v in route.items() if k != "protocolVersion"}}))
+            return {"schemaVersion": 2, "hermes": route}
+
+        self.report = {**self.report, "hermesRoute": route}
+        result = self.apply_media_plan(plan, post, self.report)
+        self.assertEqual(result["outcome"], "ok")
+        self.assertEqual(json.loads(self.marker.read_text())["routeId"], new_id)
+        self.assertEqual(json.loads(self.host.read_text())["routeId"], new_id)
+        del self.args.capabilities
+        identical = self.plan()
+        self.assertEqual(identical["original"], {**identical["original"], **identical["desired"]})
+
+    def test_stopped_reattach_can_reduce_direct_media_to_exact_document_helper(self):
+        self.prior_attachment("hermes-v0.23.2", protocol=2, capabilities=DIRECT_MEDIA)
+        self.args.protocol = "v2"
+        self.args.capabilities = "text,document"
+        plan = self.plan()
+        route = {**self.report["hermesRoute"], "capabilities": ["text", "document"],
+                 "routeId": "87654321-4321-4321-8321-cba987654321"}
+
+        def post(_config, path, body, _timeout):
+            self.assertEqual(path, "/v2/aira/attach-check")
+            self.assertEqual(body["capabilities"], route["capabilities"])
+            self.assertEqual(hermes._read(self.marker), plan["provisional"])
+            install.atomic_write_text(self.receipt, json.dumps({"schemaVersion": 2,
+                **{k: v for k, v in route.items() if k != "protocolVersion"}}))
+            return {"schemaVersion": 2, "hermes": route}
+
+        self.report = {**self.report, "hermesRoute": route}
+        result = self.apply_media_plan(plan, post, self.report)
+        self.assertEqual(result["outcome"], "ok")
+        self.assertEqual(json.loads(self.marker.read_text())["routeId"], route["routeId"])
+        self.assertEqual(self.helper.read_bytes(),
+                         hermes_versions.render_document_helper(self.template, self.mods["document"], "hermes-v0.23.2"))
 
     def test_typed_history_requires_explicit_protocol_and_complete_route(self):
         self.prior_attachment("hermes-v0.23.2", protocol=2)

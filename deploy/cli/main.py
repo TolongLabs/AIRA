@@ -9,7 +9,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import __version__, backup, compose, configure, diagnostics, hermes, install, launcher, operations, update
+from . import (
+    __version__, backup, compose, configure, diagnostics, hermes, hermes_versions, install, launcher, operations, update,
+)
 from .result import CommandError, args_error, conflict_error, emit, error_envelope, ok_envelope, operational_error
 
 
@@ -92,7 +94,8 @@ def build_parser():
     attach.add_argument("--hermes-dir")
     attach.add_argument("--hermes-home")
     attach.add_argument("--protocol", choices=("v1", "v2"), help="Select v1 (default) or candidate typed v2 explicitly.")
-    attach.add_argument("--capabilities", choices=("text", "text,document"), help="Explicit v2 capability set; omit to preserve an existing typed route.")
+    attach.add_argument("--capabilities", choices=hermes_versions.CAPABILITY_OPTIONS,
+                        help="Explicit v2 capability set; omit to preserve an existing typed route.")
     apply = attach.add_mutually_exclusive_group(required=True)
     apply.add_argument("--dry-run", action="store_true")
     apply.add_argument("--apply", action="store_true")

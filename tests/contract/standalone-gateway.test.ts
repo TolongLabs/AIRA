@@ -1,11 +1,17 @@
+import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { type App, createApp } from '../../src/app.js'
 import { createStandaloneModelStore } from '../../src/config/standalone-models.js'
 import { STANDALONE_ADAPTER_VERSIONS } from '../../src/gateway/standalone.js'
+import type { MediaFile } from '../../src/media/limits.js'
 import { createLogger } from '../../src/records/logger.js'
+import { ensureChat, ensureSubject, setChatStatus } from '../../src/settings/chats.js'
+import { setSetting } from '../../src/settings/settings.js'
+import { receiveInbound } from '../../src/storage/turns.js'
+import { storeUserMessage } from '../../src/turn/window.js'
 import { type Answer, queueModel } from '../support/app.js'
 import { testConfig } from '../support/core.js'
 import { tmpDir } from '../support/tmp.js'
@@ -18,7 +24,8 @@ afterEach(async () => {
 async function start(
   configured: boolean,
   answers: Answer[] = [{ text: 'fixture reply alpha' }, { text: 'fixture reply beta' }],
-  batchMs = 20
+  batchMs = 20,
+  mediaConfigured = false
 ) {
   const root = tmpDir('aira-structured-gateway-')
   const config = testConfig((value) => {
@@ -44,15 +51,25 @@ async function start(
         usdPerMTokCached: 0,
         apiKey: 'synthetic-model-key'
       },
-      fallback: null
+      fallback: null,
+      ...(mediaConfigured
+        ? { media: { provider: 'gemini', model: 'fixture-watcher', apiKey: 'synthetic-media-key' } }
+        : {})
     })
     store.requestActivation({ expectedRevision: saved.savedRevision })
   }
   const model = queueModel(answers)
+  const watch = vi.fn(async (_file: MediaFile) => ({
+    reading: { description: 'synthetic visual evidence' },
+    usage: { inputTokens: 10, outputTokens: 10, cachedTokens: 0 },
+    costUsd: 0,
+    model: 'fixture-watcher'
+  }))
   const app = await createApp({
     config,
     env: { AIRA_INSTALL_MODE: 'standalone' },
     clients: { main: model },
+    mediaWatcher: { watch },
     logger: createLogger({ level: 'error', module: 'test', sink: () => undefined })
   })
   apps.push(app)
@@ -81,7 +98,7 @@ async function start(
     expect(result.status).toBe(200)
     return result.json()
   }
-  return { app, model, post, ownerCall, owner, token, root }
+  return { app, model, post, ownerCall, owner, token, root, watch }
 }
 const attach = (action: 'connect' | 'disconnect' = 'connect') => ({
   schemaVersion: 1,
@@ -106,6 +123,268 @@ const typedTurn = (routeId: string, chat: string, mid: string, text: string) => 
   ...turn(chat, mid, text),
   schemaVersion: 2,
   routeId
+})
+
+const mediaCapabilities = ['text', 'document', 'receive-image', 'receive-audio', 'receive-video', 'receive-pdf']
+const mediaAttach = () => ({ ...typedAttach(), capabilities: mediaCapabilities })
+const mediaTurn = (routeId: string, chat: string, mid: string, bytes: Buffer, kind = 'image', mime = 'image/png') => ({
+  ...typedTurn(routeId, chat, mid, 'fixture caption'),
+  media: {
+    kind,
+    mime,
+    base64: bytes.toString('base64'),
+    sha256: createHash('sha256').update(bytes).digest('hex')
+  }
+})
+const png = Buffer.from('89504e470d0a1a0a00000000', 'hex')
+
+describe('standalone direct media candidate', () => {
+  async function ready(core: Awaited<ReturnType<typeof start>>) {
+    const route = await core.post('/v2/aira/attach-check', mediaAttach())
+    expect(route.status).toBe(200)
+    const routeId = routeIdOf(route.body)
+    const chat = ensureChat(core.app.storage, { waId: 'fixture-media', type: 'dm' })
+    setSetting(core.app.storage, { level: 'global', scope: '', key: 'character', value: 'example', actor: 'test' })
+    setChatStatus(core.app.storage, { chatId: chat.chatId, status: 'active', actor: 'test' })
+    return { routeId, chat }
+  }
+
+  it('reads each finite kind with the applied watcher, without paths or repeated provider calls', async () => {
+    const core = await start(true, [{ text: 'fixture reply' }], 20, true)
+    const { routeId, chat } = await ready(core)
+    expect(await core.ownerCall('health')).toMatchObject({ capabilities: { inboundMedia: true } })
+    const fixtures = [
+      ['image', 'image/png', png],
+      ['image', 'image/jpeg', Buffer.from('ffd8ff00', 'hex')],
+      ['audio', 'audio/mpeg', Buffer.from('ID3synthetic')],
+      ['voice', 'audio/ogg', Buffer.from('OggSsynthetic')],
+      ['video', 'video/mp4', Buffer.from('00000018667479706d703432', 'hex')],
+      ['document', 'application/pdf', Buffer.from('%PDF-1.5\nsynthetic')]
+    ] as const
+    for (const [kind, mime, bytes] of fixtures) {
+      const input = mediaTurn(routeId, chat.waId, 'fixture-' + kind + '-' + mime.replace('/', '-'), bytes, kind, mime)
+      const result = await core.post('/v2/aira/media-turn', input)
+      expect(result.status).toBe(200)
+      expect(result.body).toMatchObject({ disposition: 'reply' })
+      expect(core.watch.mock.lastCall?.[0]).toEqual({ data: bytes, contentType: mime })
+      expect((await core.post('/v2/aira/media-turn', input)).body).toMatchObject({ disposition: 'no_reply' })
+    }
+    expect(core.watch).toHaveBeenCalledTimes(fixtures.length)
+    expect(core.model.requests).toHaveLength(fixtures.length)
+    expect(JSON.stringify(core.model.requests[0])).toContain('synthetic visual evidence')
+    expect(JSON.stringify(core.model.requests[0])).not.toContain(png.toString('base64'))
+  })
+
+  it('refuses wrong routes, unconfigured, malformed and unauthorized media before watcher or main', async () => {
+    const core = await start(true, [{ text: 'fixture reply' }], 20, true)
+    const { routeId, chat } = await ready(core)
+    const input = mediaTurn(routeId, chat.waId, 'fixture-input', png)
+    expect((await core.post('/v2/aira/media-turn', input, core.owner)).status).toBe(401)
+    expect((await core.post('/v2/aira/media-turn', { ...input, routeId: randomUUID() })).status).toBe(403)
+    expect((await core.post('/v2/aira/media-turn', { ...input, profile: 'other' })).status).toBe(403)
+    for (const malformed of [
+      { ...input, path: '/fixture/not-authorized' },
+      { ...input, sender: '' },
+      { ...input, media: { ...input.media, mime: 'image/jpeg' } },
+      { ...input, media: { ...input.media, sha256: 'a'.repeat(64) } },
+      { ...input, media: { ...input.media, base64: input.media.base64 + '=' } },
+      { ...input, media: { ...input.media, kind: 'document' } },
+      { ...input, media: { ...input.media, filename: 'fixture.png' } }
+    ])
+      expect((await core.post('/v2/aira/media-turn', malformed)).status).toBe(400)
+    expect((await core.post('/v2/aira/media-turn', { ...input, kind: 'group' })).status).toBe(409)
+    expect((await core.post('/v2/aira/media-turn', { ...input, chat: 'unknown-fixture' })).status).toBe(409)
+    const pending = ensureChat(core.app.storage, { waId: 'pending-fixture', type: 'dm' })
+    expect((await core.post('/v2/aira/media-turn', { ...input, chat: pending.waId })).status).toBe(409)
+    const tooLarge = Buffer.alloc(5 * 1024 * 1024 + 1)
+    png.copy(tooLarge)
+    expect((await core.post('/v2/aira/media-turn', mediaTurn(routeId, chat.waId, 'oversize', tooLarge))).status).toBe(
+      400
+    )
+    const bodyOverflow = await core
+      .post('/v2/aira/media-turn', {
+        ...input,
+        media: { ...input.media, base64: 'A'.repeat(8 * 1024 * 1024) }
+      })
+      .then(
+        (result) => result.status,
+        () => null
+      )
+    // The HTTP reader destroys an over-limit connection rather than buffering it.
+    expect([null, 400]).toContain(bodyOverflow)
+    expect((await core.post('/v2/aira/turn', input)).status).toBe(400)
+    setSetting(core.app.storage, {
+      level: 'chat',
+      scope: chat.chatId,
+      key: 'features.media',
+      value: false,
+      actor: 'test'
+    })
+    expect((await core.post('/v2/aira/media-turn', input)).status).toBe(409)
+    const old = await core.post('/v2/aira/attach-check', typedAttach())
+    expect(routeIdOf(old.body)).not.toBe(routeId)
+    expect((await core.post('/v2/aira/media-turn', input)).status).toBe(403)
+    expect(await core.ownerCall('health')).toMatchObject({ capabilities: { inboundMedia: false } })
+    expect(core.watch).not.toHaveBeenCalled()
+    expect(core.model.requests).toHaveLength(0)
+    const noRole = await start(true)
+    const missing = await ready(noRole)
+    expect(await noRole.ownerCall('health')).toMatchObject({ capabilities: { inboundMedia: false } })
+    expect(
+      (await noRole.post('/v2/aira/media-turn', mediaTurn(missing.routeId, missing.chat.waId, 'fixture', png))).status
+    ).toBe(503)
+    expect(noRole.watch).not.toHaveBeenCalled()
+    expect(noRole.model.requests).toHaveLength(0)
+  })
+
+  it('does not watch muted, unauthorized sender or media queued under a revoked route', async () => {
+    const core = await start(true, [{ text: 'fixture reply' }], 600, true)
+    const { routeId, chat } = await ready(core)
+    const set = (key: string, value: unknown) =>
+      setSetting(core.app.storage, { level: 'chat', scope: chat.chatId, key, value, actor: 'test' })
+    set('muted', { by: 'fixture', at: '2026-01-01T00:00:00.000Z' })
+    expect((await core.post('/v2/aira/media-turn', mediaTurn(routeId, chat.waId, 'muted', png))).status).toBe(409)
+    set('muted', false)
+    set('allowedSenders', [])
+    expect(
+      (await core.post('/v2/aira/media-turn', mediaTurn(routeId, chat.waId, 'not-allowed', png))).body
+    ).toMatchObject({ disposition: 'no_reply' })
+    set('allowedSenders', 'all')
+    const queued = core.post('/v2/aira/media-turn', mediaTurn(routeId, chat.waId, 'queued-revocation', png))
+    await vi.waitFor(() => {
+      expect(
+        core.app.storage.read((db) =>
+          db.prepare('SELECT mid FROM inbound_message WHERE mid = ?').pluck().get('queued-revocation')
+        )
+      ).toBe('queued-revocation')
+    })
+    const textOnly = routeIdOf((await core.post('/v2/aira/attach-check', typedAttach())).body)
+    expect(textOnly).not.toBe(routeId)
+    expect((await queued).body).toMatchObject({ disposition: 'no_reply' })
+    expect(core.watch).not.toHaveBeenCalled()
+    expect(core.model.requests).toHaveLength(0)
+  })
+
+  it('limits concurrent media requests while their bytes remain in the turn queue', async () => {
+    const core = await start(true, [{ text: 'fixture reply' }], 20, true)
+    const { routeId, chat } = await ready(core)
+    const initialWatch = core.watch.getMockImplementation()!
+    let release!: () => void
+    const block = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    core.watch.mockImplementation(async (file) => {
+      await block
+      return initialWatch(file)
+    })
+    const requests = Array.from({ length: 4 }, (_, i) =>
+      core.post('/v2/aira/media-turn', mediaTurn(routeId, chat.waId, 'concurrent-' + i, png))
+    )
+    try {
+      await vi.waitFor(() => {
+        expect(
+          core.app.storage.read((db) =>
+            db.prepare("SELECT COUNT(*) FROM inbound_message WHERE mid LIKE 'concurrent-%'").pluck().get()
+          )
+        ).toBe(4)
+      })
+      expect(
+        (await core.post('/v2/aira/media-turn', mediaTurn(routeId, chat.waId, 'concurrent-overflow', png))).status
+      ).toBe(429)
+    } finally {
+      release()
+      await Promise.all(requests)
+    }
+    expect(core.watch).toHaveBeenCalledTimes(4)
+    expect((await core.post('/v2/aira/media-turn', mediaTurn(routeId, chat.waId, 'after-release', png))).status).toBe(
+      200
+    )
+    expect(core.watch).toHaveBeenCalledTimes(5)
+  })
+
+  it('cannot introduce bytes on a retry of a durably received message after interruption', async () => {
+    const core = await start(true, [{ text: 'fixture reply' }], 20, true)
+    const { routeId, chat } = await ready(core)
+    const senderId = ensureSubject(core.app.storage, chat.waId)
+    const mid = 'previously-received'
+    // This is the durable state after ingress committed but before the old process ran the turn.
+    receiveInbound(core.app.storage, {
+      chatId: chat.chatId,
+      senderId,
+      mid,
+      onNew: (db) => storeUserMessage(db, { chatId: chat.chatId, senderId, mid, content: 'previous text' })
+    })
+    const result = await core.post('/v2/aira/media-turn', mediaTurn(routeId, chat.waId, mid, png))
+    expect(result.status).toBe(200)
+    expect(core.watch).not.toHaveBeenCalled()
+    expect(core.model.requests).toHaveLength(1)
+    expect(JSON.stringify(core.model.requests[0])).toContain('previous text')
+  })
+
+  it('keeps the first pending bytes and isolates media from a newer admitted text sender', async () => {
+    const core = await start(true, [{ text: 'fixture reply' }], 200, true)
+    const { routeId, chat } = await ready(core)
+    const input = mediaTurn(routeId, chat.waId, 'duplicate-media', png)
+    const first = core.post('/v2/aira/media-turn', input)
+    await vi.waitFor(() => {
+      expect(
+        core.app.storage.read((db) =>
+          db.prepare('SELECT mid FROM inbound_message WHERE mid = ?').pluck().get(input.mid)
+        )
+      ).toBe(input.mid)
+    })
+    const replacement = Buffer.concat([png, Buffer.from('replacement')])
+    const second = core.post('/v2/aira/media-turn', mediaTurn(routeId, chat.waId, input.mid, replacement))
+    const replies = await Promise.all([first, second])
+    expect(
+      replies.filter((reply) => z.object({ disposition: z.string() }).parse(reply.body).disposition === 'reply')
+    ).toHaveLength(1)
+    expect(core.watch).toHaveBeenCalledTimes(1)
+    expect(core.watch.mock.lastCall?.[0].data).toEqual(png)
+
+    const group = ensureChat(core.app.storage, { waId: 'fixture-group', type: 'group' })
+    setChatStatus(core.app.storage, { chatId: group.chatId, status: 'active', actor: 'test' })
+    const allowedSender = ensureSubject(core.app.storage, 'fixture-allowed')
+    setSetting(core.app.storage, {
+      level: 'chat',
+      scope: group.chatId,
+      key: 'allowedSenders',
+      value: [allowedSender],
+      actor: 'test'
+    })
+    const blocked = core.post('/v2/aira/media-turn', {
+      ...mediaTurn(routeId, group.waId, 'blocked-media', png),
+      kind: 'group',
+      sender: 'fixture-blocked'
+    })
+    await vi.waitFor(() => {
+      expect(
+        core.app.storage.read((db) =>
+          db.prepare('SELECT mid FROM inbound_message WHERE mid = ?').pluck().get('blocked-media')
+        )
+      ).toBe('blocked-media')
+    })
+    const allowed = core.post('/v2/aira/turn', {
+      ...typedTurn(routeId, group.waId, 'allowed-text', 'allowed text'),
+      kind: 'group',
+      sender: 'fixture-allowed'
+    })
+    expect((await blocked).body).toMatchObject({ disposition: 'no_reply' })
+    expect((await allowed).body).toMatchObject({ disposition: 'reply' })
+    expect(core.watch).toHaveBeenCalledTimes(1)
+    expect(core.model.requests).toHaveLength(2)
+    setSetting(core.app.storage, {
+      level: 'chat',
+      scope: chat.chatId,
+      key: 'muted',
+      value: { by: 'fixture', at: '2026-01-01T00:00:00.000Z' },
+      actor: 'test'
+    })
+    expect(
+      (await core.post('/v2/aira/turn', typedTurn(routeId, chat.waId, 'muted-text', 'ordinary text'))).body
+    ).toMatchObject({ disposition: 'reply' })
+    expect(core.watch).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('standalone structured Hermes transport', () => {
