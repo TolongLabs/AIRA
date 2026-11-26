@@ -46,6 +46,7 @@ class DocumentAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.selected = SimpleNamespace(send=AsyncMock(return_value=self.result), send_document=AsyncMock())
         self.runner = SimpleNamespace(_delivery_adapter_for=Mock(return_value=self.selected))
         self.seen = []
+        self.fail_text_ack = False
         self.paths = []
         self.document = {"id": DOCUMENT, "kind": "document", "mime": "text/markdown",
                          "filename": "report.md", "sha256": hashlib.sha256(DATA).hexdigest(),
@@ -73,6 +74,8 @@ class DocumentAdapterTests(unittest.IsolatedAsyncioTestCase):
         if path.endswith("/claim"):
             return {"schemaVersion": 2, "delivery": {"id": TEXT, "kind": "text", "text": "fixture reply"}}
         if path.endswith("/ack"):
+            if self.fail_text_ack and body["id"] == TEXT:
+                raise ConnectionError("synthetic lost acknowledgement")
             return {"schemaVersion": 2, "accepted": True}
         self.fail("Unexpected endpoint")
 
@@ -96,6 +99,23 @@ class DocumentAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(row["chat"] == self.source.chat_id and row["routeId"] == ROUTE for row in claims))
         acks = [body for path, body in self.seen if path.endswith("/ack")]
         self.assertEqual([(row["id"], row["outcome"]) for row in acks], [(TEXT, "confirmed"), (DOCUMENT, "confirmed")])
+
+
+    async def test_lost_text_ack_does_not_stop_independent_document_claim(self):
+        self.fail_text_ack = True
+        await self.route()
+        self.selected.send.assert_awaited_once()
+        self.selected.send_document.assert_awaited_once()
+        self.assertEqual(self.seen[-1][1]["id"], DOCUMENT)
+        self.assertEqual(self.seen[-1][1]["outcome"], "confirmed")
+
+    async def test_no_native_target_acknowledges_definite_failure(self):
+        self.runner._delivery_adapter_for.return_value = None
+        await self.route()
+        self.selected.send.assert_not_awaited()
+        self.selected.send_document.assert_not_awaited()
+        self.assertEqual([(body["id"], body["outcome"]) for path, body in self.seen if path.endswith("/ack")],
+                         [(TEXT, "failed"), (DOCUMENT, "failed")])
 
     async def test_invalid_document_payloads_never_send(self):
         original = self.document.copy()

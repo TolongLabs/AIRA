@@ -15,7 +15,7 @@ import {
   CHAT_FEATURE_DEFINITIONS,
   ChatSettingsViewModel,
   personaChoices,
-  standaloneTextFeature
+  standaloneChatFeature
 } from '@/lib/chat-view-model'
 import {
   type CoreCharacter,
@@ -1266,7 +1266,7 @@ function ChatRow({
               )}
               {tab === 'features' &&
                 CHAT_FEATURE_DEFINITIONS.filter(
-                  (f) => !standalone || standaloneTextFeature(f.key, reportDocuments)
+                  (f) => !standalone || standaloneChatFeature(f.key, reportDocuments)
                 ).map((f) => {
                   const postMedia = f.key === 'features.autofetch'
                   const socialKey = postMedia || f.key === 'features.social' ? (f.key as SocialCapabilityKey) : null

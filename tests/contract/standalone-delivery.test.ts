@@ -143,9 +143,10 @@ describe('standalone typed delivery ledger', () => {
     expect(ledger.ack({ ...claim, outcome: 'confirmed' })).toBe(true)
   })
 
-  it('is additive for schema 17 and does not obstruct turn retention', () => {
+  it('is additive for schemas 17 and 18 and does not obstruct turn retention', () => {
     const { storage, ledger, input } = fixture()
-    expect(planMigrations(storage, readMigrations().slice(0, 17))).toMatchObject({ pending: [], newer: [18] })
+    expect(planMigrations(storage, readMigrations().slice(0, 17))).toMatchObject({ pending: [], newer: [18, 19] })
+    expect(planMigrations(storage, readMigrations().slice(0, 18))).toMatchObject({ pending: [], newer: [19] })
     returned(storage, { ...input, text: 'retained until turn deletion' })
     expect(ledger.issue(input)).toHaveLength(1)
     storage.tx((db) => {

@@ -823,14 +823,14 @@ def main() -> int:
             if args.previous_image:
                 with closing(sqlite3.connect(f"file:{restore / 'aira.db'}?mode=ro", uri=True)) as db:
                     schema = db.execute("SELECT max(version) FROM schema_migration").fetchone()[0]
-                check(schema >= 18, "previous_schema", "The restored fixture did not contain the new delivery schema.")
+                check(schema >= 19, "previous_schema", "The restored fixture did not contain the exact document receipt schema.")
                 verify_restored_auth(args.previous_image, home, restore, owner_token, revision)
                 with closing(sqlite3.connect(f"file:{restore / 'aira.db'}?mode=ro", uri=True)) as db:
                     check(db.execute("SELECT max(version) FROM schema_migration").fetchone()[0] == schema
                           and db.execute("PRAGMA quick_check").fetchone()[0] == "ok"
                           and not db.execute("PRAGMA foreign_key_check").fetchall(),
                           "previous_schema", "The previous release changed or damaged the migrated store.")
-                note("previous released core: authenticated ready on the schema-18 restored store")
+                note(f"previous released core: authenticated ready on the schema-{schema} restored store")
             note("update smoke: failing isolated probe rolls back exact previous image")
             code, failed = run_json(launcher, ["update", "--home", str(home), "--image", args.bad_image], 300)
             check(code == 1 and failed.get("error", {}).get("code") == "update_rolled_back",

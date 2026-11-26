@@ -45,8 +45,8 @@ export const CHAT_FEATURE_DEFINITIONS: readonly ChatFeatureDefinition[] = [
   }
 ]
 
-// Standalone can answer admitted text turns; the other adapter features require legacy host integrations.
-export const standaloneTextFeature = (key: string, reportDocuments = false) =>
+// Standalone enables text features and explicitly negotiated portable operations.
+export const standaloneChatFeature = (key: string, reportDocuments = false) =>
   ['features.search', 'features.social', 'features.think'].includes(key) ||
   (key === 'features.reports' && reportDocuments)
 

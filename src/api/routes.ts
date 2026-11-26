@@ -3,6 +3,7 @@ import type { PackSet } from '../character/loader.js'
 import type { InstallationMode, StandaloneReadiness } from '../config/installation-mode.js'
 import { readFeedback } from '../feedback/view.js'
 import { DEFAULT_TOOL_LABELS, plainLabel } from '../format/footer.js'
+import { hasDocumentCapability } from '../gateway/standalone.js'
 import { listChatItems } from '../memory/store.js'
 import { buildReport, newestSnapshotFile } from '../records/report.js'
 import { displayNameFor, listChats } from '../settings/chats.js'
@@ -119,10 +120,7 @@ function handleHealth(deps: SiteApiDeps): RouteResult {
       subscriptionRunner: false,
       fileBrowser: false,
       gatewayConnection: readiness?.hermes?.state === 'connected',
-      reportDocuments:
-        readiness?.hermes?.state === 'connected' &&
-        readiness.hermes.protocolVersion === 2 &&
-        readiness.hermes.capabilities.length === 2,
+      reportDocuments: hasDocumentCapability(readiness?.hermes),
       scheduler: false
     }
   })

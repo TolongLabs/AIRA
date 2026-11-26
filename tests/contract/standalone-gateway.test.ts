@@ -413,6 +413,16 @@ describe('standalone typed Hermes candidate', () => {
     expect(core.model.requests).toHaveLength(1)
   })
 
+  it('allows explicit document attachment in keyless setup without authorizing a model turn', async () => {
+    const core = await start(false)
+    const attached = await core.post('/v2/aira/attach-check', { ...typedAttach(), capabilities: ['text', 'document'] })
+    expect(attached.status).toBe(200)
+    const route = routeIdOf(attached.body)
+    const response = await core.post('/v2/aira/turn', typedTurn(route, 'fixture-a', 'keyless', '/doc fixture'))
+    expect(response.status).toBe(503)
+    expect(core.model.requests).toHaveLength(0)
+  })
+
   it('offers and claims a report only on an explicitly document-capable current route', async () => {
     const core = await start(true, [
       { text: 'text-only fixture reply' },
@@ -426,6 +436,25 @@ describe('standalone typed Hermes candidate', () => {
         ]
       },
       { text: 'Here is the report.' },
+      {
+        toolCalls: [
+          {
+            id: 'implicit-report-call',
+            name: 'make_report',
+            args: { title: 'Implicit synthetic report', sections: [{ heading: 'Details', body: 'Implicit fixture.' }] }
+          }
+        ]
+      },
+      { text: 'Here is the implicit report.' },
+      {
+        toolCalls: [
+          {
+            id: 'disabled-report-call',
+            name: 'make_report',
+            args: { title: 'Disabled synthetic report', sections: [{ heading: 'Details', body: 'Not permitted.' }] }
+          }
+        ]
+      },
       { text: 'document disabled fixture reply' }
     ])
     const textRoute = routeIdOf((await core.post('/v2/aira/attach-check', typedAttach())).body)
@@ -485,6 +514,13 @@ describe('standalone typed Hermes candidate', () => {
     expect(Buffer.from(payload.base64, 'base64').toString()).toContain('Fixture only.')
     expect((await core.post('/v2/aira/delivery/claim', claim)).status).toBe(409)
     expect((await core.post('/v2/aira/delivery/ack', { ...claim, outcome: 'confirmed' })).status).toBe(200)
+    const implicit = await core.post(
+      '/v2/aira/turn',
+      typedTurn(documentRoute, 'fixture-a', 'implicit', 'Please write a brief Markdown report.')
+    )
+    expect(implicit.status).toBe(200)
+    expect(implicit.body).toMatchObject({ deliveries: [{ kind: 'text' }, { kind: 'document' }] })
+    expect(core.model.requests[3]?.tools.map((tool) => tool.name)).toContain('make_report')
     const chatSettings = z
       .object({ revision: z.string() })
       .parse(await core.ownerCall(`settings?level=chat&scope=${chatId}`))
@@ -495,8 +531,14 @@ describe('standalone typed Hermes candidate', () => {
       value: false,
       expectedRevision: chatSettings.revision
     })
-    await core.post('/v2/aira/turn', typedTurn(documentRoute, 'fixture-a', 'disabled', 'hello'))
-    expect(core.model.requests[3]?.tools.map((tool) => tool.name)).not.toContain('make_report')
+    const disabled = await core.post('/v2/aira/turn', typedTurn(documentRoute, 'fixture-a', 'disabled', 'hello'))
+    expect(disabled.body).toMatchObject({ deliveries: [{ kind: 'text' }] })
+    expect(core.model.requests[5]?.tools.map((tool) => tool.name)).not.toContain('make_report')
+    expect(
+      core.app.storage.read((db) =>
+        db.prepare("SELECT count(*) FROM receipt WHERE kind = 'report.created'").pluck().get()
+      )
+    ).toBe(2)
     const next = routeIdOf((await core.post('/v2/aira/attach-check', typedAttach())).body)
     expect(next).not.toBe(documentRoute)
     expect(await core.ownerCall('health')).toMatchObject({ capabilities: { reportDocuments: false } })

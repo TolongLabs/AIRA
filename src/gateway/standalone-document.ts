@@ -7,6 +7,7 @@ const MAX_BYTES = 5_242_880
 const HASH = /^[a-f0-9]{64}$/
 
 interface ReceiptFile {
+  receipt_id: string
   target: string
   state: string
   result: string
@@ -17,7 +18,7 @@ interface ReceiptFile {
 export type ReportDocumentMetadata = {
   sha256: string
 } & ({ mime: 'application/pdf'; filename: 'report.pdf' } | { mime: 'text/markdown'; filename: 'report.md' })
-export type ReportDocument = ReportDocumentMetadata & { data: Buffer }
+export type ReportDocument = ReportDocumentMetadata & { data: Buffer; receiptId: string }
 
 function ownedBytes(root: string, path: string, size: number): Buffer | null {
   if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_BYTES) return null
@@ -73,33 +74,41 @@ function validateFile(filesDir: string, row: ReceiptFile): ReportDocument | null
   if (!data || createHash('sha256').update(data).digest('hex') !== row.target) return null
   if (row.path.endsWith('.pdf')) {
     if (!data.subarray(0, 5).equals(Buffer.from('%PDF-'))) return null
-    return { sha256: row.target, data, mime: 'application/pdf', filename: 'report.pdf' }
+    return { receiptId: row.receipt_id, sha256: row.target, data, mime: 'application/pdf', filename: 'report.pdf' }
   }
   try {
     if (new TextDecoder('utf-8', { fatal: true }).decode(data).includes('\0')) return null
   } catch {
     return null
   }
-  return { sha256: row.target, data, mime: 'text/markdown', filename: 'report.md' }
+  return { receiptId: row.receipt_id, sha256: row.target, data, mime: 'text/markdown', filename: 'report.md' }
 }
 
 /** The private report receipt, never reply text or a caller-supplied path, authorizes document bytes. */
 export function readStandaloneReport(
   db: Db,
   filesDir: string,
-  input: { chatId: string; turnId: string; sha256?: string }
+  input: { chatId: string; turnId: string; sha256?: string; receiptId?: string }
 ): ReportDocument | null {
   const rows = db
     .prepare(
-      `SELECT r.target, r.state, tr.result, f.path, f.bytes
+      `SELECT r.receipt_id, r.target, r.state, tr.result, f.path, f.bytes
      FROM receipt r
      JOIN tool_result tr ON tr.call_id = r.call_id AND tr.turn_id = r.turn_id AND tr.chat_id = r.chat_id AND tr.tool = r.tool
      JOIN file f ON f.sha256 = r.target AND f.kind = 'report'
      WHERE r.chat_id = ? AND r.turn_id = ? AND r.tool = 'make_report' AND r.kind = 'report.created'
        AND (? IS NULL OR r.target = ?)
+       AND (? IS NULL OR r.receipt_id = ?)
      ORDER BY r.created_at, r.receipt_id`
     )
-    .iterate(input.chatId, input.turnId, input.sha256 ?? null, input.sha256 ?? null) as Iterable<ReceiptFile>
+    .iterate(
+      input.chatId,
+      input.turnId,
+      input.sha256 ?? null,
+      input.sha256 ?? null,
+      input.receiptId ?? null,
+      input.receiptId ?? null
+    ) as Iterable<ReceiptFile>
   for (const row of rows) {
     const document = validateFile(filesDir, row)
     if (document) return document

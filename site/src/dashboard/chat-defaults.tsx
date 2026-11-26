@@ -4,7 +4,7 @@ import { useContext, useEffect, useRef, useState } from 'react'
 import { Button, Card, Empty, Field, Input, Picker, Section, Segmented, Toggle } from '@/components/ui'
 import { dashboardHref } from '@/dashboard/navigation'
 import { authHeaders, requestToken } from '@/lib/api'
-import { CHAT_FEATURE_DEFINITIONS, personaChoices, standaloneTextFeature } from '@/lib/chat-view-model'
+import { CHAT_FEATURE_DEFINITIONS, personaChoices, standaloneChatFeature } from '@/lib/chat-view-model'
 import { CoreError, core, reasonText, type CoreCharacter, type CoreChat, type Resolved } from '@/lib/core'
 import { toast, Toaster } from '@/lib/hooks'
 import { cn } from '@/lib/utils'
@@ -893,7 +893,7 @@ function DefaultsForm({
       )}
 
       <Section title="Features">
-        {CHAT_FEATURE_DEFINITIONS.filter((f) => !standalone || standaloneTextFeature(f.key, reportDocuments)).map(
+        {CHAT_FEATURE_DEFINITIONS.filter((f) => !standalone || standaloneChatFeature(f.key, reportDocuments)).map(
           (f) => (
             <DefaultsRow key={f.key} label={f.label} {...row(f.key)} busy={busy} onClear={clear(f.key)}>
               <ToggleRow
