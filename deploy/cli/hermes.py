@@ -8,6 +8,7 @@ import os
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -105,6 +106,7 @@ def _modules(repo_root):
             source = hermes_versions.render_helper(source, hermes_versions.BASELINE_ADAPTER_VERSION)
             result["helper"] = source
         result[name] = _load_module("aira_" + name, path, source)
+    result["typed"] = _read(base / "standalone_typed_adapter.py")[0]
     return result
 
 
@@ -151,6 +153,8 @@ def _plan(args):
         _refuse("health_timeout", "The installed service is not authenticated and ready.", "Run aira doctor and setup first.")
     mods = _modules(args.repo_root)
     patch, adapter = mods["standalone_patch"], mods["standalone_adapter"]
+    requested_protocol = getattr(args, "protocol", None)
+    protocol = 2 if requested_protocol == "v2" else 1
     if not adapter.PROFILE.fullmatch(args.profile):
         raise args_error("Select a valid Hermes profile name.")
     root = _owned_dir(args.hermes_home or Path.home() / ".hermes")
@@ -164,8 +168,11 @@ def _plan(args):
                 "Use a reviewed Hermes source revision without unrelated tracked changes.")
     target = source / patch.TARGET
     helper = target.parent / "aira_transport.py"
-    rendered = hermes_versions.render_helper(mods["helper"], version)
+    baseline = hermes_versions.render_helper(mods["helper"], version)
+    typed = hermes_versions.render_typed_helper(mods["helper"], mods["typed"], version)
+    rendered = typed if protocol == 2 else baseline
     adapter = _load_module("aira_selected_adapter", helper, rendered)
+    typed_adapter = adapter if protocol == 2 else _load_module("aira_typed_adapter", helper, typed)
     marker = profile_dir / adapter.MARKER_NAME
     receipt = home / "data" / "standalone" / "hermes.json"
     host_receipt = receipt.with_name("attach-host.json")
@@ -173,12 +180,16 @@ def _plan(args):
                 "marker": _read(marker, private=True, optional=True), "receipt": _read(receipt, private=True, optional=True),
                 "host": _read(host_receipt, private=True, optional=True)}
     kind = patch.classify_source(original["source"][0])
-    previous_version = (hermes_versions.known_helper_version(mods["helper"], original["helper"][0])
-                        if original["helper"] else None)
+    previous = (hermes_versions.known_helper(mods["helper"], mods["typed"], original["helper"][0])
+                if original["helper"] else None)
+    previous_version, previous_protocol = previous or (None, None)
     if kind == "unsupported" or (original["helper"] and previous_version is None):
         _refuse("hermes_unsupported", "The adapter source or existing helper is unfamiliar.")
     route = report.get("hermesRoute")
     prior_host = json.loads(original["host"][0]) if original["host"] else None
+    prior_marker = json.loads(original["marker"][0]) if original["marker"] else None
+    if original["marker"] and not isinstance(prior_marker, dict):
+        _refuse("hermes_profile_conflict", "The chosen profile marker is invalid.")
     try:
         prior_receipt = json.loads(original["receipt"][0]) if original["receipt"] else None
     except ValueError:
@@ -189,10 +200,26 @@ def _plan(args):
     for record in (route, prior_receipt):
         if isinstance(record, dict) and record.get("state") == "connected":
             prior_versions.append(record.get("adapterVersion"))
+    protocols = [previous_protocol, 1 if kind == "patched" else 2 if kind == "typed" else None]
+    for record in (prior_host, prior_marker):
+        if record is not None:
+            if not isinstance(record, dict) or type(record.get("schemaVersion")) is not int or record["schemaVersion"] not in (1, 2):
+                _refuse("hermes_profile_conflict", "The previous attachment protocol is unrecognized.")
+            protocols.append(record["schemaVersion"])
+    if isinstance(route, dict) and route.get("state") == "connected":
+        protocols.append(route.get("protocolVersion", 1))
+    if isinstance(prior_receipt, dict) and prior_receipt.get("state") == "connected":
+        protocols.append(prior_receipt.get("schemaVersion", 1))
+    if any(value is not None and (type(value) is not int or value not in (1, 2)) for value in protocols):
+        _refuse("hermes_profile_conflict", "The previous attachment protocol is unrecognized.")
+    typed_history = 2 in protocols
+    if typed_history and requested_protocol is None:
+        _refuse("hermes_profile_conflict", "Select --protocol v2 to reattach or --protocol v1 to downgrade explicitly.")
+    changing_protocol = any(old is not None and old != protocol for old in protocols)
     changing_version = any(old is not None and old != version for old in prior_versions)
-    if changing_version and source != root / "hermes-agent":
-        _refuse("hermes_contract_failed", "Version migration requires the selected root's exclusive source checkout.")
-    if kind == "original" or changing_version:
+    if (changing_version or changing_protocol) and source != root / "hermes-agent":
+        _refuse("hermes_contract_failed", "Version or protocol migration requires the selected root's exclusive source checkout.")
+    if kind == "original" or changing_version or changing_protocol:
         other_markers = [root / adapter.MARKER_NAME]
         profiles = root / "profiles"
         if profiles.exists():
@@ -202,20 +229,37 @@ def _plan(args):
     token = install.read_owner_token(home / "data" / "standalone" / "gateway.token")
     expected = {"schemaVersion": 1, "profile": args.profile, "profileHome": str(profile_dir),
                 "port": manifest.corePort, "token": token}
-    if original["marker"] is not None and adapter.read_marker(marker) != expected:
-        _refuse("hermes_profile_conflict", "The chosen profile marker belongs to a different route.")
+    provisional = {**expected, "schemaVersion": 2, "state": "provisional", "routeId": None, "capabilities": ["text"]}
+    if prior_marker is not None:
+        if prior_marker["schemaVersion"] == 2:
+            previous_marker = typed_adapter.read_typed_marker(marker)
+            if (previous_marker["state"] != "active" or previous_marker != {
+                    **provisional, "state": "active", "routeId": previous_marker["routeId"]}):
+                _refuse("hermes_profile_conflict", "The previous typed marker is unfinished or belongs to a different route.")
+        elif adapter.read_marker(marker) != expected:
+            _refuse("hermes_profile_conflict", "The chosen profile marker belongs to a different route.")
     if route and route["profile"] != args.profile:
         _refuse("hermes_profile_conflict", "AIRA already has a different attached profile.")
     host_record = {"schemaVersion": 1, "sourceDir": str(source), "hermesHome": str(root),
                    "profile": args.profile, "adapterVersion": adapter.ADAPTER_VERSION}
-    if changing_version:
-        prior_record = {**host_record, "adapterVersion": previous_version}
+    if changing_version or changing_protocol or typed_history:
+        prior_record = {**host_record, "adapterVersion": previous_version, "schemaVersion": previous_protocol}
         verified_at = route.get("verifiedAt") if isinstance(route, dict) else None
         prior_route = {"state": "connected", "profile": args.profile, "adapterVersion": previous_version,
                        "verifiedAt": verified_at}
-        if (previous_version is None or previous_version == version or not original["marker"]
+        expected_receipt = {"schemaVersion": previous_protocol, **prior_route}
+        if previous_protocol == 2 and isinstance(route, dict):
+            route_id = route.get("routeId")
+            prior_record.update(routeId=route_id, capabilities=["text"])
+            prior_route.update(routeId=route_id, capabilities=["text"], protocolVersion=2)
+            expected_receipt.update(routeId=route_id, capabilities=["text"])
+        expected_kind = "typed" if previous_protocol == 2 else "patched"
+        if (previous_version is None or not prior_marker or prior_marker.get("schemaVersion") != previous_protocol
+                or (kind != expected_kind and not (kind == "original" and changing_version and previous_protocol == 1))
+                or (previous_protocol == 2 and (not hermes_versions.valid_route_id(prior_route.get("routeId"))
+                                                or prior_marker.get("routeId") != prior_route.get("routeId")))
                 or prior_host != prior_record or not isinstance(verified_at, str)
-                or route != prior_route or prior_receipt != {"schemaVersion": 1, **prior_route}):
+                or route != prior_route or prior_receipt != expected_receipt):
             _refuse("hermes_profile_conflict", "The previous helper, host record and verified route do not agree.")
     elif original["host"] is not None and prior_host != host_record:
         _refuse("hermes_profile_conflict", "The saved attachment refers to different source or profile paths.")
@@ -235,18 +279,30 @@ def _plan(args):
     if len(environments) != 1:
         _refuse("hermes_unsupported", "The pinned Hermes virtual environment is unavailable.")
     python, binary = environments[0]
-    patched = patch.patch_source(original["source"][0]) if kind == "original" else original["source"][0]
+    if protocol == 2 or typed_history:
+        patched = patch.select_protocol(original["source"][0], protocol)
+    else:
+        patched = patch.patch_source(original["source"][0]) if kind == "original" else original["source"][0]
     compile(patched, str(target), "exec")
+    same_route = typed_history and not changing_protocol and not changing_version
+    if protocol == 2:
+        route_id = route["routeId"] if same_route else None
+        expected = {**provisional, "state": "active" if same_route else "provisional", "routeId": route_id}
+        host_record = {**host_record, "schemaVersion": 2, "routeId": route_id, "capabilities": ["text"]}
+    preserve = not changing_version and not changing_protocol
+    preserve_marker = not changing_protocol and (protocol == 1 or not changing_version)
     plan = {
         "home": home, "manifest": manifest, "selection": selection, "report": report, "sourceDir": source,
         "hermesHome": root, "profileDir": profile_dir, "profile": args.profile, "python": python, "binary": binary,
         "paths": {"source": target, "helper": helper, "marker": marker, "receipt": receipt, "host": host_receipt}, "original": original,
         "desired": {"source": (patched, original["source"][1]),
                     "helper": (rendered, original["helper"][1] if original["helper"] else 0o644),
-                    "marker": original["marker"] or ((json.dumps(expected, sort_keys=True) + "\n").encode(), 0o600),
-                    "host": (original["host"] if original["host"] and not changing_version else
+                    "marker": original["marker"] if original["marker"] and preserve_marker else ((json.dumps(expected, sort_keys=True) + "\n").encode(), 0o600),
+                    "host": (original["host"] if original["host"] and preserve else
                              ((json.dumps(host_record, sort_keys=True) + "\n").encode(), 0o600))},
         "kind": kind, "adapter": adapter,
+        "protocol": protocol, "typedTransaction": protocol == 2 or typed_history,
+        "provisional": ((json.dumps(provisional, sort_keys=True) + "\n").encode(), 0o600),
     }
     plan["running"] = _profile_status(plan)
     return plan
@@ -255,6 +311,7 @@ def _plan(args):
 def _detail(plan, apply):
     changes = [name for name, value in plan["desired"].items() if value != plan["original"][name]]
     return {"profile": plan["profile"], "dryRun": not apply, "adapterVersion": plan["adapter"].ADAPTER_VERSION,
+            **({"protocol": "v" + str(plan["protocol"])} if plan.get("typedTransaction") else {}),
             "sourceState": plan["kind"], "gatewayRunning": plan["running"], "changes": changes,
             "verification": "synthetic local route; no real message; text only"}
 
@@ -313,10 +370,194 @@ def _restore(plan, changed):
     return ok
 
 
+def _private_record(value):
+    return ((json.dumps(value, sort_keys=True) + "\n").encode(), 0o600)
+
+
+def _publish_marker(path, record):
+    """The rename is the commit point. No rollback is allowed after it succeeds."""
+    fd, temporary = tempfile.mkstemp(prefix=".aira-marker-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            os.fchmod(handle.fileno(), record[1])
+            handle.write(record[0])
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except (OSError, KeyboardInterrupt):
+        Path(temporary).unlink(missing_ok=True)
+        raise
+    try:
+        install.fsync_dir(path.parent)
+    except OSError:
+        return False
+    return True
+
+
+def _typed_restore(plan, changed, written):
+    """Keep the selected route inert until the exact previous files and liveness agree."""
+    paths, original = plan["paths"], plan["original"]
+    try:
+        current = _read(paths["marker"], private=True, optional=True)
+        if current != plan["provisional"]:
+            # A failure before the provisional marker was published changed no other files.
+            return current == original["marker"] and all(
+                _read(paths[name], private=name in ("receipt", "host"), optional=True) == original[name]
+                for name in ("source", "helper", "receipt", "host"))
+        for name in ("helper", "source", "receipt", "host"):
+            before = original[name]
+            value = _read(paths[name], private=name in ("receipt", "host"), optional=True)
+            if value == before:
+                continue
+            if name == "receipt":
+                # A failed or lost handshake may have changed its core receipt before returning.
+                if name in written and value != written[name]:
+                    return False
+                try:
+                    candidate = json.loads(value[0]) if value else None
+                except ValueError:
+                    return False
+                keys = {"schemaVersion", "state", "profile", "adapterVersion", "verifiedAt"}
+                if plan["protocol"] == 2:
+                    keys.update({"routeId", "capabilities"})
+                if (not isinstance(candidate, dict) or candidate.get("state") != "connected"
+                        or set(candidate) != keys or not isinstance(candidate.get("verifiedAt"), str)
+                        or candidate.get("schemaVersion") != plan["protocol"]
+                        or candidate.get("profile") != plan["profile"]
+                        or candidate.get("adapterVersion") != plan["adapter"].ADAPTER_VERSION
+                        or (plan["protocol"] == 2 and (not hermes_versions.valid_route_id(candidate.get("routeId"))
+                                                      or candidate.get("capabilities") != ["text"]))):
+                    return False
+            elif value != written.get(name):
+                return False
+            _write(paths[name], before)
+            if _read(paths[name], private=name in ("receipt", "host"), optional=True) != before:
+                return False
+        if plan["running"] and changed:
+            _gateway_command(plan, "restart")
+        if _profile_status(plan) != plan["running"]:
+            return False
+        if _read(paths["marker"], private=True) != plan["provisional"]:
+            return False
+        _write(paths["marker"], original["marker"])
+        return _read(paths["marker"], private=True, optional=True) == original["marker"]
+    except (CommandError, OSError, ValueError, compose.RunError, KeyboardInterrupt):
+        return False
+
+
+def _typed_apply(plan, changed, warnings, op):
+    paths, original, desired = plan["paths"], plan["original"], plan["desired"]
+    written = {}
+    final_marker = None
+    report = None
+    try:
+        # The existing v1 helper rejects this schema; the v2 helper rejects its provisional state.
+        _write(paths["marker"], plan["provisional"])
+        if _read(paths["marker"], private=True) != plan["provisional"]:
+            raise operational_error("attach_failed", "The provisional marker did not match.", "patch")
+        for name in ("source", "helper"):
+            written[name] = desired[name]
+            if original[name] != desired[name]:
+                _write(paths[name], desired[name])
+            if _read(paths[name]) != desired[name]:
+                raise operational_error("attach_failed", "Adapter readback did not match.", "patch")
+        if plan["running"] and changed:
+            _gateway_command(plan, "restart")
+        if _profile_status(plan) != plan["running"]:
+            raise operational_error("attach_failed", "Gateway liveness changed during attachment.", "verify")
+
+        if plan["protocol"] == 2:
+            route = plan["adapter"].typed_check(paths["marker"])
+            if not route:
+                raise operational_error("hermes_contract_failed", "The typed adapter handshake failed.", "verify")
+            marker_value = {**json.loads(desired["marker"][0]), "state": "active", "routeId": route["routeId"]}
+            host_value = {**json.loads(desired["host"][0]), "routeId": route["routeId"]}
+            known_id = json.loads(desired["marker"][0])["routeId"]
+            if known_id is not None and known_id != route["routeId"]:
+                raise operational_error("hermes_contract_failed", "An identical route changed its identifier.", "verify")
+        else:
+            # A downgrade is also inert until the v1 handshake and receipt are verified; do not publish
+            # a live v1 marker just so the old helper's check() can read it.
+            marker_value = json.loads(desired["marker"][0])
+            host_value = json.loads(desired["host"][0])
+            response = plan["adapter"]._post(marker_value, "/v1/aira/attach-check", {
+                "schemaVersion": 1, "adapterVersion": plan["adapter"].ADAPTER_VERSION,
+                "profile": plan["profile"], "action": "connect"}, 15)
+            route = response.get("hermes") if isinstance(response, dict) and set(response) == {"schemaVersion", "hermes"} and response["schemaVersion"] == 1 else None
+            if (not isinstance(route, dict) or set(route) != {"state", "profile", "adapterVersion", "verifiedAt"}
+                    or route["state"] != "connected" or route["profile"] != plan["profile"]
+                    or route["adapterVersion"] != plan["adapter"].ADAPTER_VERSION or not isinstance(route["verifiedAt"], str)):
+                raise operational_error("hermes_contract_failed", "The v1 downgrade handshake failed.", "verify")
+
+        # Preserve the exact existing marker and host bytes on identical reattachment.
+        final_marker = desired["marker"] if json.loads(desired["marker"][0]) == marker_value else _private_record(marker_value)
+        written["host"] = desired["host"] if json.loads(desired["host"][0]) == host_value else _private_record(host_value)
+        if original["host"] != written["host"]:
+            _write(paths["host"], written["host"])
+        core_receipt = {"schemaVersion": plan["protocol"], **{k: v for k, v in route.items() if k != "protocolVersion"}}
+        observed_receipt = _read(paths["receipt"], private=True, optional=True)
+        if observed_receipt and json.loads(observed_receipt[0]) == core_receipt:
+            written["receipt"] = observed_receipt
+        report = install.observe(plan["home"], plan["manifest"])
+        if (not observed_receipt or json.loads(observed_receipt[0]) != core_receipt
+                or report["state"]["service"] != "running" or report.get("hermesRoute") != route
+                or _read(paths["receipt"], private=True) != observed_receipt
+                or _read(paths["host"], private=True) != written["host"]
+                or any(_read(paths[name]) != desired[name] for name in ("source", "helper"))
+                or _profile_status(plan) != plan["running"]
+                or _read(paths["marker"], private=True) != plan["provisional"]):
+            raise operational_error("hermes_contract_failed", "The complete typed attachment readback did not match.", "verify")
+        if not _publish_marker(paths["marker"], final_marker):
+            warnings.append("The verified marker was published, but directory durability could not be confirmed.")
+        return report
+    except (CommandError, OSError, ValueError, compose.RunError, KeyboardInterrupt) as err:
+        # If the final rename succeeded just before an interrupt, it is already the live commit point.
+        if final_marker is not None and report is not None:
+            try:
+                if _read(paths["marker"], private=True, optional=True) == final_marker:
+                    warnings.append("The verified marker was published; final durability could not be confirmed.")
+                    return report
+            except (CommandError, OSError, ValueError):
+                pass
+        if not _typed_restore(plan, changed, written):
+            raise rollback_error("rollback_failed", "Attachment recovery was incomplete; the route remains inert when possible.",
+                                 "rollback", "Restore the private attach backup " + op + " before retrying.") from err
+        raise operational_error("attach_failed", "Attachment failed; prior files and gateway state were restored.",
+                                "rollback", "Run aira doctor, then repeat dry-run.") from err
+
+
 class SourceLock(install.DeployLock):
     def __init__(self, source):
         super().__init__(source)
         self.path = source / ".aira-attach.lock"
+
+
+def _legacy_apply(plan, changed, op):
+    try:
+        for name, record in plan["desired"].items():
+            if plan["original"][name] != record:
+                _write(plan["paths"][name], record)
+            if _read(plan["paths"][name], private=name in ("marker", "host")) != record:
+                raise operational_error("attach_failed", "Adapter readback did not match.", "patch")
+        if plan["running"] and changed:
+            _gateway_command(plan, "restart")
+        if _profile_status(plan) != plan["running"]:
+            raise operational_error("attach_failed", "Gateway liveness changed during attachment.", "verify")
+        if not plan["adapter"].check(plan["paths"]["marker"], "connect"):
+            raise operational_error("hermes_contract_failed", "The local adapter handshake failed.", "verify")
+        report = install.observe(plan["home"], plan["manifest"])
+        route = report.get("hermesRoute") or {}
+        if (report["state"]["service"] != "running" or route.get("state") != "connected"
+                or route.get("profile") != plan["profile"]
+                or route.get("adapterVersion") != plan["adapter"].ADAPTER_VERSION):
+            raise operational_error("hermes_contract_failed", "Owner health did not confirm the attachment.", "verify")
+        return report
+    except (CommandError, OSError, ValueError, KeyboardInterrupt) as err:
+        if not _restore(plan, changed):
+            raise rollback_error("rollback_failed", "Attachment recovery was incomplete.", "rollback",
+                                 "Restore the private attach backup " + op + " before retrying.") from err
+        raise operational_error("attach_failed", "Attachment failed; prior files and gateway state were restored.",
+                                "rollback", "Run aira doctor, then repeat dry-run.") from err
 
 
 def run_attach(args, op):
@@ -343,30 +584,8 @@ def run_attach(args, op):
             plan = fresh
             backup = _backup(plan, op)
             changed = any(plan["original"][name] != record for name, record in plan["desired"].items())
-            try:
-                for name, record in plan["desired"].items():
-                    if plan["original"][name] != record:
-                        _write(plan["paths"][name], record)
-                    if _read(plan["paths"][name], private=name in ("marker", "host")) != record:
-                        raise operational_error("attach_failed", "Adapter readback did not match.", "patch")
-                if plan["running"] and changed:
-                    _gateway_command(plan, "restart")
-                if _profile_status(plan) != plan["running"]:
-                    raise operational_error("attach_failed", "Gateway liveness changed during attachment.", "verify")
-                if not plan["adapter"].check(plan["paths"]["marker"], "connect"):
-                    raise operational_error("hermes_contract_failed", "The local adapter handshake failed.", "verify")
-                report = install.observe(plan["home"], plan["manifest"])
-                route = report.get("hermesRoute") or {}
-                if (report["state"]["service"] != "running" or route.get("state") != "connected"
-                        or route.get("profile") != plan["profile"]
-                        or route.get("adapterVersion") != plan["adapter"].ADAPTER_VERSION):
-                    raise operational_error("hermes_contract_failed", "Owner health did not confirm the attachment.", "verify")
-            except (CommandError, OSError, ValueError, KeyboardInterrupt) as err:
-                if not _restore(plan, changed):
-                    raise rollback_error("rollback_failed", "Attachment recovery was incomplete.", "rollback",
-                                         "Restore the private attach backup " + op + " before retrying.") from err
-                raise operational_error("attach_failed", "Attachment failed; prior files and gateway state were restored.",
-                                        "rollback", "Run aira doctor, then repeat dry-run.") from err
+            report = (_typed_apply(plan, changed, warnings, op) if plan.get("typedTransaction")
+                      else _legacy_apply(plan, changed, op))
             if not plan["running"]:
                 warnings.append("The stopped gateway remains stopped. Start the selected profile with hermes -p "
                                 + plan["profile"] + " gateway start when ready.")
@@ -390,12 +609,19 @@ def inspect_attachment(selection, route):
     """Cross-check the public core receipt against the exact installed host files."""
     from .launcher import repo_root_for
     record = json.loads(install.read_owned_text(selection["home"] / "data" / "standalone" / "attach-host.json", 8192))
-    if (not isinstance(record, dict) or set(record) != {"schemaVersion", "sourceDir", "hermesHome", "profile", "adapterVersion"}
-            or record["schemaVersion"] != 1 or record["profile"] != route.get("profile")
+    typed = route.get("protocolVersion") == 2
+    fields = {"schemaVersion", "sourceDir", "hermesHome", "profile", "adapterVersion"}
+    if typed:
+        fields.update({"routeId", "capabilities"})
+    if (not isinstance(record, dict) or set(record) != fields
+            or record["schemaVersion"] != (2 if typed else 1) or record["profile"] != route.get("profile")
             or record["adapterVersion"] != route.get("adapterVersion")):
         _refuse("hermes_contract_failed", "The host attachment record does not match the verified core receipt.")
+    if typed and (record["routeId"] != route.get("routeId") or record["capabilities"] != route.get("capabilities")):
+        _refuse("hermes_contract_failed", "The typed host route does not match the verified core receipt.")
     plan = _plan(SimpleNamespace(home=str(selection["home"]), repo_root=repo_root_for(Path(__file__).resolve()),
-        profile=record["profile"], hermes_dir=record["sourceDir"], hermes_home=record["hermesHome"]))
+        profile=record["profile"], hermes_dir=record["sourceDir"], hermes_home=record["hermesHome"],
+        protocol="v2" if typed else "v1"))
     if any(plan["original"][name] != value for name, value in plan["desired"].items()):
         _refuse("hermes_contract_failed", "The installed adapter or marker no longer matches.")
     return plan["running"]

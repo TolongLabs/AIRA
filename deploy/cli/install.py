@@ -490,11 +490,20 @@ def observe(home, manifest, quick=True):
                             state["chatbot"] = health.get("chatbot", "ready" if mode == "legacy" else "inactive")
                             if mode == "standalone":
                                 maybe_route = health.get("hermes") or {}
+                                typed_fields = {"protocolVersion", "routeId", "capabilities"}
+                                has_typed = isinstance(maybe_route, dict) and bool(typed_fields & maybe_route.keys())
+                                valid_typed = (has_typed and type(maybe_route.get("protocolVersion")) is int
+                                    and maybe_route["protocolVersion"] == 2
+                                    and hermes_versions.valid_route_id(maybe_route.get("routeId"))
+                                    and maybe_route.get("capabilities") == ["text"])
                                 if (isinstance(maybe_route, dict) and maybe_route.get("state") == "connected" and
                                         maybe_route.get("adapterVersion") in hermes_versions.ADAPTER_VERSIONS and
-                                        isinstance(maybe_route.get("profile"), str) and re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", maybe_route["profile"])):
+                                        isinstance(maybe_route.get("profile"), str) and re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", maybe_route["profile"])
+                                        and (not has_typed or valid_typed)):
                                     state["hermes"] = "connected"
                                     route = {k: maybe_route.get(k) for k in ("state", "profile", "adapterVersion", "verifiedAt")}
+                                    if valid_typed:
+                                        route.update({k: maybe_route[k] for k in typed_fields})
                                 elif isinstance(maybe_route, dict) and maybe_route.get("state") == "connected":
                                     state["hermes"] = ("unsupported" if maybe_route.get("adapterVersion") not in
                                                         hermes_versions.ADAPTER_VERSIONS else "disconnected")

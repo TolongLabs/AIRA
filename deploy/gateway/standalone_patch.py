@@ -42,9 +42,14 @@ ADDED = b'''            # AIRA: a selected attached profile consumes its admitte
                         return True, None
 '''
 PATCHED = ANCHOR_FIRST + ADDED + ANCHOR_SECOND
+TYPED_ADDED = ADDED.replace(
+    b'from gateway.aira_transport import route as _aira_route\n                        return True, await _aira_route(_aira_marker, event, source)',
+    b'from gateway.aira_transport import route_typed as _aira_route\n                        return True, await _aira_route(_aira_marker, event, source, runner)',
+)
+TYPED_PATCHED = ANCHOR_FIRST + TYPED_ADDED + ANCHOR_SECOND
 
 
-def patch_source(original: bytes) -> bytes:
+def patch_source(original: bytes, protocol: int = 1) -> bytes:
     """Insert the adapter branch into the exact original file.
 
     Raises TypeError for non-bytes input and ValueError when the digest or the
@@ -58,10 +63,12 @@ def patch_source(original: bytes) -> bytes:
         raise ValueError('digest mismatch: not the reviewed %s' % TARGET)
     if original.count(ANCHOR) != 1:
         raise ValueError('anchor found %d times in %s, want exactly once' % (original.count(ANCHOR), TARGET))
-    return original.replace(ANCHOR, PATCHED, 1)
+    if protocol not in (1, 2):
+        raise ValueError('unsupported standalone protocol')
+    return original.replace(ANCHOR, PATCHED if protocol == 1 else TYPED_PATCHED, 1)
 
 
-def classify_source(current: bytes | bytearray) -> Literal['original', 'patched', 'unsupported']:
+def classify_source(current: bytes | bytearray) -> Literal['original', 'patched', 'typed', 'unsupported']:
     """Classify a candidate file.
 
     ``patched`` means removing the exact added block once rebuilds bytes whose
@@ -77,4 +84,18 @@ def classify_source(current: bytes | bytearray) -> Literal['original', 'patched'
         restored = current.replace(PATCHED, ANCHOR, 1)
         if hashlib.sha256(restored).hexdigest() == ORIGINAL_SHA256:
             return 'patched'
+    if current.count(TYPED_PATCHED) == 1:
+        restored = current.replace(TYPED_PATCHED, ANCHOR, 1)
+        if hashlib.sha256(restored).hexdigest() == ORIGINAL_SHA256:
+            return 'typed'
     return 'unsupported'
+
+
+def select_protocol(current: bytes, protocol: int) -> bytes:
+    """Switch only the exact reviewed consumer insertion, without modifying original bytes."""
+    kind = classify_source(current)
+    if kind == 'patched':
+        current = current.replace(PATCHED, ANCHOR, 1)
+    elif kind == 'typed':
+        current = current.replace(TYPED_PATCHED, ANCHOR, 1)
+    return patch_source(current, protocol)

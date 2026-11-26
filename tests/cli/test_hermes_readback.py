@@ -10,13 +10,13 @@ from deploy.cli import compose, diagnostics, hermes, install
 
 
 class RouteReadbackTests(unittest.TestCase):
-    def observe(self, version):
+    def observe(self, version, **extra):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
             manifest = install.Manifest(project="fixture", imageId="sha256:" + "a" * 64,
                                         sitePort=9890, corePort=9881, stage="installed")
             route = {"state": "connected", "profile": "fixture", "adapterVersion": version,
-                     "verifiedAt": "2026-11-26T00:00:00Z"}
+                     "verifiedAt": "2026-11-26T00:00:00Z", **extra}
             health = {"status": "ready", "schemaVersion": 1, "installationMode": "standalone",
                       "configuration": "configured", "chatbot": "ready", "hermes": route}
             with ExitStack() as stack:
@@ -47,6 +47,16 @@ class RouteReadbackTests(unittest.TestCase):
         self.assertEqual(result["state"]["hermes"], "unsupported")
         self.assertEqual(result["state"]["chatbot"], "inactive")
         self.assertIsNone(result["hermesRoute"])
+
+    def test_status_preserves_typed_route_and_refuses_partial_or_unknown_capabilities(self):
+        fields = {"protocolVersion": 2, "routeId": "12345678-1234-4234-8234-123456789abc", "capabilities": ["text"]}
+        result = self.observe("hermes-v0.23.4", **fields)
+        self.assertEqual(result["state"]["hermes"], "connected")
+        self.assertEqual({key: result["hermesRoute"][key] for key in fields}, fields)
+        for broken in ({"protocolVersion": 3}, {"routeId": "invalid"}, {"capabilities": ["text", "document"]}):
+            result = self.observe("hermes-v0.23.4", **{**fields, **broken})
+            self.assertEqual(result["state"]["chatbot"], "inactive")
+            self.assertIsNone(result["hermesRoute"])
 
     def test_doctor_checks_installed_source_for_each_reviewed_version(self):
         selection = {"mode": "standalone"}
