@@ -34,6 +34,7 @@ copied is specified in [Persistence](storage.md). This module owns what the tabl
 | `spend`                                                                        | Cost per role per month                                                                                      | [Models](models.md)               |
 | `chat_state`                                                                   | Runtime state by chat and character: last opener, sticker                                                    | [Prompt Engine](prompt-engine.md) |
 | `inbound_message`, `schema_migration`, `backup_run`, `file`                    | Inbound requests by chat and gateway message id, applied migrations, snapshot runs, files on the data volume | [Persistence](storage.md)         |
+| `standalone_delivery`                                                          | One-time standalone delivery claims and acknowledgement state                                                | [Persistence](storage.md)         |
 
 ![The data model: every table by domain, with columns, keys and foreign keys](../diagrams/data-erd.svg)
 
@@ -104,7 +105,7 @@ The primary key is `(level, scope, key)`. Deleting a row at a level restores inh
 | `features.reports`       | Boolean: `/doc` document creation                                                          | `true`                  |
 | `features.research`      | Boolean: `/research` jobs and their PDF reports                                            | `true`                  |
 | `features.feedback`      | Boolean: `/report` private feedback links                                                  | `false`                 |
-| `report.format`          | Reserved: a per-chat report format profile ([Research](research.md#the-renderer))          | unset: `render.report`  |
+| `report.format`          | A per-chat report format profile for PDF documents ([Research](research.md#the-renderer))  | unset: `render.report`  |
 | `report.defaultFormat`   | `pdf` or `markdown`: the format of `/doc` when the message names none                      | `pdf`                   |
 | `features.owner`         | Boolean: the owner's market and coding-session tools                                       | `false`                 |
 | `features.autofetch`     | Boolean: a group's or DM's post links get their media back ([System](system.md#autofetch)) | `false`                 |
