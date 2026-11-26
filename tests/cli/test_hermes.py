@@ -143,7 +143,7 @@ class AttachmentTests(unittest.TestCase):
         self.plan.update(protocol=2, typedTransaction=True, provisional=record(marker))
         self.plan["desired"].update(marker=record(marker), host=record(host))
         self.report["hermesRoute"] = route
-        self.plan["running"] = True
+        self.plan["running"] = False
 
         def handshake(path):
             self.assertEqual(hermes._read(path), self.plan["provisional"])
@@ -165,19 +165,15 @@ class AttachmentTests(unittest.TestCase):
             seen.append("verified")
             return original_observe
 
-        def gateway(_plan, verb):
-            expected = None if verb == "stop" else self.plan["provisional"]
-            self.assertEqual(hermes._read(self.plan["paths"]["marker"], optional=True), expected)
-            seen.append(verb)
-
         with (patch.object(hermes, "_plan", return_value=self.plan),
-              patch.object(hermes, "_profile_status", return_value=True),
-              patch.object(hermes, "_gateway_command", side_effect=gateway),
+              patch.object(hermes, "_profile_status", return_value=False),
+              patch.object(hermes, "_gateway_command") as gateway,
               patch.object(install, "observe", side_effect=observe),
               patch.object(operations, "log_event", return_value="fixture")):
             result = hermes.run_attach(self.args, "8" * 32)
         self.assertEqual(result["outcome"], "ok")
-        self.assertEqual(seen, ["stop", "start", "verified"])
+        self.assertEqual(seen, ["verified"])
+        gateway.assert_not_called()
         marker = json.loads(self.plan["paths"]["marker"].read_text())
         self.assertEqual((marker["state"], marker["routeId"]), ("active", route_id))
 
@@ -190,28 +186,28 @@ class AttachmentTests(unittest.TestCase):
             hermes._write(self.plan["paths"][name], record)
         self.plan["original"] = prior
         self.success = False
-        calls = []
+        observed = []
 
-        def restart(_plan, verb):
-            marker = prior["marker"] if not calls else self.plan["provisional"]
-            self.assertEqual(hermes._read(self.plan["paths"]["marker"]), marker)
-            calls.append(verb)
+        def liveness(_):
+            observed.append(hermes._read(self.plan["paths"]["marker"]))
+            return False
 
         with (patch.object(hermes, "_plan", return_value=self.plan),
-              patch.object(hermes, "_profile_status", return_value=True),
-              patch.object(hermes, "_gateway_command", side_effect=restart),
+              patch.object(hermes, "_profile_status", side_effect=liveness),
+              patch.object(hermes, "_gateway_command") as gateway,
               patch.object(install, "observe", return_value=self.report),
               patch.object(operations, "log_event", return_value="fixture")):
             result = hermes.run_attach(self.args, "8" * 32)
         self.assertEqual(result["error"]["code"], "attach_failed")
-        self.assertEqual(calls, ["stop", "start", "stop", "start"])
+        gateway.assert_not_called()
+        self.assertEqual(observed[-1], self.plan["provisional"])
         for name, record in prior.items():
             self.assertEqual(hermes._read(self.plan["paths"][name]), record, name)
 
     def test_typed_readback_transport_error_rolls_back(self):
         self.typed_plan()
         with (patch.object(hermes, "_plan", return_value=self.plan),
-              patch.object(hermes, "_profile_status", return_value=True),
+              patch.object(hermes, "_profile_status", return_value=False),
               patch.object(hermes, "_gateway_command"),
               patch.object(install, "observe", side_effect=hermes.compose.RunError("fixture")),
               patch.object(operations, "log_event", return_value="fixture")):
@@ -231,26 +227,48 @@ class AttachmentTests(unittest.TestCase):
             result = self.run_attach()
         self.assertEqual(result["outcome"], "ok")
         self.assertEqual(json.loads(self.plan["paths"]["marker"].read_text())["routeId"], route_id)
-        self.assertEqual(self.commands, ["stop", "start"])
+        self.assertEqual(self.commands, [])
 
-    def test_fresh_running_stock_rollback_resumes_only_after_original_marker_absence(self):
+    def test_fresh_running_stock_refuses_before_any_files_or_lifecycle_change(self):
         self.typed_plan()
-        self.success = False
-        calls = []
+        self.plan["running"] = True
+        result = self.run_attach()
+        self.assertEqual(result["error"]["code"], "hermes_unsupported")
+        self.assertEqual(self.commands, [])
+        for name, record in self.plan["original"].items():
+            self.assertEqual(hermes._read(self.plan["paths"][name], optional=True), record, name)
+        self.assertFalse((self.plan["home"] / "deploy.lock").exists())
 
-        def gateway(_plan, verb):
-            expected = None if len(calls) in (0, 3) else self.plan["provisional"]
-            self.assertEqual(hermes._read(self.plan["paths"]["marker"], optional=True), expected)
-            calls.append(verb)
+    def test_running_identical_typed_attachment_reads_back_without_writes(self):
+        route_id, record = self.typed_plan()
+        self.plan["running"] = True
+        marker = json.loads(self.plan["desired"]["marker"][0])
+        host = json.loads(self.plan["desired"]["host"][0])
+        self.plan["desired"].update(marker=record({**marker, "state": "active", "routeId": route_id}),
+                                    host=record({**host, "routeId": route_id}))
+        for name, record in self.plan["desired"].items():
+            hermes._write(self.plan["paths"][name], record)
+        self.plan["original"] = {**self.plan["original"], **self.plan["desired"]}
+        with patch.object(self.plan["adapter"], "typed_check", side_effect=AssertionError("must not handshake")):
+            result = self.run_attach()
+        self.assertEqual(result["outcome"], "ok")
+        self.assertEqual(self.commands, [])
+        self.assertEqual(result["attach"]["changes"], [])
+        for name, record in self.plan["original"].items():
+            self.assertEqual(hermes._read(self.plan["paths"][name], optional=True), record, name)
 
+    def test_concurrent_gateway_start_leaves_provisional_marker_inert(self):
+        self.typed_plan()
         with (patch.object(hermes, "_plan", return_value=self.plan),
-              patch.object(hermes, "_profile_status", return_value=True),
-              patch.object(hermes, "_gateway_command", side_effect=gateway),
-              patch.object(install, "observe", return_value=self.report),
+              patch.object(hermes, "_profile_status", side_effect=[False, True, True]),
+              patch.object(hermes, "_gateway_command") as gateway,
               patch.object(operations, "log_event", return_value="fixture")):
             result = hermes.run_attach(self.args, "8" * 32)
-        self.assertEqual(result["error"]["code"], "attach_failed")
-        self.assertEqual(calls, ["stop", "start", "stop", "start"])
+        self.assertEqual(result["error"]["code"], "rollback_failed")
+        gateway.assert_not_called()
+        self.assertEqual(hermes._read(self.plan["paths"]["marker"]), self.plan["provisional"])
+        self.assertEqual(hermes._read(self.plan["paths"]["source"]), self.plan["original"]["source"])
+        self.assertFalse(self.plan["paths"]["helper"].exists())
 
 
 if __name__ == "__main__":
