@@ -301,6 +301,7 @@ def _plan(args):
                     "host": (original["host"] if original["host"] and preserve else
                              ((json.dumps(host_record, sort_keys=True) + "\n").encode(), 0o600))},
         "kind": kind, "adapter": adapter,
+        "typedAdapter": typed_adapter,
         "protocol": protocol, "typedTransaction": protocol == 2 or typed_history,
         "provisional": ((json.dumps(provisional, sort_keys=True) + "\n").encode(), 0o600),
     }
@@ -401,9 +402,14 @@ def _typed_restore(plan, changed, written):
         current = _read(paths["marker"], private=True, optional=True)
         if current != plan["provisional"]:
             # A failure before the provisional marker was published changed no other files.
-            return current == original["marker"] and all(
+            unchanged = current == original["marker"] and all(
                 _read(paths[name], private=name in ("receipt", "host"), optional=True) == original[name]
                 for name in ("source", "helper", "receipt", "host"))
+            if unchanged and plan["running"] and not _profile_status(plan):
+                _gateway_command(plan, "start")
+            return unchanged and _profile_status(plan) == plan["running"]
+        if changed and plan["running"] and _profile_status(plan):
+            _gateway_command(plan, "stop")
         for name in ("helper", "source", "receipt", "host"):
             before = original[name]
             value = _read(paths[name], private=name in ("receipt", "host"), optional=True)
@@ -433,13 +439,19 @@ def _typed_restore(plan, changed, written):
             _write(paths[name], before)
             if _read(paths[name], private=name in ("receipt", "host"), optional=True) != before:
                 return False
+        # An unpatched stock process cannot enforce any marker. Remove the provisional marker before
+        # restarting that exact prior state; a previously patched process stays inert until restoration.
+        unpatched = plan["kind"] == "original" and original["marker"] is None
+        if unpatched:
+            _write(paths["marker"], None)
         if plan["running"] and changed:
-            _gateway_command(plan, "restart")
+            _gateway_command(plan, "start")
         if _profile_status(plan) != plan["running"]:
             return False
-        if _read(paths["marker"], private=True) != plan["provisional"]:
-            return False
-        _write(paths["marker"], original["marker"])
+        if not unpatched:
+            if _read(paths["marker"], private=True) != plan["provisional"]:
+                return False
+            _write(paths["marker"], original["marker"])
         return _read(paths["marker"], private=True, optional=True) == original["marker"]
     except (CommandError, OSError, ValueError, compose.RunError, KeyboardInterrupt):
         return False
@@ -451,6 +463,9 @@ def _typed_apply(plan, changed, warnings, op):
     final_marker = None
     report = None
     try:
+        if plan["running"] and changed:
+            # The currently loaded stock consumer may not know about the marker at all.
+            _gateway_command(plan, "stop")
         # The existing v1 helper rejects this schema; the v2 helper rejects its provisional state.
         _write(paths["marker"], plan["provisional"])
         if _read(paths["marker"], private=True) != plan["provisional"]:
@@ -462,7 +477,7 @@ def _typed_apply(plan, changed, warnings, op):
             if _read(paths[name]) != desired[name]:
                 raise operational_error("attach_failed", "Adapter readback did not match.", "patch")
         if plan["running"] and changed:
-            _gateway_command(plan, "restart")
+            _gateway_command(plan, "start")
         if _profile_status(plan) != plan["running"]:
             raise operational_error("attach_failed", "Gateway liveness changed during attachment.", "verify")
 
@@ -480,13 +495,8 @@ def _typed_apply(plan, changed, warnings, op):
             # a live v1 marker just so the old helper's check() can read it.
             marker_value = json.loads(desired["marker"][0])
             host_value = json.loads(desired["host"][0])
-            response = plan["adapter"]._post(marker_value, "/v1/aira/attach-check", {
-                "schemaVersion": 1, "adapterVersion": plan["adapter"].ADAPTER_VERSION,
-                "profile": plan["profile"], "action": "connect"}, 15)
-            route = response.get("hermes") if isinstance(response, dict) and set(response) == {"schemaVersion", "hermes"} and response["schemaVersion"] == 1 else None
-            if (not isinstance(route, dict) or set(route) != {"state", "profile", "adapterVersion", "verifiedAt"}
-                    or route["state"] != "connected" or route["profile"] != plan["profile"]
-                    or route["adapterVersion"] != plan["adapter"].ADAPTER_VERSION or not isinstance(route["verifiedAt"], str)):
+            route = plan["typedAdapter"].typed_downgrade(paths["marker"], json.loads(original["marker"][0])["routeId"])
+            if not route:
                 raise operational_error("hermes_contract_failed", "The v1 downgrade handshake failed.", "verify")
 
         # Preserve the exact existing marker and host bytes on identical reattachment.

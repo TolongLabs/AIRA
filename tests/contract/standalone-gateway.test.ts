@@ -95,7 +95,7 @@ const turn = (chat: string, mid: string, text: string) => ({
   text
 })
 
-const typedAttach = () => ({ ...attach(), schemaVersion: 2, capabilities: ['text'] })
+const typedAttach = () => ({ ...attach(), schemaVersion: 2, capabilities: ['text'], deadlineMs: Date.now() + 10_000 })
 const routeIdOf = (body: unknown) => z.object({ hermes: z.object({ routeId: z.uuid() }) }).parse(body).hermes.routeId
 const typedTurn = (routeId: string, chat: string, mid: string, text: string) => ({
   ...turn(chat, mid, text),
@@ -248,6 +248,8 @@ describe('standalone typed Hermes candidate', () => {
     )
     expect((await core.post('/v2/aira/attach-check', { ...request, profile: 'other' })).status).toBe(409)
     expect((await core.post('/v1/aira/attach-check', attach('disconnect'))).status).toBe(409)
+    expect((await core.post('/v1/aira/attach-check', attach())).status).toBe(409)
+    expect((await core.post('/v2/aira/attach-check', { ...request, deadlineMs: Date.now() - 1 })).status).toBe(409)
     expect((await core.post('/v2/aira/turn', typedTurn(original, 'fixture-a', 'm1', 'keyless'))).status).toBe(503)
     const migrated = await core.post('/v2/aira/attach-check', { ...request, adapterVersion: 'hermes-v0.23.2' })
     expect(migrated.status).toBe(200)
@@ -260,6 +262,7 @@ describe('standalone typed Hermes candidate', () => {
           adapterVersion: 'hermes-v0.23.2',
           profile: 'fixture',
           action: 'disconnect',
+          deadlineMs: Date.now() + 10_000,
           routeId: original
         })
       ).status
@@ -308,7 +311,18 @@ describe('standalone typed Hermes candidate', () => {
       expect((await core.post('/v2/aira/delivery/ack', { ...claim, outcome: 'confirmed' })).status).toBe(200)
     }
     expect((await core.post('/v2/aira/delivery/ack', { ...claim, outcome: 'failed' })).status).toBe(409)
-    expect((await core.post('/v1/aira/attach-check', attach())).status).toBe(200)
+    expect(
+      (
+        await core.post('/v2/aira/attach-check', {
+          schemaVersion: 2,
+          action: 'downgrade',
+          profile: 'fixture',
+          adapterVersion: 'hermes-v0.23.4',
+          routeId,
+          deadlineMs: Date.now() + 10_000
+        })
+      ).status
+    ).toBe(200)
     expect((await core.post('/v2/aira/delivery/claim', claim)).status).toBe(403)
     expect(await core.post('/v1/aira/turn', turn('fixture-a', 'm2', 'synthetic replay'))).toEqual({
       status: 200,
@@ -357,6 +371,40 @@ describe('standalone typed Hermes candidate', () => {
       status: 200,
       body: { schemaVersion: 2, disposition: 'no_reply', deliveries: [] }
     })
+    expect(core.model.requests).toHaveLength(1)
+  })
+
+  it('does not return a v1 reply if v2 takes over during the same model turn', async () => {
+    const core = await start(true)
+    expect((await core.post('/v1/aira/attach-check', attach())).status).toBe(200)
+    const defaults = z.object({ revision: z.string() }).parse(await core.ownerCall('settings?level=global&scope='))
+    await core.ownerCall('settings', 'PUT', {
+      level: 'global',
+      scope: '',
+      key: 'character',
+      value: 'example',
+      expectedRevision: defaults.revision
+    })
+    await core.post('/v1/aira/turn', turn('fixture-a', 'pending', 'pending'))
+    const chats = z.object({ chats: z.array(z.object({ chatId: z.string() })) }).parse(await core.ownerCall('chats'))
+    await core.ownerCall(`chats/${chats.chats[0]!.chatId}/status`, 'PUT', { status: 'active' })
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const call = core.model.call.bind(core.model)
+    core.model.call = async (request) => {
+      entered.resolve()
+      await release.promise
+      return call(request)
+    }
+    const pending = core.post('/v1/aira/turn', turn('fixture-a', 'm1', 'fixture request'))
+    try {
+      await entered.promise
+      const attached = await core.post('/v2/aira/attach-check', typedAttach())
+      expect(attached.status).toBe(200)
+    } finally {
+      release.resolve()
+    }
+    expect(await pending).toEqual({ status: 200, body: { schemaVersion: 1, disposition: 'no_reply', reply: null } })
     expect(core.model.requests).toHaveLength(1)
   })
 })

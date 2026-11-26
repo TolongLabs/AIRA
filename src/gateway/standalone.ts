@@ -48,9 +48,16 @@ const typedReceipt = receiptSchema.extend({
   capabilities: textCapabilities
 })
 const connectedReceipt = z.union([receiptSchema, typedReceipt])
+const deadlineMs = z.number().int().safe()
 const typedAttachment = z.discriminatedUnion('action', [
-  attachment.extend({ schemaVersion: z.literal(2), action: z.literal('connect'), capabilities: textCapabilities }),
-  attachment.extend({ schemaVersion: z.literal(2), action: z.literal('disconnect'), routeId: z.uuid() })
+  attachment.extend({
+    schemaVersion: z.literal(2),
+    action: z.literal('connect'),
+    capabilities: textCapabilities,
+    deadlineMs
+  }),
+  attachment.extend({ schemaVersion: z.literal(2), action: z.literal('disconnect'), routeId: z.uuid(), deadlineMs }),
+  attachment.extend({ schemaVersion: z.literal(2), action: z.literal('downgrade'), routeId: z.uuid(), deadlineMs })
 ])
 const typedTurn = turnSchema.extend({ schemaVersion: z.literal(2), routeId: z.uuid() })
 const deliveryBinding = z.strictObject({
@@ -63,15 +70,24 @@ const deliveryBinding = z.strictObject({
 })
 const deliveryAck = deliveryBinding.extend({ outcome: z.enum(['confirmed', 'failed', 'unknown']) })
 type StructuredTurn = Pick<z.infer<typeof turnSchema>, 'platform' | 'kind' | 'chat' | 'sender' | 'mid' | 'text'>
-export interface HermesRouteStatus {
-  state: 'connected' | 'disconnected' | 'invalid' | 'unsupported'
-  adapterVersion: (typeof STANDALONE_ADAPTER_VERSIONS)[number] | null
-  profile: string | null
-  verifiedAt: string | null
-  protocolVersion?: 2
-  routeId?: string
-  capabilities?: ['text']
+type InactiveRoute = {
+  state: 'disconnected' | 'invalid' | 'unsupported'
+  adapterVersion: null
+  profile: null
+  verifiedAt: null
+  protocolVersion?: never
+  routeId?: never
+  capabilities?: never
 }
+type ConnectedRoute = {
+  state: 'connected'
+  adapterVersion: (typeof STANDALONE_ADAPTER_VERSIONS)[number]
+  profile: string
+  verifiedAt: string
+}
+type V1Route = ConnectedRoute & { protocolVersion?: never; routeId?: never; capabilities?: never }
+type V2Route = ConnectedRoute & { protocolVersion: 2; routeId: string; capabilities: ['text'] }
+export type HermesRouteStatus = InactiveRoute | V1Route | V2Route
 
 export class StandaloneGatewayError extends Error {
   constructor(
@@ -82,7 +98,7 @@ export class StandaloneGatewayError extends Error {
   }
 }
 
-const detached: HermesRouteStatus = { state: 'disconnected', adapterVersion: null, profile: null, verifiedAt: null }
+const detached: InactiveRoute = { state: 'disconnected', adapterVersion: null, profile: null, verifiedAt: null }
 
 export function createStandaloneGateway(dataRoot: string, storage: Storage, now: () => Date = () => new Date()) {
   const token = ensurePrivateToken(dataRoot, 'gateway.token')
@@ -98,15 +114,15 @@ export function createStandaloneGateway(dataRoot: string, storage: Storage, now:
       if (!parsed.success) return { ...detached, state: 'invalid' }
       const adapterVersion = adapterVersionSchema.safeParse(parsed.data.adapterVersion)
       if (!adapterVersion.success) return { ...detached, state: 'unsupported' }
-      return {
+      const route: ConnectedRoute = {
         state: 'connected',
         adapterVersion: adapterVersion.data,
         profile: parsed.data.profile,
-        verifiedAt: parsed.data.verifiedAt,
-        ...(parsed.data.schemaVersion === 2
-          ? { protocolVersion: 2 as const, routeId: parsed.data.routeId, capabilities: parsed.data.capabilities }
-          : {})
+        verifiedAt: parsed.data.verifiedAt
       }
+      return parsed.data.schemaVersion === 2
+        ? { ...route, protocolVersion: 2, routeId: parsed.data.routeId, capabilities: parsed.data.capabilities }
+        : route
     } catch {
       return { ...detached, state: 'invalid' }
     }
@@ -142,8 +158,8 @@ export function createStandaloneGateway(dataRoot: string, storage: Storage, now:
       throw new StandaloneGatewayError(409, 'hermes_profile_conflict')
     if (
       current.state === 'connected' &&
-      parsed.data.action === 'disconnect' &&
-      (current.adapterVersion !== parsed.data.adapterVersion || current.protocolVersion === 2)
+      (current.protocolVersion === 2 ||
+        (parsed.data.action === 'disconnect' && current.adapterVersion !== parsed.data.adapterVersion))
     )
       throw new StandaloneGatewayError(409, 'hermes_contract_failed')
     return persist(
@@ -162,19 +178,25 @@ export function createStandaloneGateway(dataRoot: string, storage: Storage, now:
   const attachTyped = (input: unknown): HermesRouteStatus => {
     const parsed = typedAttachment.safeParse(input)
     if (!parsed.success) throw new StandaloneGatewayError(400, 'hermes_contract_failed')
+    const remaining = parsed.data.deadlineMs - now().getTime()
+    if (remaining <= 0 || remaining > 10_000) throw new StandaloneGatewayError(409, 'hermes_contract_failed')
     const current = status()
     const { profile, adapterVersion } = parsed.data
     if (current.state === 'connected' && current.profile !== profile)
       throw new StandaloneGatewayError(409, 'hermes_profile_conflict')
-    if (parsed.data.action === 'disconnect') {
+    if (parsed.data.action !== 'connect') {
       if (
         current.state !== 'connected' ||
         current.protocolVersion !== 2 ||
         current.routeId !== parsed.data.routeId ||
-        current.adapterVersion !== adapterVersion
+        (parsed.data.action === 'disconnect' && current.adapterVersion !== adapterVersion)
       )
         throw new StandaloneGatewayError(409, 'hermes_contract_failed')
-      return persist({ schemaVersion: 1, state: 'disconnected' })
+      return persist(
+        parsed.data.action === 'disconnect'
+          ? { schemaVersion: 1, state: 'disconnected' }
+          : { schemaVersion: 1, state: 'connected', adapterVersion, profile, verifiedAt: now().toISOString() }
+      )
     }
     if (current.state === 'connected' && current.protocolVersion === 2 && current.adapterVersion === adapterVersion)
       return current
@@ -213,6 +235,19 @@ export function createStandaloneGateway(dataRoot: string, storage: Storage, now:
     if (current.state !== 'connected' || current.profile !== parsed.data.profile || current.protocolVersion === 2)
       throw new StandaloneGatewayError(403, 'hermes_profile_refused')
     return asTurn(parsed.data)
+  }
+
+  const isSameV1Route = (captured: HermesRouteStatus): boolean => {
+    const current = status()
+    return (
+      captured.state === 'connected' &&
+      captured.protocolVersion !== 2 &&
+      current.state === 'connected' &&
+      current.protocolVersion !== 2 &&
+      current.profile === captured.profile &&
+      current.adapterVersion === captured.adapterVersion &&
+      current.verifiedAt === captured.verifiedAt
+    )
   }
 
   const requireTypedRoute = (profile: string, routeId: string): void => {
@@ -255,7 +290,18 @@ export function createStandaloneGateway(dataRoot: string, storage: Storage, now:
       throw new StandaloneGatewayError(409, 'delivery_unavailable')
   }
 
-  return { status, authorized, attach, attachTyped, parseTurn, parseTypedTurn, claimTyped, ackTyped, delivery }
+  return {
+    status,
+    authorized,
+    attach,
+    attachTyped,
+    parseTurn,
+    isSameV1Route,
+    parseTypedTurn,
+    claimTyped,
+    ackTyped,
+    delivery
+  }
 }
 
 export type StandaloneGateway = ReturnType<typeof createStandaloneGateway>

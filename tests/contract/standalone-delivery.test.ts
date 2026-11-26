@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createStandaloneDeliveryLedger } from '../../src/gateway/standalone-delivery.js'
 import { ensureChat, setChatStatus } from '../../src/settings/chats.js'
-import type { Storage } from '../../src/storage/database.js'
+import { openDatabase, type Storage } from '../../src/storage/database.js'
 import { planMigrations, readMigrations } from '../../src/storage/migrate.js'
 import { closeTurn, openTurn, receiveInbound } from '../../src/storage/turns.js'
 import { tmpStorage } from '../support/tmp.js'
@@ -102,26 +102,34 @@ describe('standalone typed delivery ledger', () => {
     expect(storage.read((db) => db.prepare('SELECT count(*) FROM standalone_delivery').pluck().get())).toBe(0)
   })
 
-  it('does not reclaim an expired or ambiguous send after a new ledger instance', () => {
-    const { storage, ledger, input, expire } = fixture()
+  it('does not reclaim an expired or ambiguous send after reopening the database', () => {
+    const { storage, ledger, input } = fixture()
     returned(storage, { ...input, text: 'ambiguous' })
     const [delivery] = ledger.issue(input)
     if (!delivery) throw new Error('missing delivery')
     const claim = { routeId: input.routeId, chatId: input.chatId, mid: input.mid, id: delivery.id }
     expect(ledger.claim(claim)).not.toBeNull()
-    const afterRestart = createStandaloneDeliveryLedger(storage, {
-      currentRoute: () => ROUTE_A,
-      now: () => new Date('2026-01-01T00:01:00Z')
-    })
-    expect(afterRestart.claim(claim)).toBeNull()
-    expect(afterRestart.ack({ ...claim, outcome: 'unknown' })).toBe(true)
-    const later = { ...input, turnId: 'turn-c', mid: 'message-c' }
-    returned(storage, { ...later, text: 'expired' })
-    const [pending] = ledger.issue(later)
-    if (!pending) throw new Error('missing pending delivery')
-    expire()
-    expect(ledger.claim({ ...claim, mid: later.mid, id: pending.id })).toBeNull()
-    expect(ledger.issue(later)).toEqual([])
+    storage.close()
+    const reopened = openDatabase(storage.file)
+    try {
+      let now = new Date('2026-01-01T00:01:00Z')
+      const afterRestart = createStandaloneDeliveryLedger(reopened, {
+        currentRoute: () => ROUTE_A,
+        now: () => now
+      })
+      expect(afterRestart.claim(claim)).toBeNull()
+      expect(afterRestart.ack({ ...claim, outcome: 'unknown' })).toBe(true)
+      const later = { ...input, turnId: 'turn-c', mid: 'message-c' }
+      returned(reopened, { ...later, text: 'expired' })
+      const [pending] = afterRestart.issue(later)
+      if (!pending) throw new Error('missing pending delivery')
+      now = new Date('2026-01-01T00:11:00Z')
+      expect(afterRestart.claim({ ...claim, mid: later.mid, id: pending.id })).toBeNull()
+      expect(afterRestart.issue(later)).toEqual([])
+      reopened.check()
+    } finally {
+      reopened.close()
+    }
   })
 
   it('keeps v1-compatible fallback text and allows a late acknowledgement on the same route', () => {

@@ -22,12 +22,14 @@ import os
 import platform
 import re
 import socket
+import sqlite3
 import stat
 import subprocess
 import sys
 import tempfile
 import time
 import uuid
+from contextlib import closing
 from pathlib import Path
 
 SITE_WANT = 9890
@@ -429,6 +431,7 @@ def main() -> int:
                         help="Expect the pinned previous core to refuse the candidate adapter and roll back.")
     parser.add_argument("--update-image", help="Loaded compatible second candidate.")
     parser.add_argument("--bad-image", help="Loaded candidate with a failing isolated deploy probe.")
+    parser.add_argument("--previous-image", help="Loaded exact previous release for the migrated-store compatibility gate.")
     args = parser.parse_args()
     image, home = args.image, Path(args.home).expanduser().absolute()
     repo_root = Path(__file__).resolve().parents[2]
@@ -751,6 +754,17 @@ def main() -> int:
             check((restore / creds).read_bytes() == (home / "data" / creds).read_bytes() and
                   (restore / creds).stat().st_mode & 0o777 == 0o600, "restore_failed", "Restored model credential state differs.")
             verify_restored_auth(args.update_image, home, restore, owner_token, revision)
+            if args.previous_image:
+                with closing(sqlite3.connect(f"file:{restore / 'aira.db'}?mode=ro", uri=True)) as db:
+                    schema = db.execute("SELECT max(version) FROM schema_migration").fetchone()[0]
+                check(schema >= 18, "previous_schema", "The restored fixture did not contain the new delivery schema.")
+                verify_restored_auth(args.previous_image, home, restore, owner_token, revision)
+                with closing(sqlite3.connect(f"file:{restore / 'aira.db'}?mode=ro", uri=True)) as db:
+                    check(db.execute("SELECT max(version) FROM schema_migration").fetchone()[0] == schema
+                          and db.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+                          and not db.execute("PRAGMA foreign_key_check").fetchall(),
+                          "previous_schema", "The previous release changed or damaged the migrated store.")
+                note("previous released core: authenticated ready on the schema-18 restored store")
             note("update smoke: failing isolated probe rolls back exact previous image")
             code, failed = run_json(launcher, ["update", "--home", str(home), "--image", args.bad_image], 300)
             check(code == 1 and failed.get("error", {}).get("code") == "update_rolled_back",

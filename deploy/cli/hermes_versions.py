@@ -12,7 +12,7 @@ SOURCE_REVISIONS = {
 ADAPTER_VERSIONS = tuple(SOURCE_REVISIONS.values())
 _BASELINE_LINE = b'ADAPTER_VERSION = "hermes-v0.23.4"\n'
 _BASELINE_SHA256 = "a530e9ca079c55c08e973f35ccf7138ba044ecb959d19eff15c593f4dca018fe"
-_TYPED_SHA256 = "dbb209f04c9a9664d766c7a3fd0cf22f130073c8b32630ab9457aeaeef38e861"
+_TYPED_SHA256 = "e19a6eced1ed0d30951552dc9bb05256ece555de18f60e5ea9e21534990d335e"
 _MAIN = b'if __name__ == "__main__":\n    sys.exit(main())\n'
 _ROUTE_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 
