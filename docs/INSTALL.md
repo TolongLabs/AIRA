@@ -142,7 +142,8 @@ See [exact text versions](https://github.com/TolongLabs/AIRA/pull/413),
 
 Typed transport is not the default. Its explicit candidate attachment requires the selected independent profile
 to be stopped for a state change. Only the generated report can be delivered as a document; arbitrary paths,
-other media, and legacy `MEDIA:` directives are not accepted. For the precise capability and rollback rules,
+other media, and legacy `MEDIA:` directives are not accepted. Stock Hermes may render reactions, polls or
+contacts as ordinary text summaries; this is not structured capability support. For the precise capability and rollback rules,
 see the [typed attachment contract](trd/deployment.md#hermes-attachment-transaction).
 
 Host owner service, direct owner sends, file browsing and the subscription runner remain legacy-only. Library,

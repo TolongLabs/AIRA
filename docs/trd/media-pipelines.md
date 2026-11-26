@@ -40,6 +40,12 @@ v1, v2 text and v2 document routes. All three routes refuse the normalized image
 location, remote-cache failure, quoted-media and inlined-text document events without a core POST, native send
 or Hermes model fallback. An admitted text event is the positive control.
 
+Stock reaction, poll creation/update and contact events are different: Hermes exposes their formatted summaries
+as `MessageType.TEXT` while retaining distinct native metadata. All three released routes currently forward
+these admitted summaries as untrusted ordinary text, not as structured reaction/poll/contact operations.
+A native-event admission decision and exact-helper migration are still needed to enforce a stricter
+ordinary-text-only policy; do not mistake this existing behavior for feature support.
+
 Stock normalization is not a portable media authorization. It folds quoted content into the same attachment
 arrays even when the quoted message ID is missing, can retain an image URL after caching fails, clears a
 captionless voice placeholder and may prepend document contents to the text. Native file-send methods

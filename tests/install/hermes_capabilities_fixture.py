@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 from gateway.config import Platform
 from gateway.platforms.base import (
-    SendResult, get_audio_cache_dir, get_document_cache_dir, get_image_cache_dir, get_video_cache_dir,
+    SendResult, get_audio_cache_dir, get_document_cache_dir, get_image_cache_dir,
 )
 from gateway.platforms.event import MessageEvent, MessageType
 from gateway.run import _profile_runtime_scope
@@ -128,7 +128,7 @@ def test_sticker_and_reaction_are_not_native_stock_send_methods():
 
 
 @pytest.mark.asyncio
-async def test_stock_normalized_media_is_inert_on_the_installed_text_or_document_route(tmp_path, monkeypatch):
+async def test_stock_media_boundaries_on_installed_route(tmp_path, monkeypatch):
     # The native event builder and real post-admission hook are used. Only the endpoint and
     # delivery sink are local test doubles. No account, media service or model is contacted.
     from gateway import aira_transport
@@ -207,11 +207,12 @@ async def test_stock_normalized_media_is_inert_on_the_installed_text_or_document
             assert calls[0][2]["mid"] == "text-control"
 
             events = []
+            image_path = get_image_cache_dir() / "fixture.png"
             direct = [
-                ("image", "image/png", get_image_cache_dir() / "fixture.png", MessageType.PHOTO, False),
+                ("image", "image/png", image_path, MessageType.PHOTO, False),
                 ("audio", "audio/mpeg", get_audio_cache_dir() / "fixture.mp3", MessageType.AUDIO, False),
                 ("ptt", "audio/ogg", get_audio_cache_dir() / "fixture.ogg", MessageType.VOICE, False),
-                ("video", "video/mp4", get_video_cache_dir() / "fixture.mp4", MessageType.VIDEO, True),
+                ("video", "video/mp4", get_document_cache_dir() / "fixture.mp4", MessageType.VIDEO, True),
                 ("document", "application/pdf", get_document_cache_dir() / "fixture.pdf", MessageType.DOCUMENT, False),
             ]
             for kind, mime, path, expected, group in direct:
@@ -228,11 +229,11 @@ async def test_stock_normalized_media_is_inert_on_the_installed_text_or_document
 
             quoted_path = get_image_cache_dir() / "quoted.png"
             quoted_path.write_bytes(b"synthetic quoted fixture")
-            quoted = await build("quoted", "image", "image/png", direct[0][2], hasQuotedMessage=True,
+            quoted = await build("quoted", "image", "image/png", image_path, hasQuotedMessage=True,
                                  quotedMediaUrls=[str(quoted_path)], quotedMediaType="image")
             # Quote data is folded into direct arrays even without a quoted message ID.
             assert quoted.raw_message["hasQuotedMessage"] is True and quoted.reply_to_message_id is None
-            assert quoted.media_urls == [str(direct[0][2]), str(quoted_path)]
+            assert quoted.media_urls == [str(image_path), str(quoted_path)]
             assert quoted.media_types == ["image/png", "image/jpeg"]
             events.append(quoted)
 
@@ -249,17 +250,39 @@ async def test_stock_normalized_media_is_inert_on_the_installed_text_or_document
             events.append(remote)
 
             # Sticker and location use independent native event kinds, not ordinary text.
-            sticker = await build("sticker", "sticker", "image/webp", quoted_path)
-            location = await build("location", "location", body="synthetic location")
+            sticker_path = get_image_cache_dir() / "fixture.webp"
+            sticker_path.write_bytes(b"synthetic sticker fixture")
+            sticker = await build("sticker", "sticker", "image/webp", sticker_path, nativeType="stickerMessage")
+            location = await build("location", "location", body="synthetic location", nativeType="locationMessage")
             assert sticker.message_type == MessageType.STICKER
             assert location.message_type == MessageType.LOCATION
             events.extend((sticker, location))
 
             for event in events:
                 await consume(event)
+            assert len(calls) == 1, "Unsupported inbound media must not reach the core"
 
-        assert len(calls) == 1, "Unsupported inbound events must not reach the core"
-        assert not selected.sent and not selected.documents and not foreign.sent and not foreign.documents
+            # Unlike actual media, some native events become text-shaped summaries in stock Hermes.
+            # Characterize the released boundary: it forwards the admitted summary as text, not a
+            # structured reaction, poll or contact. Future native admission must decide this explicitly.
+            summaries = [
+                ("reaction", "reactionMessage", {"reaction": {"text": "fixture"}}),
+                ("poll", "pollCreationMessage", {"poll": {"question": "fixture poll"}}),
+                ("poll_update", "pollUpdateMessage", {"pollUpdate": {"selectedOptions": ["fixture"]}}),
+                ("contact", "contactMessage", {"contact": {"displayName": "fixture contact"}}),
+            ]
+            for kind, native_type, metadata in summaries:
+                event = await build(kind, kind, body="fixture summary " + kind, nativeType=native_type,
+                                    nativeMetadata=metadata)
+                assert event.message_type == MessageType.TEXT and not event.media_urls and not event.media_types
+                assert event.metadata["whatsapp_native_type"] == native_type
+                assert event.metadata["whatsapp_native"] == metadata
+                await consume(event)
+
+        assert [body["mid"] for _, _, body in calls] == ["text-control", *(kind for kind, _, _ in summaries)]
+        assert all(body["text"] == "fixture summary " + body["mid"] for _, _, body in calls[1:])
+        assert not selected.sent and not selected.documents and not selected.images_sent
+        assert not foreign.sent and not foreign.documents and not foreign.images_sent
         runner._handle_message_with_agent.assert_not_awaited()
     finally:
         endpoint.shutdown()
