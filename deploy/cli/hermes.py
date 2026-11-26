@@ -306,7 +306,15 @@ def _plan(args):
         "provisional": ((json.dumps(provisional, sort_keys=True) + "\n").encode(), 0o600),
     }
     plan["running"] = _profile_status(plan)
+    _guard_typed_lifecycle(plan)
     return plan
+
+
+def _guard_typed_lifecycle(plan):
+    if (plan.get("typedTransaction") and plan["running"]
+            and any(plan["original"][name] != record for name, record in plan["desired"].items())):
+        _refuse("hermes_unsupported", "State-changing typed attachment requires the selected gateway to be stopped.",
+                "Stop only the selected profile through its existing supervisor, then repeat dry-run.")
 
 
 def _detail(plan, apply):
@@ -395,21 +403,20 @@ def _publish_marker(path, record):
     return True
 
 
-def _typed_restore(plan, changed, written):
+def _typed_restore(plan, written):
     """Keep the selected route inert until the exact previous files and liveness agree."""
     paths, original = plan["paths"], plan["original"]
     try:
+        # Never overwrite executable files loaded by a concurrently started gateway.
+        if _profile_status(plan):
+            return False
         current = _read(paths["marker"], private=True, optional=True)
         if current != plan["provisional"]:
             # A failure before the provisional marker was published changed no other files.
             unchanged = current == original["marker"] and all(
                 _read(paths[name], private=name in ("receipt", "host"), optional=True) == original[name]
                 for name in ("source", "helper", "receipt", "host"))
-            if unchanged and plan["running"] and not _profile_status(plan):
-                _gateway_command(plan, "start")
-            return unchanged and _profile_status(plan) == plan["running"]
-        if changed and plan["running"] and _profile_status(plan):
-            _gateway_command(plan, "stop")
+            return unchanged
         for name in ("helper", "source", "receipt", "host"):
             before = original[name]
             value = _read(paths[name], private=name in ("receipt", "host"), optional=True)
@@ -439,46 +446,44 @@ def _typed_restore(plan, changed, written):
             _write(paths[name], before)
             if _read(paths[name], private=name in ("receipt", "host"), optional=True) != before:
                 return False
-        # An unpatched stock process cannot enforce any marker. Remove the provisional marker before
-        # restarting that exact prior state; a previously patched process stays inert until restoration.
-        unpatched = plan["kind"] == "original" and original["marker"] is None
-        if unpatched:
-            _write(paths["marker"], None)
-        if plan["running"] and changed:
-            _gateway_command(plan, "start")
-        if _profile_status(plan) != plan["running"]:
+        if _profile_status(plan):
             return False
-        if not unpatched:
-            if _read(paths["marker"], private=True) != plan["provisional"]:
-                return False
-            _write(paths["marker"], original["marker"])
+        if _read(paths["marker"], private=True) != plan["provisional"]:
+            return False
+        _write(paths["marker"], original["marker"])
         return _read(paths["marker"], private=True, optional=True) == original["marker"]
     except (CommandError, OSError, ValueError, compose.RunError, KeyboardInterrupt):
         return False
 
 
-def _typed_apply(plan, changed, warnings, op):
+def _typed_apply(plan, warnings, op):
     paths, original, desired = plan["paths"], plan["original"], plan["desired"]
     written = {}
     final_marker = None
     report = None
+    if plan["running"]:
+        # Only an exact, read-only repeat can reach this branch. The fresh plan verified prior bytes,
+        # authenticated receipt and profile liveness under both locks.
+        _guard_typed_lifecycle(plan)
+        if _profile_status(plan):
+            return plan["report"]
+        raise operational_error("attach_failed", "Gateway liveness changed during readback.", "verify")
     try:
-        if plan["running"] and changed:
-            # The currently loaded stock consumer may not know about the marker at all.
-            _gateway_command(plan, "stop")
+        if _profile_status(plan):
+            raise operational_error("attach_failed", "The selected gateway started before attachment.", "verify")
         # The existing v1 helper rejects this schema; the v2 helper rejects its provisional state.
         _write(paths["marker"], plan["provisional"])
         if _read(paths["marker"], private=True) != plan["provisional"]:
             raise operational_error("attach_failed", "The provisional marker did not match.", "patch")
         for name in ("source", "helper"):
             written[name] = desired[name]
+            if _profile_status(plan):
+                raise operational_error("attach_failed", "The selected gateway started during attachment.", "patch")
             if original[name] != desired[name]:
                 _write(paths[name], desired[name])
             if _read(paths[name]) != desired[name]:
                 raise operational_error("attach_failed", "Adapter readback did not match.", "patch")
-        if plan["running"] and changed:
-            _gateway_command(plan, "start")
-        if _profile_status(plan) != plan["running"]:
+        if _profile_status(plan):
             raise operational_error("attach_failed", "Gateway liveness changed during attachment.", "verify")
 
         if plan["protocol"] == 2:
@@ -529,7 +534,7 @@ def _typed_apply(plan, changed, warnings, op):
                     return report
             except (CommandError, OSError, ValueError):
                 pass
-        if not _typed_restore(plan, changed, written):
+        if not _typed_restore(plan, written):
             raise rollback_error("rollback_failed", "Attachment recovery was incomplete; the route remains inert when possible.",
                                  "rollback", "Restore the private attach backup " + op + " before retrying.") from err
         raise operational_error("attach_failed", "Attachment failed; prior files and gateway state were restored.",
@@ -578,6 +583,7 @@ def run_attach(args, op):
         if args.apply and not args.yes and (args.non_interactive or args.json or not sys.stdin.isatty() or not sys.stdout.isatty()):
             raise args_error("Apply requires TTY confirmation or explicit --yes.")
         plan = _plan(args)
+        _guard_typed_lifecycle(plan)
         if not args.apply:
             result = ok_envelope(COMMAND, op, plan["report"]["state"], [{"name": "pinned_profile", "ok": True}],
                                  [], plan["report"]["dashboard"])
@@ -592,9 +598,10 @@ def run_attach(args, op):
             if any(fresh[key] != plan[key] for key in ("original", "desired", "running", "paths")):
                 _refuse("hermes_contract_failed", "The planned files or gateway state changed. Run dry-run again.")
             plan = fresh
+            _guard_typed_lifecycle(plan)
             backup = _backup(plan, op)
             changed = any(plan["original"][name] != record for name, record in plan["desired"].items())
-            report = (_typed_apply(plan, changed, warnings, op) if plan.get("typedTransaction")
+            report = (_typed_apply(plan, warnings, op) if plan.get("typedTransaction")
                       else _legacy_apply(plan, changed, op))
             if not plan["running"]:
                 warnings.append("The stopped gateway remains stopped. Start the selected profile with hermes -p "
