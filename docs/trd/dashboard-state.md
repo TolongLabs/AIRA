@@ -157,7 +157,7 @@ atomically replacing the pointer; fsync writes and directory. An interrupted wri
 revision as saved. Revision IDs are random, not derived from secret values. Preserve last known good
 and pending state; backup inventory must include every referenced revision.
 
-Only the API main and optional API fallback roles are editable initially. For each, the writable fields are
+The API main and optional API fallback roles use the existing target schema. For each, the writable fields are
 `provider` (anthropic or openai-compatible), `model`, `baseUrl`, `effort`, `deepEffort`, and the three
 `usdPerMTok*` prices in the existing model target schema. Validate the full merged config with its
 existing schema, transport constraints and provider effort rules; base URLs must be absolute HTTP(S)
@@ -169,21 +169,40 @@ the gap. A fallback cannot run in place of an unconfigured main. Model validatio
 paid provider request; a separate explicit model test or actual configured turn is required to establish
 provider-call success.
 
+The optional standalone media-watcher role is separate from main/fallback. It has exactly provider
+`gemini` and a bare trimmed model identifier (1 to 256 ASCII letters, digits, dots, underscores or hyphens, starting with an
+alphanumeric character); no arbitrary endpoint, effort or
+prices are accepted for this role. The media settings sidecar `<uuid>.media.json` has strict shape
+`{schemaVersion:1,media:{provider:'gemini',model}|null}`; the separate `<uuid>.media.credentials.json`
+has `{schemaVersion:1,media:string|null}`. Both absent means a historical revision with media disabled.
+A missing half, malformed/unsafe sidecar or nonnull credential without a target refuses that revision.
+New revisions write both sidecars and the unchanged main/fallback schema-1 files before publishing the
+pointer. This preserves the previous core's main/fallback readback and restore; a new revision saved by an
+older core contains no media sidecars and therefore disables the optional role, rather than inheriting it.
+
+For the optional role only, an omitted `media` edit preserves the previous saved role and credential.
+Explicit `media:null` disables it; a nonnull target has optional write-only `apiKey` with the same absent,
+empty and explicit-null semantics. Only the applied revision and a configured main may supply the media
+watcher model/key at runtime; never inherit a legacy environment key, base config target or host media directory. Preparing and
+applying a role does not negotiate an inbound transport capability and makes no provider call.
+
 ### Typed Owner Operations
 
 Both the UI and host CLI use these protected routes, not direct edits or general-purpose host commands.
 
-| Method | Path                                         | Body and result                                                                                    |
-| ------ | -------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| GET    | `/owner-api/core/standalone-config`          | Sanitized saved/applied models, revision IDs, configuration and activation status                  |
-| PUT    | `/owner-api/core/standalone-config`          | `{ expectedRevision, main, fallback }`; strict model targets or null, optional write-only `apiKey` |
-| POST   | `/owner-api/core/standalone-config/activate` | `{ expectedRevision }`; 202 for accepted restart request, not applied success                      |
+| Method | Path                                         | Body and result                                                                                            |
+| ------ | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| GET    | `/owner-api/core/standalone-config`          | Sanitized saved/applied models, revision IDs, configuration and activation status                          |
+| PUT    | `/owner-api/core/standalone-config`          | `{ expectedRevision, main, fallback, media? }`; strict model targets or null, optional write-only `apiKey` |
+| POST   | `/owner-api/core/standalone-config/activate` | `{ expectedRevision }`; 202 for accepted restart request, not applied success                              |
 
 The read and save envelope is
-`{ schemaVersion: 1, configuration, savedRevision, appliedRevision, activation, lastFailure, saved, applied }`.
+`{ schemaVersion: 1, configuration, savedRevision, appliedRevision, activation, lastFailure, saved, applied, optionalRoles }`.
 Revision IDs are UUID strings or null; `saved` and `applied` are null or model pairs with
-`main` and `fallback` fields, each null or a target plus `credentialConfigured: boolean`.
-No key or credential reference content is returned. `activation` is `idle`, `requested`, or `starting`.
+`main` and `fallback` fields, each null or a target plus `credentialConfigured: boolean`, and an additive
+`media` field with the strict media target (or null) and credential flag. New cores advertise
+`optionalRoles: ['media']`; a previous core omits this marker. CLI and UI media edits require the marker,
+while existing main/fallback clients may omit the media field. No key or credential reference content is returned. `activation` is `idle`, `requested`, or `starting`.
 `lastFailure` is null or a safe reason code; never an upstream response. A stale expected revision returns
 409 `stale_revision`, invalid model fields return 400 `model_config_invalid`, and a running activation
 returns 409 `activation_in_progress`. The activation endpoint returns the same readback with HTTP 202.

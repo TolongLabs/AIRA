@@ -244,6 +244,10 @@ in Studio before activation. Configure Models links to System Settings, where th
 model revision form replaces the legacy host editor. The form distinguishes saved, applied,
 invalid and pending revisions and displays recoverable activation failures. It never retrieves raw
 credentials; empty key input means unchanged and a deliberate clear removes it from the saved revision.
+When the protected model DTO advertises the optional media role, the existing System Settings form offers
+a separate Gemini model ID and write-only key with enable/disable and saved/applied readback. Omit the
+control and the edit field on an older core. A configured watcher does not enable inbound transport or
+other legacy controls.
 
 The Hermes panel shows the verified profile/version/route receipt if available and exact host CLI
 dry-run and apply instructions. It does not run host commands. Refresh the authenticated health
