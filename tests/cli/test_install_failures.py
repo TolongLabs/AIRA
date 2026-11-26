@@ -623,6 +623,13 @@ class NativePlatformTests(TempEnv):
                   patch.object(compose, "run", side_effect=self.daemon_route("linux/arm64"))):
                 self.assertEqual(install.check_native_platform(), "linux/arm64")
 
+    def test_creation_pins_the_native_platform_in_the_compose_process(self):
+        with (patch.object(install.platform, "system", return_value="Linux"),
+              patch.object(install.platform, "machine", return_value="aarch64"),
+              patch.object(compose, "compose_run", return_value=(0, "", "")) as start):
+            compose.compose_up(self.root, "fixture", env={"DOCKER_DEFAULT_PLATFORM": "linux/amd64"})
+        self.assertEqual(start.call_args.kwargs["overrides"]["DOCKER_DEFAULT_PLATFORM"], "linux/arm64")
+
     def test_shared_native_gate_refuses_matching_rootless_and_desktop_daemons(self):
         for security, operating_system in (('["rootless"]', "Ubuntu"), ("[]", "Docker Desktop")):
             with self.subTest(security=security, operating_system=operating_system):
