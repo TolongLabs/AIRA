@@ -50,12 +50,16 @@ timestamps. It stores no verbatim text or provider error; text remains in the sa
 One turn and item position is unique, including across reattachment. The row follows the turn's retention
 lifetime; deleting a turn cascades to its delivery rows.
 
-Issuance verifies the persisted answered inbound row and assistant reply. Only a non-replayed fresh return may
-issue. A 10-minute unexpired pending row can be atomically claimed once, by its current route and original chat
-and message. Claim precedes the external send. `claimed` is never made pending on restart or timeout, and an
-expired row cannot be claimed. Ack moves a claimed row to `confirmed`, `failed` or `unknown`; an identical
-terminal ack is harmless, a conflicting one refuses. This deliberately prefers possible omission over a
-duplicate delivery after an ambiguous result. A returned `turn.state = delivered` still means a core return;
+Issuance verifies the persisted answered inbound row and assistant reply, including a failed turn's stored fallback.
+Only a non-replayed fresh return may issue; a duplicate fresh return cannot win the same unique insertion. A
+10-minute unexpired pending row can be atomically claimed once, by its current route and original chat/message.
+The core derives the turn ID from the row and rechecks the same inbound/assistant binding; the adapter never
+chooses an arbitrary turn. Claim precedes the external send. `claimed` is never made pending on restart or timeout,
+and an expired row cannot be claimed. Ack moves a claimed row to `confirmed`, `failed` or `unknown`; late ack
+on that same current route is valid even after expiry. An identical terminal ack is harmless, a conflicting one
+refuses. This deliberately prefers possible omission over a duplicate delivery after an ambiguous result. The
+guarantee applies within the retained database lineage and deduplication lifetime, not an older restored backup.
+A returned `turn.state = delivered` still means a core return;
 the independent delivery row is the transport acknowledgement, not a rewrite of the turn record.
 
 ### Standalone deploy backup

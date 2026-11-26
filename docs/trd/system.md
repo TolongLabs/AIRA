@@ -136,13 +136,17 @@ Unknown protocol, stale route, unsupported capabilities or malformed data refuse
 | POST `/v2/aira/delivery/ack`   | Same binding and ID plus `outcome:confirmed\|failed\|unknown`. Only an existing claimed item may finish; repeating the identical outcome is idempotent.                                                 |
 
 The core issues a delivery ID only for a fresh, non-replayed returned turn and its persisted same-chat inbound
-and assistant records. Empty or `NO_REPLY` content produces no delivery. One item position of a turn has one
-delivery ID even across route changes. The claim rechecks the current route and active chat; the existing reply
+and assistant records (including a persisted fallback reply of a failed turn). Recheck the route ID captured at
+ingress after the awaited turn. Empty or `NO_REPLY` content produces no delivery. One item position of a turn has
+one delivery ID even across route changes; only the atomic insert winner returns the ID. A later v1 replay of a
+v2-issued turn returns no reply, while v1-originated replay behavior is unchanged. The claim rechecks the current
+route and active chat; the existing reply
 mute/quiet rule is unchanged. A disabled or pending chat has no claim. Delivery text is the bounded clean reply,
 not `MEDIA:` directives or an arbitrary path. The adapter calls only the selected runner's delivery adapter for
 the originating message's chat, then consumes the event with no default reply. Successful `SendResult` with a
 nonempty message ID confirms the send; raw provider IDs and errors are not forwarded as receipt content.
-A lost claim or ambiguous send may omit delivery, but cannot retry or resend it. A stored core reply is never
+A lost claim or ambiguous send may omit delivery, but cannot retry or resend it. A new route or detach prevents
+new claims, not a send already in flight under a previously valid claim. A stored core reply is never
 proof of a WhatsApp delivery. See [the private ledger](storage.md#standalone-delivery-ledger).
 
 Future typed documents derive only from matching successful same-turn, same-chat tool receipts and owned
