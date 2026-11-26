@@ -167,6 +167,69 @@ def expected_helper(repo_root: Path, version: str) -> bytes:
                             f'ADAPTER_VERSION = "{version}"\n'.encode(), 1)
 
 
+def verify_typed_transition(args, launcher, options, source, helper, marker, host_record, route_record,
+                            site_port, core_port, owner_token, gateway_token):
+    """A disposable canonical profile exercises v1/v2 attachment and old-core rollback, without a gateway."""
+    paths = (source, helper, marker, host_record, route_record)
+    before = {path: file_state(path) for path in paths}
+    typed = [*options, "--protocol", "v2"]
+    code, plan = run_json(launcher, [*typed, "--dry-run"], STEP_TIMEOUT_S)
+    check(code == 0 and plan.get("attach", {}).get("protocol") == "v2"
+          and set(plan.get("attach", {}).get("changes", [])) == {"source", "helper", "marker", "host"}
+          and all(file_state(p) == value for p, value in before.items()),
+          "typed_dry_run", "Typed migration planning changed prior files or did not select all four artifacts.")
+    code, applied = run_json(launcher, [*typed, "--apply", "--yes"], STEP_TIMEOUT_S)
+    if args.expect_migration_rejection:
+        check(code == 1 and applied.get("error", {}).get("code") == "attach_failed"
+              and all(file_state(p) == value for p, value in before.items()),
+              "typed_rollback", "The v1-only core did not restore the full prior attachment.")
+        code, health, _ = http_call(site_port, "GET", "/owner-api/core/health", token=owner_token)
+        check(code == 200 and (health or {}).get("hermes", {}).get("adapterVersion") == args.adapter_version,
+              "typed_rollback", "The verified original v1 route did not survive refusal.")
+        note("typed migration: pinned v1-only core refused and exact rollback passed")
+        return
+    check(code == 0 and applied.get("attach", {}).get("protocol") == "v2"
+          and applied.get("attach", {}).get("gatewayRunning") is False,
+          "typed_attach", "Typed attachment did not preserve stopped gateway state.")
+    code, health, _ = http_call(site_port, "GET", "/owner-api/core/health", token=owner_token)
+    route = (health or {}).get("hermes", {})
+    route_id = route.get("routeId")
+    check(code == 200 and route.get("protocolVersion") == 2 and route.get("capabilities") == ["text"]
+          and isinstance(route_id, str) and bool(re.fullmatch(r"[a-f0-9-]{36}", route_id)),
+          "typed_receipt", "The authenticated owner route did not confirm typed capability and identity.")
+    marker_value, host_value, core_value = (json.loads(path.read_text()) for path in (marker, host_record, route_record))
+    check(marker_value.get("state") == "active" and all(value.get("schemaVersion") == 2
+          and value.get("routeId") == route_id and value.get("capabilities") == ["text"]
+          for value in (marker_value, host_value, core_value))
+          and all(path.stat().st_mode & 0o777 == 0o600 for path in (marker, host_record, route_record)),
+          "typed_receipt", "Typed marker, host and core route do not agree exactly.")
+    snapshot = {path: file_state(path) for path in paths}
+    code, repeated = run_json(launcher, [*typed, "--apply", "--yes"], STEP_TIMEOUT_S)
+    check(code == 0 and repeated.get("attach", {}).get("changes") == []
+          and all(file_state(p) == value for p, value in snapshot.items()),
+          "typed_repeat", "Identical typed attachment rotated the route or changed files.")
+    code, doctor = run_json(launcher, ["doctor", "--home", options[2]], STEP_TIMEOUT_S)
+    check(code == 0 and any(c.get("name") == "hermes" and c.get("reason") == "route_verified_gateway_stopped"
+                            for c in doctor.get("checks", [])),
+          "typed_doctor", "Doctor could not verify the typed stopped route.")
+    fixture = {"schemaVersion": 2, "profile": "default", "routeId": route_id, "platform": "whatsapp",
+               "kind": "dm", "chat": "typed-fixture", "sender": "typed-fixture", "mid": "pending",
+               "text": "synthetic pending"}
+    code, pending = http_gateway(core_port, "/v2/aira/turn", gateway_token, fixture)
+    check(code == 200 and pending == {"schemaVersion": 2, "disposition": "no_reply", "deliveries": []},
+          "typed_pending", "The typed route did not fail closed for a pending chat.")
+    code, _ = http_gateway(core_port, "/v1/aira/turn", gateway_token,
+                           {k: (1 if k == "schemaVersion" else v) for k, v in fixture.items() if k != "routeId"})
+    check(code == 403, "typed_legacy_refusal", "A typed route accepted the v1 turn endpoint.")
+    code, downgraded = run_json(launcher, [*options, "--protocol", "v1", "--apply", "--yes"], STEP_TIMEOUT_S)
+    check(code == 0 and downgraded.get("attach", {}).get("protocol") == "v1"
+          and all(file_state(path) == before[path] for path in (source, helper, marker, host_record)),
+          "typed_downgrade", "Downgrade did not restore the exact v1 source, helper and host artifacts.")
+    code, _ = http_gateway(core_port, "/v2/aira/turn", gateway_token, fixture)
+    check(code == 403, "typed_stale_route", "Downgrade left the previous typed route active.")
+    note("typed migration: v1 to v2, repeat, pending admission, doctor and exact downgrade passed")
+
+
 def verify_migration(args, launcher, options, repo_root, source, helper, marker, host_record, route_record,
                      site_port, core_port, owner_token, gateway_token):
     """Switch an isolated canonical checkout both ways, without starting its gateway."""
@@ -599,6 +662,8 @@ def main() -> int:
                       "migration_fixture", "Migration requires a distinct version, pinned uv and exclusive source.")
                 verify_migration(args, launcher, options, repo_root, source, helper, marker, host_record, route_record,
                                  site_port, core_port, owner_token, gateway_token)
+                verify_typed_transition(args, launcher, options, source, helper, marker, host_record, route_record,
+                                        site_port, core_port, owner_token, gateway_token)
         attach = {"schemaVersion": 1, "adapterVersion": args.adapter_version,
                   "profile": profile, "action": "connect"}
         code, _ = http_gateway(core_port, "/v1/aira/attach-check", owner_token, attach)

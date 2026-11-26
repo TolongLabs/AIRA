@@ -90,6 +90,7 @@ def build_parser():
     attach.add_argument("--profile", required=True)
     attach.add_argument("--hermes-dir")
     attach.add_argument("--hermes-home")
+    attach.add_argument("--protocol", choices=("v1", "v2"), help="Select v1 (default) or candidate typed v2 explicitly.")
     apply = attach.add_mutually_exclusive_group(required=True)
     apply.add_argument("--dry-run", action="store_true")
     apply.add_argument("--apply", action="store_true")

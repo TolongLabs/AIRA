@@ -132,6 +132,102 @@ class AttachmentTests(unittest.TestCase):
         for name, record in prior.items():
             self.assertEqual(hermes._read(self.plan["paths"][name]), record, name)
 
+    def typed_plan(self):
+        route_id = "12345678-1234-4234-8234-123456789abc"
+        marker = {"schemaVersion": 2, "state": "provisional", "routeId": None, "capabilities": ["text"]}
+        host = {"schemaVersion": 2, "routeId": None, "capabilities": ["text"]}
+        record = lambda data: ((json.dumps(data, sort_keys=True) + "\n").encode(), 0o600)
+        route = {"state": "connected", "profile": "fixture", "adapterVersion": "hermes-v0.23.4",
+                 "verifiedAt": "2026-11-26T00:00:00Z", "protocolVersion": 2, "routeId": route_id,
+                 "capabilities": ["text"]}
+        self.plan.update(protocol=2, typedTransaction=True, provisional=record(marker))
+        self.plan["desired"].update(marker=record(marker), host=record(host))
+        self.report["hermesRoute"] = route
+        self.plan["running"] = True
+
+        def handshake(path):
+            self.assertEqual(hermes._read(path), self.plan["provisional"])
+            receipt = {"schemaVersion": 2, **{k: v for k, v in route.items() if k != "protocolVersion"}}
+            install.atomic_write_text(self.plan["paths"]["receipt"], json.dumps(receipt))
+            return route if self.success else None
+
+        self.plan["adapter"].typed_check = handshake
+        return route_id, record
+
+    def test_typed_marker_published_only_after_route_host_and_liveness_verification(self):
+        route_id, _ = self.typed_plan()
+        original_observe = self.report.copy()
+        seen = []
+
+        def observe(*_):
+            self.assertEqual(hermes._read(self.plan["paths"]["marker"]), self.plan["provisional"])
+            self.assertEqual(json.loads(self.plan["paths"]["host"].read_text())["routeId"], route_id)
+            seen.append("verified")
+            return original_observe
+
+        with (patch.object(hermes, "_plan", return_value=self.plan),
+              patch.object(hermes, "_profile_status", return_value=True),
+              patch.object(hermes, "_gateway_command", side_effect=lambda *_: self.assertEqual(
+                  hermes._read(self.plan["paths"]["marker"]), self.plan["provisional"])),
+              patch.object(install, "observe", side_effect=observe),
+              patch.object(operations, "log_event", return_value="fixture")):
+            result = hermes.run_attach(self.args, "8" * 32)
+        self.assertEqual(result["outcome"], "ok")
+        self.assertEqual(seen, ["verified"])
+        marker = json.loads(self.plan["paths"]["marker"].read_text())
+        self.assertEqual((marker["state"], marker["routeId"]), ("active", route_id))
+
+    def test_typed_failure_restores_previous_marker_last(self):
+        self.typed_plan()
+        prior = {"source": (b"prior source\n", 0o644), "helper": (b"prior helper\n", 0o644),
+                 "marker": (b"prior active marker\n", 0o600), "receipt": (b"prior receipt\n", 0o600),
+                 "host": (b"prior host\n", 0o600)}
+        for name, record in prior.items():
+            hermes._write(self.plan["paths"][name], record)
+        self.plan["original"] = prior
+        self.success = False
+        calls = []
+
+        def restart(*_):
+            self.assertEqual(hermes._read(self.plan["paths"]["marker"]), self.plan["provisional"])
+            calls.append("restart")
+
+        with (patch.object(hermes, "_plan", return_value=self.plan),
+              patch.object(hermes, "_profile_status", return_value=True),
+              patch.object(hermes, "_gateway_command", side_effect=restart),
+              patch.object(install, "observe", return_value=self.report),
+              patch.object(operations, "log_event", return_value="fixture")):
+            result = hermes.run_attach(self.args, "8" * 32)
+        self.assertEqual(result["error"]["code"], "attach_failed")
+        self.assertEqual(calls, ["restart", "restart"])
+        for name, record in prior.items():
+            self.assertEqual(hermes._read(self.plan["paths"][name]), record, name)
+
+    def test_typed_readback_transport_error_rolls_back(self):
+        self.typed_plan()
+        with (patch.object(hermes, "_plan", return_value=self.plan),
+              patch.object(hermes, "_profile_status", return_value=True),
+              patch.object(hermes, "_gateway_command"),
+              patch.object(install, "observe", side_effect=hermes.compose.RunError("fixture")),
+              patch.object(operations, "log_event", return_value="fixture")):
+            result = hermes.run_attach(self.args, "8" * 32)
+        self.assertEqual(result["error"]["code"], "attach_failed")
+        for name, record in self.plan["original"].items():
+            self.assertEqual(hermes._read(self.plan["paths"][name], optional=True), record, name)
+
+    def test_published_marker_durability_warning_does_not_roll_back(self):
+        route_id, _ = self.typed_plan()
+
+        def publish(path, record):
+            hermes._write(path, record)
+            return False
+
+        with patch.object(hermes, "_publish_marker", side_effect=publish):
+            result = self.run_attach()
+        self.assertEqual(result["outcome"], "ok")
+        self.assertEqual(json.loads(self.plan["paths"]["marker"].read_text())["routeId"], route_id)
+        self.assertEqual(self.commands, ["restart"])
+
 
 if __name__ == "__main__":
     unittest.main()

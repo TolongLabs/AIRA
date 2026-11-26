@@ -285,6 +285,7 @@ jobs:
               tests/gateway/test_aira_transport_spike.py tests/gateway/test_aira_bridge_fixture.py \
               tests/gateway/test_aira_capabilities_fixture.py tests/gateway/test_whatsapp_group_gating.py \
               tests/gateway/test_whatsapp_media_path_profile.py)
+            python3 tests/install/run_hermes_typed_fixture.py "$fixture"
           done
 
       - name: Log in to GHCR after the native tests pass

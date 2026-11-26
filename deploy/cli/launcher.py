@@ -76,6 +76,7 @@ def install_runtime(repo_root):
         (Path(repo_root) / "deploy" / "standalone.compose.yml", "standalone.compose.yml"),
         (Path(repo_root) / "config.yml", "config.template.yml"),
         (Path(repo_root) / "deploy" / "gateway" / "standalone_adapter.py", "standalone_adapter.py"),
+        (Path(repo_root) / "deploy" / "gateway" / "standalone_typed_adapter.py", "standalone_typed_adapter.py"),
         (Path(repo_root) / "deploy" / "gateway" / "standalone_patch.py", "standalone_patch.py"),
     ):
         files[name] = source_path.read_text(encoding="utf-8")

@@ -1,6 +1,7 @@
 """Finite source and adapter registry for the standalone v1 text contract."""
 
 import hashlib
+import re
 
 BASELINE_ADAPTER_VERSION = "hermes-v0.23.4"
 SOURCE_REVISIONS = {
@@ -11,6 +12,13 @@ SOURCE_REVISIONS = {
 ADAPTER_VERSIONS = tuple(SOURCE_REVISIONS.values())
 _BASELINE_LINE = b'ADAPTER_VERSION = "hermes-v0.23.4"\n'
 _BASELINE_SHA256 = "a530e9ca079c55c08e973f35ccf7138ba044ecb959d19eff15c593f4dca018fe"
+_TYPED_SHA256 = "dbb209f04c9a9664d766c7a3fd0cf22f130073c8b32630ab9457aeaeef38e861"
+_MAIN = b'if __name__ == "__main__":\n    sys.exit(main())\n'
+_ROUTE_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+
+
+def valid_route_id(value) -> bool:
+    return isinstance(value, str) and _ROUTE_ID.fullmatch(value) is not None
 
 
 def version_for_head(head: str) -> str | None:
@@ -29,3 +37,20 @@ def render_helper(template: bytes, version: str) -> bytes:
 def known_helper_version(template: bytes, current: bytes) -> str | None:
     """Recognize only exact rendered helper bytes, including the prior v1 helper."""
     return next((version for version in ADAPTER_VERSIONS if render_helper(template, version) == current), None)
+
+
+def render_typed_helper(template: bytes, typed: bytes, version: str) -> bytes:
+    """Preserve the v1 helper and select an independently reviewed v2 extension."""
+    original = render_helper(template, version)
+    if hashlib.sha256(typed).hexdigest() != _TYPED_SHA256 or not original.endswith(_MAIN):
+        raise ValueError("unfamiliar typed Hermes helper")
+    return original[:-len(_MAIN)] + typed.rstrip(b"\n") + b"\n\n" + _MAIN
+
+
+def known_helper(template: bytes, typed: bytes, current: bytes) -> tuple[str, int] | None:
+    for version in ADAPTER_VERSIONS:
+        if render_helper(template, version) == current:
+            return version, 1
+        if render_typed_helper(template, typed, version) == current:
+            return version, 2
+    return None

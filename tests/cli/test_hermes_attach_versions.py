@@ -49,8 +49,10 @@ class AttachVersionPlanningTests(unittest.TestCase):
             classify_source=lambda data: {
                 b"# original synthetic consumer\n": "original",
                 b"# patched synthetic consumer\n": "patched",
+                b"# typed synthetic consumer\n": "typed",
             }.get(data, "unsupported"),
             patch_source=lambda _: b"# patched synthetic consumer\n",
+            select_protocol=lambda _, protocol: b"# typed synthetic consumer\n" if protocol == 2 else b"# patched synthetic consumer\n",
         )
         self.manifest = SimpleNamespace(mode="standalone", stage="installed", corePort=9881, sitePort=9890)
         self.selection = {"home": self.home, "manifest": self.manifest,
@@ -77,21 +79,58 @@ class AttachVersionPlanningTests(unittest.TestCase):
             stack.enter_context(patch.object(hermes, "_profile_status", return_value=False))
             return hermes._plan(self.args)
 
-    def prior_attachment(self, version):
-        self.target.write_bytes(b"# patched synthetic consumer\n")
-        self.helper.write_bytes(hermes_versions.render_helper(self.template, version))
-        install.atomic_write_text(self.marker, json.dumps({
+    def prior_attachment(self, version, protocol=1):
+        self.target.write_bytes(b"# typed synthetic consumer\n" if protocol == 2 else b"# patched synthetic consumer\n")
+        self.helper.write_bytes(hermes_versions.render_typed_helper(self.template, self.mods["typed"], version)
+                                if protocol == 2 else hermes_versions.render_helper(self.template, version))
+        marker = {
             "schemaVersion": 1, "profile": "default", "profileHome": str(self.root),
             "port": 9881, "token": "a" * 64,
-        }))
-        install.atomic_write_text(self.host, json.dumps({
+        }
+        host = {
             "schemaVersion": 1, "sourceDir": str(self.source), "hermesHome": str(self.root),
             "profile": "default", "adapterVersion": version,
-        }))
+        }
         route = {"state": "connected", "profile": "default", "adapterVersion": version,
                  "verifiedAt": "2026-11-26T00:00:00Z"}
-        install.atomic_write_text(self.receipt, json.dumps({"schemaVersion": 1, **route}))
+        if protocol == 2:
+            fields = {"routeId": "12345678-1234-4234-8234-123456789abc", "capabilities": ["text"]}
+            marker.update(schemaVersion=2, state="active", **fields)
+            host.update(schemaVersion=2, **fields)
+            route.update(protocolVersion=2, **fields)
+        install.atomic_write_text(self.marker, json.dumps(marker))
+        install.atomic_write_text(self.host, json.dumps(host))
+        install.atomic_write_text(self.receipt, json.dumps({"schemaVersion": protocol, **{k: v for k, v in route.items() if k != "protocolVersion"}}))
         self.report["hermesRoute"] = route
+
+    def test_explicit_protocol_migration_plans_without_mutation(self):
+        self.prior_attachment("hermes-v0.23.2")
+        self.args.protocol = "v2"
+        plan = self.plan()
+        self.assertEqual(plan["protocol"], 2)
+        self.assertEqual(json.loads(plan["provisional"][0])["state"], "provisional")
+        self.assertTrue(plan["typedTransaction"])
+        self.assertEqual(json.loads(plan["desired"]["host"][0])["routeId"], None)
+        self.assertEqual(json.loads(self.marker.read_text())["schemaVersion"], 1)
+        self.prior_attachment("hermes-v0.23.2", protocol=2)
+        plan = self.plan()
+        self.assertEqual(plan["original"], {**plan["original"], **plan["desired"]})
+        self.args.protocol = "v1"
+        plan = self.plan()
+        self.assertTrue(plan["typedTransaction"])
+        self.assertEqual(json.loads(plan["desired"]["marker"][0])["schemaVersion"], 1)
+        self.assertEqual(json.loads(self.marker.read_text())["schemaVersion"], 2)
+
+    def test_typed_history_requires_explicit_protocol_and_complete_route(self):
+        self.prior_attachment("hermes-v0.23.2", protocol=2)
+        self.assert_refused_unchanged("hermes_profile_conflict")
+        self.args.protocol = "v2"
+        marker = json.loads(self.marker.read_text())
+        install.atomic_write_text(self.marker, json.dumps({**marker, "routeId": "87654321-4321-4321-8321-cba987654321"}))
+        self.assert_refused_unchanged("hermes_profile_conflict")
+        self.prior_attachment("hermes-v0.23.2", protocol=2)
+        self.host.unlink()
+        self.assert_refused_unchanged("hermes_profile_conflict")
 
     def test_fresh_verified_revision_uses_its_exact_rendered_helper(self):
         plan = self.plan()
