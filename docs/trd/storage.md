@@ -41,6 +41,23 @@ defines the token's permissions and lifetime; [model revision authority](dashboa
 defines the versioned settings and separate credential files. Backup and restore preserve these files without
 revealing their contents.
 
+### Standalone Delivery Ledger
+
+The candidate [typed transport](system.md#standalone-typed-delivery) uses a `standalone_delivery` table in the
+same SQLite database. Each row records a random delivery ID, route ID, internal chat ID, turn ID, inbound
+message ID, item position/kind, optional content-addressed file hash, state and creation/expiry/claim/finish
+timestamps. It stores no verbatim text or provider error; text remains in the same-chat assistant session row.
+One turn and item position is unique, including across reattachment. The row follows the turn's retention
+lifetime; deleting a turn cascades to its delivery rows.
+
+Issuance verifies the persisted answered inbound row and assistant reply. Only a non-replayed fresh return may
+issue. A 10-minute unexpired pending row can be atomically claimed once, by its current route and original chat
+and message. Claim precedes the external send. `claimed` is never made pending on restart or timeout, and an
+expired row cannot be claimed. Ack moves a claimed row to `confirmed`, `failed` or `unknown`; an identical
+terminal ack is harmless, a conflicting one refuses. This deliberately prefers possible omission over a
+duplicate delivery after an ambiguous result. A returned `turn.state = delivered` still means a core return;
+the independent delivery row is the transport acknowledgement, not a rewrite of the turn record.
+
 ### Standalone deploy backup
 
 The host update transaction holds `deploy.lock` and gracefully stops the sole writer before taking its coherent

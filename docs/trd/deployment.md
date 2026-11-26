@@ -249,6 +249,13 @@ independent selected profile is supported. Select an exact source revision from 
 foreign consumer/adapter bytes or unverified profile scopes fail without changes. The ABI is not inferred
 from a version range.
 
+The candidate [typed protocol](system.md#standalone-typed-delivery) is selected explicitly with `--protocol v2`;
+version 1 remains the default. Protocol migration has the same exclusive canonical source and prior-evidence
+requirements as version migration. The core issues the route ID in the synthetic v2 handshake, and the final
+private marker and host receipt retain that exact ID and negotiated capabilities. An incomplete or refused
+handshake (including use against a v1-only core) rolls back the complete prior adapter transaction. An
+unfinished v2 marker cannot route a message. No public compatibility claim until the actual adapter tests pass.
+
 `aira attach-hermes --profile NAME --apply` is a deliberate apply; confirmation is required on a TTY,
 or `--yes` with explicit non-interactive apply. The install must be standalone. Hold its shared deploy
 lock and a bounded source-tree lock while modifying shared adapter source. Preserve the exact original
