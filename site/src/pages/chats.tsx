@@ -2,7 +2,8 @@ import { TimeField } from '@/dashboard/form-select'
 import { Loading } from '@/dashboard/loading'
 import { ChatAccess } from '@/dashboard/chat-access'
 import { InstallationContext } from '@/dashboard/context'
-import { useReportDocumentCapability } from '@/dashboard/report-capability'
+import { useStandaloneCapabilities } from '@/dashboard/standalone-capability'
+import type { StandaloneControls } from '@/lib/core'
 import { ChatGlyph, motif, ProfileImage, PortraitUpload } from '@/dashboard/profile-image'
 import Composer from '@/dashboard/composer'
 import { chatHref, dashboardHref } from '@/dashboard/navigation'
@@ -704,7 +705,7 @@ function ChatRow({
   characters,
   charactersError,
   toolCatalog,
-  reportDocuments,
+  controls,
   onChanged,
   open,
   onToggle,
@@ -712,7 +713,7 @@ function ChatRow({
 }: {
   chat: CoreChat
   toolCatalog: Load<CoreToolCatalog>
-  reportDocuments: boolean
+  controls: StandaloneControls
   characters: CoreCharacter[]
   charactersError?: string
   onChanged: () => void
@@ -1071,9 +1072,10 @@ function ChatRow({
                 <>
                   {standalone && (
                     <p>
-                      {reportDocuments
+                      {controls.reportDocuments
                         ? 'Standalone supports text and report documents.'
                         : 'Standalone supports text replies only.'}{' '}
+                      {controls.inboundMedia && 'Direct media watching is available. '}
                       Hermes owns group admission; stickers, reactions and scheduled messages are unavailable.
                     </p>
                   )}
@@ -1265,67 +1267,67 @@ function ChatRow({
                 </>
               )}
               {tab === 'features' &&
-                CHAT_FEATURE_DEFINITIONS.filter(
-                  (f) => !standalone || standaloneChatFeature(f.key, reportDocuments)
-                ).map((f) => {
-                  const postMedia = f.key === 'features.autofetch'
-                  const socialKey = postMedia || f.key === 'features.social' ? (f.key as SocialCapabilityKey) : null
-                  return (
-                    <Fragment key={f.key}>
-                      <SettingRow vm={vm} name={f.key} label={f.label} onClear={clear}>
-                        <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1">
-                          <div className="min-w-0 flex-1 basis-48">
-                            <Toggle
-                              checked={vm.settingValue(f.key, false)}
-                              disabled={busy}
-                              onChange={(v) => save(f.key, v)}
-                              label={f.label}
-                              hint={f.hint}
-                            />
-                            {postMedia && (
-                              <p className="mt-2 mb-0 text-[0.8rem] text-faint">
-                                YouTube delivery is limited to verified Shorts.
-                                {chat.status !== 'active'
-                                  ? ' This chat is off.'
-                                  : vm.settingValue('muted', false)
-                                    ? ' This chat is muted.'
-                                    : ''}
-                              </p>
-                            )}
-                            {socialKey && (
-                              <SocialPlatforms
-                                catalog={toolCatalog}
-                                feature={socialKey}
-                                vm={vm}
-                                disabled={busy || !vm.settingValue(f.key, false)}
-                                save={save}
-                                clear={clear}
+                CHAT_FEATURE_DEFINITIONS.filter((f) => !standalone || standaloneChatFeature(f.key, controls)).map(
+                  (f) => {
+                    const postMedia = f.key === 'features.autofetch'
+                    const socialKey = postMedia || f.key === 'features.social' ? (f.key as SocialCapabilityKey) : null
+                    return (
+                      <Fragment key={f.key}>
+                        <SettingRow vm={vm} name={f.key} label={f.label} onClear={clear}>
+                          <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1">
+                            <div className="min-w-0 flex-1 basis-48">
+                              <Toggle
+                                checked={vm.settingValue(f.key, false)}
+                                disabled={busy}
+                                onChange={(v) => save(f.key, v)}
+                                label={f.label}
+                                hint={f.hint}
                               />
-                            )}
+                              {postMedia && (
+                                <p className="mt-2 mb-0 text-[0.8rem] text-faint">
+                                  YouTube delivery is limited to verified Shorts.
+                                  {chat.status !== 'active'
+                                    ? ' This chat is off.'
+                                    : vm.settingValue('muted', false)
+                                      ? ' This chat is muted.'
+                                      : ''}
+                                </p>
+                              )}
+                              {socialKey && (
+                                <SocialPlatforms
+                                  catalog={toolCatalog}
+                                  feature={socialKey}
+                                  vm={vm}
+                                  disabled={busy || !vm.settingValue(f.key, false)}
+                                  save={save}
+                                  clear={clear}
+                                />
+                              )}
+                            </div>
+                            <FeatureTools tools={toolFeatures.find((feature) => feature.key === f.key)?.tools ?? []} />
                           </div>
-                          <FeatureTools tools={toolFeatures.find((feature) => feature.key === f.key)?.tools ?? []} />
-                        </div>
-                      </SettingRow>
-                      {f.key === 'features.reports' && (
-                        <SettingRow
-                          vm={vm}
-                          name="report.defaultFormat"
-                          label="Default document format"
-                          hint="Format for /doc when a message names none."
-                          onClear={clear}
-                        >
-                          <Segmented
-                            options={['pdf', 'markdown'] as const}
-                            labels={{ pdf: 'PDF', markdown: 'Markdown' }}
-                            value={vm.settingValue<'pdf' | 'markdown'>('report.defaultFormat', 'pdf')}
-                            disabled={busy}
-                            onChange={(v) => void save('report.defaultFormat', v)}
-                          />
                         </SettingRow>
-                      )}
-                    </Fragment>
-                  )
-                })}
+                        {f.key === 'features.reports' && (
+                          <SettingRow
+                            vm={vm}
+                            name="report.defaultFormat"
+                            label="Default document format"
+                            hint="Format for /doc when a message names none."
+                            onClear={clear}
+                          >
+                            <Segmented
+                              options={['pdf', 'markdown'] as const}
+                              labels={{ pdf: 'PDF', markdown: 'Markdown' }}
+                              value={vm.settingValue<'pdf' | 'markdown'>('report.defaultFormat', 'pdf')}
+                              disabled={busy}
+                              onChange={(v) => void save('report.defaultFormat', v)}
+                            />
+                          </SettingRow>
+                        )}
+                      </Fragment>
+                    )
+                  }
+                )}
               {tab === 'quiet' && (
                 <SettingRow
                   vm={vm}
@@ -1403,7 +1405,7 @@ function Group({
   note: string
   chats: CoreChat[]
   toolCatalog: Load<CoreToolCatalog>
-  reportDocuments: boolean
+  controls: StandaloneControls
   characters: CoreCharacter[]
   charactersError?: string
   onChanged: () => void
@@ -1809,7 +1811,7 @@ export default function ChatsPage({
   const packs = useCore(core.characters)
   const tools = useCore(core.tools)
   const standalone = useContext(InstallationContext) === 'standalone'
-  const reportDocuments = useReportDocumentCapability(standalone)
+  const controls = useStandaloneCapabilities(standalone)
   const all = chats.data?.chats ?? []
   const on = useMemo(() => all.filter((c) => c.status === 'active'), [all])
   const off = useMemo(() => all.filter((c) => c.status === 'pending'), [all])
@@ -1823,7 +1825,7 @@ export default function ChatsPage({
   }, [])
   const shared = {
     toolCatalog: tools,
-    reportDocuments,
+    controls,
     characters,
     charactersError: packs.error,
     onChanged: chats.reload,
@@ -1883,7 +1885,7 @@ export default function ChatsPage({
           characters={characters}
           charactersError={packs.error}
           toolCatalog={tools}
-          reportDocuments={reportDocuments}
+          controls={controls}
           onChanged={chats.reload}
           open={true}
         />

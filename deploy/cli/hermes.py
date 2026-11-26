@@ -108,6 +108,7 @@ def _modules(repo_root):
         result[name] = _load_module("aira_" + name, path, source)
     result["typed"] = _read(base / "standalone_typed_adapter.py")[0]
     result["document"] = _read(base / "standalone_document_adapter.py")[0]
+    result["media"] = _read(base / "standalone_media_adapter.py")[0]
     return result
 
 
@@ -157,7 +158,8 @@ def _plan(args):
     requested_protocol = getattr(args, "protocol", None)
     protocol = 2 if requested_protocol == "v2" else 1
     requested_capabilities = getattr(args, "capabilities", None)
-    if requested_capabilities is not None and (protocol != 2 or requested_capabilities not in ("text", "text,document")):
+    if requested_capabilities is not None and (
+            protocol != 2 or requested_capabilities not in hermes_versions.CAPABILITY_OPTIONS):
         raise args_error("Select --protocol v2 and a reviewed capability set.")
     if not adapter.PROFILE.fullmatch(args.profile):
         raise args_error("Select a valid Hermes profile name.")
@@ -175,6 +177,7 @@ def _plan(args):
     baseline = hermes_versions.render_helper(mods["helper"], version)
     typed = hermes_versions.render_typed_helper(mods["helper"], mods["typed"], version)
     document = hermes_versions.render_document_helper(mods["helper"], mods["document"], version)
+    media = hermes_versions.render_media_helper(mods["helper"], mods["document"], mods["media"], version)
     marker = profile_dir / adapter.MARKER_NAME
     receipt = home / "data" / "standalone" / "hermes.json"
     host_receipt = receipt.with_name("attach-host.json")
@@ -182,7 +185,8 @@ def _plan(args):
                 "marker": _read(marker, private=True, optional=True), "receipt": _read(receipt, private=True, optional=True),
                 "host": _read(host_receipt, private=True, optional=True)}
     kind = patch.classify_source(original["source"][0])
-    previous = (hermes_versions.known_helper(mods["helper"], mods["typed"], mods["document"], original["helper"][0])
+    previous = (hermes_versions.known_helper(mods["helper"], mods["typed"], mods["document"], mods["media"],
+                                            original["helper"][0])
                 if original["helper"] else None)
     previous_version, previous_protocol, previous_capabilities = previous or (None, None, ())
     previous_capabilities = list(previous_capabilities)
@@ -192,7 +196,10 @@ def _plan(args):
                     else previous_capabilities if previous_protocol == 2 else ["text"])
     # A v1 downgrade uses the previous typed capability parser while retaining the exact new v1 bytes.
     typed_capabilities = capabilities if protocol == 2 else previous_capabilities or ["text"]
-    typed_rendered = document if typed_capabilities == ["text", "document"] else typed
+    if typed_capabilities == list(hermes_versions.DIRECT_MEDIA_CAPABILITIES):
+        typed_rendered = media
+    else:
+        typed_rendered = document if typed_capabilities == ["text", "document"] else typed
     rendered = typed_rendered if protocol == 2 else baseline
     adapter = _load_module("aira_selected_adapter", helper, rendered)
     typed_adapter = adapter if protocol == 2 else _load_module("aira_typed_adapter", helper, typed_rendered)
@@ -337,11 +344,16 @@ def _guard_typed_lifecycle(plan):
 
 def _detail(plan, apply):
     changes = [name for name, value in plan["desired"].items() if value != plan["original"][name]]
+    verification = "text only"
+    if plan.get("capabilities") == list(hermes_versions.DIRECT_MEDIA_CAPABILITIES):
+        verification = "text and report documents; direct inbound media (image, audio, video, PDF)"
+    elif plan.get("capabilities") == ["text", "document"]:
+        verification = "text and report documents"
     return {"profile": plan["profile"], "dryRun": not apply, "adapterVersion": plan["adapter"].ADAPTER_VERSION,
             **({"protocol": "v" + str(plan["protocol"])} if plan.get("typedTransaction") else {}),
             **({"capabilities": plan["capabilities"]} if plan.get("protocol") == 2 else {}),
             "sourceState": plan["kind"], "gatewayRunning": plan["running"], "changes": changes,
-            "verification": "synthetic local route; no real message; " + ("text and report documents" if plan.get("capabilities") == ["text", "document"] else "text only")}
+            "verification": "synthetic local route; no real message; " + verification}
 
 
 def _gateway_command(plan, verb):

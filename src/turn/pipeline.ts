@@ -3,7 +3,7 @@ import type { PackSet } from '../character/loader.js'
 import type { LineKind } from '../character/schema.js'
 import type { Config } from '../config/schema.js'
 import { identityClaim } from '../format/fourth-wall.js'
-import type { Attachment, GatewayRequest } from '../gateway/request.js'
+import type { GatewayRequest, TurnAttachment } from '../gateway/request.js'
 import { compactDue } from '../gateway/schedule.js'
 import { modelRecordContext } from '../judge/systemone.js'
 import { linkPhotos } from '../media/link-intake.js'
@@ -109,6 +109,8 @@ export interface TurnServiceDeps {
   commands?: CommandRouter
   /** Reads the files members send, before the model runs (docs/trd/models.md#media-watching). Absent: no media. */
   media?: TurnMedia
+  /** Current standalone route/chat authority for process-owned verified media bytes. */
+  mayReadPortableMedia?: (routeId: string | undefined, chatId: string) => boolean
   hooks?: TurnHooks
   /** How many window messages a turn reads. */
   maxWindowMessages?: number
@@ -140,7 +142,7 @@ interface Waiter {
   /** True when `/think` stood first and `features.think` is enabled for the chat. */
   think?: boolean
   /** The files the gateway saved for this message. Kept in memory: a restart answers from the text alone. */
-  attachments?: Attachment[]
+  attachments?: TurnAttachment[]
   typedRouteId?: string
   settlers: { resolve: (reply: TurnReply) => void; reject: (error: unknown) => void }[]
 }
@@ -279,6 +281,9 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       newest.typedRouteId && batch.every((waiter) => waiter.typedRouteId === newest.typedRouteId)
         ? newest.typedRouteId
         : undefined
+    const hasPortable = batch.some((waiter) => waiter.attachments?.some((attachment) => 'file' in attachment))
+    const allowPortable = () => deps.mayReadPortableMedia?.(typedRouteId, chat.chatId) === true
+    if (hasPortable && !allowPortable()) return decline('declined')
     const context: TurnContext = {
       turnId,
       chat,
@@ -487,7 +492,11 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         }
         if (files.length > 0) {
           enterMediaStage()
-          const fileRead = await deps.media.read(files, context.deadline, { enabled: mediaOn, pictures: identifyOn })
+          const fileRead = await deps.media.read(files, context.deadline, {
+            enabled: mediaOn,
+            pictures: identifyOn,
+            ...(hasPortable ? { allowPortable } : {})
+          })
           combined.readings.push(...fileRead.readings)
           combined.unreadable.push(...fileRead.unreadable)
           combined.calls.push(...fileRead.calls)
@@ -1106,12 +1115,14 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
   }
 
   /**
-   * How many pending messages the next turn answers: a command alone, else the messages before the next command.
-   * One merged turn answers only its newest message, so a command merged with others would be lost.
+   * Commands and portable-media ingress run alone: never lend a newer sender or route authority
+   * to verified attachment bytes. Ordinary text batching is unchanged.
    */
   function batchLength(pending: Waiter[]): number {
-    if (pending[0]?.command) return 1
-    const next = pending.findIndex((waiter) => waiter.command)
+    const isolated = (waiter: Waiter) =>
+      waiter.command || waiter.attachments?.some((attachment) => 'file' in attachment)
+    if (pending[0] && isolated(pending[0])) return 1
+    const next = pending.findIndex(isolated)
     return next === -1 ? pending.length : next
   }
 
@@ -1239,7 +1250,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       typedRouteId
     }: {
       afterNew?: () => void
-      attachments?: Attachment[] | undefined
+      attachments?: TurnAttachment[] | undefined
       command?: boolean
       think?: boolean
       typedRouteId?: string | undefined
@@ -1257,6 +1268,10 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         continue
       }
       afterNew?.()
+      // Bytes belong only to first admission. A same-process pending waiter already retains its original
+      // attachment; a durable retry after interruption cannot reconstruct or replace it.
+      const admittedAttachments =
+        status.status === 'retry' ? attachments?.filter((attachment) => 'path' in attachment) : attachments
       return enqueue(chat, {
         mid: key.mid,
         senderId: key.senderId,
@@ -1264,7 +1279,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         ...(command ? { command } : {}),
         ...(think ? { think } : {}),
         ...(typedRouteId ? { typedRouteId } : {}),
-        ...(attachments && attachments.length > 0 ? { attachments } : {})
+        ...(admittedAttachments && admittedAttachments.length > 0 ? { attachments: admittedAttachments } : {})
       })
     }
     throw new Error('a repeated message did not settle')

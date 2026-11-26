@@ -72,7 +72,10 @@ export interface StandaloneCapabilities {
   scheduler: boolean
   /** Absent on older cores; only an explicit true enables the existing Reports control. */
   reportDocuments?: boolean
+  inboundMedia?: boolean
 }
+
+export type StandaloneControls = Required<Pick<StandaloneCapabilities, 'reportDocuments' | 'inboundMedia'>>
 
 export interface CoreHealth {
   status: 'ready' | 'starting'

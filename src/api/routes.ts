@@ -3,7 +3,7 @@ import type { PackSet } from '../character/loader.js'
 import type { InstallationMode, StandaloneReadiness } from '../config/installation-mode.js'
 import { readFeedback } from '../feedback/view.js'
 import { DEFAULT_TOOL_LABELS, plainLabel } from '../format/footer.js'
-import { hasDocumentCapability } from '../gateway/standalone.js'
+import { hasDocumentCapability, hasMediaCapability } from '../gateway/standalone.js'
 import { listChatItems } from '../memory/store.js'
 import { buildReport, newestSnapshotFile } from '../records/report.js'
 import { displayNameFor, listChats } from '../settings/chats.js'
@@ -121,6 +121,7 @@ function handleHealth(deps: SiteApiDeps): RouteResult {
       fileBrowser: false,
       gatewayConnection: readiness?.hermes?.state === 'connected',
       reportDocuments: hasDocumentCapability(readiness?.hermes),
+      inboundMedia: hasMediaCapability(readiness?.hermes) && base.roles.media.configured,
       scheduler: false
     }
   })

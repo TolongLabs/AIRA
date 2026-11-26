@@ -85,7 +85,8 @@ Replace `MODEL_ID` and `PROVIDER_BASE_URL` with your provider's values. The supp
 `fallback` for `anthropic` and `openai-compatible`. The optional `media` role uses Gemini only on cores
 that advertise it. Configure it in **System Settings** or with
 `aira config set-model --role media --provider gemini --model MODEL_ID --prompt-key`, then apply the revision.
-This configures the media model; it does not enable inbound media or link reading.
+This configures the media model; inbound media also requires the explicit candidate attachment below.
+Automatic social link media reading remains unavailable.
 Use `--prompt-key` or `--key-stdin`, never an
 API key argument. `--expected-revision` refuses a stale write. See [typed configuration commands](trd/deployment.md#typed-configuration-and-diagnostics-commands)
 for additional flags. Setup and activation do not contact a paid model as a health probe; configure a real provider
@@ -136,7 +137,8 @@ pairing or live delivery. The supported messaging baseline is unchanged while
 | Native Linux           | Local rootful amd64 and arm64 install, update, rollback, restore and image publication tested on native CI runners. Arm64 is a verified host/image candidate, not a broader messaging claim. |
 | Stock Hermes           | Synthetic admission, identity, attach and native text dispatch against exact v0.23.2, v0.23.3 and v0.23.4; unknown or modified source refused.                                               |
 | Typed text and reports | Explicit v2 text and receipt-backed generated Markdown/PDF document delivery tested with a loopback fake bridge on all three pins. No real account or live send.                             |
-| Other transport        | Inbound image, audio, video and documents; arbitrary outbound files/media; sticker and reaction delivery; location and polls remain unavailable.                                             |
+| Direct inbound media   | Explicit candidate route for PNG/JPEG, Ogg/MPEG audio or voice, MP4 and PDF, one bounded direct cache file and applied Gemini role. No live message or provider call.                        |
+| Other transport        | Arbitrary outbound files/media; quoted or remote media; sticker and reaction delivery; location and polls remain unavailable.                                                                |
 | Host environment       | Remote Docker refuses. Rootless, Docker Desktop, WSL2, macOS and other OS/CPU rows remain unsupported. The isolated X11 desktop result below is not an actual owner-desktop claim.           |
 
 See [exact text versions](https://github.com/TolongLabs/AIRA/pull/413),
@@ -150,9 +152,15 @@ other media, and legacy `MEDIA:` directives are not accepted. Stock Hermes may r
 contacts as ordinary text summaries; this is not structured capability support. For the precise capability and rollback rules,
 see the [typed attachment contract](trd/deployment.md#hermes-attachment-transaction).
 
+The direct-media candidate is separately selected with
+`aira attach-hermes --profile default --protocol v2 --capabilities text,document,receive-image,receive-audio,receive-video,receive-pdf --dry-run`.
+Only apply after the selected independent profile is stopped and the dry-run is verified. It uses the
+[bounded direct-media contract](trd/media-pipelines.md#standalone-direct-media) and requires the
+applied optional Gemini role. This is synthetic evidence, not an expansion of the supported baseline.
+
 Host owner service, direct owner sends, file browsing and the subscription runner remain legacy-only. Library,
 lesson and market integrations, MCP, research jobs and scheduled messages are not enabled in standalone.
-Portable inbound media and core-owned routines need independently negotiated capability, configuration and
+Additional media and core-owned routines need independently negotiated capability, configuration and
 delivery authority before they can be enabled. See the [inbound media evaluation](trd/media-pipelines.md#standalone-inbound-media-evaluation)
 and [integration decisions](trd/site.md#portable-integration-decisions). Unsupported owner routes refuse rather
 than contacting the host.

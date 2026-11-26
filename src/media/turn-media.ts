@@ -1,5 +1,5 @@
 import { setTimeout as delay } from 'node:timers/promises'
-import type { Attachment } from '../gateway/request.js'
+import type { Attachment, TurnAttachment } from '../gateway/request.js'
 import { retryDelayMs } from '../models/retry-delay.js'
 import type { SocialLookupObserver, SocialPost } from '../social/types.js'
 import { PLATFORM_NAME } from '../social/urls.js'
@@ -7,7 +7,7 @@ import type { ModelCallRecord } from '../turn/types.js'
 import { type GatewayDir, type LoadedFile, loadGatewayFile, type MediaUnreadable } from './files.js'
 import type { MediaReading, MediaWatcher } from './gemini-watcher.js'
 import { mediaBlock, readMedia, sanitizeMediaText } from './intake.js'
-import type { MediaKind, MediaLimits } from './limits.js'
+import { type MediaKind, type MediaLimits, mediaKindOf } from './limits.js'
 import { type LinkAllow, type LinkReader, type LinkReading, type LinkTried } from './link-intake.js'
 import { clipLinkText, LINK_TRANSCRIPT_PREFIX, linkEvidenceReserve, renderLinkEvidence } from './link-segments.js'
 
@@ -40,9 +40,9 @@ export interface TurnMedia {
    * serves both the watcher and `pictures`. `pictures` also checks the pictures when no watcher reads them.
    */
   read(
-    attachments: Attachment[],
+    attachments: TurnAttachment[],
     deadline: number,
-    options?: { enabled?: boolean; pictures?: boolean }
+    options?: { enabled?: boolean; pictures?: boolean; allowPortable?: () => boolean }
   ): Promise<TurnMediaResult>
   /** Finds and reads at most one social or YouTube link from candidate texts, inside the turn deadline. Never throws. */
   readLink(
@@ -68,9 +68,9 @@ export interface TurnMediaOptions {
 }
 
 /** The attachments a turn reads: the first few of each message, the newest messages first when there are too many. */
-export function mediaToRead(perMessage: readonly (readonly Attachment[])[]): Attachment[] {
+export function mediaToRead<T extends TurnAttachment>(perMessage: readonly (readonly T[])[]): T[] {
   const picked = perMessage.map((files) => files.slice(0, MAX_MEDIA_PER_MESSAGE))
-  const kept: Attachment[][] = []
+  const kept: T[][] = []
   let room = MAX_MEDIA_PER_TURN
   for (let i = picked.length - 1; i >= 0 && room > 0; i--) {
     const files = (picked[i] ?? []).slice(0, room)
@@ -101,7 +101,12 @@ interface OneRead {
 export function createTurnMedia(options: TurnMediaOptions): TurnMedia {
   const now = options.now ?? (() => new Date())
 
-  async function readOne(attachment: Attachment, deadline: number, pictures: boolean): Promise<OneRead> {
+  async function readOne(
+    attachment: TurnAttachment,
+    deadline: number,
+    pictures: boolean,
+    allowPortable?: () => boolean
+  ): Promise<OneRead> {
     const kind = KIND_NAME[attachment.kind]
     // Without a watcher, only a picture that identify_image may index is checked, and nothing else is read.
     if (!options.watcher && !(pictures && attachment.kind === 'image')) return { unreadable: { kind, reason: 'off' } }
@@ -109,14 +114,22 @@ export function createTurnMedia(options: TurnMediaOptions): TurnMedia {
     // Measure elapsed time independently of the turn's injected wall clock.
     const expiresAt = performance.now() + effectiveTimeout(deadline)
     const remainingMs = () => Math.ceil(expiresAt - performance.now())
-    const loaded = await loadGatewayFile(attachment, options.gatewayDirs, options.limits.maxBytes, remainingMs())
-    const picked = isPicture(attachment, loaded) ? { picture: attachment } : {}
+    const portable = 'file' in attachment
+    if (portable && !allowPortable?.()) return { unreadable: { kind, reason: 'refused' } }
+    const mediaKind = portable ? mediaKindOf(attachment.file.contentType) : undefined
+    const loaded: LoadedFile = portable
+      ? mediaKind
+        ? { ok: true, kind: mediaKind, file: attachment.file }
+        : { ok: false, reason: 'unsupported type' }
+      : await loadGatewayFile(attachment, options.gatewayDirs, options.limits.maxBytes, remainingMs())
+    const picked = !portable && isPicture(attachment, loaded) ? { picture: attachment } : {}
     if (!options.watcher) return { unreadable: { kind, reason: 'off' }, ...picked }
     if (!loaded.ok) return { unreadable: { kind, reason: loaded.reason } }
 
     const calls: ModelCallRecord[] = []
     let unreadable: NonNullable<OneRead['unreadable']> = { kind, reason: 'unreadable' }
     for (let attempt = 1; ; attempt++) {
+      if (portable && !allowPortable?.()) return { unreadable: { kind, reason: 'refused' }, calls }
       const timeoutMs = remainingMs()
       if (timeoutMs <= 0) break
       const startedAt = now()
@@ -154,7 +167,9 @@ export function createTurnMedia(options: TurnMediaOptions): TurnMedia {
       const pictures = readOptions?.pictures === true
       // Without a watcher, a file is checked only to index its picture; nothing is read otherwise.
       if (!options.watcher && !pictures) return { readings: [], unreadable: off, calls: [] }
-      const items = await Promise.all(attachments.map((attachment) => readOne(attachment, deadline, pictures)))
+      const items = await Promise.all(
+        attachments.map((attachment) => readOne(attachment, deadline, pictures, readOptions?.allowPortable))
+      )
       const result: TurnMediaResult = { readings: [], unreadable: [], calls: [] }
       for (const item of items) {
         if (item.reading) result.readings.push(item.reading)

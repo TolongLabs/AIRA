@@ -59,7 +59,8 @@ is enabled by this evaluation.
 The new explicit direct-media helper generation uses only stock admitted native ordinary text
 (`conversation`, `extendedTextMessage`) and direct native `imageMessage`, `audioMessage`, `pttMessage`,
 `videoMessage` and `documentMessage` events. Raw and normalized native types, media arrays and admitted
-identity must agree. Native summaries, quotes (even without a quote ID), inlined documents, remote
+identity must agree. Stock voice can also be an `audioMessage` with explicit PTT metadata.
+Native summaries, quotes (even without a quote ID), inlined documents, remote
 URLs, multiple files, alternate profiles, unsupported types and ambiguous input refuse with no fallback.
 Older exact helpers retain their historical behavior.
 
@@ -74,9 +75,11 @@ The typed media turn adds `media:{kind,mime,sha256,base64}` to the strict v2 tex
 `image`, `audio`, `voice`, `video` or `document`. The core verifies canonical base64, size, SHA-256,
 MIME/kind/signature and current authenticated route, profile and chat. Only the media endpoint accepts
 the bounded larger request (base64 limit plus 256 KiB); admit at most four concurrent media requests.
-An active, known chat, resolved `features.media` and an explicitly applied media watcher are required.
-The normal turn admission still enforces sender, mute, binding, spend and deduplication. Recheck route
-and chat permission at intake; mixed-route batches cannot grant media authority. Replays cannot cause
+An active, known and unmuted chat, resolved `features.media` and an explicitly applied media watcher
+are required. Ordinary text replies retain their existing mute policy. The normal turn admission
+still enforces sender, binding, spend and deduplication. A direct-media
+turn runs alone and rechecks route and chat permission at intake; batching cannot lend authority
+from another sender or route. Replays cannot cause
 another reading or native delivery claim.
 
 The verified bytes are held only in the bounded process-owned turn queue, never persisted or mapped

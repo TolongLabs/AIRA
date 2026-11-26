@@ -312,6 +312,7 @@ jobs:
               tests/gateway/test_whatsapp_media_path_profile.py)
             python3 tests/install/run_hermes_typed_fixture.py "$fixture"
             python3 tests/install/run_hermes_typed_fixture.py "$fixture" --documents
+            python3 tests/install/run_hermes_typed_fixture.py "$fixture" --media
           done
 
       - name: Log in to GHCR after the native tests pass

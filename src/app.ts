@@ -679,6 +679,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         ? undefined
         : (options.mediaWatcher ??
           (mediaModel !== null && mediaKey ? createGeminiWatcher({ apiKey: mediaKey, model: mediaModel }) : undefined))
+    const mediaReadyNow = () => Boolean(mediaWatcher) && activationCommitted
     if (!mediaWatcher) logger.warn('media.off', { reason: mediaModel === null ? 'no_model' : 'no_key' })
     else if (config.media.gatewayDirs.length === 0) logger.warn('media.no_gateway_dirs', {})
     for (const dir of config.media.gatewayDirs) {
@@ -700,6 +701,12 @@ export async function createApp(options: AppOptions): Promise<App> {
       alerter,
       tools: registry,
       commands: createCommandRouter(registry, { timeZone: config.format.timeZone }),
+      ...(standaloneGateway
+        ? {
+            mayReadPortableMedia: (routeId, chatId) =>
+              mediaReadyNow() && standaloneGateway.canReceiveMedia(routeId, chatId)
+          }
+        : {}),
       media: createTurnMedia({
         ...(mediaWatcher ? { watcher: mediaWatcher } : {}),
         ...(!standalone
@@ -968,6 +975,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       redactor,
       ready: () => serviceReady,
       chatbotReady: chatbotReadyNow,
+      mediaReady: mediaReadyNow,
       installationMode,
       ...(standalone ? { standaloneReadiness } : {}),
       ...(standaloneGateway ? { standaloneGateway } : {}),
@@ -1012,7 +1020,7 @@ export async function createApp(options: AppOptions): Promise<App> {
           breakerOpen: subscription ? (fallbackBreaker?.isOpen('main') ?? false) : breaker.isOpen('fallback')
         },
         judge: { configured: Boolean(moodJudge || memoryJudge), breakerOpen: false },
-        media: { configured: Boolean(mediaWatcher) && activationCommitted, breakerOpen: false }
+        media: { configured: mediaReadyNow(), breakerOpen: false }
       }),
       logger,
       now,

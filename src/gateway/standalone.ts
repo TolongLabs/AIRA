@@ -8,6 +8,7 @@ import { resolveSetting } from '../settings/settings.js'
 import type { Storage } from '../storage/database.js'
 import type { GatewayRequest } from './request.js'
 import { createStandaloneDeliveryLedger } from './standalone-delivery.js'
+import { decodeDirectMedia, directMediaSchema } from './standalone-media.js'
 
 export const STANDALONE_ADAPTER_VERSION = 'hermes-v0.23.4'
 export const STANDALONE_ADAPTER_VERSIONS = ['hermes-v0.23.2', 'hermes-v0.23.3', STANDALONE_ADAPTER_VERSION] as const
@@ -42,7 +43,19 @@ const turnSchema = z.strictObject({
   mid: identifier,
   text: z.string().trim().min(1).max(32_768)
 })
-const typedCapabilities = z.union([z.tuple([z.literal('text')]), z.tuple([z.literal('text'), z.literal('document')])])
+const directMediaCapabilities = z.tuple([
+  z.literal('text'),
+  z.literal('document'),
+  z.literal('receive-image'),
+  z.literal('receive-audio'),
+  z.literal('receive-video'),
+  z.literal('receive-pdf')
+])
+const typedCapabilities = z.union([
+  z.tuple([z.literal('text')]),
+  z.tuple([z.literal('text'), z.literal('document')]),
+  directMediaCapabilities
+])
 type TypedCapabilities = z.infer<typeof typedCapabilities>
 const typedReceipt = receiptSchema.extend({
   schemaVersion: z.literal(2),
@@ -62,6 +75,7 @@ const typedAttachment = z.discriminatedUnion('action', [
   attachment.extend({ schemaVersion: z.literal(2), action: z.literal('downgrade'), routeId: z.uuid(), deadlineMs })
 ])
 const typedTurn = turnSchema.extend({ schemaVersion: z.literal(2), routeId: z.uuid() })
+const mediaTurn = typedTurn.extend({ media: directMediaSchema })
 const deliveryBinding = z.strictObject({
   schemaVersion: z.literal(2),
   routeId: z.uuid(),
@@ -95,6 +109,11 @@ export const hasDocumentCapability = (route: HermesRouteStatus | undefined): boo
   route?.state === 'connected' &&
   route.protocolVersion === 2 &&
   route.capabilities.some((capability) => capability === 'document')
+
+export const hasMediaCapability = (route: HermesRouteStatus | undefined): boolean =>
+  route?.state === 'connected' &&
+  route.protocolVersion === 2 &&
+  route.capabilities.some((capability) => capability === 'receive-image')
 
 export class StandaloneGatewayError extends Error {
   constructor(
@@ -152,6 +171,17 @@ export function createStandaloneGateway(dataRoot: string, storage: Storage, now:
       return false
     const chat = getChat(storage, chatId)
     return chat?.status === 'active' && resolveSetting(storage, chat, 'features.reports').value === true
+  }
+
+  const canReceiveMedia = (routeId: string | undefined, chatId: string): boolean => {
+    const route = status()
+    if (!routeId || route.routeId !== routeId || !hasMediaCapability(route)) return false
+    const chat = getChat(storage, chatId)
+    return (
+      chat?.status === 'active' &&
+      resolveSetting(storage, chat, 'features.media').value === true &&
+      resolveSetting(storage, chat, 'muted').value === false
+    )
   }
 
   const delivery = createStandaloneDeliveryLedger(storage, {
@@ -221,11 +251,13 @@ export function createStandaloneGateway(dataRoot: string, storage: Storage, now:
           : { schemaVersion: 1, state: 'connected', adapterVersion, profile, verifiedAt: now().toISOString() }
       )
     }
+    const capabilities = parsed.data.capabilities
     if (
       current.state === 'connected' &&
       current.protocolVersion === 2 &&
       current.adapterVersion === adapterVersion &&
-      current.capabilities.length === parsed.data.capabilities.length
+      current.capabilities.length === capabilities.length &&
+      current.capabilities.every((capability, index) => capability === capabilities[index])
     )
       return current
     return persist({
@@ -235,7 +267,7 @@ export function createStandaloneGateway(dataRoot: string, storage: Storage, now:
       profile,
       verifiedAt: now().toISOString(),
       routeId: randomUUID(),
-      capabilities: parsed.data.capabilities
+      capabilities
     })
   }
 
@@ -296,6 +328,19 @@ export function createStandaloneGateway(dataRoot: string, storage: Storage, now:
     return { request: { ...asTurn(parsed.data), typedRouteId: parsed.data.routeId }, routeId: parsed.data.routeId }
   }
 
+  const parseMediaTurn = (input: unknown) => {
+    const parsed = mediaTurn.safeParse(input)
+    if (!parsed.success) throw new StandaloneGatewayError(400, 'gateway_malformed')
+    const { profile, routeId, chat: waId, kind, media } = parsed.data
+    requireTypedRoute(profile, routeId)
+    const chat = getChatByWaId(storage, waId)
+    if (!chat || chat.type !== kind || !canReceiveMedia(routeId, chat.chatId))
+      throw new StandaloneGatewayError(409, 'media_unavailable')
+    const attachment = decodeDirectMedia(media)
+    if (!attachment) throw new StandaloneGatewayError(400, 'gateway_malformed')
+    return { request: { ...asTurn(parsed.data), typedRouteId: routeId, attachments: [attachment] }, routeId }
+  }
+
   const bindDelivery = (input: z.infer<typeof deliveryBinding>) => {
     requireTypedRoute(input.profile, input.routeId)
     const chat = getChatByWaId(storage, input.chat)
@@ -326,10 +371,12 @@ export function createStandaloneGateway(dataRoot: string, storage: Storage, now:
     parseTurn,
     isSameV1Route,
     parseTypedTurn,
+    parseMediaTurn,
     claimTyped,
     ackTyped,
     delivery,
-    canDeliverDocument
+    canDeliverDocument,
+    canReceiveMedia
   }
 }
 

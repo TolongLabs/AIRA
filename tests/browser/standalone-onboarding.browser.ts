@@ -136,6 +136,7 @@ it('walks standalone setup, saves private credentials and verifies activation af
     await page.reload()
     await page.getByText(/Standalone supports text and report documents/).waitFor()
     await page.getByRole('switch', { name: 'Reports' }).waitFor()
+    expect(await page.getByRole('switch', { name: 'Media watching' }).count()).toBe(0)
     await capture('standalone-report-defaults')
     await gatewayPost('turn', {
       schemaVersion: 2,
@@ -153,9 +154,16 @@ it('walks standalone setup, saves private credentials and verifies activation af
     expect(chats).toHaveLength(1)
     await page.goto(origin + '/app/preview/chats/' + chats[0]!.chatId + '/settings#features')
     await page.getByRole('switch', { name: 'Reports' }).waitFor()
+    expect(await page.getByRole('switch', { name: 'Media watching' }).count()).toBe(0)
+    expect(
+      (await attach(['text', 'document', 'receive-image', 'receive-audio', 'receive-video', 'receive-pdf'])).status
+    ).toBe(200)
+    await page.reload()
+    await page.getByRole('switch', { name: 'Media watching' }).waitFor()
     expect((await attach(['text'])).status).toBe(200)
     await page.reload()
     await page.getByRole('switch', { name: 'Reports' }).waitFor({ state: 'hidden' })
+    await page.getByRole('switch', { name: 'Media watching' }).waitFor({ state: 'hidden' })
     // Emulate the exact older readback shape; the new UI must omit media on writes.
     let oldCoreWrites = 0
     await page.route('**/owner-api/core/standalone-config', async (route) => {

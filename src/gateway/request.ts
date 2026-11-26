@@ -1,3 +1,5 @@
+import type { MediaFile } from '../media/limits.js'
+
 // Reads a gateway request (docs/trd/system.md#gateway-contract).
 // Identity comes only from the scope marker in the newest user content. Nothing here trusts a model.
 
@@ -29,6 +31,14 @@ export interface Attachment {
   path: string
 }
 
+/** Verified process-owned bytes, constructed only by the authenticated direct-media endpoint. */
+export interface PortableAttachment {
+  kind: Exclude<Attachment['kind'], 'file'>
+  file: MediaFile
+}
+
+export type TurnAttachment = Attachment | PortableAttachment
+
 export type GatewayRequest =
   /** A user message for a turn. */
   | {
@@ -41,7 +51,7 @@ export type GatewayRequest =
       quote?: Quote
       /** The display name the gateway wrote before a group message's marker. */
       senderName?: string
-      attachments: Attachment[]
+      attachments: TurnAttachment[]
       /** Internal route authority assigned only by the authenticated typed gateway, never parsed from a message. */
       typedRouteId?: string
       stream: boolean

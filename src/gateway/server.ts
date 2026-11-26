@@ -13,6 +13,7 @@ import { type GatewayRequest, MalformedRequestError, parseGatewayRequest } from 
 import { NO_REPLY, openStream, writeReply } from './response.js'
 import { type StandaloneGateway, StandaloneGatewayError } from './standalone.js'
 import { standaloneReplyText } from './standalone-delivery.js'
+import { MAX_MEDIA_BODY } from './standalone-media.js'
 
 // The OpenAI-compatible endpoint the gateway calls (docs/trd/system.md#gateway-contract).
 // A turn always gets status 200 with a deliverable reply. An error status is only for a request the core
@@ -27,6 +28,8 @@ export interface GatewayServerOptions {
   ready: () => boolean
   /** Standalone only: true once an applied model revision authorizes turns. Absent means inactive. */
   chatbotReady?: () => boolean
+  /** Standalone only: explicit applied watcher, never an ambient key. */
+  mediaReady?: () => boolean
   /** Standalone only. Legacy servers leave it absent and keep the exact legacy envelope. */
   installationMode?: InstallationMode
   standaloneReadiness?: () => StandaloneReadiness
@@ -49,12 +52,13 @@ const AUTOFETCH_MAX_BODY = 64 * 1024
 const AUTOFETCH_READ_LIMIT = 1024 * 1024
 const autofetchDeliveryKey = z.uuid()
 const autofetchBody = z.strictObject({ chat: z.string().min(1).max(256), text: z.string() })
-type StandaloneAction = 'v1Attach' | 'v1Turn' | 'v2Attach' | 'v2Turn' | 'v2Claim' | 'v2Ack'
+type StandaloneAction = 'v1Attach' | 'v1Turn' | 'v2Attach' | 'v2Turn' | 'v2Media' | 'v2Claim' | 'v2Ack'
 const STANDALONE_ENDPOINTS = new Map<string, StandaloneAction>([
   ['/v1/aira/attach-check', 'v1Attach'],
   ['/v1/aira/turn', 'v1Turn'],
   ['/v2/aira/attach-check', 'v2Attach'],
   ['/v2/aira/turn', 'v2Turn'],
+  ['/v2/aira/media-turn', 'v2Media'],
   ['/v2/aira/delivery/claim', 'v2Claim'],
   ['/v2/aira/delivery/ack', 'v2Ack']
 ])
@@ -91,6 +95,7 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
   const { turns, storage, logger } = options
   const now = options.now ?? (() => new Date())
   const log = logger.child({ module: 'gateway' })
+  let mediaRequests = 0
 
   function sendReply(
     response: ServerResponse,
@@ -322,7 +327,7 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
       json(response, 401, { error: { code: 'gateway_auth_required' } }, log)
       return
     }
-    const needsChatbot = action === 'v1Turn' || action === 'v2Turn' || action === 'v2Claim'
+    const needsChatbot = action === 'v1Turn' || action === 'v2Turn' || action === 'v2Media' || action === 'v2Claim'
     if (!options.ready() || (needsChatbot && !options.chatbotReady?.())) {
       json(
         response,
@@ -338,74 +343,92 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
       )
       return
     }
-    let input: unknown
-    try {
-      input = JSON.parse(await readBody(request, 256 * 1024))
-    } catch {
-      json(response, 400, { error: { code: 'gateway_malformed' } }, log)
+    const isMedia = action === 'v2Media'
+    if (isMedia && !options.mediaReady?.()) {
+      json(response, 503, { error: { code: 'media_unavailable' } }, log)
       return
     }
-    let parsed: Extract<GatewayRequest, { type: 'turn' }> | undefined
+    if (isMedia && mediaRequests >= 4) {
+      json(response, 429, { error: { code: 'media_busy' } }, log)
+      return
+    }
+    if (isMedia) mediaRequests++
     try {
-      if (action === 'v1Attach') {
-        if (response.destroyed) return
-        json(response, 200, { schemaVersion: 1, hermes: adapter.attach(input) }, log)
+      let input: unknown
+      try {
+        input = JSON.parse(await readBody(request, isMedia ? MAX_MEDIA_BODY : 256 * 1024))
+      } catch {
+        json(response, 400, { error: { code: 'gateway_malformed' } }, log)
         return
       }
-      if (action === 'v2Attach') {
-        if (response.destroyed) return
-        json(response, 200, { schemaVersion: 2, hermes: adapter.attachTyped(input) }, log)
-        return
+      let parsed: Extract<GatewayRequest, { type: 'turn' }> | undefined
+      try {
+        if (action === 'v1Attach') {
+          if (response.destroyed) return
+          json(response, 200, { schemaVersion: 1, hermes: adapter.attach(input) }, log)
+          return
+        }
+        if (action === 'v2Attach') {
+          if (response.destroyed) return
+          json(response, 200, { schemaVersion: 2, hermes: adapter.attachTyped(input) }, log)
+          return
+        }
+        if (action === 'v2Claim') {
+          json(response, 200, { schemaVersion: 2, delivery: adapter.claimTyped(input) }, log)
+          return
+        }
+        if (action === 'v2Ack') {
+          adapter.ackTyped(input)
+          json(response, 200, { schemaVersion: 2, accepted: true }, log)
+          return
+        }
+        const typed = isMedia
+          ? adapter.parseMediaTurn(input)
+          : action === 'v2Turn'
+            ? adapter.parseTypedTurn(input)
+            : undefined
+        parsed = typed?.request ?? adapter.parseTurn(input)
+        const ingress = typed ? undefined : adapter.status()
+        const known = getChatByWaId(storage, parsed.marker.chat)
+        if (known && known.type !== parsed.marker.kind)
+          throw new StandaloneGatewayError(409, 'gateway_chat_kind_conflict')
+        const reply = await turns.handle(parsed)
+        const chat = known ?? getChatByWaId(storage, parsed.marker.chat)
+        const binding =
+          chat && reply.turnId ? { chatId: chat.chatId, mid: parsed.marker.mid, turnId: reply.turnId } : null
+        if (typed) {
+          const deliveries = binding
+            ? adapter.delivery.issue({ ...binding, routeId: typed.routeId, replayed: reply.replayed })
+            : []
+          json(
+            response,
+            200,
+            { schemaVersion: 2, disposition: deliveries.length ? 'reply' : 'no_reply', deliveries },
+            log
+          )
+        } else {
+          const attemptedByTyped = binding && adapter.delivery.hasIssued(binding)
+          const content =
+            ingress && adapter.isSameV1Route(ingress) && !attemptedByTyped ? standaloneReplyText(reply.content) : null
+          json(
+            response,
+            200,
+            { schemaVersion: 1, disposition: content === null ? 'no_reply' : 'reply', reply: content },
+            log
+          )
+        }
+        options.afterTurn?.()
+      } catch (error) {
+        if (error instanceof StandaloneGatewayError) {
+          json(response, error.status, { error: { code: error.code } }, log)
+        } else {
+          const chatId = parsed ? chatIdFor(parsed) : undefined
+          recordTurnFailure(error, 'status:500', chatId ? { chatId } : {})
+          json(response, 500, { error: { code: 'gateway_failed' } }, log)
+        }
       }
-      if (action === 'v2Claim') {
-        json(response, 200, { schemaVersion: 2, delivery: adapter.claimTyped(input) }, log)
-        return
-      }
-      if (action === 'v2Ack') {
-        adapter.ackTyped(input)
-        json(response, 200, { schemaVersion: 2, accepted: true }, log)
-        return
-      }
-      const typed = action === 'v2Turn' ? adapter.parseTypedTurn(input) : undefined
-      parsed = typed?.request ?? adapter.parseTurn(input)
-      const ingress = typed ? undefined : adapter.status()
-      const known = getChatByWaId(storage, parsed.marker.chat)
-      if (known && known.type !== parsed.marker.kind)
-        throw new StandaloneGatewayError(409, 'gateway_chat_kind_conflict')
-      const reply = await turns.handle(parsed)
-      const chat = known ?? getChatByWaId(storage, parsed.marker.chat)
-      const binding =
-        chat && reply.turnId ? { chatId: chat.chatId, mid: parsed.marker.mid, turnId: reply.turnId } : null
-      if (typed) {
-        const deliveries = binding
-          ? adapter.delivery.issue({ ...binding, routeId: typed.routeId, replayed: reply.replayed })
-          : []
-        json(
-          response,
-          200,
-          { schemaVersion: 2, disposition: deliveries.length ? 'reply' : 'no_reply', deliveries },
-          log
-        )
-      } else {
-        const attemptedByTyped = binding && adapter.delivery.hasIssued(binding)
-        const content =
-          ingress && adapter.isSameV1Route(ingress) && !attemptedByTyped ? standaloneReplyText(reply.content) : null
-        json(
-          response,
-          200,
-          { schemaVersion: 1, disposition: content === null ? 'no_reply' : 'reply', reply: content },
-          log
-        )
-      }
-      options.afterTurn?.()
-    } catch (error) {
-      if (error instanceof StandaloneGatewayError) {
-        json(response, error.status, { error: { code: error.code } }, log)
-      } else {
-        const chatId = parsed ? chatIdFor(parsed) : undefined
-        recordTurnFailure(error, 'status:500', chatId ? { chatId } : {})
-        json(response, 500, { error: { code: 'gateway_failed' } }, log)
-      }
+    } finally {
+      if (isMedia) mediaRequests--
     }
   }
 

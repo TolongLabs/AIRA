@@ -1,9 +1,16 @@
 """Exact public Hermes version and reviewed helper compatibility contract."""
 
+import hashlib
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from deploy.cli import hermes_versions
+from deploy.cli import hermes, hermes_versions, launcher, main
+from deploy.cli.result import CommandError
+
+
+DIRECT_MEDIA = ["text", "document", "receive-image", "receive-audio", "receive-video", "receive-pdf"]
 
 
 class HermesVersionsTests(unittest.TestCase):
@@ -43,3 +50,50 @@ class HermesVersionsTests(unittest.TestCase):
             hermes_versions.render_helper(b"unknown template", "hermes-v0.23.4")
         with self.assertRaises(ValueError):
             hermes_versions.render_helper(template + b"\n# unfamiliar modification\n", "hermes-v0.23.4")
+
+    def test_media_capabilities_are_one_finite_ordered_selection(self):
+        for accepted in (["text"], ["text", "document"], DIRECT_MEDIA):
+            self.assertTrue(hermes_versions.valid_capabilities(accepted))
+            args = main.build_parser().parse_args(["attach-hermes", "--profile", "fixture", "--dry-run",
+                                                  "--protocol", "v2", "--capabilities", ",".join(accepted)])
+            self.assertEqual(args.capabilities, ",".join(accepted))
+        for refused in (DIRECT_MEDIA[0:-1], list(reversed(DIRECT_MEDIA)), DIRECT_MEDIA + ["receive-image"]):
+            self.assertFalse(hermes_versions.valid_capabilities(refused))
+            with self.assertRaises(CommandError):
+                main.build_parser().parse_args(["attach-hermes", "--profile", "fixture", "--dry-run",
+                                                "--protocol", "v2", "--capabilities", ",".join(refused)])
+
+    def test_direct_media_renderer_appends_only_a_pinned_extension(self):
+        gateway = Path(__file__).resolve().parents[2] / "deploy/gateway"
+        template = (gateway / "standalone_adapter.py").read_bytes()
+        typed = (gateway / "standalone_typed_adapter.py").read_bytes()
+        document = (gateway / "standalone_document_adapter.py").read_bytes()
+        # A synthetic extension isolates renderer and digest checks from native admission.
+        media = f"CAPABILITIES = {DIRECT_MEDIA!r}\n".encode()
+        entrypoint = b'if __name__ == "__main__":\n    sys.exit(main())\n'
+        with patch.object(hermes_versions, "_MEDIA_SHA256", hashlib.sha256(media).hexdigest()):
+            for version in hermes_versions.ADAPTER_VERSIONS:
+                with self.subTest(version=version):
+                    old_document = hermes_versions.render_document_helper(template, document, version)
+                    expected = old_document[:-len(entrypoint)] + media.rstrip(b"\n") + b"\n\n" + entrypoint
+                    rendered = hermes_versions.render_media_helper(template, document, media, version)
+                    self.assertEqual(rendered, expected)
+                    for helper, key in (
+                        (hermes_versions.render_helper(template, version), (version, 1, ())),
+                        (hermes_versions.render_typed_helper(template, typed, version), (version, 2, ("text",))),
+                        (old_document, (version, 2, ("text", "document"))),
+                        (rendered, (version, 2, tuple(DIRECT_MEDIA))),
+                    ):
+                        self.assertEqual(hermes_versions.known_helper(template, typed, document, media, helper), key)
+                    self.assertIsNone(hermes_versions.known_helper(template, typed, document, media, rendered + b"\n"))
+                    with self.assertRaises(ValueError):
+                        hermes_versions.render_media_helper(template, document, media + b"\n", version)
+
+    def test_installed_runtime_contains_the_exact_media_extension(self):
+        root = Path(__file__).resolve().parents[2]
+        expected = (root / "deploy/gateway/standalone_media_adapter.py").read_bytes()
+        with tempfile.TemporaryDirectory() as temp, patch.object(Path, "home", return_value=Path(temp)):
+            runtime, _launcher, _warnings = launcher.install_runtime(str(root))
+            with patch.object(hermes, "__file__", str(runtime / "cli/hermes.py")):
+                modules = hermes._modules(None)
+            self.assertEqual(modules["media"], expected)
