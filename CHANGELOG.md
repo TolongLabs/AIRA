@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.1](https://github.com/TolongLabs/AIRA/compare/v1.7.0...v1.7.1) (2026-11-26)
+
+
+### Bug Fixes
+
+* **cli:** avoid waiting on browser pipes ([0c00d62](https://github.com/TolongLabs/AIRA/commit/0c00d6207e2e3db8542c33456443b1c579c195d1))
+
 ## [1.7.0](https://github.com/TolongLabs/AIRA/compare/v1.6.1...v1.7.0) (2026-11-26)
 
 
