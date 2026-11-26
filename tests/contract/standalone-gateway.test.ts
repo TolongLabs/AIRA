@@ -6,7 +6,7 @@ import { type App, createApp } from '../../src/app.js'
 import { createStandaloneModelStore } from '../../src/config/standalone-models.js'
 import { STANDALONE_ADAPTER_VERSIONS } from '../../src/gateway/standalone.js'
 import { createLogger } from '../../src/records/logger.js'
-import { queueModel } from '../support/app.js'
+import { type Answer, queueModel } from '../support/app.js'
 import { testConfig } from '../support/core.js'
 import { tmpDir } from '../support/tmp.js'
 
@@ -15,7 +15,11 @@ afterEach(async () => {
   for (const app of apps.splice(0)) await app.close()
 })
 
-async function start(configured: boolean) {
+async function start(
+  configured: boolean,
+  answers: Answer[] = [{ text: 'fixture reply alpha' }, { text: 'fixture reply beta' }],
+  batchMs = 20
+) {
   const root = tmpDir('aira-structured-gateway-')
   const config = testConfig((value) => {
     value.storage.path = root
@@ -23,6 +27,7 @@ async function start(configured: boolean) {
     value.storage.criticalFreeMb = 1
     value.gateway.hostDataDir = '/host/fixture'
     value.memory.enabled = 'off'
+    value.turn.batchMs = batchMs
   })
   if (configured) {
     const store = createStandaloneModelStore(root, config)
@@ -43,7 +48,7 @@ async function start(configured: boolean) {
     })
     store.requestActivation({ expectedRevision: saved.savedRevision })
   }
-  const model = queueModel([{ text: 'fixture reply alpha' }, { text: 'fixture reply beta' }])
+  const model = queueModel(answers)
   const app = await createApp({
     config,
     env: { AIRA_INSTALL_MODE: 'standalone' },
@@ -76,7 +81,7 @@ async function start(configured: boolean) {
     expect(result.status).toBe(200)
     return result.json()
   }
-  return { model, post, ownerCall, owner, token, root }
+  return { app, model, post, ownerCall, owner, token, root }
 }
 const attach = (action: 'connect' | 'disconnect' = 'connect') => ({
   schemaVersion: 1,
@@ -243,7 +248,7 @@ describe('standalone typed Hermes candidate', () => {
     })
     const original = routeIdOf(attached.body)
     expect(routeIdOf((await core.post('/v2/aira/attach-check', request)).body)).toBe(original)
-    expect((await core.post('/v2/aira/attach-check', { ...request, capabilities: ['text', 'document'] })).status).toBe(
+    expect((await core.post('/v2/aira/attach-check', { ...request, capabilities: ['text', 'sticker'] })).status).toBe(
       400
     )
     expect((await core.post('/v2/aira/attach-check', { ...request, profile: 'other' })).status).toBe(409)
@@ -407,4 +412,138 @@ describe('standalone typed Hermes candidate', () => {
     expect(await pending).toEqual({ status: 200, body: { schemaVersion: 1, disposition: 'no_reply', reply: null } })
     expect(core.model.requests).toHaveLength(1)
   })
+
+  it('offers and claims a report only on an explicitly document-capable current route', async () => {
+    const core = await start(true, [
+      { text: 'text-only fixture reply' },
+      {
+        toolCalls: [
+          {
+            id: 'fixture-report-call',
+            name: 'make_report',
+            args: { title: 'Synthetic report', sections: [{ heading: 'Details', body: 'Fixture only.' }] }
+          }
+        ]
+      },
+      { text: 'Here is the report.' },
+      { text: 'document disabled fixture reply' }
+    ])
+    const textRoute = routeIdOf((await core.post('/v2/aira/attach-check', typedAttach())).body)
+    expect(await core.ownerCall('health')).toMatchObject({ capabilities: { reportDocuments: false } })
+    const defaults = z.object({ revision: z.string() }).parse(await core.ownerCall('settings?level=global&scope='))
+    await core.ownerCall('settings', 'PUT', {
+      level: 'global',
+      scope: '',
+      key: 'character',
+      value: 'example',
+      expectedRevision: defaults.revision
+    })
+    await core.post('/v2/aira/turn', typedTurn(textRoute, 'fixture-a', 'pending', 'pending'))
+    const chats = z.object({ chats: z.array(z.object({ chatId: z.string() })) }).parse(await core.ownerCall('chats'))
+    const chatId = chats.chats[0]!.chatId
+    await core.ownerCall(`chats/${chatId}/status`, 'PUT', { status: 'active' })
+    await core.post('/v2/aira/turn', typedTurn(textRoute, 'fixture-a', 'text', 'hello'))
+    expect(core.model.requests[0]?.tools.map((tool) => tool.name)).not.toContain('make_report')
+    const docRequest = { ...typedAttach(), capabilities: ['text', 'document'] }
+    const documentRoute = routeIdOf((await core.post('/v2/aira/attach-check', docRequest)).body)
+    expect(documentRoute).not.toBe(textRoute)
+    expect(routeIdOf((await core.post('/v2/aira/attach-check', docRequest)).body)).toBe(documentRoute)
+    expect(await core.ownerCall('health')).toMatchObject({ capabilities: { reportDocuments: true } })
+    expect((await core.post('/v2/aira/turn', typedTurn(textRoute, 'fixture-a', 'stale', 'stale'))).status).toBe(403)
+    const reply = await core.post(
+      '/v2/aira/turn',
+      typedTurn(documentRoute, 'fixture-a', 'report', '/doc synthetic report in markdown')
+    )
+    const descriptors = z
+      .object({ deliveries: z.array(z.strictObject({ id: z.uuid(), kind: z.enum(['text', 'document']) })) })
+      .parse(reply.body).deliveries
+    expect(descriptors.map((item) => item.kind)).toEqual(['text', 'document'])
+    expect(core.model.requests[1]?.tools.map((tool) => tool.name)).toEqual(['make_report'])
+    expect(JSON.stringify(reply.body)).not.toContain('/host/fixture')
+    const claim = {
+      schemaVersion: 2,
+      profile: 'fixture',
+      routeId: documentRoute,
+      chat: 'fixture-a',
+      mid: 'report',
+      id: descriptors[1]!.id
+    }
+    expect((await core.post('/v2/aira/delivery/claim', { ...claim, chat: 'fixture-b' })).status).toBe(409)
+    const document = await core.post('/v2/aira/delivery/claim', claim)
+    const payload = z
+      .object({
+        delivery: z.strictObject({
+          id: z.uuid(),
+          kind: z.literal('document'),
+          mime: z.literal('text/markdown'),
+          filename: z.literal('report.md'),
+          sha256: z.string(),
+          base64: z.string()
+        })
+      })
+      .parse(document.body).delivery
+    expect(Buffer.from(payload.base64, 'base64').toString()).toContain('Fixture only.')
+    expect((await core.post('/v2/aira/delivery/claim', claim)).status).toBe(409)
+    expect((await core.post('/v2/aira/delivery/ack', { ...claim, outcome: 'confirmed' })).status).toBe(200)
+    const chatSettings = z
+      .object({ revision: z.string() })
+      .parse(await core.ownerCall(`settings?level=chat&scope=${chatId}`))
+    await core.ownerCall('settings', 'PUT', {
+      level: 'chat',
+      scope: chatId,
+      key: 'features.reports',
+      value: false,
+      expectedRevision: chatSettings.revision
+    })
+    await core.post('/v2/aira/turn', typedTurn(documentRoute, 'fixture-a', 'disabled', 'hello'))
+    expect(core.model.requests[3]?.tools.map((tool) => tool.name)).not.toContain('make_report')
+    const next = routeIdOf((await core.post('/v2/aira/attach-check', typedAttach())).body)
+    expect(next).not.toBe(documentRoute)
+    expect(await core.ownerCall('health')).toMatchObject({ capabilities: { reportDocuments: false } })
+  })
+
+  it.each(['same', 'distinct'])(
+    'does not offer reports when %s message waiters combine v1 and a document route',
+    async (kind) => {
+      const core = await start(true, [{ text: 'mixed route reply' }], 500)
+      expect((await core.post('/v1/aira/attach-check', attach())).status).toBe(200)
+      const defaults = z.object({ revision: z.string() }).parse(await core.ownerCall('settings?level=global&scope='))
+      await core.ownerCall('settings', 'PUT', {
+        level: 'global',
+        scope: '',
+        key: 'character',
+        value: 'example',
+        expectedRevision: defaults.revision
+      })
+      await core.post('/v1/aira/turn', turn('fixture-a', 'pending', 'pending'))
+      const chats = z.object({ chats: z.array(z.object({ chatId: z.string() })) }).parse(await core.ownerCall('chats'))
+      await core.ownerCall(`chats/${chats.chats[0]!.chatId}/status`, 'PUT', { status: 'active' })
+      const v1 = core.post('/v1/aira/turn', turn('fixture-a', 'mixed', 'hello'))
+      await expect
+        .poll(
+          () =>
+            core.app.storage.read((db) =>
+              db.prepare('SELECT state FROM inbound_message WHERE mid = ?').pluck().get('mixed')
+            ),
+          { interval: 5 }
+        )
+        .toBe('received')
+      const routeId = routeIdOf(
+        (await core.post('/v2/aira/attach-check', { ...typedAttach(), capabilities: ['text', 'document'] })).body
+      )
+      const v2 = core.post(
+        '/v2/aira/turn',
+        typedTurn(routeId, 'fixture-a', kind === 'same' ? 'mixed' : 'second', 'hello')
+      )
+      const responses = await Promise.all([v1, v2])
+      expect(responses.map((result) => result.status)).toEqual([200, 200])
+      expect(core.model.requests).toHaveLength(1)
+      expect(core.model.requests[0]?.tools.map((tool) => tool.name)).not.toContain('make_report')
+      expect(
+        core.app.storage.read((db) =>
+          db.prepare("SELECT count(*) FROM receipt WHERE kind = 'report.created'").pluck().get()
+        )
+      ).toBe(0)
+    }
+  )
 })

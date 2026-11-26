@@ -79,10 +79,16 @@ class AttachVersionPlanningTests(unittest.TestCase):
             stack.enter_context(patch.object(hermes, "_profile_status", return_value=False))
             return hermes._plan(self.args)
 
-    def prior_attachment(self, version, protocol=1):
+    def prior_attachment(self, version, protocol=1, capabilities=None):
         self.target.write_bytes(b"# typed synthetic consumer\n" if protocol == 2 else b"# patched synthetic consumer\n")
-        self.helper.write_bytes(hermes_versions.render_typed_helper(self.template, self.mods["typed"], version)
-                                if protocol == 2 else hermes_versions.render_helper(self.template, version))
+        capabilities = capabilities or ["text"]
+        if protocol == 1:
+            rendered = hermes_versions.render_helper(self.template, version)
+        elif capabilities == ["text", "document"]:
+            rendered = hermes_versions.render_document_helper(self.template, self.mods["document"], version)
+        else:
+            rendered = hermes_versions.render_typed_helper(self.template, self.mods["typed"], version)
+        self.helper.write_bytes(rendered)
         marker = {
             "schemaVersion": 1, "profile": "default", "profileHome": str(self.root),
             "port": 9881, "token": "a" * 64,
@@ -94,7 +100,7 @@ class AttachVersionPlanningTests(unittest.TestCase):
         route = {"state": "connected", "profile": "default", "adapterVersion": version,
                  "verifiedAt": "2026-11-26T00:00:00Z"}
         if protocol == 2:
-            fields = {"routeId": "12345678-1234-4234-8234-123456789abc", "capabilities": ["text"]}
+            fields = {"routeId": "12345678-1234-4234-8234-123456789abc", "capabilities": capabilities}
             marker.update(schemaVersion=2, state="active", **fields)
             host.update(schemaVersion=2, **fields)
             route.update(protocolVersion=2, **fields)
@@ -120,6 +126,44 @@ class AttachVersionPlanningTests(unittest.TestCase):
         self.assertTrue(plan["typedTransaction"])
         self.assertEqual(json.loads(plan["desired"]["marker"][0])["schemaVersion"], 1)
         self.assertEqual(json.loads(self.marker.read_text())["schemaVersion"], 2)
+
+    def test_document_capability_requires_explicit_selection_and_preserves_existing_route(self):
+        self.prior_attachment("hermes-v0.23.2", protocol=2)
+        self.args.protocol = "v2"
+        text_plan = self.plan()
+        self.assertEqual(text_plan["capabilities"], ["text"])
+        self.args.capabilities = "text,document"
+        plan = self.plan()
+        self.assertEqual(plan["capabilities"], ["text", "document"])
+        self.assertEqual(json.loads(plan["provisional"][0])["capabilities"], ["text", "document"])
+        self.assertIsNone(json.loads(plan["desired"]["host"][0])["routeId"])
+        self.assertNotEqual(plan["desired"]["helper"], text_plan["desired"]["helper"])
+        self.assertEqual(json.loads(self.marker.read_text())["capabilities"], ["text"])
+
+        self.prior_attachment("hermes-v0.23.2", protocol=2, capabilities=["text", "document"])
+        del self.args.capabilities
+        identical = self.plan()
+        self.assertEqual(identical["capabilities"], ["text", "document"])
+        self.assertEqual(identical["original"], {**identical["original"], **identical["desired"]})
+        self.args.capabilities = "text"
+        text_again = self.plan()
+        self.assertEqual(text_again["desired"]["helper"], text_plan["desired"]["helper"])
+        self.assertIsNone(json.loads(text_again["desired"]["marker"][0])["routeId"])
+        self.args.protocol = "v1"
+        del self.args.capabilities
+        downgrade = self.plan()
+        self.assertEqual(json.loads(downgrade["provisional"][0])["capabilities"], ["text", "document"])
+        self.assertEqual(json.loads(downgrade["desired"]["marker"][0])["schemaVersion"], 1)
+
+    def test_document_helper_cannot_bypass_prior_receipt_or_v1_option_validation(self):
+        self.prior_attachment("hermes-v0.23.2", protocol=2, capabilities=["text", "document"])
+        self.args.protocol = "v2"
+        self.report["hermesRoute"]["capabilities"] = ["text"]
+        self.assert_refused_unchanged("hermes_profile_conflict")
+        self.args.protocol = "v1"
+        self.args.capabilities = "text,document"
+        with self.assertRaises(CommandError):
+            self.plan()
 
     def test_typed_history_requires_explicit_protocol_and_complete_route(self):
         self.prior_attachment("hermes-v0.23.2", protocol=2)

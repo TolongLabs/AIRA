@@ -209,18 +209,27 @@ jobs:
           path: hermes-fixture-legacy
           persist-credentials: false
 
+      - name: Check out the baseline for text-only typed core rollback QA
+        if: matrix.arch == 'amd64'
+        uses: actions/checkout@v7
+        with:
+          repository: NousResearch/hermes-agent
+          ref: 8fc0374447313e276f6b9a2764bfc750190c966a
+          path: hermes-fixture-typed-baseline
+          persist-credentials: false
+
       - name: Install the pinned public fixture dependencies
         run: |
           python3 -m venv "$RUNNER_TEMP/aira-uv"
           "$RUNNER_TEMP/aira-uv/bin/pip" install uv==0.11.26
           suffixes=('' -0233 -0232)
-          if [ "$ARCH" = amd64 ]; then suffixes+=(-legacy); fi
+          if [ "$ARCH" = amd64 ]; then suffixes+=(-legacy -typed-baseline); fi
           for suffix in "${suffixes[@]}"; do
             profile="$RUNNER_TEMP/aira-hermes-profile${suffix}"
             mkdir -m 700 "$profile"
             printf 'gateway:\n  multiplex_profiles: false\n' > "$profile/config.yaml"
             fixture="$GITHUB_WORKSPACE/hermes-fixture${suffix}"
-            if [ -z "$suffix" ] || [ "$suffix" = -legacy ]; then
+            if [ -z "$suffix" ] || [ "$suffix" = -legacy ] || [ "$suffix" = -typed-baseline ]; then
               mv "$fixture" "$profile/hermes-agent"
               fixture="$profile/hermes-agent"
               git -C "$fixture" fetch --depth=1 origin ae2a81ccc00e9b7c06301523e5bb09608397149c
@@ -275,6 +284,18 @@ jobs:
             --migration-ref ae2a81ccc00e9b7c06301523e5bb09608397149c --migration-version hermes-v0.23.2 \
             --uv-bin "$RUNNER_TEMP/aira-uv/bin/uv" --expect-migration-rejection
 
+      - name: Verify document refusal against the exact text-only typed core
+        if: matrix.arch == 'amd64'
+        run: |
+          previous="ghcr.io/tolonglabs/aira@sha256:dde24a711dba94e12f18ba2905d99df5a70592cfa5c2452d974e8d08a38db303"
+          docker pull "$previous"
+          docker tag "$previous" aira-onboarding-typed-previous:fixture
+          profile="$RUNNER_TEMP/aira-hermes-profile-typed-baseline"
+          python3 tests/install/smoke.py --image aira-onboarding-typed-previous:fixture \
+            --home "$RUNNER_TEMP/aira-install-typed-baseline" --hermes-dir "$profile/hermes-agent" --hermes-home "$profile" \
+            --migration-ref ae2a81ccc00e9b7c06301523e5bb09608397149c --migration-version hermes-v0.23.2 \
+            --uv-bin "$RUNNER_TEMP/aira-uv/bin/uv" --expect-document-rejection
+
       - name: Verify the actual pinned Hermes admission and delivery pipelines
         env:
           PYTHONDONTWRITEBYTECODE: '1'
@@ -290,6 +311,7 @@ jobs:
               tests/gateway/test_aira_capabilities_fixture.py tests/gateway/test_whatsapp_group_gating.py \
               tests/gateway/test_whatsapp_media_path_profile.py)
             python3 tests/install/run_hermes_typed_fixture.py "$fixture"
+            python3 tests/install/run_hermes_typed_fixture.py "$fixture" --documents
           done
 
       - name: Log in to GHCR after the native tests pass

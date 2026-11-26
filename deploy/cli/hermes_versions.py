@@ -13,12 +13,17 @@ ADAPTER_VERSIONS = tuple(SOURCE_REVISIONS.values())
 _BASELINE_LINE = b'ADAPTER_VERSION = "hermes-v0.23.4"\n'
 _BASELINE_SHA256 = "a530e9ca079c55c08e973f35ccf7138ba044ecb959d19eff15c593f4dca018fe"
 _TYPED_SHA256 = "e19a6eced1ed0d30951552dc9bb05256ece555de18f60e5ea9e21534990d335e"
+_DOCUMENT_SHA256 = "6c875497f8876ae5257942de07fdfc6543b35d5cfc203ef99ff9b63f77d5e5aa"
 _MAIN = b'if __name__ == "__main__":\n    sys.exit(main())\n'
 _ROUTE_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 
 
 def valid_route_id(value) -> bool:
     return isinstance(value, str) and _ROUTE_ID.fullmatch(value) is not None
+
+
+def valid_capabilities(value) -> bool:
+    return value in (["text"], ["text", "document"])
 
 
 def version_for_head(head: str) -> str | None:
@@ -47,10 +52,20 @@ def render_typed_helper(template: bytes, typed: bytes, version: str) -> bytes:
     return original[:-len(_MAIN)] + typed.rstrip(b"\n") + b"\n\n" + _MAIN
 
 
-def known_helper(template: bytes, typed: bytes, current: bytes) -> tuple[str, int] | None:
+def render_document_helper(template: bytes, document: bytes, version: str) -> bytes:
+    """Keep the historical text helper exact; documents use a separately pinned extension."""
+    original = render_helper(template, version)
+    if hashlib.sha256(document).hexdigest() != _DOCUMENT_SHA256 or not original.endswith(_MAIN):
+        raise ValueError("unfamiliar document Hermes helper")
+    return original[:-len(_MAIN)] + document.rstrip(b"\n") + b"\n\n" + _MAIN
+
+
+def known_helper(template: bytes, typed: bytes, document: bytes, current: bytes) -> tuple[str, int, tuple[str, ...]] | None:
     for version in ADAPTER_VERSIONS:
         if render_helper(template, version) == current:
-            return version, 1
+            return version, 1, ()
         if render_typed_helper(template, typed, version) == current:
-            return version, 2
+            return version, 2, ("text",)
+        if render_document_helper(template, document, version) == current:
+            return version, 2, ("text", "document")
     return None

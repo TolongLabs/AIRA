@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path'
 import { AxeBuilder } from '@axe-core/playwright'
 import { chromium } from 'playwright'
 import { expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import { type App, createApp } from '../../src/app.js'
 import { createLogger } from '../../src/records/logger.js'
 import { queueModel } from '../support/app.js'
@@ -30,10 +31,10 @@ it('walks standalone setup, saves private credentials and verifies activation af
       logger: createLogger({ level: 'error', module: 'test', sink: () => undefined })
     })
     apps.push(app)
-    await app.listen(0, '127.0.0.1')
+    const gateway = await app.listen(0, '127.0.0.1')
     const site = await app.listenSite(port, '127.0.0.1')
     app.completeStartup()
-    return { app, port: site.port }
+    return { app, port: site.port, gatewayPort: gateway.port }
   }
   const cold = await boot()
   const origin = `http://127.0.0.1:${cold.port}`
@@ -95,6 +96,53 @@ it('walks standalone setup, saves private credentials and verifies activation af
     await page.goto(origin + '/app/preview/chats/defaults')
     await page.getByText(/Standalone supports text replies only/).waitFor()
     expect(await page.getByText('Send a sticker with replies', { exact: true }).count()).toBe(0)
+    expect(await page.getByRole('switch', { name: 'Reports' }).count()).toBe(0)
+
+    // Synthetic negotiation changes only the authenticated capability. No WhatsApp account or send is used.
+    const gatewayToken = readFileSync(join(root, 'standalone', 'gateway.token'), 'utf8').trim()
+    const gatewayPost = (path: string, body: unknown) =>
+      fetch(`http://127.0.0.1:${applied.gatewayPort}/v2/aira/${path}`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${gatewayToken}`, 'content-type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+    const attach = (capabilities: string[]) =>
+      gatewayPost('attach-check', {
+        schemaVersion: 2,
+        adapterVersion: 'hermes-v0.23.4',
+        profile: 'fixture',
+        action: 'connect',
+        capabilities,
+        deadlineMs: Date.now() + 10_000
+      })
+    const documentRoute = await attach(['text', 'document'])
+    expect(documentRoute.status).toBe(200)
+    const routeId = z.object({ hermes: z.object({ routeId: z.uuid() }) }).parse(await documentRoute.json())
+      .hermes.routeId
+    await page.reload()
+    await page.getByText(/Standalone supports text and report documents/).waitFor()
+    await page.getByRole('switch', { name: 'Reports' }).waitFor()
+    await capture('standalone-report-defaults')
+    await gatewayPost('turn', {
+      schemaVersion: 2,
+      routeId,
+      profile: 'fixture',
+      platform: 'whatsapp',
+      kind: 'dm',
+      chat: 'fixture-browser',
+      sender: 'fixture-browser',
+      mid: 'fixture-pending',
+      text: 'hello'
+    })
+    const chatResponse = await fetch(origin + '/owner-api/core/chats', { headers: { 'x-tolongai-token': token } })
+    const chats = z.object({ chats: z.array(z.object({ chatId: z.string() })) }).parse(await chatResponse.json()).chats
+    expect(chats).toHaveLength(1)
+    await page.goto(origin + '/app/preview/chats/' + chats[0]!.chatId + '/settings#features')
+    await page.getByRole('switch', { name: 'Reports' }).waitFor()
+    expect((await attach(['text'])).status).toBe(200)
+    await page.reload()
+    await page.getByRole('switch', { name: 'Reports' }).waitFor({ state: 'hidden' })
+    expect(model.requests).toHaveLength(0)
     expect(hostRequests).toEqual([])
     await applied.app.close()
   } finally {

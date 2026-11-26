@@ -1,4 +1,5 @@
 import type { Config } from '../../config/schema.js'
+import type { TurnContext } from '../../turn/types.js'
 import type { ToolPorts } from '../ports.js'
 import { registryDepsOf, type ToolRegistry } from '../registry.js'
 import { helpTool, listTool } from './describe.js'
@@ -38,6 +39,7 @@ export interface CoreToolOptions {
   searchDepth?: Config['search']['depth']
   identify?: IdentifyToolOptions
   standaloneTextOnly?: boolean
+  standaloneReportPermission?: (context: TurnContext) => boolean
 }
 
 const DEFAULT_OPTIONS: CoreToolOptions = {
@@ -72,6 +74,8 @@ export function registerCoreTools(
     if (options.identify) registry.register(identifyImageTool(options.identify))
     registry.register(researchStartTool(storage))
     registry.register(reportPdfTool(ports))
+  } else if (options.standaloneReportPermission) {
+    registry.register({ ...makeReportTool(storage, ports), permission: options.standaloneReportPermission })
   }
   registry.register(helpTool(registry))
   registry.register(listTool(registry))

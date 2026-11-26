@@ -3,7 +3,8 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import { readPrivateText, writePrivateText } from '../config/private-store.js'
 import { ensurePrivateToken, verifyStandaloneOwnerToken } from '../config/standalone-owner.js'
-import { getChatByWaId } from '../settings/chats.js'
+import { getChat, getChatByWaId } from '../settings/chats.js'
+import { resolveSetting } from '../settings/settings.js'
 import type { Storage } from '../storage/database.js'
 import type { GatewayRequest } from './request.js'
 import { createStandaloneDeliveryLedger } from './standalone-delivery.js'
@@ -41,11 +42,12 @@ const turnSchema = z.strictObject({
   mid: identifier,
   text: z.string().trim().min(1).max(32_768)
 })
-const textCapabilities = z.tuple([z.literal('text')])
+const typedCapabilities = z.union([z.tuple([z.literal('text')]), z.tuple([z.literal('text'), z.literal('document')])])
+type TypedCapabilities = z.infer<typeof typedCapabilities>
 const typedReceipt = receiptSchema.extend({
   schemaVersion: z.literal(2),
   routeId: z.uuid(),
-  capabilities: textCapabilities
+  capabilities: typedCapabilities
 })
 const connectedReceipt = z.union([receiptSchema, typedReceipt])
 const deadlineMs = z.number().int().safe()
@@ -53,7 +55,7 @@ const typedAttachment = z.discriminatedUnion('action', [
   attachment.extend({
     schemaVersion: z.literal(2),
     action: z.literal('connect'),
-    capabilities: textCapabilities,
+    capabilities: typedCapabilities,
     deadlineMs
   }),
   attachment.extend({ schemaVersion: z.literal(2), action: z.literal('disconnect'), routeId: z.uuid(), deadlineMs }),
@@ -86,7 +88,7 @@ type ConnectedRoute = {
   verifiedAt: string
 }
 type V1Route = ConnectedRoute & { protocolVersion?: never; routeId?: never; capabilities?: never }
-type V2Route = ConnectedRoute & { protocolVersion: 2; routeId: string; capabilities: ['text'] }
+type V2Route = ConnectedRoute & { protocolVersion: 2; routeId: string; capabilities: TypedCapabilities }
 export type HermesRouteStatus = InactiveRoute | V1Route | V2Route
 
 export class StandaloneGatewayError extends Error {
@@ -133,8 +135,24 @@ export function createStandaloneGateway(dataRoot: string, storage: Storage, now:
     return candidate !== undefined && verifyStandaloneOwnerToken(token, candidate)
   }
 
+  const canDeliverDocument = (routeId: string | undefined, chatId: string): boolean => {
+    const route = status()
+    if (
+      !routeId ||
+      route.state !== 'connected' ||
+      route.protocolVersion !== 2 ||
+      route.routeId !== routeId ||
+      route.capabilities.length !== 2
+    )
+      return false
+    const chat = getChat(storage, chatId)
+    return chat?.status === 'active' && resolveSetting(storage, chat, 'features.reports').value === true
+  }
+
   const delivery = createStandaloneDeliveryLedger(storage, {
     now,
+    filesDir: join(dataRoot, 'files'),
+    mayDeliverDocument: canDeliverDocument,
     currentRoute: () => {
       const route = status()
       return route.state === 'connected' && route.protocolVersion === 2 ? (route.routeId ?? null) : null
@@ -198,7 +216,12 @@ export function createStandaloneGateway(dataRoot: string, storage: Storage, now:
           : { schemaVersion: 1, state: 'connected', adapterVersion, profile, verifiedAt: now().toISOString() }
       )
     }
-    if (current.state === 'connected' && current.protocolVersion === 2 && current.adapterVersion === adapterVersion)
+    if (
+      current.state === 'connected' &&
+      current.protocolVersion === 2 &&
+      current.adapterVersion === adapterVersion &&
+      current.capabilities.length === parsed.data.capabilities.length
+    )
       return current
     return persist({
       schemaVersion: 2,
@@ -265,7 +288,7 @@ export function createStandaloneGateway(dataRoot: string, storage: Storage, now:
     const parsed = typedTurn.safeParse(input)
     if (!parsed.success) throw new StandaloneGatewayError(400, 'gateway_malformed')
     requireTypedRoute(parsed.data.profile, parsed.data.routeId)
-    return { request: asTurn(parsed.data), routeId: parsed.data.routeId }
+    return { request: { ...asTurn(parsed.data), typedRouteId: parsed.data.routeId }, routeId: parsed.data.routeId }
   }
 
   const bindDelivery = (input: z.infer<typeof deliveryBinding>) => {
@@ -300,7 +323,8 @@ export function createStandaloneGateway(dataRoot: string, storage: Storage, now:
     parseTypedTurn,
     claimTyped,
     ackTyped,
-    delivery
+    delivery,
+    canDeliverDocument
   }
 }
 

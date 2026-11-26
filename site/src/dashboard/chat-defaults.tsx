@@ -9,6 +9,7 @@ import { CoreError, core, reasonText, type CoreCharacter, type CoreChat, type Re
 import { toast, Toaster } from '@/lib/hooks'
 import { cn } from '@/lib/utils'
 import { InstallationContext } from './context'
+import { useReportDocumentCapability } from './report-capability'
 import './chat-defaults.css'
 
 /* Shared defaults: one page for the global level and the DM and group type
@@ -494,6 +495,7 @@ function DefaultsForm({
   onDiscard: () => void
 }) {
   const standalone = useContext(InstallationContext) === 'standalone'
+  const reportDocuments = useReportDocumentCapability(standalone)
   const [busy, setBusy] = useState(false)
   const [conflict, setConflict] = useState<{ key: string; value: unknown; revision: string } | null>(null)
 
@@ -641,8 +643,10 @@ function DefaultsForm({
       <Section title="Reply">
         {standalone && (
           <p>
-            Standalone supports text replies only. Hermes owns group admission; stickers, reactions and scheduled
-            messages are unavailable.
+            {reportDocuments
+              ? 'Standalone supports text and report documents.'
+              : 'Standalone supports text replies only.'}{' '}
+            Hermes owns group admission; stickers, reactions and scheduled messages are unavailable.
           </p>
         )}
         <DefaultsRow label="Reply length" {...row('replyLength')} busy={busy} onClear={clear('replyLength')}>
@@ -889,17 +893,19 @@ function DefaultsForm({
       )}
 
       <Section title="Features">
-        {CHAT_FEATURE_DEFINITIONS.filter((f) => !standalone || standaloneTextFeature(f.key)).map((f) => (
-          <DefaultsRow key={f.key} label={f.label} {...row(f.key)} busy={busy} onClear={clear(f.key)}>
-            <ToggleRow
-              current={asBool(valueOf(f.key), FEATURE_DEFAULTS[f.key] ?? false)}
-              label={f.label}
-              hint={f.hint}
-              busy={busy}
-              onSave={(v) => void save(f.key, v)()}
-            />
-          </DefaultsRow>
-        ))}
+        {CHAT_FEATURE_DEFINITIONS.filter((f) => !standalone || standaloneTextFeature(f.key, reportDocuments)).map(
+          (f) => (
+            <DefaultsRow key={f.key} label={f.label} {...row(f.key)} busy={busy} onClear={clear(f.key)}>
+              <ToggleRow
+                current={asBool(valueOf(f.key), FEATURE_DEFAULTS[f.key] ?? false)}
+                label={f.label}
+                hint={f.hint}
+                busy={busy}
+                onSave={(v) => void save(f.key, v)()}
+              />
+            </DefaultsRow>
+          )
+        )}
       </Section>
     </div>
   )

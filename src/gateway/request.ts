@@ -42,6 +42,8 @@ export type GatewayRequest =
       /** The display name the gateway wrote before a group message's marker. */
       senderName?: string
       attachments: Attachment[]
+      /** Internal route authority assigned only by the authenticated typed gateway, never parsed from a message. */
+      typedRouteId?: string
       stream: boolean
       includeUsage: boolean
     }

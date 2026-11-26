@@ -70,6 +70,8 @@ export interface StandaloneCapabilities {
   fileBrowser: boolean
   gatewayConnection: boolean
   scheduler: boolean
+  /** Absent on older cores; only an explicit true enables the existing Reports control. */
+  reportDocuments?: boolean
 }
 
 export interface CoreHealth {

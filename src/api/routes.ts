@@ -119,6 +119,10 @@ function handleHealth(deps: SiteApiDeps): RouteResult {
       subscriptionRunner: false,
       fileBrowser: false,
       gatewayConnection: readiness?.hermes?.state === 'connected',
+      reportDocuments:
+        readiness?.hermes?.state === 'connected' &&
+        readiness.hermes.protocolVersion === 2 &&
+        readiness.hermes.capabilities.length === 2,
       scheduler: false
     }
   })
