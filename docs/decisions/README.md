@@ -79,7 +79,7 @@ Where the record came from.
 
 ## Architecture
 
-Process boundaries, the gateway contract, turns, tools, commands, models, reply formatting, media and social readers. 125 records, in ID order.
+Process boundaries, the gateway contract, turns, tools, commands, models, reply formatting, media and social readers. 126 records, in ID order.
 
 | ID       | Date       | Decision                                                                                | Status                                                        |
 | -------- | ---------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
@@ -213,6 +213,7 @@ Process boundaries, the gateway contract, turns, tools, commands, models, reply 
 | ADR-0191 | 2026-11-26 | [Allow Only Verified Hermes Source Revisions][ADR-0191]                                 | Accepted                                                      |
 | ADR-0193 | 2026-11-26 | [Claim Standalone Typed Deliveries Once][ADR-0193]                                      | Accepted                                                      |
 | ADR-0194 | 2026-11-26 | [Bind Portable Reports to Receipts][ADR-0194]                                           | Accepted                                                      |
+| ADR-0195 | 2026-11-26 | [Keep Optional Media in Applied Revisions][ADR-0195]                                    | Accepted                                                      |
 
 [ADR-0185]: 0185-let-a-pack-switch-off-bubble-capitals.md
 [ADR-0188]: 0188-use-a-fail-closed-standalone-hermes-adapter.md
@@ -220,6 +221,7 @@ Process boundaries, the gateway contract, turns, tools, commands, models, reply 
 [ADR-0191]: 0191-allow-only-verified-hermes-source-revisions.md
 [ADR-0193]: 0193-claim-standalone-typed-deliveries-once.md
 [ADR-0194]: 0194-bind-portable-reports-to-receipts.md
+[ADR-0195]: 0195-keep-optional-media-in-applied-revisions.md
 [ADR-0181]: 0181-recover-malformed-api-replies.md
 [ADR-0180]: 0180-fetch-only-verified-youtube-shorts.md
 [ADR-0001]: 0001-build-the-core-as-a-typescript-service-on-node-24.md
