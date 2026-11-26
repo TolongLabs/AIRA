@@ -33,6 +33,7 @@ KNOWN_ENV_KEYS = (
     "AIRA_DASHBOARD_ENTRY",
 )
 IMAGE_REF = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._/-]*(?::[a-zA-Z0-9._-]+)?$")
+ARCH_ALIASES = {"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm64"}
 
 
 class RunError(Exception):
@@ -278,6 +279,34 @@ def local_image_present(ref):
     split_image_ref(ref)
     code, _, _ = run(["docker", "image", "inspect", ref], timeout_s=10)
     return code == 0
+
+
+def normalize_arch(value):
+    """Normalize a CPU architecture alias to ``amd64`` or ``arm64``.
+
+    Returns None for anything else, including non-string input.
+    """
+    if not isinstance(value, str):
+        return None
+    return ARCH_ALIASES.get(value.strip().lower())
+
+
+def image_platform(ref):
+    """Read-only image OS/architecture probe.
+
+    Returns the exact known platform ``linux/amd64`` or ``linux/arm64``,
+    or None when the image is unknown, unreadable or anything else.
+    """
+    try:
+        code, out, _ = run(
+            ["docker", "image", "inspect", "--format", "{{.Os}}/{{.Architecture}}", ref],
+            timeout_s=10)
+    except RunError:
+        return None
+    if code != 0:
+        return None
+    value = out.strip()
+    return value if value in ("linux/amd64", "linux/arm64") else None
 
 
 def pull_image(ref):

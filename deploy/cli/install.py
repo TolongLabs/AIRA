@@ -261,26 +261,93 @@ def _docker_check(args, code_on_failure, message):
     return out.strip()
 
 
-def preflight(home):
-    if platform.system() != "Linux" or platform.machine() not in ("x86_64", "amd64"):
-        raise prereq_error("unsupported_platform", "AIRA supports Linux amd64.", "Use a supported Linux host.")
+def normalize_native_arch(system=None, machine=None):
+    """Shared native host normalizer used by setup and doctor.
+
+    Only Linux ``x86_64``/``amd64`` (``amd64``) and Linux ``aarch64``/``arm64``
+    (``arm64``) are native; every other system or architecture returns None.
+    """
+    if system is None:
+        system = platform.system()
+    if machine is None:
+        machine = platform.machine()
+    if system != "Linux":
+        return None
+    return compose.normalize_arch(machine)
+
+
+def check_native_host():
+    """Return the native host architecture or refuse the host."""
+    arch = normalize_native_arch()
+    if arch is None:
+        raise prereq_error("unsupported_platform", "AIRA supports native Linux amd64 and arm64.",
+                           "Use a supported Linux host.")
+    return arch
+
+
+def check_native_daemon(expected_arch):
+    """Refuse a daemon whose native platform disagrees with the host."""
+    raw = _docker_check(["docker", "info", "--format", "{{.OSType}}/{{.Architecture}}"],
+                        "docker_unreachable", "Docker daemon is unavailable.")
+    ostype, sep, arch = raw.partition("/")
+    daemon_arch = compose.normalize_arch(arch) if sep else None
+    if not sep or ostype.strip().lower() != "linux" or daemon_arch is None or daemon_arch != expected_arch:
+        raise prereq_error("unsupported_platform", "The Docker daemon must match the native host architecture.",
+                           "Use the local rootful Linux Docker Engine for this host.")
+    return f"linux/{daemon_arch}"
+
+
+def check_native_platform():
+    """Verify the local rootful native Docker authority before service operations."""
+    arch = check_native_host()
     if os.geteuid() == 0:
         raise prereq_error("unsupported_platform", "Run setup as the non-root installation owner.",
                            "Use your ordinary host account with Docker access.")
+    configured_host = os.environ.get("DOCKER_HOST")
+    configured_context = os.environ.get("DOCKER_CONTEXT")
+    if configured_host and not configured_host.startswith("unix://"):
+        raise prereq_error("unsupported_platform", "Only the local rootful Docker daemon is supported.",
+                           "Unset DOCKER_HOST and use the local Docker Engine.")
     version = _docker_check(["docker", "compose", "version", "--short"], "docker_missing", "Compose plugin unavailable.")
     if not re.match(r"^v?[2-9][0-9]*\.", version):
         raise prereq_error("docker_missing", "Docker Compose v2 plugin or later required.")
-    host = os.environ.get("DOCKER_HOST") or _docker_check(
-        ["docker", "context", "inspect", "--format", '{{(index .Endpoints "docker").Host}}'],
-        "docker_unreachable", "Docker context is unavailable.")
+    # DOCKER_CONTEXT overrides DOCKER_HOST, even when that host is a local socket.
+    context = ["docker", "context", "inspect", "--format", '{{(index .Endpoints "docker").Host}}']
+    if configured_context:
+        context.extend(["--", configured_context])
+    host = _docker_check(context, "docker_unreachable", "Docker context is unavailable.") if (
+        configured_context or not configured_host) else configured_host
     if not host.startswith("unix://"):
-        raise prereq_error("unsupported_platform", "Only the local rootful Docker daemon is supported.")
+        raise prereq_error("unsupported_platform", "Only the local rootful Docker daemon is supported.",
+                           "Select the local Docker Engine context.")
     security = _docker_check(["docker", "info", "--format", "{{json .SecurityOptions}}"],
                              "docker_unreachable", "Docker daemon is unavailable.")
     os_name = _docker_check(["docker", "info", "--format", "{{.OperatingSystem}}"],
                             "docker_unreachable", "Docker daemon is unavailable.")
-    if "rootless" in security.lower() or "desktop" in os_name.lower():
-        raise prereq_error("unsupported_platform", "Only rootful Linux Docker Engine is supported.")
+    try:
+        security_options = json.loads(security)
+    except ValueError:
+        security_options = None
+    if (not isinstance(security_options, list) or not all(isinstance(value, str) for value in security_options)
+            or any("rootless" in value.lower() for value in security_options)
+            or not os_name or "desktop" in os_name.lower()):
+        raise prereq_error("unsupported_platform", "Only rootful Linux Docker Engine is supported.",
+                           "Use the local rootful Docker Engine on a supported Linux host.")
+    return check_native_daemon(arch)
+
+
+def verify_native_image(ref):
+    """Refuse an unknown or non-native image before any service change."""
+    arch = normalize_native_arch()
+    platform_name = compose.image_platform(ref)
+    if arch is None or platform_name is None or platform_name != f"linux/{arch}":
+        raise operational_error("image_incompatible", "The image is not a compatible native release.",
+                                "compatibility", "Use a compatible release image.")
+    return platform_name
+
+
+def preflight(home):
+    check_native_platform()
     ancestor = _ancestor(home)
     if shutil.disk_usage(ancestor).free < 2 * 1024 ** 3:
         raise prereq_error("disk_full", "At least 2 GiB of host space is needed.", "Free disk space and retry.")
@@ -647,6 +714,7 @@ def _fresh(home, manifest, opts, checks, warnings, operation_id):
     if not ((opts.image or known) and compose.local_image_present(image)):
         progress("Pulling the compatible release image.")
         compose.pull_image(image)
+    verify_native_image(image)
     attempted = set()
     for attempt in range(3):
         try:
