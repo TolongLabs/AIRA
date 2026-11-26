@@ -10,6 +10,7 @@ one night.
 | `check`          | Typecheck, lint, format, unit, contract and replay tests                                          | Every push and pull request |
 | `scan`           | Secret scan of the repository history with gitleaks                                               | Every push and pull request |
 | `site`           | Site typecheck and build                                                                          | Every push and pull request |
+| `image-scope`    | Decides whether a pull request changes only documents and the committed graph                     | Every push and pull request |
 | `image-platform` | Builds and verifies each native Linux image and publishes its proved child on main                | Every push and pull request |
 | `image`          | Requires both native jobs; on main assembles their exact proved manifests as `sha-<7>` and `edge` | After `image-platform`      |
 | `images-ok`      | Re-reports the image result, so a skipped or failed build still fails the gate                    | After `image`, always       |
@@ -24,7 +25,10 @@ dry-run/apply, deterministic synthetic transport, update/rollback and private ba
 message or contacts a real model. The pinned Hermes upstream admission/group and platform delivery fixtures
 run under an isolated profile root. The historical v1.6.1 refusal fixture runs on amd64 only, since that
 released image has no arm64 manifest. An absent native image or failed smoke fails `image` and therefore `images-ok`;
-the production runner cannot start before this gate. Release promotion waits for the exact main commit's
+the production runner cannot start before this gate. A pull request whose files all match `docs/`, `graphify-out/` or
+a `.md` suffix still builds and verifies the candidate image, but skips the synthetic QA steps that follow it, which
+are the slowest part of the gate. A push to `main` always runs the full gate, because `deploy` consumes the image that
+job publishes. Release promotion waits for the exact main commit's
 successful CI run (including deployment) and re-tags the already-built manifest, not a newer `edge`.
 The target is the published version tag resolved to its commit, not the release workflow's triggering push SHA:
 release-please can create a release for a newer main commit while an earlier push workflow is running.

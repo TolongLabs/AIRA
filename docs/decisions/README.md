@@ -457,7 +457,7 @@ The owner site: its front end, write protection, hosting and footer editing. 10 
 
 ## Deployment
 
-Images, deploys, repository process, records of failures and retention checks. 19 records, in ID order.
+Images, deploys, repository process, records of failures and retention checks. 20 records, in ID order.
 
 | ID       | Date       | Decision                                                               | Status                   |
 | -------- | ---------- | ---------------------------------------------------------------------- | ------------------------ |
@@ -480,6 +480,7 @@ Images, deploys, repository process, records of failures and retention checks. 1
 | ADR-0187 | 2026-11-25 | [Install with a Portable Host CLI][ADR-0187]                           | Accepted                 |
 | ADR-0190 | 2026-11-26 | [Promote the Published Release Commit][ADR-0190]                       | Accepted                 |
 | ADR-0192 | 2026-11-26 | [Publish Only Natively Verified Image Manifests][ADR-0192]             | Accepted                 |
+| ADR-0198 | 2026-11-27 | [Skip Native QA for Document-Only Pull Requests][ADR-0198]             | Accepted                 |
 
 [ADR-0163]: 0163-build-one-container-image-per-tagged-release.md
 [ADR-0164]: 0164-deploy-every-merge-to-main-through-a-self-hosted-runner.md
@@ -500,6 +501,7 @@ Images, deploys, repository process, records of failures and retention checks. 1
 [ADR-0187]: 0187-install-with-a-portable-host-cli.md
 [ADR-0190]: 0190-promote-the-published-release-commit.md
 [ADR-0192]: 0192-publish-only-natively-verified-image-manifests.md
+[ADR-0198]: 0198-skip-native-qa-for-document-only-pull-requests.md
 
 ## Search Depth
 
