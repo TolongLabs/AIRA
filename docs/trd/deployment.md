@@ -366,7 +366,7 @@ Run by the operator on the host, with each step that changes the host confirmed 
 ## Deploy
 
 A GitHub Actions runner on the host, labelled `aira-dev2`, takes the `deploy` job after `check`, `scan` and `image`
-pass on a push to `main`. Deploys run one at a time. Like rokabot's, every merge to `main` goes live.
+pass on a push to `main`. Deploys run one at a time. Every merge to `main` goes live.
 
 ![How one merge to main becomes a running container](../diagrams/release-deploy.svg)
 

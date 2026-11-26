@@ -7,8 +7,8 @@
 
 ## Decision
 
-Every merge to `main` builds an image and deploys it through a self-hosted runner on the host, as rokabot does. A
-release re-tags the running image. This replaces the pull deploy on a timer.
+Every merge to `main` builds an image and deploys it through a self-hosted runner on the host. A release re-tags the
+running image. This replaces the pull deploy on a timer.
 
 ## Rationale
 
