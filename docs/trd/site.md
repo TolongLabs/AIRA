@@ -259,6 +259,24 @@ reactions, group admission overrides, scheduled messages, media, host tools and 
 describe the transport limit and Hermes-owned group admission on those forms. The existing Reports control
 is visible only when the authenticated `reportDocuments` capability is true. Legacy controls are unchanged.
 
+## Portable Integration Decisions
+
+Standalone does not acquire the legacy host's authority simply by enabling a dashboard control. The current
+decisions below separate core-owned candidates from host-dependent integrations. None of these candidates
+is enabled by the evaluation; each needs a separate contract, owner choice and verified acceptance.
+
+| Area                                                       | Decision and prerequisite                                                                                                                                                                                                          |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Host owner service, direct sends, notices and file browser | Keep legacy-only. A portable companion would need explicitly scoped operations and separate credentials, rather than proxying arbitrary host paths or commands.                                                                    |
+| Subscription runner and coding sessions                    | Keep legacy-only. They depend on the existing host account and process lifecycle; a separate opt-in companion would need its own configuration, auth, failure and teardown contract.                                               |
+| Lessons, library and markets                               | Local SQLite lesson storage and stateless quote/analysis/news are candidates. The host library UI, watchlists/holdings and alert timers retain separate state and delivery dependencies.                                           |
+| MCP and research                                           | Require explicit trusted server configuration and optional role credentials, bounded worker lifecycle and durable completion delivery. No inherited host credentials or implicit worker activation.                                |
+| Reminders and routines                                     | Core-owned reminder rows are a candidate; legacy gateway cron and owner routines are not portable by inference. Require route-scoped due-work claim/ack, cancellation, quiet/mute and restart semantics before enabling scheduler. |
+
+The authenticated integration refusal contract tests in `tests/contract/standalone-owner.test.ts` exercise
+library, notices, file access, markets, model probe, cron and direct-send paths with a configured loopback
+fake host service. Every route returns `503 capability_unavailable` and no request reaches that host.
+
 ## Owner Page Edits
 
 The Settings editor keeps its selected file and unsaved buffer until Save or Revert. A failed read disables
