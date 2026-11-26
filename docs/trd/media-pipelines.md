@@ -54,6 +54,37 @@ direct, bounded, owned profile-cache content and an explicitly applied media rol
 from a path, URL, quoted array, file extension or inlined text. No additional capability or public support
 is enabled by this evaluation.
 
+## Standalone Direct Media
+
+The new explicit direct-media helper generation uses only stock admitted native ordinary text
+(`conversation`, `extendedTextMessage`) and direct native `imageMessage`, `audioMessage`, `pttMessage`,
+`videoMessage` and `documentMessage` events. Raw and normalized native types, media arrays and admitted
+identity must agree. Native summaries, quotes (even without a quote ID), inlined documents, remote
+URLs, multiple files, alternate profiles, unsupported types and ambiguous input refuse with no fallback.
+Older exact helpers retain their historical behavior.
+
+The host reads one regular, owned, nonsymlink file directly inside the selected profile's canonical
+stock cache directory (image, audio or document; stock video uses document cache). The finite MIME
+and signature allowlist is PNG/JPEG, Ogg/MPEG audio, MP4 video and PDF; only the explicit Ogg Opus
+parameter may be normalized. Enforce 5 MiB of nonempty bytes on both sides; format signatures are a
+sanity check, not full decoding. Never transmit the original name, host path, remote URL or quote.
+For captionless events use a neutral attachment placeholder.
+
+The typed media turn adds `media:{kind,mime,sha256,base64}` to the strict v2 text turn. The kind is
+`image`, `audio`, `voice`, `video` or `document`. The core verifies canonical base64, size, SHA-256,
+MIME/kind/signature and current authenticated route, profile and chat. Only the media endpoint accepts
+the bounded larger request (base64 limit plus 256 KiB); admit at most four concurrent media requests.
+An active, known chat, resolved `features.media` and an explicitly applied media watcher are required.
+The normal turn admission still enforces sender, mute, binding, spend and deduplication. Recheck route
+and chat permission at intake; mixed-route batches cannot grant media authority. Replays cannot cause
+another reading or native delivery claim.
+
+The verified bytes are held only in the bounded process-owned turn queue, never persisted or mapped
+from a legacy path/note. Restart cannot recover raw attachments. Use the existing media reading limits
+and failure handling; no identify-image, social link intake or arbitrary outbound media is enabled.
+Replies use existing [typed delivery](system.md#standalone-typed-delivery). No public live claim follows
+from synthetic tests.
+
 ## Media Watching
 
 Media is read at intake, before the main model runs. The gateway saves each file on the host and names its path in a

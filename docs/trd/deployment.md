@@ -278,6 +278,10 @@ selects text only. A fresh v2 attach defaults to text, while an exact existing t
 verified capability list if the option is omitted. V1 refuses this option. Capability change is a stopped
 transaction with the same canonical exclusive source and prior-evidence rules as protocol migration. Keep the
 exact previous v1 and typed-text helper bytes recognized; a text-only route retains that original typed helper.
+Select `--capabilities text,document,receive-image,receive-audio,receive-video,receive-pdf` for the new
+[direct-media candidate](media-pipelines.md#standalone-direct-media). This exact helper is distinct from
+the previous text/document helpers, whose bytes remain recognized. An older core refuses the new
+capability list; the existing stopped attachment transaction restores the prior state.
 
 `aira attach-hermes --profile NAME --apply` is a deliberate apply; confirmation is required on a TTY,
 or `--yes` with explicit non-interactive apply. The install must be standalone. Hold its shared deploy

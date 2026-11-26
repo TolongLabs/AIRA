@@ -117,9 +117,12 @@ a deterministic or explicitly configured test turn, not a health probe.
 ### Standalone Typed Delivery
 
 Protocol version 2 is a separate, explicitly selected candidate transport. Version 1 retains its exact marker,
-receipt, text endpoints and default attach. The version 2 route negotiates exactly `['text']` or
-`['text', 'document']`; the latter enables only core-owned report documents, not arbitrary file sends.
-Inbound media, stickers, reactions, location, polls and scheduled sends are not inferred from either list.
+receipt, text endpoints and default attach. The version 2 route negotiates exactly `['text']`,
+`['text', 'document']`, or the ordered direct-media candidate
+`['text','document','receive-image','receive-audio','receive-video','receive-pdf']`.
+Document delivery enables only core-owned report documents, not arbitrary file sends. The direct-media
+candidate is defined in [Standalone Direct Media](media-pipelines.md#standalone-direct-media).
+Stickers, reactions, location, polls and scheduled sends are not inferred from any list.
 Each requires its own reviewed adapter operation, core capability and acceptance evidence. This contract does
 not expand the published support matrix before the installed adapter and separately approved live gate pass.
 
@@ -136,6 +139,7 @@ Unknown protocol, stale route, unsupported capabilities or malformed data refuse
 | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | POST `/v2/aira/attach-check`   | Strict gateway-authenticated connect with adapter version, profile, deadline and exact capability list. Disconnect and explicit downgrade name the current route ID. Returns the verified route.         |
 | POST `/v2/aira/turn`           | Version 1 structured identity/text fields with `schemaVersion:2` and the current `routeId`. Returns `schemaVersion:2`, disposition and typed delivery IDs, not file paths or send directives in text.    |
+| POST `/v2/aira/media-turn`     | Same typed turn and result with one bounded direct-media payload; requires the explicit inbound capability and applied media role. See [direct media](media-pipelines.md#standalone-direct-media).       |
 | POST `/v2/aira/delivery/claim` | `schemaVersion:2`, route/profile, chat, inbound message ID and delivery ID. Atomically claim one unexpired pending item. Return bounded text or a document payload. Duplicate, stale or foreign refuses. |
 | POST `/v2/aira/delivery/ack`   | Same binding and ID plus `outcome:confirmed\|failed\|unknown`. Only an existing claimed item may finish; repeating the identical outcome is idempotent.                                                  |
 

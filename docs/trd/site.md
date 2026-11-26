@@ -226,6 +226,8 @@ fields `hostOwnerService`, `subscriptionRunner`, `fileBrowser`, `gatewayConnecti
 are false; the dashboard must not call absent services or treat those capabilities as an error.
 The boolean `reportDocuments` describes a currently connected, explicitly document-capable typed route;
 it is false for v1, text-only and disconnected routes. This is transport availability, not live send evidence.
+The boolean `inboundMedia` requires the current negotiated direct-media route and applied media watcher.
+It is false without either prerequisite and is not provider-call or live delivery evidence.
 Standalone model settings use the [typed owner operations](dashboard-state.md#typed-owner-operations), including
 saved/applied readback after a controlled activation; the old host settings editor is not an authority in this mode.
 A legacy response without the new fields selects the existing dashboard behavior.
@@ -261,7 +263,8 @@ The standalone chat and defaults forms keep character, language, text length, co
 tool limits and supported text features. They hide controls for unproven adapter operations (stickers,
 reactions, group admission overrides, scheduled messages, media, host tools and external delivery), and
 describe the transport limit and Hermes-owned group admission on those forms. The existing Reports control
-is visible only when the authenticated `reportDocuments` capability is true. Legacy controls are unchanged.
+is visible only when the authenticated `reportDocuments` capability is true. The existing media control
+requires authenticated `inboundMedia`. Legacy controls are unchanged.
 
 ## Portable Integration Decisions
 
