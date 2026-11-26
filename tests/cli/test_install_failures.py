@@ -47,17 +47,19 @@ def fresh_args(home, **over):
     return SimpleNamespace(**params)
 
 
-def docker_ok(argv, timeout_s=10, env=None):
+def docker_ok(argv, timeout_s=10, env=None, daemon="linux/x86_64"):
     text = " ".join(argv)
-    if "version" in text:
+    if argv[:3] == ["docker", "compose", "version"]:
         return 0, "v2.24.0\n", ""
-    if "context" in text:
+    if argv[:3] == ["docker", "context", "inspect"]:
         return 0, "unix:///var/run/docker.sock\n", ""
     if "OperatingSystem" in text:
         return 0, "Ubuntu 22.04 LTS\n", ""
     if "OSType" in text:
-        return 0, "linux/x86_64\n", ""
-    return 0, "[]\n", ""
+        return 0, daemon + "\n", ""
+    if "SecurityOptions" in text:
+        return 0, "[]\n", ""
+    raise AssertionError("Unexpected fixture command")
 
 
 def assert_prereq(test, result, home, code):
@@ -475,16 +477,7 @@ class NativePlatformTests(TempEnv):
 
     def daemon_route(self, daemon):
         def route(argv, timeout_s=10, env=None):
-            text = " ".join(argv)
-            if "version" in text:
-                return 0, "v2.24.0\n", ""
-            if "context" in text:
-                return 0, "unix:///var/run/docker.sock\n", ""
-            if "OperatingSystem" in text:
-                return 0, "Ubuntu 22.04 LTS\n", ""
-            if "OSType" in text:
-                return 0, daemon + "\n", ""
-            return 0, "[]\n", ""
+            return docker_ok(argv, timeout_s, env, daemon)
         return route
 
     def test_daemon_arch_mismatch_refused(self):
@@ -602,6 +595,34 @@ class NativePlatformTests(TempEnv):
                     install.check_native_platform()
                 self.assertEqual(refused.exception.code, "unsupported_platform")
 
+    def test_explicit_local_context_overrides_stale_remote_host(self):
+        env = {"DOCKER_CONTEXT": "fixture-local", "DOCKER_HOST": "tcp://192.0.2.1:2375"}
+        with (patch.dict(os.environ, env), patch.object(install.platform, "system", return_value="Linux"),
+              patch.object(install.platform, "machine", return_value="x86_64"),
+              patch("os.geteuid", return_value=1000),
+              patch.object(compose, "run", side_effect=self.daemon_route("linux/amd64"))):
+            self.assertEqual(install.check_native_platform(), "linux/amd64")
+
+    def test_conflicting_default_platform_refused_before_docker_access(self):
+        for requested in ("linux/arm64", "windows/amd64", "unknown"):
+            with (self.subTest(requested=requested), patch.dict(os.environ, {"DOCKER_DEFAULT_PLATFORM": requested}),
+                  patch.object(install.platform, "system", return_value="Linux"),
+                  patch.object(install.platform, "machine", return_value="x86_64"),
+                  patch("os.geteuid", return_value=1000),
+                  patch.object(compose, "run", side_effect=AssertionError("no Docker access"))):
+                with self.assertRaises(CommandError) as refused:
+                    install.check_native_platform()
+                self.assertEqual(refused.exception.code, "unsupported_platform")
+
+    def test_native_default_platform_is_accepted(self):
+        for requested in ("linux/arm64", "linux/arm64/v8"):
+            with (self.subTest(requested=requested), patch.dict(os.environ, {"DOCKER_DEFAULT_PLATFORM": requested}),
+                  patch.object(install.platform, "system", return_value="Linux"),
+                  patch.object(install.platform, "machine", return_value="aarch64"),
+                  patch("os.geteuid", return_value=1000),
+                  patch.object(compose, "run", side_effect=self.daemon_route("linux/arm64"))):
+                self.assertEqual(install.check_native_platform(), "linux/arm64")
+
     def test_shared_native_gate_refuses_matching_rootless_and_desktop_daemons(self):
         for security, operating_system in (('["rootless"]', "Ubuntu"), ("[]", "Docker Desktop")):
             with self.subTest(security=security, operating_system=operating_system):
@@ -631,8 +652,6 @@ class NativePlatformTests(TempEnv):
 
 class FreshImageTests(TempEnv):
     def fresh_patches(self, home, image_platform):
-        flag = {"running": False}
-
         def project(_home):
             try:
                 return install.read_manifest(home).project

@@ -133,16 +133,18 @@ jobs:
             fi
             sleep 15
           done
-          digest="$(docker buildx imagetools inspect "$SRC" --format '{{json .Manifest.Digest}}')"
+          digest="$(docker buildx imagetools inspect "$SRC" --format '{{json .Manifest.Digest}}' | jq -er .)"
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
           latest="$(gh release view --json tagName --jq .tagName)"
           if [[ "$latest" != "$TAG" ]]; then
             echo '::notice::Release superseded; skipping promotion.'
             exit 0
           fi
           test "$(gh api "repos/$GH_REPO/commits/$TAG" --jq .sha)" = "$RELEASE_SHA"
-          docker buildx imagetools create \
+          docker buildx imagetools create --prefer-index=false \
             -t "$IMAGE:$TAG" -t "$IMAGE:${TAG%.*}" -t "$IMAGE:stable" \
-            "$SRC"
+            "$IMAGE@$digest"
           for alias in "$TAG" "${TAG%.*}" stable; do
-            test "$(docker buildx imagetools inspect "$IMAGE:$alias" --format '{{json .Manifest.Digest}}')" = "$digest"
+            alias_digest="$(docker buildx imagetools inspect "$IMAGE:$alias" --format '{{json .Manifest.Digest}}' | jq -er .)"
+            test "$alias_digest" = "$digest"
           done

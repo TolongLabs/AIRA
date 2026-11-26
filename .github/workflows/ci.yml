@@ -155,13 +155,13 @@ jobs:
           docker run --rm --network none --entrypoint sh "$candidate" -ec \
             'node --version; yt-dlp --version; typst --version; restic version; ffmpeg -version'
 
-      - name: Refuse a remote Docker context before provisioning
+      - name: Refuse remote contexts and non-native Docker platforms before provisioning
         run: |
           refused="$RUNNER_TEMP/aira-remote-refusal"
           verify_refusal() {
             if "$@" ./aira setup --home "$refused" --no-open --json --non-interactive \
               --image "aira-onboarding-candidate:${SHORT_SHA}" > "$RUNNER_TEMP/refusal.json"; then
-              echo '::error::Remote Docker was incorrectly accepted.'
+              echo '::error::Unsupported Docker context or platform was incorrectly accepted.'
               exit 1
             fi
             jq -e '.outcome == "error" and .error.code == "unsupported_platform" and .error.stage == "preflight"' \
@@ -172,6 +172,8 @@ jobs:
           docker context create aira-refusal-fixture --docker 'host=tcp://127.0.0.1:9'
           trap 'docker context rm aira-refusal-fixture' EXIT
           verify_refusal env DOCKER_CONTEXT=aira-refusal-fixture DOCKER_HOST=unix:///var/run/docker.sock
+          if [ "$ARCH" = amd64 ]; then foreign=arm64; else foreign=amd64; fi
+          verify_refusal env -u DOCKER_CONTEXT DOCKER_HOST=unix:///var/run/docker.sock DOCKER_DEFAULT_PLATFORM="linux/$foreign"
 
       - name: Check out the supported Hermes version for synthetic QA
         uses: actions/checkout@v7
@@ -313,6 +315,8 @@ jobs:
           pulled_id="$(docker image inspect --format '{{.Id}}' "$image@$digest")"
           [[ "$pulled_id" = "$config" || "$pulled_id" = "$digest" ]]
           test "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$image@$digest")" = "$platform"
+          docker image inspect --format '{{json .RepoDigests}}' "$image@$digest" | \
+            jq -e --arg ref "$image@$digest" 'index($ref) != null' > /dev/null
           jq -n --arg commit "$GITHUB_SHA" --arg platform "$platform" --arg imageId "$TESTED_IMAGE_ID" \
             --arg configDigest "$config" --arg manifestDigest "$digest" \
             '{$commit,$platform,$imageId,$configDigest,$manifestDigest}' \
@@ -385,13 +389,15 @@ jobs:
             --index "$RUNNER_TEMP/image-index.json" > /dev/null
           digest="$(docker buildx imagetools inspect "$sha_tag" --format '{{json .Manifest.Digest}}' | jq -er .)"
           edge_digest="$(docker buildx imagetools inspect "$image:edge" --format '{{json .Manifest.Digest}}' | jq -er .)"
-          test "$digest" = "$edge_digest"
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ && "$digest" = "$edge_digest" ]]
           docker pull "$sha_tag"
           pulled_id="$(docker image inspect --format '{{.Id}}' "$sha_tag")"
           amd64_config="$(jq -er '.["linux/amd64"].configDigest' <<< "$proof")"
           amd64_manifest="$(jq -er '.["linux/amd64"].manifestDigest' <<< "$proof")"
           [[ "$pulled_id" = "$amd64_config" || "$pulled_id" = "$amd64_manifest" || "$pulled_id" = "$digest" ]]
           test "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$sha_tag")" = linux/amd64
+          docker image inspect --format '{{json .RepoDigests}}' "$sha_tag" | \
+            jq -e --arg ref "$image@$digest" 'index($ref) != null' > /dev/null
 
   images-ok:
     needs: [image]

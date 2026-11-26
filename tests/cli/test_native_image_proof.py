@@ -35,10 +35,16 @@ class NativeImageProofTests(unittest.TestCase):
         self.index["manifests"].reverse()
         verify_index(self.index, self.proofs)
 
-    def test_refuses_wrong_commit_or_missing_proof(self):
+    def test_refuses_wrong_commit_missing_and_unexpected_proofs(self):
         with self.assertRaises(ValueError):
             read_proofs(self.root, "b" * 40)
         (self.root / "image-proof-extra").mkdir()
+        with self.assertRaises(ValueError):
+            read_proofs(self.root, self.commit)
+        (self.root / "image-proof-extra").rmdir()
+        arm = self.root / "image-proof-arm64"
+        (arm / "image-proof.json").unlink()
+        arm.rmdir()
         with self.assertRaises(ValueError):
             read_proofs(self.root, self.commit)
 
