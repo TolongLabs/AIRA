@@ -59,6 +59,14 @@ and an expired row cannot be claimed. Ack moves a claimed row to `confirmed`, `f
 on that same current route is valid even after expiry. An identical terminal ack is harmless, a conflicting one
 refuses. This deliberately prefers possible omission over a duplicate delivery after an ambiguous result. The
 guarantee applies within the retained database lineage and deduplication lifetime, not an older restored backup.
+A document uses position 1, at most one per fresh returned turn that also has clean nonempty reply text. Issuance
+and claim require the current document-capable route and the existing reports feature enabled for that chat.
+Use only the successful `make_report` tool result and `report.created` receipt with matching chat, turn, call ID,
+target hash and attachment path. The `file` row must be kind `report`, with the exact content-addressed
+relative path and recorded size matching the real owned regular file. Reject symlinks, special files, foreign
+paths, changed digest, oversize, invalid PDF signature or invalid UTF-8 Markdown. Hash and read bounded bytes
+again at claim; a missing/foreign/changed receipt or file cannot authorize a send. If several receipts exist,
+choose at most the first valid one in stable receipt order, never an item derived from reply text.
 A returned `turn.state = delivered` still means a core return;
 the independent delivery row is the transport acknowledgement, not a rewrite of the turn record.
 

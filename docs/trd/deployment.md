@@ -267,6 +267,12 @@ Abrupt interruption or a stalled core/filesystem can require private backup reco
 prevents late dispatch, not an unbounded pause during a synchronous durable write.
 No public compatibility claim until the actual adapter tests pass.
 
+With `--protocol v2`, `--capabilities text,document` explicitly selects document delivery; `--capabilities text`
+selects text only. A fresh v2 attach defaults to text, while an exact existing typed attachment preserves its
+verified capability list if the option is omitted. V1 refuses this option. Capability change is a stopped
+transaction with the same canonical exclusive source and prior-evidence rules as protocol migration. Keep the
+exact previous v1 and typed-text helper bytes recognized; a text-only route retains that original typed helper.
+
 `aira attach-hermes --profile NAME --apply` is a deliberate apply; confirmation is required on a TTY,
 or `--yes` with explicit non-interactive apply. The install must be standalone. Hold its shared deploy
 lock and a bounded source-tree lock while modifying shared adapter source. Preserve the exact original

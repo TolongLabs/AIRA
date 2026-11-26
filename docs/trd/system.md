@@ -117,8 +117,9 @@ a deterministic or explicitly configured test turn, not a health probe.
 ### Standalone Typed Delivery
 
 Protocol version 2 is a separate, explicitly selected candidate transport. Version 1 retains its exact marker,
-receipt, text endpoints and default attach. The version 2 route negotiates the finite `text` capability first;
-documents, inbound media, stickers, reactions, location, polls and scheduled sends are not inferred from it.
+receipt, text endpoints and default attach. The version 2 route negotiates exactly `['text']` or
+`['text', 'document']`; the latter enables only core-owned report documents, not arbitrary file sends.
+Inbound media, stickers, reactions, location, polls and scheduled sends are not inferred from either list.
 Each requires its own reviewed adapter operation, core capability and acceptance evidence. This contract does
 not expand the published support matrix before the installed adapter and separately approved live gate pass.
 
@@ -131,12 +132,12 @@ Typed attachment requests carry an absolute millisecond deadline at most ten sec
 shorter than the adapter's HTTP timeout. Expired requests refuse before route persistence begins.
 Unknown protocol, stale route, unsupported capabilities or malformed data refuse without an ordinary Hermes turn.
 
-| Endpoint                       | Contract                                                                                                                                                                                                |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| POST `/v2/aira/attach-check`   | Strict gateway-authenticated connect with adapter version, profile, deadline and exact capability list. Disconnect and explicit downgrade name the current route ID. Returns the verified route.        |
-| POST `/v2/aira/turn`           | Version 1 structured identity/text fields with `schemaVersion:2` and the current `routeId`. Returns `schemaVersion:2`, disposition and typed delivery IDs, not file paths or send directives in text.   |
-| POST `/v2/aira/delivery/claim` | `schemaVersion:2`, route/profile, chat, inbound message ID and delivery ID. Atomically claim one unexpired pending item. A text item returns bounded text; a duplicate, stale or foreign claim refuses. |
-| POST `/v2/aira/delivery/ack`   | Same binding and ID plus `outcome:confirmed\|failed\|unknown`. Only an existing claimed item may finish; repeating the identical outcome is idempotent.                                                 |
+| Endpoint                       | Contract                                                                                                                                                                                                 |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST `/v2/aira/attach-check`   | Strict gateway-authenticated connect with adapter version, profile, deadline and exact capability list. Disconnect and explicit downgrade name the current route ID. Returns the verified route.         |
+| POST `/v2/aira/turn`           | Version 1 structured identity/text fields with `schemaVersion:2` and the current `routeId`. Returns `schemaVersion:2`, disposition and typed delivery IDs, not file paths or send directives in text.    |
+| POST `/v2/aira/delivery/claim` | `schemaVersion:2`, route/profile, chat, inbound message ID and delivery ID. Atomically claim one unexpired pending item. Return bounded text or a document payload. Duplicate, stale or foreign refuses. |
+| POST `/v2/aira/delivery/ack`   | Same binding and ID plus `outcome:confirmed\|failed\|unknown`. Only an existing claimed item may finish; repeating the identical outcome is idempotent.                                                  |
 
 The core rechecks the captured ingress route after the awaited turn for both protocols. Any v1 return of a
 v2-issued turn returns no reply, including concurrent fresh returns; unchanged v1 replay behavior is retained.
@@ -150,8 +151,14 @@ A lost claim or ambiguous send may omit delivery, but cannot retry or resend it.
 new claims, not a send already in flight under a previously valid claim. A stored core reply is never
 proof of a WhatsApp delivery. See [the private ledger](storage.md#standalone-delivery-ledger).
 
-Future typed documents derive only from matching successful same-turn, same-chat tool receipts and owned
-content-addressed files; the core supplies bounded bytes, not a host path, URL or destination. Direct inbound
+The optional `document` descriptor has only `id` and `kind:document`. A claim returns exactly `id`, `kind`,
+`mime`, `filename`, `sha256` and `base64`. The fixed MIME/name pairs are `application/pdf`/`report.pdf` and
+`text/markdown`/`report.md`; the core supplies at most 5 MiB of verified bytes, not a host path, URL or
+destination. The host independently checks size, canonical base64, fixed type/name and content hash, writes a
+private temporary file and calls the selected stock `send_document` for the originating chat. Remove its
+temporary file/directory after the attempt, including failure or cancellation. At most one text and one
+document descriptor, ordered by item position. Neither a missing reply nor ambiguous send triggers a fallback.
+Direct inbound
 attachments must be selected-profile owned cache files with a reviewed normalized event type, size, content
 and lifetime. A retained remote URL, quoted workspace file, other profile or special file is not direct media.
 

@@ -212,12 +212,14 @@ Process boundaries, the gateway contract, turns, tools, commands, models, reply 
 | ADR-0189 | 2026-11-26 | [Recover YouTube Watch Gaps][ADR-0189]                                                  | Accepted                                                      |
 | ADR-0191 | 2026-11-26 | [Allow Only Verified Hermes Source Revisions][ADR-0191]                                 | Accepted                                                      |
 | ADR-0193 | 2026-11-26 | [Claim Standalone Typed Deliveries Once][ADR-0193]                                      | Accepted                                                      |
+| ADR-0194 | 2026-11-26 | [Bind Portable Reports to Receipts][ADR-0194]                                           | Accepted                                                      |
 
 [ADR-0185]: 0185-let-a-pack-switch-off-bubble-capitals.md
 [ADR-0188]: 0188-use-a-fail-closed-standalone-hermes-adapter.md
 [ADR-0189]: 0189-recover-youtube-watch-gaps.md
 [ADR-0191]: 0191-allow-only-verified-hermes-source-revisions.md
 [ADR-0193]: 0193-claim-standalone-typed-deliveries-once.md
+[ADR-0194]: 0194-bind-portable-reports-to-receipts.md
 [ADR-0181]: 0181-recover-malformed-api-replies.md
 [ADR-0180]: 0180-fetch-only-verified-youtube-shorts.md
 [ADR-0001]: 0001-build-the-core-as-a-typescript-service-on-node-24.md

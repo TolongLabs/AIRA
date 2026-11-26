@@ -226,6 +226,10 @@ cleaning chain and the bubble splitter.
   YouTube, with the post's text, author, most-liked replies where the site gives them, and its pictures or video. A
   YouTube video, or a post's video, is watched by the media model as in [Models](models.md#media-watching).
 - `make_report` writes the document. Sending it to the chat is a separate delivery step with its own receipt.
+- In standalone, `make_report` is offered and executable only while `features.reports` is enabled and the
+  current turn's core-validated typed route has the `document` capability. The queued ingress route must agree
+  across all coalesced waiters; mixed v1/v2 or stale routes cannot offer the tool. Recheck the route at call time.
+  No model-supplied scope or additional role credentials grant this permission; legacy reports are unchanged.
 - The gateway's schedule fires reminders. `reminder_set` and `reminder_cancel` change the `reminder` row in one
   transaction and then rewrite the core's wanted-jobs file. A host reconciler makes the gateway's jobs match it within
   a minute. See [Scheduled Turns](system.md#scheduled-turns).
