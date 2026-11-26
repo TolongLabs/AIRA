@@ -12,7 +12,7 @@ import re
 import sys
 import time
 
-from . import compose, configure, install, operations
+from . import compose, configure, hermes_versions, install, operations
 from .result import (
     CommandError, args_error, blank_state, error_envelope, ok_envelope,
     operational_error,
@@ -256,7 +256,10 @@ def check_hermes(selection=None, owner_ok=False):
         try:
             health = configure.api_call(selection, "GET", "/owner-api/core/health")
             route = health.get("hermes") or {}
-            if route.get("state") == "connected" and route.get("adapterVersion") == "hermes-v0.23.4":
+            if route.get("state") == "connected":
+                if route.get("adapterVersion") not in hermes_versions.ADAPTER_VERSIONS:
+                    return check_result("hermes", "failed", "hermes_unsupported", timer.elapsed_ms(),
+                                        "Verify the pinned source and repeat dry-run.")
                 from .hermes import inspect_attachment
                 running = inspect_attachment(selection, route)
                 return check_result("hermes", "ok" if running else "warning", "route_verified" if running else "route_verified_gateway_stopped",

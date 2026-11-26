@@ -13,7 +13,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlsplit
 
-from . import compose, configure, install, operations
+from . import compose, configure, hermes_versions, install, operations
 from .result import CommandError, args_error, conflict_error, error_envelope, ok_envelope, operational_error, rollback_error
 
 COMMAND = "attach-hermes"
@@ -153,11 +153,16 @@ def _plan(args):
     profile_dir = _owned_dir(root if args.profile == "default" else root / "profiles" / args.profile)
     head = _process(["git", "rev-parse", "HEAD"], source, root)
     dirty = _process(["git", "diff", "--quiet", "HEAD", "--", ".", ":!" + patch.TARGET], source, root)
-    if not head or head.returncode or head.stdout.strip() != patch.PINNED_HERMES_TREE or not dirty or dirty.returncode:
+    version = hermes_versions.version_for_head(head.stdout.strip()) if head and not head.returncode else None
+    if version is None or not dirty or dirty.returncode:
         _refuse("hermes_unsupported", "The public Hermes tree is not the exact supported revision.",
-                "Use the supported v0.23.4 installation without unrelated tracked changes.")
+                "Use a reviewed Hermes source revision without unrelated tracked changes.")
     target = source / patch.TARGET
     helper = target.parent / "aira_transport.py"
+    rendered = hermes_versions.render_helper(mods["helper"], version)
+    spec = importlib.util.spec_from_file_location("aira_selected_adapter", helper)
+    adapter = importlib.util.module_from_spec(spec)
+    exec(compile(rendered, str(helper), "exec"), adapter.__dict__)
     marker = profile_dir / adapter.MARKER_NAME
     receipt = home / "data" / "standalone" / "hermes.json"
     host_receipt = receipt.with_name("attach-host.json")
@@ -165,15 +170,20 @@ def _plan(args):
                 "marker": _read(marker, private=True, optional=True), "receipt": _read(receipt, private=True, optional=True),
                 "host": _read(host_receipt, private=True, optional=True)}
     kind = patch.classify_source(original["source"][0])
-    if kind == "unsupported" or (original["helper"] and original["helper"][0] != mods["helper"]):
+    previous_version = (hermes_versions.known_helper_version(mods["helper"], original["helper"][0])
+                        if original["helper"] else None)
+    if kind == "unsupported" or (original["helper"] and previous_version is None):
         _refuse("hermes_unsupported", "The adapter source or existing helper is unfamiliar.")
-    if kind == "original":
+    changing_version = previous_version is not None and previous_version != version
+    if changing_version and source != root / "hermes-agent":
+        _refuse("hermes_contract_failed", "Version migration requires the selected root's exclusive source checkout.")
+    if kind == "original" or changing_version:
         other_markers = [root / adapter.MARKER_NAME]
         profiles = root / "profiles"
         if profiles.exists():
             other_markers.extend(child / adapter.MARKER_NAME for child in _owned_dir(profiles).iterdir() if child.is_dir())
         if any(path != marker and os.path.lexists(path) for path in other_markers):
-            _refuse("hermes_contract_failed", "Other profile markers exist without the expected shared adapter.")
+            _refuse("hermes_contract_failed", "Other profile markers would be affected by changing the shared adapter.")
     token = install.read_owner_token(home / "data" / "standalone" / "gateway.token")
     expected = {"schemaVersion": 1, "profile": args.profile, "profileHome": str(profile_dir),
                 "port": manifest.corePort, "token": token}
@@ -184,7 +194,17 @@ def _plan(args):
         _refuse("hermes_profile_conflict", "AIRA already has a different attached profile.")
     host_record = {"schemaVersion": 1, "sourceDir": str(source), "hermesHome": str(root),
                    "profile": args.profile, "adapterVersion": adapter.ADAPTER_VERSION}
-    if original["host"] is not None and json.loads(original["host"][0]) != host_record:
+    prior_host = json.loads(original["host"][0]) if original["host"] else None
+    if changing_version:
+        prior_record = {**host_record, "adapterVersion": previous_version}
+        verified_at = route.get("verifiedAt") if isinstance(route, dict) else None
+        prior_route = {"state": "connected", "profile": args.profile, "adapterVersion": previous_version,
+                       "verifiedAt": verified_at}
+        prior_receipt = json.loads(original["receipt"][0]) if original["receipt"] else None
+        if (not original["marker"] or prior_host != prior_record or not isinstance(verified_at, str)
+                or route != prior_route or prior_receipt != {"schemaVersion": 1, **prior_route}):
+            _refuse("hermes_profile_conflict", "The previous helper, host record and verified route do not agree.")
+    elif original["host"] is not None and prior_host != host_record:
         _refuse("hermes_profile_conflict", "The saved attachment refers to different source or profile paths.")
     # Avoid a recursive provider route. The adapter never changes Hermes providers.
     cfg = configure.readback(selection)
@@ -204,15 +224,15 @@ def _plan(args):
     python, binary = environments[0]
     patched = patch.patch_source(original["source"][0]) if kind == "original" else original["source"][0]
     compile(patched, str(target), "exec")
-    compile(mods["helper"], str(helper), "exec")
     plan = {
         "home": home, "manifest": manifest, "selection": selection, "report": report, "sourceDir": source,
         "hermesHome": root, "profileDir": profile_dir, "profile": args.profile, "python": python, "binary": binary,
         "paths": {"source": target, "helper": helper, "marker": marker, "receipt": receipt, "host": host_receipt}, "original": original,
         "desired": {"source": (patched, original["source"][1]),
-                    "helper": (mods["helper"], original["helper"][1] if original["helper"] else 0o644),
+                    "helper": (rendered, original["helper"][1] if original["helper"] else 0o644),
                     "marker": original["marker"] or ((json.dumps(expected, sort_keys=True) + "\n").encode(), 0o600),
-                    "host": original["host"] or ((json.dumps(host_record, sort_keys=True) + "\n").encode(), 0o600)},
+                    "host": (original["host"] if original["host"] and not changing_version else
+                             ((json.dumps(host_record, sort_keys=True) + "\n").encode(), 0o600))},
         "kind": kind, "adapter": adapter,
     }
     plan["running"] = _profile_status(plan)
@@ -324,7 +344,9 @@ def run_attach(args, op):
                     raise operational_error("hermes_contract_failed", "The local adapter handshake failed.", "verify")
                 report = install.observe(plan["home"], plan["manifest"])
                 route = report.get("hermesRoute") or {}
-                if report["state"]["service"] != "running" or route.get("state") != "connected" or route.get("profile") != plan["profile"]:
+                if (report["state"]["service"] != "running" or route.get("state") != "connected"
+                        or route.get("profile") != plan["profile"]
+                        or route.get("adapterVersion") != plan["adapter"].ADAPTER_VERSION):
                     raise operational_error("hermes_contract_failed", "Owner health did not confirm the attachment.", "verify")
             except (CommandError, OSError, ValueError, KeyboardInterrupt) as err:
                 if not _restore(plan, changed):

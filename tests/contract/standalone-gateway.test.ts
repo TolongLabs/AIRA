@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { type App, createApp } from '../../src/app.js'
 import { createStandaloneModelStore } from '../../src/config/standalone-models.js'
+import { STANDALONE_ADAPTER_VERSIONS } from '../../src/gateway/standalone.js'
 import { createLogger } from '../../src/records/logger.js'
 import { queueModel } from '../support/app.js'
 import { testConfig } from '../support/core.js'
@@ -95,18 +96,28 @@ const turn = (chat: string, mid: string, text: string) => ({
 })
 
 describe('standalone structured Hermes transport', () => {
-  it('verifies its route without requiring or spending a model credential', async () => {
-    const core = await start(false)
-    expect((await core.post('/v1/aira/attach-check', attach(), core.owner)).status).toBe(401)
-    expect((await core.post('/v1/aira/attach-check', attach())).status).toBe(200)
-    expect(await core.ownerCall('health')).toMatchObject({
-      configuration: 'setup_required',
-      chatbot: 'inactive',
-      hermes: { state: 'connected', adapterVersion: 'hermes-v0.23.4' }
-    })
-    expect((await core.post('/v1/aira/turn', turn('fixture-a', 'm1', 'hello'))).status).toBe(503)
-    expect(core.model.requests).toHaveLength(0)
+  it('has only the reviewed v1 adapter version IDs', () => {
+    expect(STANDALONE_ADAPTER_VERSIONS).toEqual(['hermes-v0.23.2', 'hermes-v0.23.3', 'hermes-v0.23.4'])
   })
+
+  it.each(['hermes-v0.23.2', 'hermes-v0.23.3', 'hermes-v0.23.4'])(
+    'verifies the exact %s route without requiring or spending a model credential',
+    async (adapterVersion) => {
+      const core = await start(false)
+      const request = { ...attach(), adapterVersion }
+      expect((await core.post('/v1/aira/attach-check', request, core.owner)).status).toBe(401)
+      const response = await core.post('/v1/aira/attach-check', request)
+      expect(response.status).toBe(200)
+      expect(response.body).toMatchObject({ hermes: { state: 'connected', adapterVersion, profile: 'fixture' } })
+      expect(await core.ownerCall('health')).toMatchObject({
+        configuration: 'setup_required',
+        chatbot: 'inactive',
+        hermes: { state: 'connected', adapterVersion }
+      })
+      expect((await core.post('/v1/aira/turn', turn('fixture-a', 'm1', 'hello'))).status).toBe(503)
+      expect(core.model.requests).toHaveLength(0)
+    }
+  )
 
   it('keeps chat identity separate, admits only enabled chats, and never uses the legacy path', async () => {
     const core = await start(true)
@@ -159,6 +170,36 @@ describe('standalone structured Hermes transport', () => {
     expect((await core.post('/v1/aira/attach-check', attach('disconnect'))).status).toBe(200)
     expect((await core.post('/v1/aira/turn', turn('fixture-a', 'm3', 'after disconnect'))).status).toBe(503)
     expect(core.model.requests).toHaveLength(2)
+  })
+
+  it('keeps the current route when an earlier adapter version tries to disconnect it', async () => {
+    const core = await start(false)
+    const previous = { ...attach(), adapterVersion: 'hermes-v0.23.2' }
+    const current = { ...attach(), adapterVersion: 'hermes-v0.23.3' }
+    expect((await core.post('/v1/aira/attach-check', previous)).status).toBe(200)
+    expect((await core.post('/v1/aira/attach-check', current)).status).toBe(200)
+    expect((await core.post('/v1/aira/attach-check', { ...previous, action: 'disconnect' })).status).toBe(409)
+    expect(await core.ownerCall('health')).toMatchObject({
+      hermes: { state: 'connected', adapterVersion: current.adapterVersion, profile: 'fixture' }
+    })
+    expect((await core.post('/v1/aira/attach-check', { ...current, action: 'disconnect' })).status).toBe(200)
+    expect(await core.ownerCall('health')).toMatchObject({ hermes: { state: 'disconnected' } })
+    expect(core.model.requests).toHaveLength(0)
+  })
+
+  it('refuses unlisted adapter versions and a foreign profile without changing the route', async () => {
+    const core = await start(false)
+    expect((await core.post('/v1/aira/attach-check', attach())).status).toBe(200)
+    for (const adapterVersion of ['hermes-v0.23.1', 'hermes-v0.23.5', 'hermes-v0.23.4+canary']) {
+      expect((await core.post('/v1/aira/attach-check', { ...attach(), adapterVersion })).status).toBe(400)
+    }
+    expect(
+      (await core.post('/v1/aira/attach-check', { ...attach(), adapterVersion: 'hermes-v0.23.2', profile: 'other' }))
+        .status
+    ).toBe(409)
+    expect(await core.ownerCall('health')).toMatchObject({
+      hermes: { state: 'connected', adapterVersion: 'hermes-v0.23.4', profile: 'fixture' }
+    })
   })
 
   it('distinguishes invalid or unsupported route receipts from a deliberate disconnect', async () => {
