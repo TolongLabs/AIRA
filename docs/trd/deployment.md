@@ -179,8 +179,10 @@ or restart the service. Existing management channel remains authoritative.
 
 `aira dashboard` prints the mapped `http://127.0.0.1:<sitePort>/overview` URL. On SSH/headless, print
 the mapped-port SSH forwarding example. Only a usable local desktop invokes the browser; `--no-open`
-suppresses it. JSON and non-interactive invocations do not open the browser by default. Opener failure
-is a warning after service verification. Expose only private loopback access for the initial portable path.
+suppresses it. JSON and non-interactive invocations do not open the browser by default. The CLI discards
+opener stdout and stderr so a launched browser cannot keep its output pipes open and cause a false timeout.
+The opener exit itself is bounded to 15 seconds; failure is a warning after service verification.
+Expose only private loopback access for the initial portable path.
 
 ### CLI Results and Commands
 
