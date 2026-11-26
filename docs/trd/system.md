@@ -126,21 +126,22 @@ Use the same gateway credential and exact reviewed adapter-version IDs. A versio
 the selected profile, adapter version, negotiated capabilities, verification time and core-generated random route
 ID. An identical reattach keeps the route ID. Detach or changing version/protocol/capabilities invalidates it.
 A different profile conflicts. A version 2 route admits only version 2 turns; version 1 has no silent fallback.
+Downgrade explicitly names the current typed route ID; a version 1 attachment request cannot overwrite it.
+Typed attachment requests carry an absolute millisecond deadline at most ten seconds ahead of the core clock,
+shorter than the adapter's HTTP timeout. Expired requests cannot commit a route after the caller has abandoned it.
 Unknown protocol, stale route, unsupported capabilities or malformed data refuse without an ordinary Hermes turn.
 
 | Endpoint                       | Contract                                                                                                                                                                                                |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| POST `/v2/aira/attach-check`   | Strict gateway-authenticated connect with adapter version, profile and exact supported capability list; disconnect names the current route ID. Returns the verified route, never contacts a model.      |
+| POST `/v2/aira/attach-check`   | Strict gateway-authenticated connect with adapter version, profile, deadline and exact capability list. Disconnect and explicit downgrade name the current route ID. Returns the verified route.        |
 | POST `/v2/aira/turn`           | Version 1 structured identity/text fields with `schemaVersion:2` and the current `routeId`. Returns `schemaVersion:2`, disposition and typed delivery IDs, not file paths or send directives in text.   |
 | POST `/v2/aira/delivery/claim` | `schemaVersion:2`, route/profile, chat, inbound message ID and delivery ID. Atomically claim one unexpired pending item. A text item returns bounded text; a duplicate, stale or foreign claim refuses. |
 | POST `/v2/aira/delivery/ack`   | Same binding and ID plus `outcome:confirmed\|failed\|unknown`. Only an existing claimed item may finish; repeating the identical outcome is idempotent.                                                 |
 
-The core issues a delivery ID only for a fresh, non-replayed returned turn and its persisted same-chat inbound
-and assistant records (including a persisted fallback reply of a failed turn). Recheck the route ID captured at
-ingress after the awaited turn. Empty or `NO_REPLY` content produces no delivery. One item position of a turn has
-one delivery ID even across route changes; only the atomic insert winner returns the ID. A later v1 replay of a
-v2-issued turn returns no reply, while v1-originated replay behavior is unchanged. The claim rechecks the current
-route and active chat; the existing reply
+The core rechecks the captured ingress route after the awaited turn for both protocols. Any v1 return of a
+v2-issued turn returns no reply, including concurrent fresh returns; unchanged v1 replay behavior is retained.
+The [private ledger](storage.md#standalone-delivery-ledger) owns durable issuance and one-time claims. Claims
+recheck the current route and active chat; the existing reply
 mute/quiet rule is unchanged. A disabled or pending chat has no claim. Delivery text is the bounded clean reply,
 not `MEDIA:` directives or an arbitrary path. The adapter calls only the selected runner's delivery adapter for
 the originating message's chat, then consumes the event with no default reply. Successful `SendResult` with a
