@@ -36,8 +36,11 @@ the latest release and its commit before writing; a superseded target is skipped
 
 - Every push to `main` builds native Linux amd64 and arm64 images. Only after each exact loaded image passes
   its smoke test may that job publish its architecture-specific child to `ghcr.io/tolonglabs/aira`.
-  Verify the published manifest's config digest and platform against the tested local image; verify an anonymous
-  digest pull. Each native job records the full source commit, platform, image ID and child manifest digest.
+  Record the tested local image ID before smoke and check it has not changed before publishing that exact ID.
+  Verify the published manifest's config digest against the build metadata and its platform with an anonymous
+  digest pull. Each native job records the full source commit, platform, local image ID, config digest and child
+  manifest digest. The classic Docker store uses config IDs; the containerd store can use manifest or index IDs.
+  Treat these as distinct digests, not interchangeable strings.
 - The `image` gate requires both proofs for the exact commit, with no missing or duplicate platform. Assemble
   only those children as the public `sha-<first 7 of the commit>` and `edge` index. Verify the index contains
   exactly the proved Linux amd64 and arm64 manifest digests and both tags name the same index. No PR pushes.
