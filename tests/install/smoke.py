@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Disposable-runner standalone install smoke test (test-only packet).
 
-Runs ONLY on an explicitly disposable Ubuntu runner/VM. Uses only the
-Python standard library and the host Docker Engine; no Node on the host,
-no external network calls, no Docker image builds. The orchestrator wires
-CI and runs this script; this file changes no CI config or other file.
+Runs ONLY on an explicitly disposable Ubuntu runner/VM. Uses the Python
+standard library and host Docker Engine, plus optional pinned public
+dependency synchronization for migration. No real-account or model calls,
+host Node or Docker image builds.
 
 Flow: preconditions -> collision discovery setup -> rerun stability ->
 protected health/site/API -> explicit port conflict -> synthetic model
@@ -569,8 +569,9 @@ def main() -> int:
                 code, failed = run_json(launcher, [*options, "--apply", "--yes"], STEP_TIMEOUT_S)
                 check(code == 1 and failed.get("error", {}).get("code") == "attach_failed",
                       "hermes_rollback_failed", "The refused handshake did not report verified rollback.")
-                check(file_state(source) == original and all(file_state(p) == contents for p, contents in before.items()),
-                    "hermes_rollback_failed", "Failed attachment changed its original source or private state.")
+                check(file_state(source) == original
+                      and all(file_state(p) == contents for p, contents in before.items()),
+                      "hermes_rollback_failed", "Failed attachment changed its original source or private state.")
             finally:
                 tokenpath.write_bytes(token_bytes)
 

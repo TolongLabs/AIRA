@@ -40,8 +40,11 @@ jobs:
       - run: python3 -m unittest discover -s tests/cli -p 'test_*.py'
       - name: Verify the standalone adapter registries agree
         run: |
-          python_versions="$(python3 -c 'import json; from deploy.cli.hermes_versions import ADAPTER_VERSIONS; print(json.dumps(ADAPTER_VERSIONS, separators=(",", ":")))')"
-          core_versions="$(bun -e 'import { STANDALONE_ADAPTER_VERSIONS } from "./src/gateway/standalone.ts"; console.log(JSON.stringify(STANDALONE_ADAPTER_VERSIONS))')"
+          python_versions="$(python3 -c 'import json
+          from deploy.cli.hermes_versions import ADAPTER_VERSIONS
+          print(json.dumps(ADAPTER_VERSIONS, separators=(",", ":")))')"
+          core_versions="$(bun -e 'import { STANDALONE_ADAPTER_VERSIONS } from "./src/gateway/standalone.ts";
+          console.log(JSON.stringify(STANDALONE_ADAPTER_VERSIONS))')"
           test "$python_versions" = "$core_versions"
 
   site:
@@ -213,8 +216,9 @@ jobs:
           docker cp "$RUNNER_TEMP/aira-probe-failure.js" "$fixture:/app/dist/scripts/deploy-turn-probe.js"
           docker commit "$fixture" "$BAD"
           docker rm -v "$fixture"
+          profile="$RUNNER_TEMP/aira-hermes-profile"
           python3 tests/install/smoke.py --image "$CANDIDATE" --home "$RUNNER_TEMP/aira-install" \
-            --hermes-dir "$RUNNER_TEMP/aira-hermes-profile/hermes-agent" --hermes-home "$RUNNER_TEMP/aira-hermes-profile" \
+            --hermes-dir "$profile/hermes-agent" --hermes-home "$profile" \
             --migration-ref ae2a81ccc00e9b7c06301523e5bb09608397149c --migration-version hermes-v0.23.2 \
             --uv-bin "$RUNNER_TEMP/aira-uv/bin/uv" \
             --update-image "$NEXT" --bad-image "$BAD"
