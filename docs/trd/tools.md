@@ -218,7 +218,7 @@ cleaning chain and the bubble splitter.
 | `help`            | Lists the commands this chat may use                                       | explicit | `/help`            | Direct      | none                 |
 | `list`            | Lists the tools and features switched on                                   | explicit | `/list`            | Direct      | none                 |
 
-- `make_report` caps the title at 120 characters and the body at 50,000 characters.
+- `make_report` caps the title at 120 characters and each section body at 4,000, across 1 to 8 sections.
 - `read_page` reads through Exa's contents endpoint, with a live crawl when Exa has no copy, so a page that refuses
   plain fetches (such as openai.com, measured 403) still reads. A plain fetch is the fallback when Exa is off or fails.
   The text is clipped to `search.pageMaxChars` and labelled untrusted.

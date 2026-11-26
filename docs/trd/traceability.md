@@ -24,13 +24,13 @@ from this page after an audit.
 
 ## Characters And Per-Chat Settings
 
-| ID    | Status          | Main Code Paths                                  | Test Paths     | TRD Module       | Gap                                                             |
-| ----- | --------------- | ------------------------------------------------ | -------------- | ---------------- | --------------------------------------------------------------- |
-| FR-6  | Shipped         | src/character/loader.ts, src/character/schema.ts | tests/contract | prompt-engine.md | None.                                                           |
-| FR-7  | Exists (faulty) | —                                                | —              | data.md          | Not covered by an audit; status kept from the old core.         |
-| FR-8  | Shipped         | src/settings/settings.ts, src/settings/keys.ts   | tests/contract | data.md          | data.md names report.defaultFormat, which the registry rejects. |
-| FR-9  | Shipped         | src/turn/pipeline.ts                             | tests/harness  | reliability.md   | None.                                                           |
-| FR-10 | Partial         | src/turn/pipeline.ts, src/app.ts                 | tests/harness  | system.md        | The model breaker is shared, not keyed by chat and character.   |
+| ID    | Status          | Main Code Paths                                  | Test Paths     | TRD Module       | Gap                                                           |
+| ----- | --------------- | ------------------------------------------------ | -------------- | ---------------- | ------------------------------------------------------------- |
+| FR-6  | Shipped         | src/character/loader.ts, src/character/schema.ts | tests/contract | prompt-engine.md | None.                                                         |
+| FR-7  | Exists (faulty) | —                                                | —              | data.md          | Not covered by an audit; status kept from the old core.       |
+| FR-8  | Shipped         | src/settings/settings.ts, src/settings/keys.ts   | tests/contract | data.md          | None.                                                         |
+| FR-9  | Shipped         | src/turn/pipeline.ts                             | tests/harness  | reliability.md   | None.                                                         |
+| FR-10 | Partial         | src/turn/pipeline.ts, src/app.ts                 | tests/harness  | system.md        | The model breaker is shared, not keyed by chat and character. |
 
 ## Expression, Mood And Tone
 
