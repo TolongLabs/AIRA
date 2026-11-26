@@ -5,23 +5,25 @@ one night.
 
 ## CI
 
-| Job         | Runs                                                                                                                         | Trigger                     |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| `check`     | Typecheck, lint, format, unit, contract and replay tests                                                                     | Every push and pull request |
-| `scan`      | Secret scan of the repository history with gitleaks                                                                          | Every push and pull request |
-| `site`      | Site typecheck and build                                                                                                     | Every push and pull request |
-| `image`     | Builds the release image and runs standalone clean-install smoke on that exact image. On main it pushes `sha-<7>` and `edge` | Every push and pull request |
-| `images-ok` | Re-reports the image result, so a skipped or failed build still fails the gate                                               | After `image`, always       |
-| `deploy`    | Deploys the pushed image on the host, through the self-hosted runner                                                         | Push to `main` only         |
-| `release`   | Version and changelog pull request from commit messages                                                                      | Push to `main`              |
-| `promote`   | Tags the image the host runs `vX.Y.Z`, `vX.Y` and `stable`, after the exact commit's CI passes                               | Published release or retry  |
+| Job              | Runs                                                                                              | Trigger                     |
+| ---------------- | ------------------------------------------------------------------------------------------------- | --------------------------- |
+| `check`          | Typecheck, lint, format, unit, contract and replay tests                                          | Every push and pull request |
+| `scan`           | Secret scan of the repository history with gitleaks                                               | Every push and pull request |
+| `site`           | Site typecheck and build                                                                          | Every push and pull request |
+| `image-platform` | Builds and verifies each native Linux image and publishes its proved child on main                | Every push and pull request |
+| `image`          | Requires both native jobs; on main assembles their exact proved manifests as `sha-<7>` and `edge` | After `image-platform`      |
+| `images-ok`      | Re-reports the image result, so a skipped or failed build still fails the gate                    | After `image`, always       |
+| `deploy`         | Deploys the pushed image on the host, through the self-hosted runner                              | Push to `main` only         |
+| `release`        | Version and changelog pull request from commit messages                                           | Push to `main`              |
+| `promote`        | Tags the image the host runs `vX.Y.Z`, `vX.Y` and `stable`, after the exact commit's CI passes    | Published release or retry  |
 
-The hosted install gate loads the PR candidate locally or anonymously pulls the exact main SHA image,
-then runs `tests/install/smoke.py` on a non-root, non-1000 UID Ubuntu runner. It exercises the real CLI,
+The hosted install gate builds and loads the candidate locally on native Linux amd64 and arm64,
+then runs `tests/install/smoke.py` on a non-root, non-1000 UID Ubuntu runner for each architecture. It exercises the real CLI,
 protected service, occupied ports, model save/restart, selected stock Hermes profile dry-run/apply,
 deterministic synthetic transport, update/rollback and private backup/restore. It never sends a WhatsApp
 message or contacts a real model. The pinned Hermes upstream admission/group and platform delivery fixtures
-run under an isolated profile root. An absent image or failed smoke fails `image` and therefore `images-ok`;
+run under an isolated profile root. The historical v1.6.1 refusal fixture runs on amd64 only, since that
+released image has no arm64 manifest. An absent native image or failed smoke fails `image` and therefore `images-ok`;
 the production runner cannot start before this gate. Release promotion waits for the exact main commit's
 successful CI run (including deployment) and re-tags the already-built manifest, not a newer `edge`.
 The target is the published version tag resolved to its commit, not the release workflow's triggering push SHA:
@@ -32,9 +34,15 @@ the latest release and its commit before writing; a superseded target is skipped
 
 ## Release Image
 
-- Every push to `main` builds one image and publishes it to `ghcr.io/tolonglabs/aira` as `sha-<first 7 of the commit>`
-  and `edge`. The package is public, so the host pulls without a token; the job checks an anonymous pull.
-- A release re-tags that same image; nothing is rebuilt.
+- Every push to `main` builds native Linux amd64 and arm64 images. Only after each exact loaded image passes
+  its smoke test may that job publish its architecture-specific child to `ghcr.io/tolonglabs/aira`.
+  Verify the published manifest's config digest and platform against the tested local image; verify an anonymous
+  digest pull. Each native job records the full source commit, platform, image ID and child manifest digest.
+- The `image` gate requires both proofs for the exact commit, with no missing or duplicate platform. Assemble
+  only those children as the public `sha-<first 7 of the commit>` and `edge` index. Verify the index contains
+  exactly the proved Linux amd64 and arm64 manifest digests and both tags name the same index. No PR pushes.
+  A release re-tags that same index after the exact commit's CI succeeds; nothing is rebuilt. Historical releases
+  retain their original verified single-platform manifests. The legacy dev2 host selects the amd64 child.
 - Multi-stage build, non-root user, one writable data volume. The image holds the core, the built site, the example
   character pack and the prompts. Real character packs are private and live on the data volume.
 - A separate stage installs production dependencies from `package.json` and `bun.lock` alone, with the version and
@@ -128,10 +136,13 @@ If PATH omits the installed command, print its exact path. Existing unrelated pa
 
 ### Fresh Setup Transaction
 
-Support Linux amd64, Python 3 standard library, rootful Docker with Compose v2 and a service enabled at boot
+Support native Linux amd64 and arm64, Python 3 standard library, rootful Docker with Compose v2 and a service enabled at boot
 on a systemd host. Detect missing Python/Docker/Compose, permission denial, daemon failure and unsupported host
 before provisioning; report remediation, not implicit sudo or group changes. Verify disk space and writable
 owned installation paths. Detect Hermes separately; its absence does not prevent dashboard setup.
+Normalize only Linux `x86_64`/`amd64` and `aarch64`/`arm64`; the local Linux daemon's native architecture must match.
+Reject a mismatched or unknown image OS/architecture before starting a setup or stopping an installed service for
+update. No emulation, remote Docker, Docker Desktop or rootless Docker support is implied by a native image.
 
 Fresh portable installs use a standalone Compose template installed as `compose.yml`, a generated private
 `.env`, the existing core config template with an absolute host data path, and a private `data/` directory.
