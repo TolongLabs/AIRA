@@ -38,6 +38,11 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: bun run test
       - run: python3 -m unittest discover -s tests/cli -p 'test_*.py'
+      - name: Verify the standalone adapter registries agree
+        run: |
+          python_versions="$(python3 -c 'import json; from deploy.cli.hermes_versions import ADAPTER_VERSIONS; print(json.dumps(ADAPTER_VERSIONS, separators=(",", ":")))')"
+          core_versions="$(bun -e 'import { STANDALONE_ADAPTER_VERSIONS } from "./src/gateway/standalone.ts"; console.log(JSON.stringify(STANDALONE_ADAPTER_VERSIONS))')"
+          test "$python_versions" = "$core_versions"
 
   site:
     runs-on: ubuntu-24.04
@@ -169,15 +174,29 @@ jobs:
           path: hermes-fixture-0232
           persist-credentials: false
 
+      - name: Check out the baseline for previous-core rollback QA
+        uses: actions/checkout@v7
+        with:
+          repository: NousResearch/hermes-agent
+          ref: 8fc0374447313e276f6b9a2764bfc750190c966a
+          path: hermes-fixture-legacy
+          persist-credentials: false
+
       - name: Install the pinned public fixture dependencies
         run: |
           python3 -m venv "$RUNNER_TEMP/aira-uv"
           "$RUNNER_TEMP/aira-uv/bin/pip" install uv==0.11.26
-          for suffix in '' -0233 -0232; do
-            (cd "hermes-fixture${suffix}" && "$RUNNER_TEMP/aira-uv/bin/uv" sync --locked --python 3.14 --group dev --extra messaging)
+          for suffix in '' -0233 -0232 -legacy; do
             profile="$RUNNER_TEMP/aira-hermes-profile${suffix}"
             mkdir -m 700 "$profile"
             printf 'gateway:\n  multiplex_profiles: false\n' > "$profile/config.yaml"
+            fixture="$GITHUB_WORKSPACE/hermes-fixture${suffix}"
+            if [ -z "$suffix" ] || [ "$suffix" = -legacy ]; then
+              mv "$fixture" "$profile/hermes-agent"
+              fixture="$profile/hermes-agent"
+              git -C "$fixture" fetch --depth=1 origin ae2a81ccc00e9b7c06301523e5bb09608397149c
+            fi
+            (cd "$fixture" && "$RUNNER_TEMP/aira-uv/bin/uv" sync --locked --python 3.14 --group dev --extra messaging)
           done
 
       - name: Exercise exact image install, update, rollback and restore
@@ -195,7 +214,9 @@ jobs:
           docker commit "$fixture" "$BAD"
           docker rm -v "$fixture"
           python3 tests/install/smoke.py --image "$CANDIDATE" --home "$RUNNER_TEMP/aira-install" \
-            --hermes-dir "$GITHUB_WORKSPACE/hermes-fixture" --hermes-home "$RUNNER_TEMP/aira-hermes-profile" \
+            --hermes-dir "$RUNNER_TEMP/aira-hermes-profile/hermes-agent" --hermes-home "$RUNNER_TEMP/aira-hermes-profile" \
+            --migration-ref ae2a81ccc00e9b7c06301523e5bb09608397149c --migration-version hermes-v0.23.2 \
+            --uv-bin "$RUNNER_TEMP/aira-uv/bin/uv" \
             --update-image "$NEXT" --bad-image "$BAD"
 
       - name: Exercise additional exact stock attachments
@@ -209,12 +230,24 @@ jobs:
               --adapter-version "hermes-v0.23.${minor}"
           done
 
+      - name: Verify exact rollback against the previous released core
+        run: |
+          previous="ghcr.io/tolonglabs/aira@sha256:bf8f61ee7916f91d8c109354c96591f5db157f52c5153a7f94793ed3ab20d5bc"
+          docker pull "$previous"
+          docker tag "$previous" aira-onboarding-previous:fixture
+          profile="$RUNNER_TEMP/aira-hermes-profile-legacy"
+          python3 tests/install/smoke.py --image aira-onboarding-previous:fixture \
+            --home "$RUNNER_TEMP/aira-install-legacy" --hermes-dir "$profile/hermes-agent" --hermes-home "$profile" \
+            --migration-ref ae2a81ccc00e9b7c06301523e5bb09608397149c --migration-version hermes-v0.23.2 \
+            --uv-bin "$RUNNER_TEMP/aira-uv/bin/uv" --expect-migration-rejection
+
       - name: Verify the actual pinned Hermes admission and delivery pipelines
         env:
           PYTHONDONTWRITEBYTECODE: '1'
         run: |
           for suffix in '' -0233 -0232; do
-            fixture="hermes-fixture${suffix}"
+            fixture="$GITHUB_WORKSPACE/hermes-fixture${suffix}"
+            if [ -z "$suffix" ]; then fixture="$RUNNER_TEMP/aira-hermes-profile/hermes-agent"; fi
             cp tests/install/hermes_fixture.py "$fixture/tests/gateway/test_aira_transport_spike.py"
             (cd "$fixture" && .venv/bin/pytest -q tests/gateway/test_aira_transport_spike.py tests/gateway/test_whatsapp_group_gating.py)
           done

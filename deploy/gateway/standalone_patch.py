@@ -15,8 +15,6 @@ from __future__ import annotations
 import hashlib
 from typing import Literal
 
-PINNED_HERMES_VERSION = 'v0.23.4'
-PINNED_HERMES_TREE = '8fc0374447313e276f6b9a2764bfc750190c966a'
 TARGET = 'gateway/run_inbound_consumer.py'
 ORIGINAL_SHA256 = '792de0590d946b1dc1b3232af0e00c53988ba5cd1bee44b28195326e71a58489'
 
@@ -57,7 +55,7 @@ def patch_source(original: bytes) -> bytes:
     if not isinstance(original, bytes):
         raise TypeError('original must be bytes, got %s' % type(original).__name__)
     if hashlib.sha256(original).hexdigest() != ORIGINAL_SHA256:
-        raise ValueError('digest mismatch: not the pinned %s %s' % (PINNED_HERMES_VERSION, TARGET))
+        raise ValueError('digest mismatch: not the reviewed %s' % TARGET)
     if original.count(ANCHOR) != 1:
         raise ValueError('anchor found %d times in %s, want exactly once' % (original.count(ANCHOR), TARGET))
     return original.replace(ANCHOR, PATCHED, 1)

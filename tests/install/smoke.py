@@ -157,6 +157,67 @@ def check(condition: bool, code: str, message: str, recovery: str = "") -> None:
         raise fail(code, message, recovery)
 
 
+def file_state(path: Path) -> tuple[bytes, int] | None:
+    return (path.read_bytes(), stat.S_IMODE(path.stat().st_mode)) if path.exists() else None
+
+
+def expected_helper(repo_root: Path, version: str) -> bytes:
+    template = (repo_root / "deploy/gateway/standalone_adapter.py").read_bytes()
+    return template.replace(f'ADAPTER_VERSION = "{ADAPTER_VERSION}"\n'.encode(),
+                            f'ADAPTER_VERSION = "{version}"\n'.encode(), 1)
+
+
+def verify_migration(args, launcher, options, repo_root, source, helper, marker, host_record, route_record,
+                     site_port, core_port, owner_token, gateway_token):
+    """Switch an isolated canonical checkout both ways, without starting its gateway."""
+    code, head, _ = run(["git", "-C", str(args.hermes_dir), "rev-parse", "HEAD"], STEP_TIMEOUT_S)
+    check(code == 0 and re.fullmatch(r"[a-f0-9]{40}", head.strip()), "migration_fixture", "Missing source pin.")
+    for ref, version in ((args.migration_ref, args.migration_version), (head.strip(), args.adapter_version)):
+        before = {p: file_state(p) for p in (source, helper, marker, host_record, route_record)}
+        code, _, _ = run(["git", "-C", str(args.hermes_dir), "checkout", "--detach", ref], STEP_TIMEOUT_S)
+        check(code == 0, "migration_fixture", "Could not switch the disposable source pin.")
+        code, _, _ = run([args.uv_bin, "--directory", str(args.hermes_dir), "sync", "--locked", "--python", "3.14",
+                          "--group", "dev", "--extra", "messaging"], 300)
+        check(code == 0, "migration_fixture", "Could not sync the exact pinned environment.")
+        if args.expect_migration_rejection and version == args.adapter_version:
+            check(all(file_state(p) == value for p, value in before.items()),
+                  "migration_rollback", "Returning to the original source did not preserve attachment files.")
+            continue
+        code, plan = run_json(launcher, [*options, "--dry-run"], STEP_TIMEOUT_S)
+        check(code == 0 and plan.get("attach", {}).get("adapterVersion") == version
+              and set(plan.get("attach", {}).get("changes", [])) == {"helper", "host"}
+              and all(file_state(p) == value for p, value in before.items()),
+              "migration_dry_run", "Migration dry-run was not exact or changed prior files.")
+        code, applied = run_json(launcher, [*options, "--apply", "--yes"], STEP_TIMEOUT_S)
+        if args.expect_migration_rejection:
+            check(code == 1 and applied.get("error", {}).get("code") == "attach_failed"
+                  and all(file_state(p) == value for p, value in before.items()),
+                  "migration_rollback", "Old-core rejection did not restore exact prior files and modes.")
+            code, _ = http_gateway(core_port, "/v1/aira/attach-check", gateway_token,
+                                   {"schemaVersion": 1, "adapterVersion": version, "profile": "default",
+                                    "action": "connect"})
+            check(code == 400, "migration_rollback", "The pinned old core did not refuse the newer registry ID.")
+            code, health, _ = http_call(site_port, "GET", "/owner-api/core/health", token=owner_token)
+            check(code == 200 and (health or {}).get("hermes", {}).get("adapterVersion") == args.adapter_version
+                  and all(file_state(p) == value for p, value in before.items()),
+                  "migration_rollback", "The original authenticated route was not preserved.")
+            note("migration smoke: pinned old core refused candidate and exact rollback passed")
+            continue
+        check(code == 0 and applied.get("attach", {}).get("adapterVersion") == version
+              and applied.get("attach", {}).get("gatewayRunning") is False,
+              "migration_attach", "Version migration did not preserve the stopped gateway.")
+        check(file_state(source) == before[source] and file_state(marker) == before[marker]
+              and helper.read_bytes() == expected_helper(repo_root, version)
+              and all(stat.S_IMODE(p.stat().st_mode) == before[p][1] for p in (helper, host_record, route_record)),
+              "migration_files", "Migration changed the source, marker or private permissions unexpectedly.")
+        code, health, _ = http_call(site_port, "GET", "/owner-api/core/health", token=owner_token)
+        check(code == 200 and (health or {}).get("hermes", {}).get("adapterVersion") == version
+              and json.loads(host_record.read_bytes()).get("adapterVersion") == version
+              and json.loads(route_record.read_bytes()).get("adapterVersion") == version,
+              "migration_readback", "The host and authenticated core did not confirm the migrated version.")
+        note(f"migration smoke: verified exact {version}")
+
+
 def preconditions(image: str, home: Path, launcher: Path) -> str:
     check(platform.system() == "Linux" and platform.machine() in ("x86_64", "amd64"),
           "unsupported_platform", "Need Linux amd64.", "Run on the disposable Ubuntu runner.")
@@ -294,6 +355,11 @@ def main() -> int:
     parser.add_argument("--hermes-home", type=Path, help="Disposable independent Hermes profile root.")
     parser.add_argument("--adapter-version", choices=ADAPTER_VERSIONS, default=ADAPTER_VERSION,
                         help="Expected exact version for the selected public stock fixture.")
+    parser.add_argument("--migration-ref", help="Additional exact public stock commit for a round-trip migration.")
+    parser.add_argument("--migration-version", choices=ADAPTER_VERSIONS, help="Expected migration adapter version.")
+    parser.add_argument("--uv-bin", help="Pinned uv executable for the disposable migration fixture.")
+    parser.add_argument("--expect-migration-rejection", action="store_true",
+                        help="Expect the pinned previous core to refuse the candidate adapter and roll back.")
     parser.add_argument("--update-image", help="Loaded compatible second candidate.")
     parser.add_argument("--bad-image", help="Loaded candidate with a failing isolated deploy probe.")
     args = parser.parse_args()
@@ -478,14 +544,14 @@ def main() -> int:
             source = args.hermes_dir / "gateway" / "run_inbound_consumer.py"
             helper = source.with_name("aira_transport.py")
             marker = args.hermes_home / "aira-transport.json"
-            original = source.read_bytes()
+            original = file_state(source)
             options = ["attach-hermes", "--home", str(home), "--profile", profile,
                        "--hermes-dir", str(args.hermes_dir), "--hermes-home", str(args.hermes_home)]
             code, plan = run_json(launcher, [*options, "--dry-run"], STEP_TIMEOUT_S)
             check(code == 0 and plan.get("attach", {}).get("dryRun") is True
                   and plan.get("attach", {}).get("adapterVersion") == args.adapter_version,
                   "hermes_dry_run_failed", "Pinned Hermes dry-run failed.")
-            check(source.read_bytes() == original and not marker.exists() and not helper.exists(),
+            check(file_state(source) == original and not marker.exists() and not helper.exists(),
                   "dry_run_mutation", "Dry-run changed its source or profile.")
 
             # The running synthetic core retains its original gateway credential. Change only the disposable
@@ -497,14 +563,13 @@ def main() -> int:
             SECRETS.append(wrong_token)
             host_record = home / "data/standalone/attach-host.json"
             route_record = home / "data/standalone/hermes.json"
-            before = {p: p.read_bytes() if p.exists() else None for p in (helper, marker, host_record, route_record)}
+            before = {p: file_state(p) for p in (helper, marker, host_record, route_record)}
             try:
                 tokenpath.write_text(wrong_token + "\n")
                 code, failed = run_json(launcher, [*options, "--apply", "--yes"], STEP_TIMEOUT_S)
                 check(code == 1 and failed.get("error", {}).get("code") == "attach_failed",
                       "hermes_rollback_failed", "The refused handshake did not report verified rollback.")
-                check(source.read_bytes() == original and all(
-                    (p.read_bytes() if p.exists() else None) == contents for p, contents in before.items()),
+                check(file_state(source) == original and all(file_state(p) == contents for p, contents in before.items()),
                     "hermes_rollback_failed", "Failed attachment changed its original source or private state.")
             finally:
                 tokenpath.write_bytes(token_bytes)
@@ -514,14 +579,21 @@ def main() -> int:
                   and applied.get("attach", {}).get("adapterVersion") == args.adapter_version
                   and applied.get("attach", {}).get("gatewayRunning") is False,
                   "hermes_attach_failed", "Selected stopped Hermes profile did not attach safely.")
-            check(source.read_bytes() != original and marker.is_file() and marker.stat().st_mode & 0o777 == 0o600,
+            check(file_state(source) != original and marker.is_file() and marker.stat().st_mode & 0o777 == 0o600
+                  and helper.read_bytes() == expected_helper(repo_root, args.adapter_version),
                   "hermes_marker_failed", "Pinned source or private marker was not installed.")
-            attached = {p: p.read_bytes() for p in (source, helper, marker, host_record)}
+            attached = {p: file_state(p) for p in (source, helper, marker, host_record)}
             code, repeated = run_json(launcher, [*options, "--apply", "--yes"], STEP_TIMEOUT_S)
             check(code == 0 and repeated.get("attach", {}).get("adapterVersion") == args.adapter_version
                   and repeated.get("attach", {}).get("changes") == []
-                  and all(p.read_bytes() == data for p, data in attached.items()),
+                  and all(file_state(p) == data for p, data in attached.items()),
                   "hermes_repeat_failed", "Repeated attachment did not preserve its source and selected marker.")
+            if args.migration_ref:
+                check(bool(args.migration_version and args.uv_bin) and args.migration_version != args.adapter_version
+                      and args.hermes_dir == args.hermes_home / "hermes-agent",
+                      "migration_fixture", "Migration requires a distinct version, pinned uv and exclusive source.")
+                verify_migration(args, launcher, options, repo_root, source, helper, marker, host_record, route_record,
+                                 site_port, core_port, owner_token, gateway_token)
         attach = {"schemaVersion": 1, "adapterVersion": args.adapter_version,
                   "profile": profile, "action": "connect"}
         code, _ = http_gateway(core_port, "/v1/aira/attach-check", owner_token, attach)
@@ -554,6 +626,10 @@ def main() -> int:
         failed = [c.get("name") for c in checks if isinstance(c, dict) and c.get("status") == "failed"]
         check(code == 0 and doctor.get("outcome") == "ok" and not failed, "doctor_failed",
               f"Doctor reported failures: {failed}.", "See each check recovery; run aira logs.")
+        if args.hermes_dir:
+            check(any(c.get("name") == "hermes" and c.get("status") == "warning"
+                      and c.get("reason") == "route_verified_gateway_stopped" for c in checks),
+                  "doctor_failed", "Doctor did not verify the exact installed and stopped Hermes route.")
         seen = ""
         for component in ("core", "gateway"):
             code, logs = run_json(launcher, ["logs", "--home", str(home), "--component", component,
