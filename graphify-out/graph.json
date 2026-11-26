@@ -61975,7 +61975,7 @@
       "node_kind": "heading",
       "norm_label": "change social readers or restore them without yt-dlp",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L445"
+      "source_location": "L444"
     },
     {
       "id": "docs_trd_data_chats_and_identities",
@@ -61987,7 +61987,7 @@
       "node_kind": "heading",
       "norm_label": "chats and identities",
       "source_file": "docs/trd/data.md",
-      "source_location": "L43"
+      "source_location": "L44"
     },
     {
       "id": "docs_trd_data_data_and_settings",
@@ -62011,7 +62011,7 @@
       "node_kind": "heading",
       "norm_label": "migration from the old store",
       "source_file": "docs/trd/data.md",
-      "source_location": "L170"
+      "source_location": "L171"
     },
     {
       "id": "docs_trd_data_persona_expression_descriptions",
@@ -62023,7 +62023,7 @@
       "node_kind": "heading",
       "norm_label": "persona expression descriptions",
       "source_file": "docs/trd/data.md",
-      "source_location": "L197"
+      "source_location": "L198"
     },
     {
       "id": "docs_trd_data_the_database",
@@ -63027,7 +63027,7 @@
       "node_kind": "heading",
       "norm_label": "add a site api route",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L588"
+      "source_location": "L587"
     },
     {
       "id": "docs_trd_tools_faults_this_design_removes",
@@ -68945,7 +68945,7 @@
       "node_kind": "heading",
       "norm_label": "feedback data",
       "source_file": "docs/trd/data.md",
-      "source_location": "L130"
+      "source_location": "L131"
     },
     {
       "id": "docs_trd_data_resolution_rules",
@@ -68957,7 +68957,7 @@
       "node_kind": "heading",
       "norm_label": "resolution rules",
       "source_file": "docs/trd/data.md",
-      "source_location": "L154"
+      "source_location": "L155"
     },
     {
       "id": "docs_trd_data_setting_keys",
@@ -68969,7 +68969,7 @@
       "node_kind": "heading",
       "norm_label": "setting keys",
       "source_file": "docs/trd/data.md",
-      "source_location": "L77"
+      "source_location": "L78"
     },
     {
       "id": "docs_trd_data_settings_hierarchy",
@@ -68981,7 +68981,7 @@
       "node_kind": "heading",
       "norm_label": "settings hierarchy",
       "source_file": "docs/trd/data.md",
-      "source_location": "L60"
+      "source_location": "L61"
     },
     {
       "id": "docs_trd_prompt_engine_reply_shape",
@@ -76292,7 +76292,7 @@
       "node_kind": "heading",
       "norm_label": "change record retention windows",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L529"
+      "source_location": "L528"
     },
     {
       "id": "src_character_webp",
@@ -77042,7 +77042,7 @@
       "node_kind": "heading",
       "norm_label": "add a database schema migration",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L465"
+      "source_location": "L464"
     },
     {
       "id": "docs_maintaining_add_a_job_table_to_lease_and_recover",
@@ -77054,7 +77054,7 @@
       "node_kind": "heading",
       "norm_label": "add a job table to lease and recover",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L497"
+      "source_location": "L496"
     },
     {
       "id": "docs_maintaining_add_a_page_to_the_owner_site",
@@ -77066,7 +77066,7 @@
       "node_kind": "heading",
       "norm_label": "add a page to the owner site",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L631"
+      "source_location": "L630"
     },
     {
       "id": "docs_maintaining_add_or_change_a_chat_setting",
@@ -77078,7 +77078,7 @@
       "node_kind": "heading",
       "norm_label": "add or change a chat setting",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L479"
+      "source_location": "L478"
     },
     {
       "id": "docs_maintaining_change_deploy_timing",
@@ -77090,7 +77090,7 @@
       "node_kind": "heading",
       "norm_label": "change deploy timing",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L648"
+      "source_location": "L647"
     },
     {
       "id": "docs_maintaining_change_retry_breaker_or_spend_behavior",
@@ -77102,7 +77102,7 @@
       "node_kind": "heading",
       "norm_label": "change retry, breaker, or spend behavior",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L431"
+      "source_location": "L430"
     },
     {
       "id": "docs_maintaining_change_site_server_settings",
@@ -77114,7 +77114,7 @@
       "node_kind": "heading",
       "norm_label": "change site server settings",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L614"
+      "source_location": "L613"
     },
     {
       "id": "docs_maintaining_configuration_index",
@@ -77126,7 +77126,7 @@
       "node_kind": "heading",
       "norm_label": "configuration index",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L684"
+      "source_location": "L683"
     },
     {
       "id": "docs_maintaining_data",
@@ -77138,7 +77138,7 @@
       "node_kind": "heading",
       "norm_label": "data",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L463"
+      "source_location": "L462"
     },
     {
       "id": "docs_maintaining_deployment",
@@ -77150,7 +77150,7 @@
       "node_kind": "heading",
       "norm_label": "deployment",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L646"
+      "source_location": "L645"
     },
     {
       "id": "docs_maintaining_maintaining_aira",
@@ -77174,7 +77174,7 @@
       "node_kind": "heading",
       "norm_label": "models",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L415"
+      "source_location": "L414"
     },
     {
       "id": "docs_maintaining_recover_from_a_failed_or_half_finished_deploy",
@@ -77186,7 +77186,7 @@
       "node_kind": "heading",
       "norm_label": "recover from a failed or half-finished deploy",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L667"
+      "source_location": "L666"
     },
     {
       "id": "docs_maintaining_site",
@@ -77198,7 +77198,7 @@
       "node_kind": "heading",
       "norm_label": "site",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L586"
+      "source_location": "L585"
     },
     {
       "id": "deploy_cli_diagnostics",
@@ -77944,7 +77944,7 @@
       "node_kind": "heading",
       "norm_label": "add an external mcp server",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L313"
+      "source_location": "L312"
     },
     {
       "id": "docs_maintaining_change_a_command_word_or_its_help_text",
@@ -77968,7 +77968,7 @@
       "node_kind": "heading",
       "norm_label": "change a tool timeout",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L268"
+      "source_location": "L267"
     },
     {
       "id": "docs_maintaining_diagnose_a_refused_or_invalid_tool_call",
@@ -77980,7 +77980,7 @@
       "node_kind": "heading",
       "norm_label": "diagnose a refused or invalid tool call",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L327"
+      "source_location": "L326"
     },
     {
       "id": "docs_maintaining_recover_from_a_failed_schedule_file_rewrite",
@@ -77992,7 +77992,7 @@
       "node_kind": "heading",
       "norm_label": "recover from a failed schedule-file rewrite",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L282"
+      "source_location": "L281"
     },
     {
       "id": "docs_maintaining_switch_tools_on_or_off_for_one_chat",
@@ -78004,7 +78004,7 @@
       "node_kind": "heading",
       "norm_label": "switch tools on or off for one chat",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L296"
+      "source_location": "L295"
     },
     {
       "id": "docs_maintaining_tools",
@@ -82068,7 +82068,7 @@
       "node_kind": "heading",
       "norm_label": "add a new legacy memory source format",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L343"
+      "source_location": "L342"
     },
     {
       "id": "docs_maintaining_change_episode_close_thresholds",
@@ -82080,7 +82080,7 @@
       "node_kind": "heading",
       "norm_label": "change episode close thresholds",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L358"
+      "source_location": "L357"
     },
     {
       "id": "docs_maintaining_map_a_newly_encountered_old_chat_setting",
@@ -82092,7 +82092,7 @@
       "node_kind": "heading",
       "norm_label": "map a newly encountered old chat setting",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L401"
+      "source_location": "L400"
     },
     {
       "id": "docs_maintaining_memory",
@@ -82104,7 +82104,7 @@
       "node_kind": "heading",
       "norm_label": "memory",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L341"
+      "source_location": "L340"
     },
     {
       "id": "docs_maintaining_perform_a_confirmed_legacy_memory_import",
@@ -82116,7 +82116,7 @@
       "node_kind": "heading",
       "norm_label": "perform a confirmed legacy memory import",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L386"
+      "source_location": "L385"
     },
     {
       "id": "docs_maintaining_recover_a_memory_job_that_has_failed_permanently",
@@ -82128,7 +82128,7 @@
       "node_kind": "heading",
       "norm_label": "recover a memory job that has failed permanently",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L372"
+      "source_location": "L371"
     },
     {
       "id": "tests_install_hermes_fixture_py_asyncio",
@@ -83498,7 +83498,7 @@
       "node_kind": "heading",
       "norm_label": "configuration",
       "source_file": "docs/trd/research.md",
-      "source_location": "L150"
+      "source_location": "L146"
     },
     {
       "id": "docs_trd_research_delivery",
@@ -83510,7 +83510,7 @@
       "node_kind": "heading",
       "norm_label": "delivery",
       "source_file": "docs/trd/research.md",
-      "source_location": "L85"
+      "source_location": "L83"
     },
     {
       "id": "docs_trd_research_documents",
@@ -83522,7 +83522,7 @@
       "node_kind": "heading",
       "norm_label": "documents",
       "source_file": "docs/trd/research.md",
-      "source_location": "L108"
+      "source_location": "L106"
     },
     {
       "id": "docs_trd_research_research_and_reports",
@@ -83546,7 +83546,7 @@
       "node_kind": "heading",
       "norm_label": "tests",
       "source_file": "docs/trd/research.md",
-      "source_location": "L163"
+      "source_location": "L159"
     },
     {
       "id": "docs_trd_research_the_job",
@@ -83582,7 +83582,7 @@
       "node_kind": "heading",
       "norm_label": "the pdf offer",
       "source_file": "docs/trd/research.md",
-      "source_location": "L95"
+      "source_location": "L93"
     },
     {
       "id": "docs_trd_research_the_renderer",
@@ -83594,7 +83594,7 @@
       "node_kind": "heading",
       "norm_label": "the renderer",
       "source_file": "docs/trd/research.md",
-      "source_location": "L128"
+      "source_location": "L124"
     },
     {
       "id": "docs_trd_research_why_explicit_only",
@@ -84601,7 +84601,7 @@
       "node_kind": "heading",
       "norm_label": "add a provider client",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L417"
+      "source_location": "L416"
     },
     {
       "id": "docs_decisions_0059_declare_voice_and_reaction_settings_in_gateway_chats_json",
@@ -92933,7 +92933,7 @@
       "node_kind": "heading",
       "norm_label": "add a benchmark set",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L515"
+      "source_location": "L514"
     },
     {
       "id": "docs_maintaining_add_or_adjust_accepted_pdf_offer_answers",
@@ -92945,7 +92945,7 @@
       "node_kind": "heading",
       "norm_label": "add or adjust accepted pdf-offer answers",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L543"
+      "source_location": "L542"
     },
     {
       "id": "docs_maintaining_change_a_report_profile_field",
@@ -92957,7 +92957,7 @@
       "node_kind": "heading",
       "norm_label": "change a report profile field",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L572"
+      "source_location": "L571"
     },
     {
       "id": "docs_maintaining_records",
@@ -92969,7 +92969,7 @@
       "node_kind": "heading",
       "norm_label": "records",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L513"
+      "source_location": "L512"
     },
     {
       "id": "docs_maintaining_recover_research_work_after_a_worker_interruption",
@@ -92981,7 +92981,7 @@
       "node_kind": "heading",
       "norm_label": "recover research work after a worker interruption",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L557"
+      "source_location": "L556"
     },
     {
       "id": "docs_trd_harness_benchmarks",
@@ -284379,7 +284379,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L465",
+      "source_location": "L464",
       "weight": 1.0
     },
     {
@@ -284390,7 +284390,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L479",
+      "source_location": "L478",
       "weight": 1.0
     },
     {
@@ -284401,7 +284401,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L497",
+      "source_location": "L496",
       "weight": 1.0
     },
     {
@@ -284412,7 +284412,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L648",
+      "source_location": "L647",
       "weight": 1.0
     },
     {
@@ -284423,7 +284423,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L667",
+      "source_location": "L666",
       "weight": 1.0
     },
     {
@@ -284544,7 +284544,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L341",
+      "source_location": "L340",
       "weight": 1.0
     },
     {
@@ -284555,7 +284555,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L415",
+      "source_location": "L414",
       "weight": 1.0
     },
     {
@@ -284566,7 +284566,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L463",
+      "source_location": "L462",
       "weight": 1.0
     },
     {
@@ -284577,7 +284577,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L513",
+      "source_location": "L512",
       "weight": 1.0
     },
     {
@@ -284588,7 +284588,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L586",
+      "source_location": "L585",
       "weight": 1.0
     },
     {
@@ -284599,7 +284599,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L646",
+      "source_location": "L645",
       "weight": 1.0
     },
     {
@@ -284610,7 +284610,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L684",
+      "source_location": "L683",
       "weight": 1.0
     },
     {
@@ -284621,7 +284621,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L343",
+      "source_location": "L342",
       "weight": 1.0
     },
     {
@@ -284632,7 +284632,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L358",
+      "source_location": "L357",
       "weight": 1.0
     },
     {
@@ -284643,7 +284643,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L372",
+      "source_location": "L371",
       "weight": 1.0
     },
     {
@@ -284654,7 +284654,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L386",
+      "source_location": "L385",
       "weight": 1.0
     },
     {
@@ -284665,7 +284665,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L401",
+      "source_location": "L400",
       "weight": 1.0
     },
     {
@@ -284676,7 +284676,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L417",
+      "source_location": "L416",
       "weight": 1.0
     },
     {
@@ -284687,7 +284687,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L431",
+      "source_location": "L430",
       "weight": 1.0
     },
     {
@@ -284698,7 +284698,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L445",
+      "source_location": "L444",
       "weight": 1.0
     },
     {
@@ -284753,7 +284753,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L515",
+      "source_location": "L514",
       "weight": 1.0
     },
     {
@@ -284764,7 +284764,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L529",
+      "source_location": "L528",
       "weight": 1.0
     },
     {
@@ -284775,7 +284775,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L543",
+      "source_location": "L542",
       "weight": 1.0
     },
     {
@@ -284786,7 +284786,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L557",
+      "source_location": "L556",
       "weight": 1.0
     },
     {
@@ -284797,7 +284797,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L572",
+      "source_location": "L571",
       "weight": 1.0
     },
     {
@@ -284808,7 +284808,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L588",
+      "source_location": "L587",
       "weight": 1.0
     },
     {
@@ -284819,7 +284819,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L614",
+      "source_location": "L613",
       "weight": 1.0
     },
     {
@@ -284830,7 +284830,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L631",
+      "source_location": "L630",
       "weight": 1.0
     },
     {
@@ -284863,7 +284863,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L268",
+      "source_location": "L267",
       "weight": 1.0
     },
     {
@@ -284874,7 +284874,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L282",
+      "source_location": "L281",
       "weight": 1.0
     },
     {
@@ -284885,7 +284885,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L296",
+      "source_location": "L295",
       "weight": 1.0
     },
     {
@@ -284896,7 +284896,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L313",
+      "source_location": "L312",
       "weight": 1.0
     },
     {
@@ -284907,7 +284907,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L327",
+      "source_location": "L326",
       "weight": 1.0
     },
     {
@@ -286161,7 +286161,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/data.md",
-      "source_location": "L170",
+      "source_location": "L171",
       "weight": 1.0
     },
     {
@@ -286194,7 +286194,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/data.md",
-      "source_location": "L60",
+      "source_location": "L61",
       "weight": 1.0
     },
     {
@@ -286205,7 +286205,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/data.md",
-      "source_location": "L197",
+      "source_location": "L198",
       "weight": 1.0
     },
     {
@@ -286216,7 +286216,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/data.md",
-      "source_location": "L130",
+      "source_location": "L131",
       "weight": 1.0
     },
     {
@@ -286227,7 +286227,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/data.md",
-      "source_location": "L154",
+      "source_location": "L155",
       "weight": 1.0
     },
     {
@@ -286238,7 +286238,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/data.md",
-      "source_location": "L77",
+      "source_location": "L78",
       "weight": 1.0
     },
     {
@@ -286249,7 +286249,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/data.md",
-      "source_location": "L43",
+      "source_location": "L44",
       "weight": 1.0
     },
     {
@@ -287690,7 +287690,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/research.md",
-      "source_location": "L108",
+      "source_location": "L106",
       "weight": 1.0
     },
     {
@@ -287701,7 +287701,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/research.md",
-      "source_location": "L128",
+      "source_location": "L124",
       "weight": 1.0
     },
     {
@@ -287712,7 +287712,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/research.md",
-      "source_location": "L150",
+      "source_location": "L146",
       "weight": 1.0
     },
     {
@@ -287723,7 +287723,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/research.md",
-      "source_location": "L163",
+      "source_location": "L159",
       "weight": 1.0
     },
     {
@@ -287778,7 +287778,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/research.md",
-      "source_location": "L85",
+      "source_location": "L83",
       "weight": 1.0
     },
     {
@@ -287789,7 +287789,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/research.md",
-      "source_location": "L95",
+      "source_location": "L93",
       "weight": 1.0
     },
     {
@@ -343571,7 +343571,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L356",
+      "source_location": "L355",
       "weight": 1.0
     },
     {
@@ -343582,7 +343582,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L429",
+      "source_location": "L428",
       "weight": 1.0
     },
     {
@@ -343593,7 +343593,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L477",
+      "source_location": "L476",
       "weight": 1.0
     },
     {
@@ -343604,7 +343604,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L495",
+      "source_location": "L494",
       "weight": 1.0
     },
     {
@@ -343615,7 +343615,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L527",
+      "source_location": "L526",
       "weight": 1.0
     },
     {
@@ -343626,7 +343626,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L555",
+      "source_location": "L554",
       "weight": 1.0
     },
     {
@@ -343637,7 +343637,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L612",
+      "source_location": "L611",
       "weight": 1.0
     },
     {
@@ -343648,7 +343648,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L665",
+      "source_location": "L664",
       "weight": 1.0
     },
     {
@@ -344044,7 +344044,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/data.md",
-      "source_location": "L107",
+      "source_location": "L108",
       "weight": 1.0
     },
     {
@@ -344132,7 +344132,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/data.md",
-      "source_location": "L49",
+      "source_location": "L50",
       "weight": 1.0
     },
     {
@@ -349122,7 +349122,7 @@
       "confidence_score": 0.95,
       "context": "ModelClient",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L421",
+      "source_location": "L420",
       "weight": 1.0
     },
     {
@@ -349134,7 +349134,7 @@
       "confidence_score": 0.95,
       "context": "ModelError",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L422",
+      "source_location": "L421",
       "weight": 1.0
     },
     {
@@ -349182,7 +349182,7 @@
       "confidence_score": 0.95,
       "context": "NoteDocument",
       "source_file": "docs/trd/research.md",
-      "source_location": "L114",
+      "source_location": "L112",
       "weight": 1.0
     },
     {
@@ -349218,7 +349218,7 @@
       "confidence_score": 0.95,
       "context": "ReplyReader",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L453",
+      "source_location": "L452",
       "weight": 1.0
     },
     {
@@ -349254,7 +349254,7 @@
       "confidence_score": 0.95,
       "context": "ReportFormat",
       "source_file": "docs/trd/research.md",
-      "source_location": "L141",
+      "source_location": "L137",
       "weight": 1.0
     },
     {
@@ -349266,7 +349266,7 @@
       "confidence_score": 0.95,
       "context": "RetentionConfig",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L533",
+      "source_location": "L532",
       "weight": 1.0
     },
     {
@@ -349278,7 +349278,7 @@
       "confidence_score": 0.95,
       "context": "SettingRow",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L487",
+      "source_location": "L486",
       "weight": 1.0
     },
     {
@@ -349290,7 +349290,7 @@
       "confidence_score": 0.95,
       "context": "SocialPost",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L451",
+      "source_location": "L450",
       "weight": 1.0
     },
     {
@@ -349302,7 +349302,7 @@
       "confidence_score": 0.95,
       "context": "SocialPostViewer",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L453",
+      "source_location": "L452",
       "weight": 1.0
     },
     {
@@ -349446,7 +349446,7 @@
       "confidence_score": 0.95,
       "context": "closeDueEpisodes",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L363",
+      "source_location": "L362",
       "weight": 1.0
     },
     {
@@ -349506,7 +349506,7 @@
       "confidence_score": 0.95,
       "context": "core",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L600",
+      "source_location": "L599",
       "weight": 1.0
     },
     {
@@ -349518,7 +349518,7 @@
       "confidence_score": 0.95,
       "context": "createBreaker",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L436",
+      "source_location": "L435",
       "weight": 1.0
     },
     {
@@ -349542,7 +349542,7 @@
       "confidence_score": 0.95,
       "context": "createRoutedClient",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L423",
+      "source_location": "L422",
       "weight": 1.0
     },
     {
@@ -349602,7 +349602,7 @@
       "confidence_score": 0.95,
       "context": "default",
       "source_file": "docs/trd/data.md",
-      "source_location": "L86",
+      "source_location": "L87",
       "weight": 1.0
     },
     {
@@ -349626,7 +349626,7 @@
       "confidence_score": 0.95,
       "context": "definitionFor",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L484",
+      "source_location": "L483",
       "weight": 1.0
     },
     {
@@ -349638,7 +349638,7 @@
       "confidence_score": 0.95,
       "context": "definitionFor",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L406",
+      "source_location": "L405",
       "weight": 1.0
     },
     {
@@ -349662,7 +349662,7 @@
       "confidence_score": 0.95,
       "context": "dispatchGet",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L594",
+      "source_location": "L593",
       "weight": 1.0
     },
     {
@@ -349674,7 +349674,7 @@
       "confidence_score": 0.95,
       "context": "dispatchWrite",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L596",
+      "source_location": "L595",
       "weight": 1.0
     },
     {
@@ -350022,7 +350022,7 @@
       "confidence_score": 0.95,
       "context": "importRecords",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L349",
+      "source_location": "L348",
       "weight": 1.0
     },
     {
@@ -350058,7 +350058,7 @@
       "confidence_score": 0.95,
       "context": "isWriteRoute",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L595",
+      "source_location": "L594",
       "weight": 1.0
     },
     {
@@ -350070,7 +350070,7 @@
       "confidence_score": 0.95,
       "context": "isYtDlpAvailable",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L452",
+      "source_location": "L451",
       "weight": 1.0
     },
     {
@@ -350118,7 +350118,7 @@
       "confidence_score": 0.95,
       "context": "leaseNextJob",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L561",
+      "source_location": "L560",
       "weight": 1.0
     },
     {
@@ -350142,7 +350142,7 @@
       "confidence_score": 0.95,
       "context": "loadBenchSet",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L520",
+      "source_location": "L519",
       "weight": 1.0
     },
     {
@@ -350202,7 +350202,7 @@
       "confidence_score": 0.95,
       "context": "match",
       "source_file": "docs/trd/data.md",
-      "source_location": "L184",
+      "source_location": "L185",
       "weight": 1.0
     },
     {
@@ -350238,7 +350238,7 @@
       "confidence_score": 0.95,
       "context": "model",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L770",
+      "source_location": "L769",
       "weight": 1.0
     },
     {
@@ -350274,7 +350274,7 @@
       "confidence_score": 0.95,
       "context": "model",
       "source_file": "docs/trd/data.md",
-      "source_location": "L85",
+      "source_location": "L86",
       "weight": 1.0
     },
     {
@@ -350286,7 +350286,7 @@
       "confidence_score": 0.95,
       "context": "offerAnswer",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L549",
+      "source_location": "L548",
       "weight": 1.0
     },
     {
@@ -350298,7 +350298,7 @@
       "confidence_score": 0.95,
       "context": "openChatSession",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L521",
+      "source_location": "L520",
       "weight": 1.0
     },
     {
@@ -350382,7 +350382,7 @@
       "confidence_score": 0.95,
       "context": "parseSocialPostUrl",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L449",
+      "source_location": "L448",
       "weight": 1.0
     },
     {
@@ -350454,7 +350454,7 @@
       "confidence_score": 0.95,
       "context": "pending",
       "source_file": "docs/trd/data.md",
-      "source_location": "L48",
+      "source_location": "L49",
       "weight": 1.0
     },
     {
@@ -350502,7 +350502,7 @@
       "confidence_score": 0.95,
       "context": "planSettingsMigration",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L405",
+      "source_location": "L404",
       "weight": 1.0
     },
     {
@@ -350526,7 +350526,7 @@
       "confidence_score": 0.95,
       "context": "pruneRecords",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L534",
+      "source_location": "L533",
       "weight": 1.0
     },
     {
@@ -350550,7 +350550,7 @@
       "confidence_score": 0.95,
       "context": "putFile",
       "source_file": "docs/trd/research.md",
-      "source_location": "L121",
+      "source_location": "L119",
       "weight": 1.0
     },
     {
@@ -350562,7 +350562,7 @@
       "confidence_score": 0.95,
       "context": "putFile",
       "source_file": "docs/trd/research.md",
-      "source_location": "L146",
+      "source_location": "L142",
       "weight": 1.0
     },
     {
@@ -350586,7 +350586,7 @@
       "confidence_score": 0.95,
       "context": "readLegacyExport",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L349",
+      "source_location": "L348",
       "weight": 1.0
     },
     {
@@ -350610,7 +350610,7 @@
       "confidence_score": 0.95,
       "context": "reasonText",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L600",
+      "source_location": "L599",
       "weight": 1.0
     },
     {
@@ -350730,7 +350730,7 @@
       "confidence_score": 0.95,
       "context": "runBench",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L521",
+      "source_location": "L520",
       "weight": 1.0
     },
     {
@@ -350886,7 +350886,7 @@
       "confidence_score": 0.95,
       "context": "storage.tx",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L597",
+      "source_location": "L596",
       "weight": 1.0
     },
     {
@@ -351006,7 +351006,7 @@
       "confidence_score": 0.95,
       "context": "writeBenchResult",
       "source_file": "docs/MAINTAINING.md",
-      "source_location": "L521",
+      "source_location": "L520",
       "weight": 1.0
     },
     {
@@ -352158,5 +352158,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "2cee266bcb58b30c4a1836f75f27eccab75c44c5"
+  "built_at_commit": "c1566e4f8f8731e304eddf712e54e836efa2bd21"
 }
