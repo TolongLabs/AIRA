@@ -26,11 +26,12 @@ def main():
     helper = target.with_name("aira_transport.py")
     fixture = "hermes_document_fixture.py" if args.documents else "hermes_typed_fixture.py"
     test = source / "tests/gateway" / ("test_aira_" + fixture)
+    media_test = source / "tests/gateway/test_aira_normalized_media_boundary.py"
     original, existing = target.read_bytes(), helper.read_bytes()
     base = (ROOT / "deploy/gateway/standalone_adapter.py").read_bytes()
     typed = (ROOT / "deploy/gateway/standalone_typed_adapter.py").read_bytes()
     if (standalone_patch.classify_source(original) != "patched"
-            or existing != hermes_versions.render_helper(base, version) or test.exists()):
+            or existing != hermes_versions.render_helper(base, version) or test.exists() or media_test.exists()):
         raise ValueError("disposable checkout is not the exact v1 fixture")
     try:
         target.write_bytes(standalone_patch.select_protocol(original, 2))
@@ -40,12 +41,15 @@ def main():
         else:
             helper.write_bytes(hermes_versions.render_typed_helper(base, typed, version))
         test.write_bytes((ROOT / "tests/install" / fixture).read_bytes())
-        return subprocess.run([str(source / ".venv/bin/python"), "-m", "pytest", "-q", str(test.relative_to(source))],
-                              cwd=source, check=False).returncode
+        media_test.write_bytes((ROOT / "tests/install/hermes_capabilities_fixture.py").read_bytes())
+        media_case = str(media_test.relative_to(source)) + "::test_stock_normalized_media_is_inert_on_the_installed_text_or_document_route"
+        return subprocess.run([str(source / ".venv/bin/python"), "-m", "pytest", "-q",
+                               str(test.relative_to(source)), media_case], cwd=source, check=False).returncode
     finally:
         target.write_bytes(original)
         helper.write_bytes(existing)
         test.unlink(missing_ok=True)
+        media_test.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
