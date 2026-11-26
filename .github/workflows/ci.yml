@@ -100,9 +100,19 @@ jobs:
       - name: Scan repository history
         run: '"$RUNNER_TEMP/gitleaks" git --redact --no-banner .'
 
-  image:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 35
+  image-platform:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      ARCH: ${{ matrix.arch }}
     permissions:
       contents: read
       packages: write
@@ -117,41 +127,51 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Log in to GHCR
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push
+      - name: Build and load the native candidate
+        id: native-build
         uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/Dockerfile
           build-args: AIRA_BUILD_SHA=${{ github.sha }}
-          platforms: linux/amd64
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          load: ${{ github.event_name == 'pull_request' }}
-          tags: |
-            ghcr.io/tolonglabs/aira:sha-${{ env.SHORT_SHA }}
-            ghcr.io/tolonglabs/aira:edge
+          platforms: linux/${{ matrix.arch }}
+          push: false
+          load: true
+          tags: aira-onboarding-candidate:${{ env.SHORT_SHA }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=image-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=image-${{ matrix.arch }}
 
-      # The host pulls without logging in, so a private package would break every deploy silently.
-      - name: Check anonymous pulls work
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Verify native architecture and pinned binaries
+        env:
+          BUILD_METADATA: ${{ steps.native-build.outputs.metadata }}
         run: |
-          docker logout ghcr.io
-          IMAGE="ghcr.io/tolonglabs/aira"
-          if ! docker buildx imagetools inspect "$IMAGE:sha-${GITHUB_SHA::7}" > /dev/null; then
-            echo "::error::$IMAGE is not publicly pullable. Set the package to Public: GitHub > Packages > aira > Package settings > Change visibility."
-            exit 1
-          fi
-          docker pull "$IMAGE:sha-${GITHUB_SHA::7}"
+          candidate="aira-onboarding-candidate:${SHORT_SHA}"
+          test "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$candidate")" = "linux/$ARCH"
+          image_id="$(docker image inspect --format '{{.Id}}' "$candidate")"
+          config="$(jq -er '.["containerimage.config.digest"]' <<< "$BUILD_METADATA")"
+          [[ "$image_id" =~ ^sha256:[a-f0-9]{64}$ && "$config" =~ ^sha256:[a-f0-9]{64}$ ]]
+          printf 'TESTED_IMAGE_ID=%s\nTESTED_CONFIG_DIGEST=%s\n' "$image_id" "$config" >> "$GITHUB_ENV"
+          docker run --rm --network none --entrypoint sh "$candidate" -ec \
+            'node --version; yt-dlp --version; typst --version; restic version; ffmpeg -version'
+
+      - name: Refuse a remote Docker context before provisioning
+        run: |
+          refused="$RUNNER_TEMP/aira-remote-refusal"
+          verify_refusal() {
+            if "$@" ./aira setup --home "$refused" --no-open --json --non-interactive \
+              --image "aira-onboarding-candidate:${SHORT_SHA}" > "$RUNNER_TEMP/refusal.json"; then
+              echo '::error::Remote Docker was incorrectly accepted.'
+              exit 1
+            fi
+            jq -e '.outcome == "error" and .error.code == "unsupported_platform" and .error.stage == "preflight"' \
+              "$RUNNER_TEMP/refusal.json" > /dev/null
+            test ! -e "$refused"
+          }
+          verify_refusal env -u DOCKER_CONTEXT DOCKER_HOST=tcp://127.0.0.1:9
+          docker context create aira-refusal-fixture --docker 'host=tcp://127.0.0.1:9'
+          trap 'docker context rm aira-refusal-fixture' EXIT
+          verify_refusal env DOCKER_CONTEXT=aira-refusal-fixture DOCKER_HOST=unix:///var/run/docker.sock
 
       - name: Check out the supported Hermes version for synthetic QA
         uses: actions/checkout@v7
@@ -178,6 +198,7 @@ jobs:
           persist-credentials: false
 
       - name: Check out the baseline for previous-core rollback QA
+        if: matrix.arch == 'amd64'
         uses: actions/checkout@v7
         with:
           repository: NousResearch/hermes-agent
@@ -189,7 +210,9 @@ jobs:
         run: |
           python3 -m venv "$RUNNER_TEMP/aira-uv"
           "$RUNNER_TEMP/aira-uv/bin/pip" install uv==0.11.26
-          for suffix in '' -0233 -0232 -legacy; do
+          suffixes=('' -0233 -0232)
+          if [ "$ARCH" = amd64 ]; then suffixes+=(-legacy); fi
+          for suffix in "${suffixes[@]}"; do
             profile="$RUNNER_TEMP/aira-hermes-profile${suffix}"
             mkdir -m 700 "$profile"
             printf 'gateway:\n  multiplex_profiles: false\n' > "$profile/config.yaml"
@@ -205,7 +228,6 @@ jobs:
       - name: Exercise exact image install, update, rollback and restore
         run: |
           CANDIDATE="aira-onboarding-candidate:${SHORT_SHA}"
-          docker tag "ghcr.io/tolonglabs/aira:sha-${SHORT_SHA}" "$CANDIDATE"
           NEXT="aira-onboarding-next:${SHORT_SHA}"
           BAD="aira-onboarding-bad:${SHORT_SHA}"
           fixture="$(docker create "$CANDIDATE")"
@@ -235,6 +257,7 @@ jobs:
           done
 
       - name: Verify exact rollback against the previous released core
+        if: matrix.arch == 'amd64'
         run: |
           previous="ghcr.io/tolonglabs/aira@sha256:bf8f61ee7916f91d8c109354c96591f5db157f52c5153a7f94793ed3ab20d5bc"
           docker pull "$previous"
@@ -255,6 +278,120 @@ jobs:
             cp tests/install/hermes_fixture.py "$fixture/tests/gateway/test_aira_transport_spike.py"
             (cd "$fixture" && .venv/bin/pytest -q tests/gateway/test_aira_transport_spike.py tests/gateway/test_whatsapp_group_gating.py)
           done
+
+      - name: Log in to GHCR after the native tests pass
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish and prove the tested native child
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          image='ghcr.io/tolonglabs/aira'
+          candidate="aira-onboarding-candidate:${SHORT_SHA}"
+          child="$image:sha-${SHORT_SHA}-${ARCH}"
+          platform="$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$candidate")"
+          test "$platform" = "linux/$ARCH"
+          test "$(docker image inspect --format '{{.Id}}' "$candidate")" = "$TESTED_IMAGE_ID"
+          config="$TESTED_CONFIG_DIGEST"
+          docker tag "$TESTED_IMAGE_ID" "$child"
+          media="$(docker image inspect "$child" | jq -r '.[0].Descriptor.mediaType // empty')"
+          case "$media" in
+            application/vnd.oci.image.index.v1+json|application/vnd.docker.distribution.manifest.list.v2+json)
+              docker push --platform "$platform" "$child" ;;
+            *) docker push "$child" ;;
+          esac
+          digest="$(docker buildx imagetools inspect "$child" --format '{{json .Manifest.Digest}}' | jq -er .)"
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ && "$config" =~ ^sha256:[a-f0-9]{64}$ ]]
+          docker buildx imagetools inspect "$image@$digest" --raw | \
+            jq -e --arg config "$config" '.schemaVersion == 2 and .config.digest == $config' > /dev/null
+          docker logout ghcr.io
+          docker pull --platform "$platform" "$image@$digest"
+          pulled_id="$(docker image inspect --format '{{.Id}}' "$image@$digest")"
+          [[ "$pulled_id" = "$config" || "$pulled_id" = "$digest" ]]
+          test "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$image@$digest")" = "$platform"
+          jq -n --arg commit "$GITHUB_SHA" --arg platform "$platform" --arg imageId "$TESTED_IMAGE_ID" \
+            --arg configDigest "$config" --arg manifestDigest "$digest" \
+            '{$commit,$platform,$imageId,$configDigest,$manifestDigest}' \
+            > "$RUNNER_TEMP/image-proof.json"
+
+      - name: Upload exact tested native proof
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: image-proof-${{ matrix.arch }}
+          path: ${{ runner.temp }}/image-proof.json
+          if-no-files-found: error
+          retention-days: 7
+
+  image:
+    needs: [image-platform]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Require every native image job
+        env:
+          RESULT: ${{ needs.image-platform.result }}
+        run: |
+          [ "$RESULT" = success ] || { echo "::error::Native image matrix finished as $RESULT"; exit 1; }
+
+      - uses: actions/checkout@v7
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          pattern: image-proof-*
+          path: ${{ runner.temp }}/image-proofs
+
+      - uses: docker/setup-buildx-action@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+      - uses: docker/login-action@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Assemble only the exact tested native children
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          image='ghcr.io/tolonglabs/aira'
+          sha_tag="$image:sha-${GITHUB_SHA::7}"
+          proofs="$RUNNER_TEMP/image-proofs"
+          proof="$(python3 scripts/native_image_proof.py --commit "$GITHUB_SHA" --proofs "$proofs")"
+          children=()
+          for arch in amd64 arm64; do
+            digest="$(jq -er --arg platform "linux/$arch" '.[$platform].manifestDigest' <<< "$proof")"
+            config="$(jq -er --arg platform "linux/$arch" '.[$platform].configDigest' <<< "$proof")"
+            docker buildx imagetools inspect "$image@$digest" --raw | \
+              jq -e --arg config "$config" '.schemaVersion == 2 and .config.digest == $config' > /dev/null
+            children+=("$image@$digest")
+          done
+          docker buildx imagetools create -t "$sha_tag" -t "$image:edge" "${children[@]}"
+          docker logout ghcr.io
+          docker buildx imagetools inspect "$sha_tag" --raw > "$RUNNER_TEMP/image-index.json"
+          python3 scripts/native_image_proof.py --commit "$GITHUB_SHA" --proofs "$proofs" \
+            --index "$RUNNER_TEMP/image-index.json" > /dev/null
+          digest="$(docker buildx imagetools inspect "$sha_tag" --format '{{json .Manifest.Digest}}' | jq -er .)"
+          edge_digest="$(docker buildx imagetools inspect "$image:edge" --format '{{json .Manifest.Digest}}' | jq -er .)"
+          test "$digest" = "$edge_digest"
+          docker pull "$sha_tag"
+          pulled_id="$(docker image inspect --format '{{.Id}}' "$sha_tag")"
+          amd64_config="$(jq -er '.["linux/amd64"].configDigest' <<< "$proof")"
+          amd64_manifest="$(jq -er '.["linux/amd64"].manifestDigest' <<< "$proof")"
+          [[ "$pulled_id" = "$amd64_config" || "$pulled_id" = "$amd64_manifest" || "$pulled_id" = "$digest" ]]
+          test "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$sha_tag")" = linux/amd64
 
   images-ok:
     needs: [image]

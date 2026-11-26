@@ -219,8 +219,9 @@ def verify_migration(args, launcher, options, repo_root, source, helper, marker,
 
 
 def preconditions(image: str, home: Path, launcher: Path) -> str:
-    check(platform.system() == "Linux" and platform.machine() in ("x86_64", "amd64"),
-          "unsupported_platform", "Need Linux amd64.", "Run on the disposable Ubuntu runner.")
+    native = {"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm64"}.get(platform.machine())
+    check(platform.system() == "Linux" and native is not None,
+          "unsupported_platform", "Need native Linux amd64 or arm64.", "Run on the disposable Ubuntu runner.")
     uid = os.geteuid()
     check(uid != 0, "unsupported_platform", "Refusing to run as root.",
           "Run as the non-root installation owner.")
@@ -244,6 +245,9 @@ def preconditions(image: str, home: Path, launcher: Path) -> str:
           "image_missing", f"Candidate image is not loaded: {image}.",
           "Load the explicit candidate image first.")
     digest = out.strip()
+    code, out, _ = run(["docker", "image", "inspect", image, "--format", "{{.Os}}/{{.Architecture}}"], 30)
+    check(code == 0 and out.strip() == f"linux/{native}", "image_incompatible",
+          "Candidate image is not native to this runner.", "Build and load the native candidate.")
     if home.exists():
         entries = [p for p in home.iterdir()]
         check(not entries, "home_not_fresh", f"Home is not fresh: {home}.",
