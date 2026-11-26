@@ -256,8 +256,7 @@ When a slash word or its help line is wrong.
 2. Keep names unique: the registry rejects duplicates at start-up.
 3. Update the plain-words `HELP_TEXT` entry so `/help` stays consistent.
 
-Planned rename: `make_report` becomes `/doc` ([ADR-0067](decisions/0067-replace-make-report-with-doc.md)).
-**Not built yet:** the command is still `report` (`src/tools/core/report.ts:21`).
+`make_report` answers `/doc` ([ADR-0067](decisions/0067-replace-make-report-with-doc.md)).
 
 Files: `src/tools/core/report.ts`, `src/tools/registry.ts`, `src/tools/core/describe.ts`.
 
