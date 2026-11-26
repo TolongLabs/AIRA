@@ -6,6 +6,7 @@ import http.client
 import ipaddress
 import json
 import os
+import platform
 import re
 import shutil
 import socket
@@ -335,9 +336,15 @@ class PortInUseError(Exception):
 
 
 def compose_up(home, project, env=None, timeout_s=COMPOSE_START_TIMEOUT_S):
+    # Only standalone creation/update/rollback uses up; legacy resumes with start.
+    native = normalize_arch(platform.machine()) if platform.system() == "Linux" else None
+    if native is None:
+        raise operational_error("image_incompatible", "Cannot start a non-native image.", "compatibility",
+                                "Use a supported native Linux host.")
+    overrides = {**(env or {}), "DOCKER_DEFAULT_PLATFORM": f"linux/{native}"}
     try:
         code, _, stderr = compose_run(home, project, ["up", "-d", "--pull", "never", "aira"],
-                                      timeout_s=timeout_s, overrides=env)
+                                      timeout_s=timeout_s, overrides=overrides)
     except RunError as exc:
         raise operational_error("service_start_failed", "Compose start did not complete.", stage="start",
                                 recovery="Run aira doctor, then retry setup.", retryable=True) from exc

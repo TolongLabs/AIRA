@@ -173,7 +173,8 @@ jobs:
           trap 'docker context rm aira-refusal-fixture' EXIT
           verify_refusal env DOCKER_CONTEXT=aira-refusal-fixture DOCKER_HOST=unix:///var/run/docker.sock
           if [ "$ARCH" = amd64 ]; then foreign=arm64; else foreign=amd64; fi
-          verify_refusal env -u DOCKER_CONTEXT DOCKER_HOST=unix:///var/run/docker.sock DOCKER_DEFAULT_PLATFORM="linux/$foreign"
+          verify_refusal env -u DOCKER_CONTEXT DOCKER_HOST=unix:///var/run/docker.sock \
+            DOCKER_DEFAULT_PLATFORM="linux/$foreign"
 
       - name: Check out the supported Hermes version for synthetic QA
         uses: actions/checkout@v7
@@ -388,7 +389,8 @@ jobs:
           python3 scripts/native_image_proof.py --commit "$GITHUB_SHA" --proofs "$proofs" \
             --index "$RUNNER_TEMP/image-index.json" > /dev/null
           digest="$(docker buildx imagetools inspect "$sha_tag" --format '{{json .Manifest.Digest}}' | jq -er .)"
-          edge_digest="$(docker buildx imagetools inspect "$image:edge" --format '{{json .Manifest.Digest}}' | jq -er .)"
+          edge_digest="$(docker buildx imagetools inspect "$image:edge" \
+            --format '{{json .Manifest.Digest}}' | jq -er .)"
           [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ && "$digest" = "$edge_digest" ]]
           docker pull "$sha_tag"
           pulled_id="$(docker image inspect --format '{{.Id}}' "$sha_tag")"

@@ -147,6 +147,8 @@ and writable owned installation paths. Detect Hermes separately; its absence doe
 Normalize only Linux `x86_64`/`amd64` and `aarch64`/`arm64`; the local Linux daemon's native architecture must match.
 Resolve the effective Docker context before daemon access. Refuse a conflicting `DOCKER_DEFAULT_PLATFORM`
 even if a native child is also available in the local image store.
+Standalone creation supplies its verified native platform to the Compose process, so a retained dotenv value
+cannot change the platform selected by the generated Compose template.
 Reject a mismatched or unknown image OS/architecture before starting a setup or stopping an installed service for
 update. No emulation, remote Docker, Docker Desktop or rootless Docker support is implied by a native image.
 

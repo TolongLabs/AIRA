@@ -145,6 +145,7 @@ jobs:
             -t "$IMAGE:$TAG" -t "$IMAGE:${TAG%.*}" -t "$IMAGE:stable" \
             "$IMAGE@$digest"
           for alias in "$TAG" "${TAG%.*}" stable; do
-            alias_digest="$(docker buildx imagetools inspect "$IMAGE:$alias" --format '{{json .Manifest.Digest}}' | jq -er .)"
+            alias_digest="$(docker buildx imagetools inspect "$IMAGE:$alias" \
+              --format '{{json .Manifest.Digest}}' | jq -er .)"
             test "$alias_digest" = "$digest"
           done

@@ -56,7 +56,11 @@ printf 'docker %s\\n' "$*" >> "$CALLS"
 case "$1 $2 $3" in
   'buildx imagetools inspect')
     if [[ "$WAIT_IMAGE" == true && $(grep -c '^docker buildx imagetools inspect' "$CALLS") == 1 ]]; then exit 1; fi
-    if [[ "$4" == *:stable && "$BAD_DIGEST" == true ]]; then printf '"%s"\\n' "$OTHER_DIGEST"; else printf '"%s"\\n' "$SOURCE_DIGEST"; fi ;;
+    if [[ "$4" == *:stable && "$BAD_DIGEST" == true ]]; then
+      printf '"%s"\\n' "$OTHER_DIGEST"
+    else
+      printf '"%s"\\n' "$SOURCE_DIGEST"
+    fi ;;
   'buildx imagetools create') ;;
   *) exit 99 ;;
 esac
@@ -136,9 +140,9 @@ describe('release promotion workflow', () => {
     const result = runStep('Tag the release', { WAIT_IMAGE: 'true' })
     expect(result.calls).toContain('sleep 15')
     expect(result.exit).toBe(0)
-    expect(result.calls).toContain(
-      `imagetools create --prefer-index=false -t ghcr.io/tolonglabs/aira:${tag} -t ghcr.io/tolonglabs/aira:v1.6 -t ghcr.io/tolonglabs/aira:stable ghcr.io/tolonglabs/aira@${sourceDigest}`
-    )
+    const image = 'ghcr.io/tolonglabs/aira'
+    const aliasArgs = [tag, 'v1.6', 'stable'].map((alias) => `-t ${image}:${alias}`).join(' ')
+    expect(result.calls).toContain(`imagetools create --prefer-index=false ${aliasArgs} ${image}@${sourceDigest}`)
     for (const alias of [tag, 'v1.6', 'stable'])
       expect(result.calls).toContain(`inspect ghcr.io/tolonglabs/aira:${alias}`)
     expect(runStep('Tag the release', { BAD_DIGEST: 'true' }).exit).not.toBe(0)
