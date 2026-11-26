@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.7.0](https://github.com/TolongLabs/AIRA/compare/v1.6.1...v1.7.0) (2026-11-26)
+
+
+### Features
+
+* **cli:** verify native Linux image platform ([8b6fa58](https://github.com/TolongLabs/AIRA/commit/8b6fa5893558f4e7c86abec5255c115097a192d3))
+* **gateway:** accept exact Hermes versions ([e5af09f](https://github.com/TolongLabs/AIRA/commit/e5af09fae0ff4f54492bda9082ab9cba82b7481a))
+* **gateway:** add typed text delivery ([1636252](https://github.com/TolongLabs/AIRA/commit/16362528981bedbe605177dd796da99d644ce3b7))
+* **gateway:** deliver portable report documents ([8d94b09](https://github.com/TolongLabs/AIRA/commit/8d94b09302de4843c04290e1a6e91a00961560cb))
+* **gateway:** persist one-time delivery claims ([b325321](https://github.com/TolongLabs/AIRA/commit/b32532174ddbebc7b6094b5a91c892c3d966d3fe))
+* **hermes:** attach typed transport safely ([609bf95](https://github.com/TolongLabs/AIRA/commit/609bf959f1d160bc87fe1da5eb08bf5fec2de1dd))
+
+
+### Bug Fixes
+
+* **cli:** pin native Compose creation platform ([11fe9f6](https://github.com/TolongLabs/AIRA/commit/11fe9f6fbf67a00f5223dd0802ff054c0d258a4c))
+* **deploy:** preserve native release identity ([89f3cc0](https://github.com/TolongLabs/AIRA/commit/89f3cc019b5c403e68bfbd2e99aadba1889bfe63))
+* **gateway:** bind exact receipts and isolate acks ([de1cae0](https://github.com/TolongLabs/AIRA/commit/de1cae0e620ea5709312de0483395cf9762e892a))
+* **gateway:** require complete version history ([2bfec29](https://github.com/TolongLabs/AIRA/commit/2bfec298c407d3bac74a97d02e392e97842ffcfa))
+* **hermes:** guard route transition races ([2fb7bed](https://github.com/TolongLabs/AIRA/commit/2fb7bed98bc33e9e6aba5263e6736154b3f028cf))
+* **hermes:** refuse running typed transitions ([eb2b553](https://github.com/TolongLabs/AIRA/commit/eb2b5532aa999b0d427576ce161781f6166e3b0e))
+
 ## [1.6.1](https://github.com/TolongLabs/AIRA/compare/v1.6.0...v1.6.1) (2026-11-25)
 
 
