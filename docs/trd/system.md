@@ -128,7 +128,7 @@ ID. An identical reattach keeps the route ID. Detach or changing version/protoco
 A different profile conflicts. A version 2 route admits only version 2 turns; version 1 has no silent fallback.
 Downgrade explicitly names the current typed route ID; a version 1 attachment request cannot overwrite it.
 Typed attachment requests carry an absolute millisecond deadline at most ten seconds ahead of the core clock,
-shorter than the adapter's HTTP timeout. Expired requests cannot commit a route after the caller has abandoned it.
+shorter than the adapter's HTTP timeout. Expired requests refuse before route persistence begins.
 Unknown protocol, stale route, unsupported capabilities or malformed data refuse without an ordinary Hermes turn.
 
 | Endpoint                       | Contract                                                                                                                                                                                                |
