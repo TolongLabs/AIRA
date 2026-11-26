@@ -602,6 +602,12 @@ export async function createApp(options: AppOptions): Promise<App> {
         feedback: config.feedback,
         searchDepth: config.search.depth,
         standaloneTextOnly: standalone,
+        ...(standaloneGateway
+          ? {
+              standaloneReportPermission: (context) =>
+                standaloneGateway.canDeliverDocument(context.typedRouteId, context.chat.chatId)
+            }
+          : {}),
         ...(serpKey
           ? {
               identify: {

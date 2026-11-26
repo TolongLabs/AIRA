@@ -185,6 +185,10 @@ def verify_typed_transition(args, launcher, options, source, helper, marker, hos
         check(code == 1 and applied.get("error", {}).get("code") == "attach_failed"
               and all(file_state(p) == value for p, value in before.items()),
               "typed_rollback", "The v1-only core did not restore the full prior attachment.")
+        code, document_failed = run_json(launcher, [*typed, "--capabilities", "text,document", "--apply", "--yes"], STEP_TIMEOUT_S)
+        check(code == 1 and document_failed.get("error", {}).get("code") == "attach_failed"
+              and all(file_state(p) == value for p, value in before.items()),
+              "document_rollback", "The v1-only core did not restore the prior attachment after document refusal.")
         code, health, _ = http_call(site_port, "GET", "/owner-api/core/health", token=owner_token)
         check(code == 200 and (health or {}).get("hermes", {}).get("adapterVersion") == args.adapter_version,
               "typed_rollback", "The verified original v1 route did not survive refusal.")
@@ -223,6 +227,66 @@ def verify_typed_transition(args, launcher, options, source, helper, marker, hos
     code, _ = http_gateway(core_port, "/v1/aira/turn", gateway_token,
                            {k: (1 if k == "schemaVersion" else v) for k, v in fixture.items() if k != "routeId"})
     check(code == 403, "typed_legacy_refusal", "A typed route accepted the v1 turn endpoint.")
+
+    # The stock text and report helpers share the reviewed v2 source insertion, but capability change rotates
+    # the verified route and helper. No live gateway, provider, or account is involved.
+    document = [*typed, "--capabilities", "text,document"]
+    if args.expect_document_rejection:
+        code, refused = run_json(launcher, [*document, "--apply", "--yes"], STEP_TIMEOUT_S)
+        check(code == 1 and refused.get("error", {}).get("code") == "attach_failed"
+              and all(file_state(p) == value for p, value in snapshot.items()),
+              "document_rollback", "The previous text-only v2 core did not restore the exact verified route.")
+        code, health, _ = http_call(site_port, "GET", "/owner-api/core/health", token=owner_token)
+        check(code == 200 and (health or {}).get("hermes") == route,
+              "document_rollback", "The previous text-only route was not restored after refusal.")
+        note("document migration: pinned text-only v2 core refused and exact rollback passed")
+    else:
+        code, planned = run_json(launcher, [*document, "--dry-run"], STEP_TIMEOUT_S)
+        check(code == 0 and planned.get("attach", {}).get("capabilities") == ["text", "document"]
+              and set(planned.get("attach", {}).get("changes", [])) == {"helper", "marker", "host"}
+              and all(file_state(p) == value for p, value in snapshot.items()),
+              "document_dry_run", "Document capability planning changed files or selected incorrect artifacts.")
+        code, enabled = run_json(launcher, [*document, "--apply", "--yes"], STEP_TIMEOUT_S)
+        check(code == 0 and enabled.get("attach", {}).get("capabilities") == ["text", "document"]
+              and enabled.get("attach", {}).get("gatewayRunning") is False,
+              "document_attach", "The stopped typed route did not negotiate document delivery.")
+        code, health, _ = http_call(site_port, "GET", "/owner-api/core/health", token=owner_token)
+        report = (health or {}).get("hermes", {})
+        document_id = report.get("routeId")
+        check(code == 200 and report.get("capabilities") == ["text", "document"] and document_id != route_id
+              and (health or {}).get("capabilities", {}).get("reportDocuments") is True
+              and all(json.loads(p.read_text()).get("routeId") == document_id
+                      and json.loads(p.read_text()).get("capabilities") == ["text", "document"]
+                      for p in (marker, host_record, route_record))
+              and file_state(source) == snapshot[source] and file_state(helper) != snapshot[helper],
+              "document_receipt", "The document helper, host marker and core receipt do not agree.")
+        code, _ = http_gateway(core_port, "/v2/aira/turn", gateway_token, fixture)
+        check(code == 403, "document_stale_route", "Capability migration left the previous text route active.")
+        fixture["routeId"] = document_id
+        code, pending = http_gateway(core_port, "/v2/aira/turn", gateway_token, fixture)
+        check(code == 200 and pending == {"schemaVersion": 2, "disposition": "no_reply", "deliveries": []},
+              "document_pending", "The document route did not fail closed for a pending chat.")
+        document_snapshot = {path: file_state(path) for path in paths}
+        code, repeated = run_json(launcher, [*typed, "--apply", "--yes"], STEP_TIMEOUT_S)
+        check(code == 0 and repeated.get("attach", {}).get("capabilities") == ["text", "document"]
+              and repeated.get("attach", {}).get("changes") == []
+              and all(file_state(p) == value for p, value in document_snapshot.items()),
+              "document_repeat", "An omitted capability option changed an already verified document route.")
+        code, doctor = run_json(launcher, ["doctor", "--home", options[2]], STEP_TIMEOUT_S)
+        check(code == 0 and any(c.get("name") == "hermes" and c.get("reason") == "route_verified_gateway_stopped"
+                                for c in doctor.get("checks", [])), "document_doctor", "Doctor could not verify the document route.")
+        code, disabled = run_json(launcher, [*typed, "--capabilities", "text", "--apply", "--yes"], STEP_TIMEOUT_S)
+        check(code == 0 and disabled.get("attach", {}).get("capabilities") == ["text"]
+              and file_state(helper) == snapshot[helper]
+              and json.loads(marker.read_text()).get("routeId") not in (document_id, route_id),
+              "document_disable", "Document disable did not restore the historical text helper and rotate the route.")
+        code, _ = http_gateway(core_port, "/v2/aira/turn", gateway_token, fixture)
+        check(code == 403, "document_stale_route", "Disabling documents left the previous document route active.")
+        code, enabled = run_json(launcher, [*document, "--apply", "--yes"], STEP_TIMEOUT_S)
+        check(code == 0 and enabled.get("attach", {}).get("capabilities") == ["text", "document"],
+              "document_reattach", "Document capability could not be selected again.")
+        fixture["routeId"] = json.loads(marker.read_text()).get("routeId")
+        note("document migration: text/document repeat, stale refusal, doctor and text disable passed")
     code, downgraded = run_json(launcher, [*options, "--protocol", "v1", "--apply", "--yes"], STEP_TIMEOUT_S)
     check(code == 0 and downgraded.get("attach", {}).get("protocol") == "v1"
           and all(file_state(path) == before[path] for path in (source, helper, marker, host_record)),
@@ -429,6 +493,8 @@ def main() -> int:
     parser.add_argument("--uv-bin", help="Pinned uv executable for the disposable migration fixture.")
     parser.add_argument("--expect-migration-rejection", action="store_true",
                         help="Expect the pinned previous core to refuse the candidate adapter and roll back.")
+    parser.add_argument("--expect-document-rejection", action="store_true",
+                        help="Expect the exact prior text-only v2 core to refuse document capability.")
     parser.add_argument("--update-image", help="Loaded compatible second candidate.")
     parser.add_argument("--bad-image", help="Loaded candidate with a failing isolated deploy probe.")
     parser.add_argument("--previous-image", help="Loaded exact previous release for the migrated-store compatibility gate.")

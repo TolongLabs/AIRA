@@ -140,7 +140,7 @@ class AttachmentTests(unittest.TestCase):
         route = {"state": "connected", "profile": "fixture", "adapterVersion": "hermes-v0.23.4",
                  "verifiedAt": "2026-11-26T00:00:00Z", "protocolVersion": 2, "routeId": route_id,
                  "capabilities": ["text"]}
-        self.plan.update(protocol=2, typedTransaction=True, provisional=record(marker))
+        self.plan.update(protocol=2, typedTransaction=True, capabilities=["text"], provisional=record(marker))
         self.plan["desired"].update(marker=record(marker), host=record(host))
         self.report["hermesRoute"] = route
         self.plan["running"] = False

@@ -141,6 +141,7 @@ interface Waiter {
   think?: boolean
   /** The files the gateway saved for this message. Kept in memory: a restart answers from the text alone. */
   attachments?: Attachment[]
+  typedRouteId?: string
   settlers: { resolve: (reply: TurnReply) => void; reject: (error: unknown) => void }[]
 }
 
@@ -274,6 +275,10 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     }
     const think = batch.some((waiter) => waiter.think === true) && settings['features.think']?.value !== false
     const delivery: DeliveryKind = newest.scheduled ?? { kind: 'reply' }
+    const typedRouteId =
+      newest.typedRouteId && batch.every((waiter) => waiter.typedRouteId === newest.typedRouteId)
+        ? newest.typedRouteId
+        : undefined
     const context: TurnContext = {
       turnId,
       chat,
@@ -284,6 +289,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       delivery,
       deadline: now().getTime() + config.llm.turnDeadlineMs,
       sources: createTurnSources(),
+      ...(typedRouteId ? { typedRouteId } : {}),
       ...(think ? { think: true } : {})
     }
     outcome.context = context
@@ -1132,8 +1138,10 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     const target = queue
     return new Promise((resolve, reject) => {
       const same = target.pending.find((item) => item.mid === waiter.mid)
-      if (same) same.settlers.push({ resolve, reject })
-      else target.pending.push({ ...waiter, settlers: [{ resolve, reject }] })
+      if (same) {
+        if (same.typedRouteId !== waiter.typedRouteId) delete same.typedRouteId
+        same.settlers.push({ resolve, reject })
+      } else target.pending.push({ ...waiter, settlers: [{ resolve, reject }] })
       if (target.current) return
       // Before a turn starts, messages that arrive within batchMs of each other form one turn.
       const at = now().getTime()
@@ -1208,7 +1216,8 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       undefined,
       request.attachments,
       COMMAND_TEXT.test(request.text) || offerAnswer(request.text) !== undefined,
-      thinkPrefix !== null && settings['features.think']?.value !== false
+      thinkPrefix !== null && settings['features.think']?.value !== false,
+      request.typedRouteId
     )
   }
 
@@ -1224,7 +1233,8 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     afterNew?: () => void,
     attachments?: Attachment[],
     command?: boolean,
-    think?: boolean
+    think?: boolean,
+    typedRouteId?: string
   ): Promise<TurnReply> {
     for (let round = 0; round < 3; round++) {
       const status = receiveInbound(storage, { ...key, onNew }, now)
@@ -1244,6 +1254,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         ...(scheduled ? { scheduled } : {}),
         ...(command ? { command } : {}),
         ...(think ? { think } : {}),
+        ...(typedRouteId ? { typedRouteId } : {}),
         ...(attachments && attachments.length > 0 ? { attachments } : {})
       })
     }

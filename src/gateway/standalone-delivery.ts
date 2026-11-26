@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Db, Storage } from '../storage/database.js'
 import { BUBBLE_BREAK, NO_REPLY } from './response.js'
+import { type ReportDocumentMetadata, readStandaloneReport } from './standalone-document.js'
 
 // A durable, one-time external delivery obligation, not the core's returned turn state.
 // docs/trd/storage.md#standalone-delivery-ledger
@@ -17,8 +18,11 @@ type Claim = Binding & { id: string }
 export type DeliveryOutcome = 'confirmed' | 'failed' | 'unknown'
 export interface DeliveryDescriptor {
   id: string
-  kind: 'text'
+  kind: 'text' | 'document'
 }
+export type ClaimedDelivery =
+  | { id: string; kind: 'text'; text: string }
+  | ({ id: string; kind: 'document'; base64: string } & ReportDocumentMetadata)
 
 /** The existing standalone text boundary: never return legacy attachment directives. */
 export function standaloneReplyText(content: string): string | null {
@@ -50,10 +54,19 @@ function storedReply(db: Db, input: Binding & { turnId: string }): string | null
 
 export function createStandaloneDeliveryLedger(
   storage: Storage,
-  options: { currentRoute: () => string | null; now?: () => Date }
+  options: {
+    currentRoute: () => string | null
+    now?: () => Date
+    filesDir?: string
+    mayDeliverDocument?: (routeId: string, chatId: string) => boolean
+  }
 ) {
   const now = options.now ?? (() => new Date())
   const current = (input: Binding) => options.currentRoute() === input.routeId
+  const report = (db: Db, input: Binding & { turnId: string; sha256?: string }) =>
+    options.filesDir && options.mayDeliverDocument?.(input.routeId, input.chatId)
+      ? readStandaloneReport(db, options.filesDir, input)
+      : null
 
   function issue(input: Issue): DeliveryDescriptor[] {
     if (input.replayed || !current(input)) return []
@@ -77,30 +90,64 @@ export function createStandaloneDeliveryLedger(
           at.toISOString(),
           new Date(at.getTime() + CLAIM_LIFETIME_MS).toISOString()
         )
-      return inserted.changes === 1 ? [{ id, kind: 'text' }] : []
+      if (inserted.changes !== 1) return []
+      const items: DeliveryDescriptor[] = [{ id, kind: 'text' }]
+      const document = current(input) ? report(db, input) : null
+      if (document && current(input)) {
+        const documentId = randomUUID()
+        const recorded = db
+          .prepare(
+            `INSERT INTO standalone_delivery
+             (delivery_id, route_id, chat_id, inbound_mid, turn_id, position, kind, file_sha256, state, created_at, expires_at)
+           VALUES (?, ?, ?, ?, ?, 1, 'document', ?, 'pending', ?, ?)
+           ON CONFLICT (turn_id, position) DO NOTHING`
+          )
+          .run(
+            documentId,
+            input.routeId,
+            input.chatId,
+            input.mid,
+            input.turnId,
+            document.sha256,
+            at.toISOString(),
+            new Date(at.getTime() + CLAIM_LIFETIME_MS).toISOString()
+          )
+        if (recorded.changes === 1) items.push({ id: documentId, kind: 'document' })
+      }
+      return items
     })
   }
 
-  function claim(input: Claim): (DeliveryDescriptor & { text: string }) | null {
+  function claim(input: Claim): ClaimedDelivery | null {
     if (!current(input)) return null
     const at = now().toISOString()
     return storage.tx((db) => {
       const row = db
         .prepare(
-          `SELECT turn_id FROM standalone_delivery
+          `SELECT turn_id, kind, file_sha256 FROM standalone_delivery
            WHERE delivery_id = ? AND route_id = ? AND chat_id = ? AND inbound_mid = ?
-             AND kind = 'text' AND state = 'pending' AND expires_at > ?`
+             AND state = 'pending' AND expires_at > ?`
         )
-        .get(input.id, input.routeId, input.chatId, input.mid, at) as { turn_id: string } | undefined
+        .get(input.id, input.routeId, input.chatId, input.mid, at) as
+        { turn_id: string; kind: 'text' | 'document'; file_sha256: string | null } | undefined
       if (!row) return null
       const text = storedReply(db, { ...input, turnId: row.turn_id })
       if (text === null || !current(input)) return null
+      const document =
+        row.kind === 'document' && row.file_sha256
+          ? report(db, { ...input, turnId: row.turn_id, sha256: row.file_sha256 })
+          : null
+      if (row.kind === 'document' && !document) return null
+      if (!current(input)) return null
       const claimed = db
         .prepare(
           `UPDATE standalone_delivery SET state = 'claimed', claimed_at = ? WHERE delivery_id = ? AND state = 'pending'`
         )
         .run(at, input.id)
-      return claimed.changes === 1 && current(input) ? { id: input.id, kind: 'text', text } : null
+      if (claimed.changes !== 1 || !current(input)) return null
+      if (!document) return { id: input.id, kind: 'text', text }
+      const { data, ...metadata } = document
+      return { id: input.id, kind: 'document', ...metadata, base64: data.toString('base64') }
     })
   }
 

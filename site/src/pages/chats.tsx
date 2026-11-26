@@ -2,6 +2,7 @@ import { TimeField } from '@/dashboard/form-select'
 import { Loading } from '@/dashboard/loading'
 import { ChatAccess } from '@/dashboard/chat-access'
 import { InstallationContext } from '@/dashboard/context'
+import { useReportDocumentCapability } from '@/dashboard/report-capability'
 import { ChatGlyph, motif, ProfileImage, PortraitUpload } from '@/dashboard/profile-image'
 import Composer from '@/dashboard/composer'
 import { chatHref, dashboardHref } from '@/dashboard/navigation'
@@ -703,6 +704,7 @@ function ChatRow({
   characters,
   charactersError,
   toolCatalog,
+  reportDocuments,
   onChanged,
   open,
   onToggle,
@@ -710,6 +712,7 @@ function ChatRow({
 }: {
   chat: CoreChat
   toolCatalog: Load<CoreToolCatalog>
+  reportDocuments: boolean
   characters: CoreCharacter[]
   charactersError?: string
   onChanged: () => void
@@ -1068,8 +1071,10 @@ function ChatRow({
                 <>
                   {standalone && (
                     <p>
-                      Standalone supports text replies only. Hermes owns group admission; stickers, reactions and
-                      scheduled messages are unavailable.
+                      {reportDocuments
+                        ? 'Standalone supports text and report documents.'
+                        : 'Standalone supports text replies only.'}{' '}
+                      Hermes owns group admission; stickers, reactions and scheduled messages are unavailable.
                     </p>
                   )}
                   <SettingRow vm={vm} name="replyLength" label="Reply length" onClear={clear}>
@@ -1260,7 +1265,9 @@ function ChatRow({
                 </>
               )}
               {tab === 'features' &&
-                CHAT_FEATURE_DEFINITIONS.filter((f) => !standalone || standaloneTextFeature(f.key)).map((f) => {
+                CHAT_FEATURE_DEFINITIONS.filter(
+                  (f) => !standalone || standaloneTextFeature(f.key, reportDocuments)
+                ).map((f) => {
                   const postMedia = f.key === 'features.autofetch'
                   const socialKey = postMedia || f.key === 'features.social' ? (f.key as SocialCapabilityKey) : null
                   return (
@@ -1396,6 +1403,7 @@ function Group({
   note: string
   chats: CoreChat[]
   toolCatalog: Load<CoreToolCatalog>
+  reportDocuments: boolean
   characters: CoreCharacter[]
   charactersError?: string
   onChanged: () => void
@@ -1800,6 +1808,8 @@ export default function ChatsPage({
   const chats = useCore(core.chats)
   const packs = useCore(core.characters)
   const tools = useCore(core.tools)
+  const standalone = useContext(InstallationContext) === 'standalone'
+  const reportDocuments = useReportDocumentCapability(standalone)
   const all = chats.data?.chats ?? []
   const on = useMemo(() => all.filter((c) => c.status === 'active'), [all])
   const off = useMemo(() => all.filter((c) => c.status === 'pending'), [all])
@@ -1813,6 +1823,7 @@ export default function ChatsPage({
   }, [])
   const shared = {
     toolCatalog: tools,
+    reportDocuments,
     characters,
     charactersError: packs.error,
     onChanged: chats.reload,
@@ -1872,6 +1883,7 @@ export default function ChatsPage({
           characters={characters}
           charactersError={packs.error}
           toolCatalog={tools}
+          reportDocuments={reportDocuments}
           onChanged={chats.reload}
           open={true}
         />

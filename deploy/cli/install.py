@@ -495,7 +495,7 @@ def observe(home, manifest, quick=True):
                                 valid_typed = (has_typed and type(maybe_route.get("protocolVersion")) is int
                                     and maybe_route["protocolVersion"] == 2
                                     and hermes_versions.valid_route_id(maybe_route.get("routeId"))
-                                    and maybe_route.get("capabilities") == ["text"])
+                                    and hermes_versions.valid_capabilities(maybe_route.get("capabilities")))
                                 if (isinstance(maybe_route, dict) and maybe_route.get("state") == "connected" and
                                         maybe_route.get("adapterVersion") in hermes_versions.ADAPTER_VERSIONS and
                                         isinstance(maybe_route.get("profile"), str) and re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", maybe_route["profile"])

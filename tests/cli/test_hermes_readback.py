@@ -53,7 +53,10 @@ class RouteReadbackTests(unittest.TestCase):
         result = self.observe("hermes-v0.23.4", **fields)
         self.assertEqual(result["state"]["hermes"], "connected")
         self.assertEqual({key: result["hermesRoute"][key] for key in fields}, fields)
-        for broken in ({"protocolVersion": 3}, {"routeId": "invalid"}, {"capabilities": ["text", "document"]}):
+        document = self.observe("hermes-v0.23.4", **{**fields, "capabilities": ["text", "document"]})
+        self.assertEqual(document["hermesRoute"]["capabilities"], ["text", "document"])
+        for broken in ({"protocolVersion": 3}, {"routeId": "invalid"}, {"capabilities": ["text", "document", "image"]},
+                       {"capabilities": ["document", "text"]}, {"capabilities": ["text", "text"]}):
             result = self.observe("hermes-v0.23.4", **{**fields, **broken})
             self.assertEqual(result["state"]["chatbot"], "inactive")
             self.assertIsNone(result["hermesRoute"])

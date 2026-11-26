@@ -107,6 +107,7 @@ def _modules(repo_root):
             result["helper"] = source
         result[name] = _load_module("aira_" + name, path, source)
     result["typed"] = _read(base / "standalone_typed_adapter.py")[0]
+    result["document"] = _read(base / "standalone_document_adapter.py")[0]
     return result
 
 
@@ -155,6 +156,9 @@ def _plan(args):
     patch, adapter = mods["standalone_patch"], mods["standalone_adapter"]
     requested_protocol = getattr(args, "protocol", None)
     protocol = 2 if requested_protocol == "v2" else 1
+    requested_capabilities = getattr(args, "capabilities", None)
+    if requested_capabilities is not None and (protocol != 2 or requested_capabilities not in ("text", "text,document")):
+        raise args_error("Select --protocol v2 and a reviewed capability set.")
     if not adapter.PROFILE.fullmatch(args.profile):
         raise args_error("Select a valid Hermes profile name.")
     root = _owned_dir(args.hermes_home or Path.home() / ".hermes")
@@ -170,9 +174,7 @@ def _plan(args):
     helper = target.parent / "aira_transport.py"
     baseline = hermes_versions.render_helper(mods["helper"], version)
     typed = hermes_versions.render_typed_helper(mods["helper"], mods["typed"], version)
-    rendered = typed if protocol == 2 else baseline
-    adapter = _load_module("aira_selected_adapter", helper, rendered)
-    typed_adapter = adapter if protocol == 2 else _load_module("aira_typed_adapter", helper, typed)
+    document = hermes_versions.render_document_helper(mods["helper"], mods["document"], version)
     marker = profile_dir / adapter.MARKER_NAME
     receipt = home / "data" / "standalone" / "hermes.json"
     host_receipt = receipt.with_name("attach-host.json")
@@ -180,11 +182,20 @@ def _plan(args):
                 "marker": _read(marker, private=True, optional=True), "receipt": _read(receipt, private=True, optional=True),
                 "host": _read(host_receipt, private=True, optional=True)}
     kind = patch.classify_source(original["source"][0])
-    previous = (hermes_versions.known_helper(mods["helper"], mods["typed"], original["helper"][0])
+    previous = (hermes_versions.known_helper(mods["helper"], mods["typed"], mods["document"], original["helper"][0])
                 if original["helper"] else None)
-    previous_version, previous_protocol = previous or (None, None)
+    previous_version, previous_protocol, previous_capabilities = previous or (None, None, ())
+    previous_capabilities = list(previous_capabilities)
     if kind == "unsupported" or (original["helper"] and previous_version is None):
         _refuse("hermes_unsupported", "The adapter source or existing helper is unfamiliar.")
+    capabilities = (requested_capabilities.split(",") if requested_capabilities is not None
+                    else previous_capabilities if previous_protocol == 2 else ["text"])
+    # A v1 downgrade uses the previous typed capability parser while retaining the exact new v1 bytes.
+    typed_capabilities = capabilities if protocol == 2 else previous_capabilities or ["text"]
+    typed_rendered = document if typed_capabilities == ["text", "document"] else typed
+    rendered = typed_rendered if protocol == 2 else baseline
+    adapter = _load_module("aira_selected_adapter", helper, rendered)
+    typed_adapter = adapter if protocol == 2 else _load_module("aira_typed_adapter", helper, typed_rendered)
     route = report.get("hermesRoute")
     prior_host = json.loads(original["host"][0]) if original["host"] else None
     prior_marker = json.loads(original["marker"][0]) if original["marker"] else None
@@ -217,9 +228,11 @@ def _plan(args):
         _refuse("hermes_profile_conflict", "Select --protocol v2 to reattach or --protocol v1 to downgrade explicitly.")
     changing_protocol = any(old is not None and old != protocol for old in protocols)
     changing_version = any(old is not None and old != version for old in prior_versions)
-    if (changing_version or changing_protocol) and source != root / "hermes-agent":
-        _refuse("hermes_contract_failed", "Version or protocol migration requires the selected root's exclusive source checkout.")
-    if kind == "original" or changing_version or changing_protocol:
+    changing_capabilities = previous_protocol == 2 and protocol == 2 and capabilities != previous_capabilities
+    changing = changing_version or changing_protocol or changing_capabilities
+    if changing and source != root / "hermes-agent":
+        _refuse("hermes_contract_failed", "Version, protocol or capability migration requires the selected root's exclusive source checkout.")
+    if kind == "original" or changing:
         other_markers = [root / adapter.MARKER_NAME]
         profiles = root / "profiles"
         if profiles.exists():
@@ -229,12 +242,16 @@ def _plan(args):
     token = install.read_owner_token(home / "data" / "standalone" / "gateway.token")
     expected = {"schemaVersion": 1, "profile": args.profile, "profileHome": str(profile_dir),
                 "port": manifest.corePort, "token": token}
-    provisional = {**expected, "schemaVersion": 2, "state": "provisional", "routeId": None, "capabilities": ["text"]}
+    provisional = {**expected, "schemaVersion": 2, "state": "provisional", "routeId": None, "capabilities": typed_capabilities}
     if prior_marker is not None:
         if prior_marker["schemaVersion"] == 2:
-            previous_marker = typed_adapter.read_typed_marker(marker)
+            if previous_protocol != 2 or not original["helper"]:
+                _refuse("hermes_profile_conflict", "The previous typed marker has no verified helper.")
+            previous_adapter = _load_module("aira_previous_adapter", helper, original["helper"][0])
+            previous_marker = previous_adapter.read_typed_marker(marker)
             if (previous_marker["state"] != "active" or previous_marker != {
-                    **provisional, "state": "active", "routeId": previous_marker["routeId"]}):
+                    **provisional, "state": "active", "routeId": previous_marker["routeId"],
+                    "capabilities": previous_capabilities}):
                 _refuse("hermes_profile_conflict", "The previous typed marker is unfinished or belongs to a different route.")
         elif adapter.read_marker(marker) != expected:
             _refuse("hermes_profile_conflict", "The chosen profile marker belongs to a different route.")
@@ -242,7 +259,7 @@ def _plan(args):
         _refuse("hermes_profile_conflict", "AIRA already has a different attached profile.")
     host_record = {"schemaVersion": 1, "sourceDir": str(source), "hermesHome": str(root),
                    "profile": args.profile, "adapterVersion": adapter.ADAPTER_VERSION}
-    if changing_version or changing_protocol or typed_history:
+    if changing or typed_history:
         prior_record = {**host_record, "adapterVersion": previous_version, "schemaVersion": previous_protocol}
         verified_at = route.get("verifiedAt") if isinstance(route, dict) else None
         prior_route = {"state": "connected", "profile": args.profile, "adapterVersion": previous_version,
@@ -250,9 +267,9 @@ def _plan(args):
         expected_receipt = {"schemaVersion": previous_protocol, **prior_route}
         if previous_protocol == 2 and isinstance(route, dict):
             route_id = route.get("routeId")
-            prior_record.update(routeId=route_id, capabilities=["text"])
-            prior_route.update(routeId=route_id, capabilities=["text"], protocolVersion=2)
-            expected_receipt.update(routeId=route_id, capabilities=["text"])
+            prior_record.update(routeId=route_id, capabilities=previous_capabilities)
+            prior_route.update(routeId=route_id, capabilities=previous_capabilities, protocolVersion=2)
+            expected_receipt.update(routeId=route_id, capabilities=previous_capabilities)
         expected_kind = "typed" if previous_protocol == 2 else "patched"
         if (previous_version is None or not prior_marker or prior_marker.get("schemaVersion") != previous_protocol
                 or (kind != expected_kind and not (kind == "original" and changing_version and previous_protocol == 1))
@@ -284,13 +301,13 @@ def _plan(args):
     else:
         patched = patch.patch_source(original["source"][0]) if kind == "original" else original["source"][0]
     compile(patched, str(target), "exec")
-    same_route = typed_history and not changing_protocol and not changing_version
+    same_route = typed_history and not changing
     if protocol == 2:
         route_id = route["routeId"] if same_route else None
         expected = {**provisional, "state": "active" if same_route else "provisional", "routeId": route_id}
-        host_record = {**host_record, "schemaVersion": 2, "routeId": route_id, "capabilities": ["text"]}
-    preserve = not changing_version and not changing_protocol
-    preserve_marker = not changing_protocol and (protocol == 1 or not changing_version)
+        host_record = {**host_record, "schemaVersion": 2, "routeId": route_id, "capabilities": capabilities}
+    preserve = not changing
+    preserve_marker = not changing_protocol and not changing_capabilities and (protocol == 1 or not changing_version)
     plan = {
         "home": home, "manifest": manifest, "selection": selection, "report": report, "sourceDir": source,
         "hermesHome": root, "profileDir": profile_dir, "profile": args.profile, "python": python, "binary": binary,
@@ -303,6 +320,7 @@ def _plan(args):
         "kind": kind, "adapter": adapter,
         "typedAdapter": typed_adapter,
         "protocol": protocol, "typedTransaction": protocol == 2 or typed_history,
+        "capabilities": capabilities if protocol == 2 else [],
         "provisional": ((json.dumps(provisional, sort_keys=True) + "\n").encode(), 0o600),
     }
     plan["running"] = _profile_status(plan)
@@ -321,8 +339,9 @@ def _detail(plan, apply):
     changes = [name for name, value in plan["desired"].items() if value != plan["original"][name]]
     return {"profile": plan["profile"], "dryRun": not apply, "adapterVersion": plan["adapter"].ADAPTER_VERSION,
             **({"protocol": "v" + str(plan["protocol"])} if plan.get("typedTransaction") else {}),
+            **({"capabilities": plan["capabilities"]} if plan.get("protocol") == 2 else {}),
             "sourceState": plan["kind"], "gatewayRunning": plan["running"], "changes": changes,
-            "verification": "synthetic local route; no real message; text only"}
+            "verification": "synthetic local route; no real message; " + ("text and report documents" if plan.get("capabilities") == ["text", "document"] else "text only")}
 
 
 def _gateway_command(plan, verb):
@@ -439,7 +458,7 @@ def _typed_restore(plan, written):
                         or candidate.get("profile") != plan["profile"]
                         or candidate.get("adapterVersion") != plan["adapter"].ADAPTER_VERSION
                         or (plan["protocol"] == 2 and (not hermes_versions.valid_route_id(candidate.get("routeId"))
-                                                      or candidate.get("capabilities") != ["text"]))):
+                                                      or candidate.get("capabilities") != plan["capabilities"]))):
                     return False
             elif value != written.get(name):
                 return False
@@ -488,13 +507,17 @@ def _typed_apply(plan, warnings, op):
 
         if plan["protocol"] == 2:
             route = plan["adapter"].typed_check(paths["marker"])
-            if not route:
+            if not route or route.get("capabilities") != plan["capabilities"]:
                 raise operational_error("hermes_contract_failed", "The typed adapter handshake failed.", "verify")
             marker_value = {**json.loads(desired["marker"][0]), "state": "active", "routeId": route["routeId"]}
             host_value = {**json.loads(desired["host"][0]), "routeId": route["routeId"]}
             known_id = json.loads(desired["marker"][0])["routeId"]
             if known_id is not None and known_id != route["routeId"]:
                 raise operational_error("hermes_contract_failed", "An identical route changed its identifier.", "verify")
+            prior_marker = json.loads(original["marker"][0]) if original["marker"] else None
+            if (known_id is None and prior_marker and prior_marker.get("schemaVersion") == 2
+                    and prior_marker.get("routeId") == route["routeId"]):
+                raise operational_error("hermes_contract_failed", "A changed typed route did not rotate its identifier.", "verify")
         else:
             # A downgrade is also inert until the v1 handshake and receipt are verified; do not publish
             # a live v1 marker just so the old helper's check() can read it.
