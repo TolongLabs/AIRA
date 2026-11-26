@@ -11,6 +11,7 @@ from deploy.cli.result import CommandError
 
 
 DIRECT_MEDIA = ["text", "document", "receive-image", "receive-audio", "receive-video", "receive-pdf"]
+SCHEDULER = DIRECT_MEDIA + ["scheduler"]
 
 
 class HermesVersionsTests(unittest.TestCase):
@@ -52,12 +53,13 @@ class HermesVersionsTests(unittest.TestCase):
             hermes_versions.render_helper(template + b"\n# unfamiliar modification\n", "hermes-v0.23.4")
 
     def test_media_capabilities_are_one_finite_ordered_selection(self):
-        for accepted in (["text"], ["text", "document"], DIRECT_MEDIA):
+        for accepted in (["text"], ["text", "document"], DIRECT_MEDIA, SCHEDULER):
             self.assertTrue(hermes_versions.valid_capabilities(accepted))
             args = main.build_parser().parse_args(["attach-hermes", "--profile", "fixture", "--dry-run",
                                                   "--protocol", "v2", "--capabilities", ",".join(accepted)])
             self.assertEqual(args.capabilities, ",".join(accepted))
-        for refused in (DIRECT_MEDIA[0:-1], list(reversed(DIRECT_MEDIA)), DIRECT_MEDIA + ["receive-image"]):
+        for refused in (DIRECT_MEDIA[0:-1], list(reversed(DIRECT_MEDIA)), DIRECT_MEDIA + ["receive-image"],
+                        ["text", "scheduler"], SCHEDULER + ["scheduler"], ["scheduler"] + DIRECT_MEDIA):
             self.assertFalse(hermes_versions.valid_capabilities(refused))
             with self.assertRaises(CommandError):
                 main.build_parser().parse_args(["attach-hermes", "--profile", "fixture", "--dry-run",
@@ -89,11 +91,47 @@ class HermesVersionsTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         hermes_versions.render_media_helper(template, document, media + b"\n", version)
 
-    def test_installed_runtime_contains_the_exact_media_extension(self):
+    def test_scheduler_renderer_appends_only_a_pinned_extension(self):
+        gateway = Path(__file__).resolve().parents[2] / "deploy/gateway"
+        template = (gateway / "standalone_adapter.py").read_bytes()
+        typed = (gateway / "standalone_typed_adapter.py").read_bytes()
+        document = (gateway / "standalone_document_adapter.py").read_bytes()
+        media = (gateway / "standalone_media_adapter.py").read_bytes()
+        scheduler = f"CAPABILITIES = {SCHEDULER!r}\n".encode()
+        entrypoint = b'if __name__ == "__main__":\n    sys.exit(main())\n'
+        with patch.object(hermes_versions, "_SCHEDULER_SHA256", hashlib.sha256(scheduler).hexdigest()):
+            for version in hermes_versions.ADAPTER_VERSIONS:
+                with self.subTest(version=version):
+                    old_media = hermes_versions.render_media_helper(template, document, media, version)
+                    expected = old_media[:-len(entrypoint)] + scheduler.rstrip(b"\n") + b"\n\n" + entrypoint
+                    rendered = hermes_versions.render_scheduler_helper(template, document, media, scheduler, version)
+                    self.assertEqual(rendered, expected)
+                    for helper, key in (
+                        (hermes_versions.render_helper(template, version), (version, 1, ())),
+                        (hermes_versions.render_typed_helper(template, typed, version), (version, 2, ("text",))),
+                        (hermes_versions.render_document_helper(template, document, version),
+                         (version, 2, ("text", "document"))),
+                        (old_media, (version, 2, tuple(DIRECT_MEDIA))),
+                        (rendered, (version, 2, tuple(SCHEDULER))),
+                    ):
+                        self.assertEqual(hermes_versions.known_helper(template, typed, document, media, helper,
+                                                                    scheduler=scheduler), key)
+                    self.assertIsNone(hermes_versions.known_helper(template, typed, document, media, rendered + b"\n",
+                                                                  scheduler=scheduler))
+                    with self.assertRaises(ValueError):
+                        hermes_versions.render_scheduler_helper(template, document, media, scheduler + b"\n", version)
+
+    def test_installed_runtime_contains_the_exact_media_and_scheduler_extensions(self):
         root = Path(__file__).resolve().parents[2]
-        expected = (root / "deploy/gateway/standalone_media_adapter.py").read_bytes()
+        gateway = root / "deploy/gateway"
+        expected = (gateway / "standalone_media_adapter.py").read_bytes()
+        scheduler = (gateway / "standalone_scheduler_adapter.py").read_bytes()
+        lifecycle_patch = (gateway / "standalone_scheduler_patch.py").read_bytes()
         with tempfile.TemporaryDirectory() as temp, patch.object(Path, "home", return_value=Path(temp)):
             runtime, _launcher, _warnings = launcher.install_runtime(str(root))
             with patch.object(hermes, "__file__", str(runtime / "cli/hermes.py")):
                 modules = hermes._modules(None)
             self.assertEqual(modules["media"], expected)
+            self.assertEqual(modules["scheduler"], scheduler)
+            self.assertEqual((runtime / "standalone_scheduler_patch.py").read_bytes(), lifecycle_patch)
+            self.assertEqual(modules["standalone_scheduler_patch"].TARGET, "plugins/platforms/whatsapp/adapter.py")

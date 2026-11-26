@@ -647,7 +647,8 @@ function DefaultsForm({
               ? 'Standalone supports text and report documents.'
               : 'Standalone supports text replies only.'}{' '}
             {controls.inboundMedia && 'Direct media watching is available. '}
-            Hermes owns group admission; stickers, reactions and scheduled messages are unavailable.
+            {controls.scheduler && 'Portable self-reminders are available. '}
+            Hermes owns group admission; stickers, reactions and other scheduled messages are unavailable.
           </p>
         )}
         <DefaultsRow label="Reply length" {...row('replyLength')} busy={busy} onClear={clear('replyLength')}>

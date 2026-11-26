@@ -1,13 +1,17 @@
 """Attachment transaction and marker boundary tests; no real account or service."""
 
+import io
 import json
+import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from deploy.cli import hermes, install, operations
+from deploy.cli.result import CommandError
 from deploy.gateway import standalone_adapter
 
 
@@ -37,6 +41,42 @@ class MarkerTests(unittest.TestCase):
         self.assertFalse(standalone_adapter._text_fits("🙂" * 16385))
         for text in ("NO_REPLY", "valid\r MEDIA:fixture", "valid\u2028MEDIA:fixture"):
             self.assertIsNone(standalone_adapter._reply({"schemaVersion": 1, "disposition": "reply", "reply": text}))
+
+
+class SchedulerProfileProbeTests(unittest.TestCase):
+    def test_explicit_multiplex_default_refuses_scheduler_but_preserves_old_protocols(self):
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp)
+            plan = {"python": sys.executable, "profile": "default", "profileDir": home,
+                    "sourceDir": home, "hermesHome": home}
+            profiles = SimpleNamespace(get_profile_dir=lambda _: home, profile_exists=lambda _: True,
+                                       profile_is_standalone=lambda _: False, list_profile_names=lambda: ["default"])
+            status = SimpleNamespace(resolve_gateway_liveness=lambda **_: SimpleNamespace(
+                source="pid", running=False, probe_error=False), get_running_pid=lambda *_a, **_kw: None)
+            gateway = SimpleNamespace(named_profile_served_by_running_multiplexer=lambda _: False,
+                                      host_multiplexer_serving=lambda _: None)
+            explicit = SimpleNamespace(explicit_multiplex_flag=lambda _: True)
+
+            def run_probe(argv, *_args, **_kwargs):
+                output = io.StringIO()
+                with (patch.dict(sys.modules, {"hermes_cli.profiles": profiles, "gateway.status": status,
+                      "hermes_cli.gateway": gateway, "hermes_cli.gateway_multiplex_mode": explicit}),
+                      patch.object(sys, "argv", ["-c", *argv[3:]]), redirect_stdout(output)):
+                    exec(argv[2], {})
+                return SimpleNamespace(returncode=0, stdout=output.getvalue())
+
+            with patch.object(hermes, "_process", side_effect=run_probe):
+                # The exact same stopped single-profile installation is still valid for older helpers.
+                self.assertFalse(hermes._profile_status({**plan, "capabilities": []}))
+                self.assertFalse(hermes._profile_status({**plan, "capabilities": ["text", "document"]}))
+                with self.assertRaises(CommandError) as error:
+                    hermes._profile_status({**plan, "capabilities": list(hermes.hermes_versions.SCHEDULER_CAPABILITIES)})
+                self.assertEqual(error.exception.code, "hermes_unsupported")
+                for flag in (False, None):
+                    with self.subTest(explicit_multiplex=flag):
+                        explicit.explicit_multiplex_flag = lambda _: flag
+                        self.assertFalse(hermes._profile_status({**plan, "capabilities":
+                                                              list(hermes.hermes_versions.SCHEDULER_CAPABILITIES)}))
 
 
 class AttachmentTests(unittest.TestCase):

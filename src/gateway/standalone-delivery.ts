@@ -15,6 +15,7 @@ interface Binding {
 
 type Issue = Binding & { turnId: string; replayed: boolean }
 type Claim = Binding & { id: string }
+type ReminderDelivery = { reminderId: string; dueAt: string }
 export type DeliveryOutcome = 'confirmed' | 'failed' | 'unknown'
 export interface DeliveryDescriptor {
   id: string
@@ -68,7 +69,7 @@ export function createStandaloneDeliveryLedger(
       ? readStandaloneReport(db, options.filesDir, input)
       : null
 
-  function issue(input: Issue): DeliveryDescriptor[] {
+  function issueBound(input: Issue, reminder?: ReminderDelivery): DeliveryDescriptor[] {
     if (input.replayed || !current(input)) return []
     const at = now()
     return storage.tx((db) => {
@@ -77,9 +78,10 @@ export function createStandaloneDeliveryLedger(
       const inserted = db
         .prepare(
           `INSERT INTO standalone_delivery
-             (delivery_id, route_id, chat_id, inbound_mid, turn_id, position, kind, state, created_at, expires_at)
-           VALUES (?, ?, ?, ?, ?, 0, 'text', 'pending', ?, ?)
-           ON CONFLICT (turn_id, position) DO NOTHING`
+             (delivery_id, route_id, chat_id, inbound_mid, turn_id, position, kind, state, created_at, expires_at,
+              reminder_id, reminder_due_at)
+           VALUES (?, ?, ?, ?, ?, 0, 'text', 'pending', ?, ?, ?, ?)
+           ON CONFLICT DO NOTHING`
         )
         .run(
           id,
@@ -88,11 +90,13 @@ export function createStandaloneDeliveryLedger(
           input.mid,
           input.turnId,
           at.toISOString(),
-          new Date(at.getTime() + CLAIM_LIFETIME_MS).toISOString()
+          new Date(at.getTime() + CLAIM_LIFETIME_MS).toISOString(),
+          reminder?.reminderId ?? null,
+          reminder?.dueAt ?? null
         )
       if (inserted.changes !== 1) return []
       const items: DeliveryDescriptor[] = [{ id, kind: 'text' }]
-      const document = current(input) ? report(db, input) : null
+      const document = !reminder && current(input) ? report(db, input) : null
       if (document && current(input)) {
         const documentId = randomUUID()
         const recorded = db
@@ -119,7 +123,7 @@ export function createStandaloneDeliveryLedger(
     })
   }
 
-  function claim(input: Claim): ClaimedDelivery | null {
+  function claimBound(input: Claim, reminder?: ReminderDelivery): ClaimedDelivery | null {
     if (!current(input)) return null
     const at = now().toISOString()
     return storage.tx((db) => {
@@ -127,9 +131,18 @@ export function createStandaloneDeliveryLedger(
         .prepare(
           `SELECT turn_id, kind, file_sha256, report_receipt_id FROM standalone_delivery
            WHERE delivery_id = ? AND route_id = ? AND chat_id = ? AND inbound_mid = ?
-             AND state = 'pending' AND expires_at > ?`
+             AND state = 'pending' AND expires_at > ?
+             AND reminder_id IS ? AND reminder_due_at IS ?`
         )
-        .get(input.id, input.routeId, input.chatId, input.mid, at) as
+        .get(
+          input.id,
+          input.routeId,
+          input.chatId,
+          input.mid,
+          at,
+          reminder?.reminderId ?? null,
+          reminder?.dueAt ?? null
+        ) as
         | { turn_id: string; kind: 'text' | 'document'; file_sha256: string | null; report_receipt_id: string | null }
         | undefined
       if (!row) return null
@@ -153,16 +166,17 @@ export function createStandaloneDeliveryLedger(
     })
   }
 
-  function ack(input: Claim & { outcome: DeliveryOutcome }): boolean {
+  function ackBound(input: Claim & { outcome: DeliveryOutcome }, reminder?: ReminderDelivery): boolean {
     if (!current(input)) return false
     return storage.tx((db) => {
       const state = db
         .prepare(
           `SELECT state FROM standalone_delivery
-           WHERE delivery_id = ? AND route_id = ? AND chat_id = ? AND inbound_mid = ?`
+           WHERE delivery_id = ? AND route_id = ? AND chat_id = ? AND inbound_mid = ?
+             AND reminder_id IS ? AND reminder_due_at IS ?`
         )
         .pluck()
-        .get(input.id, input.routeId, input.chatId, input.mid)
+        .get(input.id, input.routeId, input.chatId, input.mid, reminder?.reminderId ?? null, reminder?.dueAt ?? null)
       if (state === input.outcome) return true
       if (state !== 'claimed' || !current(input)) return false
       return (
@@ -172,6 +186,23 @@ export function createStandaloneDeliveryLedger(
           )
           .run(input.outcome, now().toISOString(), input.id).changes === 1
       )
+    })
+  }
+
+  /** Poll may repeat only a still-claimable reminder, not a missing or pruned reply. */
+  function canClaimReminder(input: Claim & ReminderDelivery): boolean {
+    if (!current(input)) return false
+    return storage.read((db) => {
+      const turnId = db
+        .prepare(
+          `SELECT turn_id FROM standalone_delivery
+         WHERE delivery_id=? AND route_id=? AND chat_id=? AND inbound_mid=?
+           AND reminder_id=? AND reminder_due_at=? AND kind='text'
+           AND state='pending' AND expires_at>?`
+        )
+        .pluck()
+        .get(input.id, input.routeId, input.chatId, input.mid, input.reminderId, input.dueAt, now().toISOString())
+      return typeof turnId === 'string' && storedReply(db, { ...input, turnId }) !== null
     })
   }
 
@@ -186,5 +217,14 @@ export function createStandaloneDeliveryLedger(
     )
   }
 
-  return { issue, claim, ack, hasIssued }
+  return {
+    issue: (input: Issue) => issueBound(input),
+    claim: (input: Claim) => claimBound(input),
+    ack: (input: Claim & { outcome: DeliveryOutcome }) => ackBound(input),
+    issueReminder: (input: Issue & ReminderDelivery) => issueBound(input, input)[0] ?? null,
+    canClaimReminder,
+    claimReminder: (input: Claim & ReminderDelivery) => claimBound(input, input),
+    ackReminder: (input: Claim & ReminderDelivery & { outcome: DeliveryOutcome }) => ackBound(input, input),
+    hasIssued
+  }
 }

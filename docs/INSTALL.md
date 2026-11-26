@@ -138,6 +138,7 @@ pairing or live delivery. The supported messaging baseline is unchanged while
 | Stock Hermes           | Synthetic admission, identity, attach and native text dispatch against exact v0.23.2, v0.23.3 and v0.23.4; unknown or modified source refused.                                               |
 | Typed text and reports | Explicit v2 text and receipt-backed generated Markdown/PDF document delivery tested with a loopback fake bridge on all three pins. No real account or live send.                             |
 | Direct inbound media   | Explicit candidate route for PNG/JPEG, Ogg/MPEG audio or voice, MP4 and PDF, one bounded direct cache file and applied Gemini role. No live message or provider call.                        |
+| Core-owned reminders   | Explicit scheduler generation, self-reminders, native lifecycle polling and one-time claim/ack. No host cron or live delivery claim.                                                         |
 | Other transport        | Arbitrary outbound files/media; quoted or remote media; sticker and reaction delivery; location and polls remain unavailable.                                                                |
 | Host environment       | Remote Docker refuses. Rootless, Docker Desktop, WSL2, macOS and other OS/CPU rows remain unsupported. The isolated X11 desktop result below is not an actual owner-desktop claim.           |
 
@@ -158,9 +159,14 @@ Only apply after the selected independent profile is stopped and the dry-run is 
 [bounded direct-media contract](trd/media-pipelines.md#standalone-direct-media) and requires the
 applied optional Gemini role. This is synthetic evidence, not an expansion of the supported baseline.
 
+Append `,scheduler` to the direct-media capability list to select the separate core-owned self-reminder candidate.
+It may run with an applied main model without a media key; it uses the selected native adapter, not host cron.
+Reminders bind to their exact route/profile; reattachment to another route leaves old reminders dormant.
+See the [standalone reminder contract](trd/system.md#standalone-reminders).
+
 Host owner service, direct owner sends, file browsing and the subscription runner remain legacy-only. Library,
-lesson and market integrations, MCP, research jobs and scheduled messages are not enabled in standalone.
-Additional media and core-owned routines need independently negotiated capability, configuration and
+lesson and market integrations, MCP, research jobs and arbitrary scheduled routines are not enabled in standalone.
+Additional media and other routines need independently negotiated capability, configuration and
 delivery authority before they can be enabled. See the [inbound media evaluation](trd/media-pipelines.md#standalone-inbound-media-evaluation)
 and [integration decisions](trd/site.md#portable-integration-decisions). Unsupported owner routes refuse rather
 than contacting the host.

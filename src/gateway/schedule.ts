@@ -34,7 +34,8 @@ export function scheduleEntries(db: Db): ScheduleEntry[] {
     .prepare(
       `SELECT reminder.reminder_id AS id, chat.wa_id AS chat, reminder.due_at AS due
        FROM reminder JOIN chat ON chat.chat_id = reminder.chat_id
-       WHERE reminder.state = 'active' ORDER BY reminder.due_at, reminder.reminder_id`
+       WHERE reminder.state = 'active' AND reminder.standalone_route_id IS NULL
+       ORDER BY reminder.due_at, reminder.reminder_id`
     )
     .all() as { id: string; chat: string; due: string }[]
   const reminders = rows.map((row) => ({

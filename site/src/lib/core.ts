@@ -75,7 +75,9 @@ export interface StandaloneCapabilities {
   inboundMedia?: boolean
 }
 
-export type StandaloneControls = Required<Pick<StandaloneCapabilities, 'reportDocuments' | 'inboundMedia'>>
+export type StandaloneControls = Required<
+  Pick<StandaloneCapabilities, 'reportDocuments' | 'inboundMedia' | 'scheduler'>
+>
 
 export interface CoreHealth {
   status: 'ready' | 'starting'

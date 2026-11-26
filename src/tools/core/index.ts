@@ -7,7 +7,7 @@ import { type FeedbackToolOptions, feedbackLinkTool } from './feedback.js'
 import { type IdentifyToolOptions, identifyImageTool } from './identify.js'
 import { forgetTool, historySearchTool, lingoNoteTool, noteTool, recallTool } from './memory.js'
 import { setMuteTool } from './mute.js'
-import { reminderCancelTool, reminderListTool, reminderSetTool } from './reminders.js'
+import { type ReminderScopeFor, reminderCancelTool, reminderListTool, reminderSetTool } from './reminders.js'
 import { makeReportTool } from './report.js'
 import { reportPdfTool, researchStartTool } from './research.js'
 import { readPageTool, readPostTool, sendPhotoTool, webSearchTool } from './web.js'
@@ -40,6 +40,7 @@ export interface CoreToolOptions {
   identify?: IdentifyToolOptions
   standaloneTextOnly?: boolean
   standaloneReportPermission?: (context: TurnContext) => boolean
+  standaloneReminderScope?: ReminderScopeFor
 }
 
 const DEFAULT_OPTIONS: CoreToolOptions = {
@@ -66,6 +67,12 @@ export function registerCoreTools(
     registry.register(reminderSetTool(storage, ports, logger))
     registry.register(reminderListTool(storage))
     registry.register(reminderCancelTool(storage, ports, logger))
+  } else if (options.standaloneReminderScope) {
+    const scopeFor = options.standaloneReminderScope
+    const permission = (context: TurnContext) => scopeFor(context) !== null
+    registry.register({ ...reminderSetTool(storage, ports, logger, scopeFor), permission })
+    registry.register({ ...reminderListTool(storage, scopeFor), permission })
+    registry.register({ ...reminderCancelTool(storage, ports, logger, scopeFor), permission })
   }
   registry.register(setMuteTool(storage))
   if (!options.standaloneTextOnly) {

@@ -9,6 +9,7 @@ export interface MemoryPortOptions {
   judge?: MemoryJudge
   verifyThreshold: number
   timeoutMs: number
+  excludeAbandonedPortable?: boolean
 }
 
 export function createMemoryPort(options: MemoryPortOptions): MemoryPort {
@@ -22,7 +23,7 @@ export function createMemoryPort(options: MemoryPortOptions): MemoryPort {
     },
 
     history(chatId, query, limit) {
-      return searchHistory(options.storage, chatId, query, limit)
+      return searchHistory(options.storage, chatId, query, limit, options.excludeAbandonedPortable)
     },
 
     async checkNote(input, signal) {

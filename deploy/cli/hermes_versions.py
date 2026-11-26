@@ -11,13 +11,15 @@ SOURCE_REVISIONS = {
 }
 ADAPTER_VERSIONS = tuple(SOURCE_REVISIONS.values())
 DIRECT_MEDIA_CAPABILITIES = ("text", "document", "receive-image", "receive-audio", "receive-video", "receive-pdf")
-_CAPABILITY_SETS = (("text",), ("text", "document"), DIRECT_MEDIA_CAPABILITIES)
+SCHEDULER_CAPABILITIES = DIRECT_MEDIA_CAPABILITIES + ("scheduler",)
+_CAPABILITY_SETS = (("text",), ("text", "document"), DIRECT_MEDIA_CAPABILITIES, SCHEDULER_CAPABILITIES)
 CAPABILITY_OPTIONS = tuple(",".join(capabilities) for capabilities in _CAPABILITY_SETS)
 _BASELINE_LINE = b'ADAPTER_VERSION = "hermes-v0.23.4"\n'
 _BASELINE_SHA256 = "a530e9ca079c55c08e973f35ccf7138ba044ecb959d19eff15c593f4dca018fe"
 _TYPED_SHA256 = "e19a6eced1ed0d30951552dc9bb05256ece555de18f60e5ea9e21534990d335e"
 _DOCUMENT_SHA256 = "70fe14975ab2f02102943c7f25bfe3439cea643581c3c16f245b4bd167467615"
 _MEDIA_SHA256 = "3e6bd1f78a4d3d126accae4372793ba5310222d6d28a32658e452e142ba179ab"
+_SCHEDULER_SHA256 = "d523d81f6c61949a432ee766f0fc3e4928c4f5c9207fd246e6330e0393af672f"
 _MAIN = b'if __name__ == "__main__":\n    sys.exit(main())\n'
 _ROUTE_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 
@@ -72,8 +74,16 @@ def render_media_helper(template: bytes, document: bytes, media: bytes, version:
     return original[:-len(_MAIN)] + media.rstrip(b"\n") + b"\n\n" + _MAIN
 
 
+def render_scheduler_helper(template: bytes, document: bytes, media: bytes, scheduler: bytes, version: str) -> bytes:
+    """Extend the exact direct-media helper with a separately pinned scheduler extension."""
+    original = render_media_helper(template, document, media, version)
+    if hashlib.sha256(scheduler).hexdigest() != _SCHEDULER_SHA256 or not original.endswith(_MAIN):
+        raise ValueError("unfamiliar scheduler Hermes helper")
+    return original[:-len(_MAIN)] + scheduler.rstrip(b"\n") + b"\n\n" + _MAIN
+
+
 def known_helper(template: bytes, typed: bytes, document: bytes, media: bytes,
-                 current: bytes) -> tuple[str, int, tuple[str, ...]] | None:
+                 current: bytes, *, scheduler: bytes | None = None) -> tuple[str, int, tuple[str, ...]] | None:
     for version in ADAPTER_VERSIONS:
         if render_helper(template, version) == current:
             return version, 1, ()
@@ -83,4 +93,6 @@ def known_helper(template: bytes, typed: bytes, document: bytes, media: bytes,
             return version, 2, ("text", "document")
         if render_media_helper(template, document, media, version) == current:
             return version, 2, DIRECT_MEDIA_CAPABILITIES
+        if scheduler is not None and render_scheduler_helper(template, document, media, scheduler, version) == current:
+            return version, 2, SCHEDULER_CAPABILITIES
     return None

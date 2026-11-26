@@ -20,6 +20,7 @@ import { withAttachments } from './format/attachments.js'
 import { createReplyCleaner } from './format/clean.js'
 import { createFooterLinks } from './format/short-links.js'
 import { writeChatFlags } from './gateway/chat-flags.js'
+import { discardInterruptedReminders } from './gateway/reminder-scope.js'
 import { writeScheduleFile } from './gateway/schedule.js'
 import { createGatewayServer } from './gateway/server.js'
 import { createStandaloneGateway } from './gateway/standalone.js'
@@ -230,6 +231,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   })
   const closers: (() => void | Promise<void>)[] = []
   try {
+    if (standalone) discardInterruptedReminders(storage, now)
     const standaloneOwnerToken = standalone ? ensureStandaloneOwnerToken(paths.root) : undefined
     const standaloneGateway = standalone ? createStandaloneGateway(paths.root, storage, now) : undefined
     for (const turnId of started.recovery.interruptedTurns) alerter.raise('turn_interrupted', { turnId })
@@ -436,8 +438,12 @@ export async function createApp(options: AppOptions): Promise<App> {
     // Tools: one registry. The prompt text about tools and the cleaner's name list come from it.
     // The gateway's schedule fires reminders from the wanted-jobs file (docs/trd/system.md#scheduled-turns). It is
     // written at start-up, which is the reminders' start-up reconciliation, and after every change.
-    const schedule = { sync: () => void writeScheduleFile(storage, paths.root, now) }
-    logger.info('schedule.written', { reminders: writeScheduleFile(storage, paths.root, now) })
+    const schedule = {
+      sync: () => {
+        if (!standalone) writeScheduleFile(storage, paths.root, now)
+      }
+    }
+    if (!standalone) logger.info('schedule.written', { reminders: writeScheduleFile(storage, paths.root, now) })
     writeChatFlags(storage, paths.root, packs)
     const registry = createToolRegistry({ storage, config, logger: logger.child({ module: 'tools' }), redactor, now })
     const exaKey = env['EXA_API_KEY']
@@ -587,7 +593,8 @@ export async function createApp(options: AppOptions): Promise<App> {
           storage,
           judge: memoryJudge,
           verifyThreshold: config.judge.memoryVerify,
-          timeoutMs: config.judge.timeoutMs
+          timeoutMs: config.judge.timeoutMs,
+          excludeAbandonedPortable: standalone
         }),
         // The plain reader refuses private addresses, also after a redirect; the Exa reader falls back to it.
         page,
@@ -605,7 +612,12 @@ export async function createApp(options: AppOptions): Promise<App> {
         ...(standaloneGateway
           ? {
               standaloneReportPermission: (context) =>
-                standaloneGateway.canDeliverDocument(context.typedRouteId, context.chat.chatId)
+                context.delivery.kind === 'reply' &&
+                standaloneGateway.canDeliverDocument(context.typedRouteId, context.chat.chatId),
+              standaloneReminderScope: (context) =>
+                context.delivery.kind === 'reply'
+                  ? standaloneGateway.reminderScopeFor(context.typedRouteId, context.chat.chatId)
+                  : null
             }
           : {}),
         ...(serpKey
@@ -704,7 +716,9 @@ export async function createApp(options: AppOptions): Promise<App> {
       ...(standaloneGateway
         ? {
             mayReadPortableMedia: (routeId, chatId) =>
-              mediaReadyNow() && standaloneGateway.canReceiveMedia(routeId, chatId)
+              mediaReadyNow() && standaloneGateway.canReceiveMedia(routeId, chatId),
+            mayRunPortableReminder: (scope, chatId) =>
+              activationCommitted && Boolean(modelBoot?.configured) && standaloneGateway.mayRunReminder(scope, chatId)
           }
         : {}),
       media: createTurnMedia({
