@@ -58061,7 +58061,7 @@
       "node_kind": "heading",
       "norm_label": "how media reaches the core",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L164"
+      "source_location": "L163"
     },
     {
       "id": "docs_trd_media_pipelines_media_failures",
@@ -58073,7 +58073,7 @@
       "node_kind": "heading",
       "norm_label": "media failures",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L386"
+      "source_location": "L385"
     },
     {
       "id": "docs_trd_media_pipelines_media_limits",
@@ -58085,7 +58085,7 @@
       "node_kind": "heading",
       "norm_label": "media limits",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L343"
+      "source_location": "L342"
     },
     {
       "id": "docs_trd_media_pipelines_media_records",
@@ -58097,7 +58097,7 @@
       "node_kind": "heading",
       "norm_label": "media records",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L365"
+      "source_location": "L364"
     },
     {
       "id": "docs_trd_media_pipelines_media_watching",
@@ -58121,7 +58121,7 @@
       "node_kind": "heading",
       "norm_label": "post links",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L294"
+      "source_location": "L293"
     },
     {
       "id": "docs_trd_media_pipelines_quoted_media",
@@ -58133,7 +58133,7 @@
       "node_kind": "heading",
       "norm_label": "quoted media",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L188"
+      "source_location": "L187"
     },
     {
       "id": "docs_trd_models_failures",
@@ -58957,7 +58957,7 @@
       "node_kind": "heading",
       "norm_label": "metadata and video evidence",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L537"
+      "source_location": "L536"
     },
     {
       "id": "docs_trd_media_pipelines_platform_mirrors_and_readers",
@@ -58969,7 +58969,7 @@
       "node_kind": "heading",
       "norm_label": "platform mirrors and readers",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L554"
+      "source_location": "L553"
     },
     {
       "id": "docs_trd_media_pipelines_post_result_and_failure_mapping",
@@ -58981,7 +58981,7 @@
       "node_kind": "heading",
       "norm_label": "post result and failure mapping",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L673"
+      "source_location": "L672"
     },
     {
       "id": "docs_trd_media_pipelines_post_urls_and_source_checks",
@@ -58993,7 +58993,7 @@
       "node_kind": "heading",
       "norm_label": "post urls and source checks",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L449"
+      "source_location": "L448"
     },
     {
       "id": "docs_trd_media_pipelines_reader_chains",
@@ -59005,7 +59005,7 @@
       "node_kind": "heading",
       "norm_label": "reader chains",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L481"
+      "source_location": "L480"
     },
     {
       "id": "docs_trd_media_pipelines_redirects_and_safe_fetching",
@@ -59017,7 +59017,7 @@
       "node_kind": "heading",
       "norm_label": "redirects and safe fetching",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L514"
+      "source_location": "L513"
     },
     {
       "id": "docs_trd_media_pipelines_reply_readers",
@@ -59029,7 +59029,7 @@
       "node_kind": "heading",
       "norm_label": "reply readers",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L657"
+      "source_location": "L656"
     },
     {
       "id": "docs_trd_media_pipelines_shared_lookup",
@@ -59041,7 +59041,7 @@
       "node_kind": "heading",
       "norm_label": "shared lookup",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L423"
+      "source_location": "L422"
     },
     {
       "id": "docs_trd_media_pipelines_social_post_and_reply_readers",
@@ -59053,7 +59053,7 @@
       "node_kind": "heading",
       "norm_label": "social post and reply readers",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L421"
+      "source_location": "L420"
     },
     {
       "id": "docs_trd_tools_social_post_reader",
@@ -74655,7 +74655,7 @@
       "node_kind": "heading",
       "norm_label": "rationale",
       "source_file": "docs/decisions/0061-open-youtube-and-social-post-links-at-intake.md",
-      "source_location": "L12"
+      "source_location": "L11"
     },
     {
       "id": "docs_decisions_0061_open_youtube_and_social_post_links_at_intake_source",
@@ -74667,7 +74667,7 @@
       "node_kind": "heading",
       "norm_label": "source",
       "source_file": "docs/decisions/0061-open-youtube-and-social-post-links-at-intake.md",
-      "source_location": "L17"
+      "source_location": "L16"
     },
     {
       "id": "docs_decisions_0086_read_instagram_posts_from_page_data_before_yt_dlp",
@@ -78941,7 +78941,7 @@
       "node_kind": "heading",
       "norm_label": "autofetch",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L695"
+      "source_location": "L694"
     },
     {
       "id": "docs_trd_media_pipelines_autofetch_rules",
@@ -78953,7 +78953,7 @@
       "node_kind": "heading",
       "norm_label": "autofetch rules",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L731"
+      "source_location": "L730"
     },
     {
       "id": "docs_trd_media_pipelines_configuration",
@@ -78965,7 +78965,7 @@
       "node_kind": "heading",
       "norm_label": "configuration",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L771"
+      "source_location": "L770"
     },
     {
       "id": "docs_trd_media_pipelines_contract_map",
@@ -78989,7 +78989,7 @@
       "node_kind": "heading",
       "norm_label": "deadlines",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L763"
+      "source_location": "L762"
     },
     {
       "id": "docs_trd_media_pipelines_implementation_and_tests",
@@ -79001,7 +79001,7 @@
       "node_kind": "heading",
       "norm_label": "implementation and tests",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L802"
+      "source_location": "L801"
     },
     {
       "id": "docs_trd_media_pipelines_media_pipelines",
@@ -79025,7 +79025,7 @@
       "node_kind": "heading",
       "norm_label": "opt-in and hand-off",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L714"
+      "source_location": "L713"
     },
     {
       "id": "docs_trd_media_pipelines_per_chat_gates",
@@ -79037,7 +79037,7 @@
       "node_kind": "heading",
       "norm_label": "per-chat gates",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L398"
+      "source_location": "L397"
     },
     {
       "id": "docs_trd_media_pipelines_selection_and_eligibility",
@@ -79049,7 +79049,7 @@
       "node_kind": "heading",
       "norm_label": "selection and eligibility",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L697"
+      "source_location": "L696"
     },
     {
       "id": "docs_trd_media_pipelines_standalone_direct_media",
@@ -80451,7 +80451,7 @@
       "node_kind": "heading",
       "norm_label": "delivery steps",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L721"
+      "source_location": "L720"
     },
     {
       "id": "docs_trd_system_autofetch",
@@ -86585,7 +86585,7 @@
       "node_kind": "heading",
       "norm_label": "coverage and evidence",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L271"
+      "source_location": "L270"
     },
     {
       "id": "docs_trd_media_pipelines_youtube_links",
@@ -86597,7 +86597,7 @@
       "node_kind": "heading",
       "norm_label": "youtube links",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L205"
+      "source_location": "L204"
     },
     {
       "id": "docs_decisions_0167_require_the_pull_request_template_header",
@@ -89682,7 +89682,7 @@
       "node_kind": "heading",
       "norm_label": "watch deadline and recovery",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L226"
+      "source_location": "L225"
     },
     {
       "id": "src_tools_owner_watch_config",
@@ -278048,7 +278048,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/decisions/0061-open-youtube-and-social-post-links-at-intake.md",
-      "source_location": "L12",
+      "source_location": "L11",
       "weight": 1.0
     },
     {
@@ -278059,7 +278059,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/decisions/0061-open-youtube-and-social-post-links-at-intake.md",
-      "source_location": "L17",
+      "source_location": "L16",
       "weight": 1.0
     },
     {
@@ -286661,7 +286661,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L697",
+      "source_location": "L696",
       "weight": 1.0
     },
     {
@@ -286672,7 +286672,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L714",
+      "source_location": "L713",
       "weight": 1.0
     },
     {
@@ -286683,7 +286683,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L721",
+      "source_location": "L720",
       "weight": 1.0
     },
     {
@@ -286694,7 +286694,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L731",
+      "source_location": "L730",
       "weight": 1.0
     },
     {
@@ -286727,7 +286727,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L398",
+      "source_location": "L397",
       "weight": 1.0
     },
     {
@@ -286738,7 +286738,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L421",
+      "source_location": "L420",
       "weight": 1.0
     },
     {
@@ -286760,7 +286760,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L695",
+      "source_location": "L694",
       "weight": 1.0
     },
     {
@@ -286782,7 +286782,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L763",
+      "source_location": "L762",
       "weight": 1.0
     },
     {
@@ -286793,7 +286793,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L771",
+      "source_location": "L770",
       "weight": 1.0
     },
     {
@@ -286804,7 +286804,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L802",
+      "source_location": "L801",
       "weight": 1.0
     },
     {
@@ -286826,7 +286826,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L164",
+      "source_location": "L163",
       "weight": 1.0
     },
     {
@@ -286837,7 +286837,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L188",
+      "source_location": "L187",
       "weight": 1.0
     },
     {
@@ -286848,7 +286848,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L205",
+      "source_location": "L204",
       "weight": 1.0
     },
     {
@@ -286859,7 +286859,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L294",
+      "source_location": "L293",
       "weight": 1.0
     },
     {
@@ -286870,7 +286870,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L343",
+      "source_location": "L342",
       "weight": 1.0
     },
     {
@@ -286881,7 +286881,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L365",
+      "source_location": "L364",
       "weight": 1.0
     },
     {
@@ -286892,7 +286892,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L386",
+      "source_location": "L385",
       "weight": 1.0
     },
     {
@@ -286903,7 +286903,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L423",
+      "source_location": "L422",
       "weight": 1.0
     },
     {
@@ -286914,7 +286914,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L449",
+      "source_location": "L448",
       "weight": 1.0
     },
     {
@@ -286925,7 +286925,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L481",
+      "source_location": "L480",
       "weight": 1.0
     },
     {
@@ -286936,7 +286936,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L514",
+      "source_location": "L513",
       "weight": 1.0
     },
     {
@@ -286947,7 +286947,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L537",
+      "source_location": "L536",
       "weight": 1.0
     },
     {
@@ -286958,7 +286958,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L554",
+      "source_location": "L553",
       "weight": 1.0
     },
     {
@@ -286969,7 +286969,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L657",
+      "source_location": "L656",
       "weight": 1.0
     },
     {
@@ -286980,7 +286980,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L673",
+      "source_location": "L672",
       "weight": 1.0
     },
     {
@@ -286991,7 +286991,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L226",
+      "source_location": "L225",
       "weight": 1.0
     },
     {
@@ -287002,7 +287002,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L271",
+      "source_location": "L270",
       "weight": 1.0
     },
     {
@@ -344368,7 +344368,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L198",
+      "source_location": "L197",
       "weight": 1.0
     },
     {
@@ -349236,7 +349236,7 @@
       "confidence_score": 0.95,
       "context": "LinkSegmentEvidence",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L274",
+      "source_location": "L273",
       "weight": 1.0
     },
     {
@@ -349272,7 +349272,7 @@
       "confidence_score": 0.95,
       "context": "ModelError",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L245",
+      "source_location": "L244",
       "weight": 1.0
     },
     {
@@ -349356,7 +349356,7 @@
       "confidence_score": 0.95,
       "context": "ReplyReader",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L659",
+      "source_location": "L658",
       "weight": 1.0
     },
     {
@@ -349488,7 +349488,7 @@
       "confidence_score": 0.95,
       "context": "author",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L678",
+      "source_location": "L677",
       "weight": 1.0
     },
     {
@@ -349548,7 +349548,7 @@
       "confidence_score": 0.95,
       "context": "cancelled",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L376",
+      "source_location": "L375",
       "weight": 1.0
     },
     {
@@ -349608,7 +349608,7 @@
       "confidence_score": 0.95,
       "context": "container",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L779",
+      "source_location": "L778",
       "weight": 1.0
     },
     {
@@ -349824,7 +349824,7 @@
       "confidence_score": 0.95,
       "context": "failed",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L741",
+      "source_location": "L740",
       "weight": 1.0
     },
     {
@@ -349836,7 +349836,7 @@
       "confidence_score": 0.95,
       "context": "failed",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L375",
+      "source_location": "L374",
       "weight": 1.0
     },
     {
@@ -349920,7 +349920,7 @@
       "confidence_score": 0.95,
       "context": "failure",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L370",
+      "source_location": "L369",
       "weight": 1.0
     },
     {
@@ -349932,7 +349932,7 @@
       "confidence_score": 0.95,
       "context": "failure",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L153",
+      "source_location": "L152",
       "weight": 1.0
     },
     {
@@ -350124,7 +350124,7 @@
       "confidence_score": 0.95,
       "context": "imageUrl",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L502",
+      "source_location": "L501",
       "weight": 1.0
     },
     {
@@ -350484,7 +350484,7 @@
       "confidence_score": 0.95,
       "context": "parse",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L245",
+      "source_location": "L244",
       "weight": 1.0
     },
     {
@@ -350520,7 +350520,7 @@
       "confidence_score": 0.95,
       "context": "parseSocialPostUrl",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L451",
+      "source_location": "L450",
       "weight": 1.0
     },
     {
@@ -350592,7 +350592,7 @@
       "confidence_score": 0.95,
       "context": "plan",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L274",
+      "source_location": "L273",
       "weight": 1.0
     },
     {
@@ -350604,7 +350604,7 @@
       "confidence_score": 0.95,
       "context": "planLinkSegments",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L218",
+      "source_location": "L217",
       "weight": 1.0
     },
     {
@@ -350808,7 +350808,7 @@
       "confidence_score": 0.95,
       "context": "replies",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L680",
+      "source_location": "L679",
       "weight": 1.0
     },
     {
@@ -350904,7 +350904,7 @@
       "confidence_score": 0.95,
       "context": "send_image_file",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L729",
+      "source_location": "L728",
       "weight": 1.0
     },
     {
@@ -350928,7 +350928,7 @@
       "confidence_score": 0.95,
       "context": "send_video",
       "source_file": "docs/trd/media-pipelines.md",
-      "source_location": "L729",
+      "source_location": "L728",
       "weight": 1.0
     },
     {
@@ -352284,5 +352284,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "a68fd05e392bdecc0463d5756745a23f28f1e238"
+  "built_at_commit": "c162ffced35032d958ba62b50e29e95c5bb4780a"
 }
