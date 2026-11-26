@@ -80,8 +80,6 @@ The findings object is the only thing the model writes for a report. Code render
 The type lives in `src/render/types.ts` as `ReportDocument`, and its zod schema beside it. Research fills it; the
 renderer reads it. `NoteDocument` (see Documents) is the second kind; a future kind adds a new type beside them rather than changing either.
 
-**Not built yet:** the code defines only `ReportDocument`; `NoteDocument` is absent (src/render/types.ts:11-37).
-
 ## Delivery
 
 - **Text.** The `research` turn is an ordinary model turn in the chat's character. The findings enter as one
@@ -121,9 +119,7 @@ While a job's offer is open, the next message in that chat from the requester is
    (`MEDIA:` line). The file is stored through `putFile`.
 6. `/report` is no longer this tool's command; it is kept for the member feedback form (#125).
 
-**Not built yet:** `make_report` still answers `/report` as a skill command and always writes a `.md` file; the
-`/doc` command, the format argument, and the `note.typ` template are absent (src/tools/core/report.ts:33;
-src/render/render.ts:72-85). [Tools](tools.md#tool-set) owns the command list.
+[Tools](tools.md#tool-set) owns the command list.
 
 ## The Renderer
 
@@ -141,7 +137,7 @@ src/render/render.ts:72-85). [Tools](tools.md#tool-set) owns the command list.
 - **Profile.** `ReportFormat`: page size (`A4` or `Letter`), accent colour, body font size (9 to 12 pt), a cover page
   on or off, a sources appendix on or off, and an optional header line. `config.yml` under `render.report` defaults
   to `A4`, `#2f6fde`, 10.5 pt, cover on, sources appendix on, and an empty header. The setting key `report.format`
-  is reserved for a per-chat override that the owner site will edit.
+  overrides `render.report` for one chat; `/doc` and the research offer read it, and the owner site does not edit it.
 - **Output.** At most 30 pages and 5 MB; past either, the render fails and the turn says so in the pack's error line.
   The PDF is stored through `putFile` in the `file` table with the files retention, named from the title.
 - **Text safety.** The template prints every field as plain text. No field is evaluated as Typst markup, so a page's
