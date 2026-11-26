@@ -6,7 +6,7 @@
 
 ## Decision
 
-Web search uses Exa, one search call with highlights, as rokabot does. `search.provider: exa`, key `EXA_API_KEY`.
+Web search uses one Exa search call with highlights. `search.provider: exa`, key `EXA_API_KEY`.
 
 ## Rationale
 

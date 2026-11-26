@@ -11,7 +11,7 @@ Roleplay beats are drawn by code at per-mood odds.
 
 ## Rationale
 
-Ported from rokabot: a short fixed list made faces repeat, and beats left to the prompt were rare. WhatsApp has no
+A short fixed list made faces repeat, and beats left to the prompt were rare. WhatsApp has no
 escape character, so a lookalike is the only guard.
 
 ## Source

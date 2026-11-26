@@ -222,8 +222,8 @@ cleaning chain and the bubble splitter.
 - `read_page` reads through Exa's contents endpoint, with a live crawl when Exa has no copy, so a page that refuses
   plain fetches (such as openai.com, measured 403) still reads. A plain fetch is the fallback when Exa is off or fails.
   The text is clipped to `search.pageMaxChars` and labelled untrusted.
-- `read_post` is ported from rokabot's social reader: X, Threads, Bluesky, Instagram, TikTok, Reddit, Bilibili and
-  YouTube, with the post's text, author, most-liked replies where the site gives them, and its pictures or video. A
+- `read_post` reads posts from X, Threads, Bluesky, Instagram, TikTok, Reddit, Bilibili and YouTube. It returns the
+  post's text, author, most-liked replies where available, and pictures or video. A
   YouTube video, or a post's video, is watched by the media model as in [Models](models.md#media-watching).
 - `make_report` writes the document. Sending it to the chat is a separate delivery step with its own receipt.
 - In standalone, `make_report` is offered and executable only while `features.reports` is enabled and the

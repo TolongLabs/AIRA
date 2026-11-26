@@ -6,13 +6,12 @@
 
 ## Decision
 
-YouTube links and social post links are opened at intake, one per turn, through readers ported from rokabot; YouTube
-goes to Gemini as a URL.
+At intake, the readers open one YouTube or social post link per turn. Gemini receives a YouTube link as a URL.
 
 ## Rationale
 
-Measured: a YouTube link got only its title. Gemini watched the same video from its URL in 5 s; rokabot's readers are
-proven in production.
+A link lookup returned only the YouTube video’s title. Gemini watched the same video from its URL in 5 s. The
+readers had already been used in production.
 
 ## Source
 

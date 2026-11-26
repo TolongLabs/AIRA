@@ -151,8 +151,8 @@ row, so code can tell a face from a bracketed word. The validator checks each fa
 
 **Beats.** A pack lists `beats`, each a name and one line of guidance, such as a roleplay action in italics or a
 dramatic overreaction. A mood gives each beat it allows odds between 0 and 1. Code rolls each beat once per reply
-with the turn's seed, and a drawn beat adds its line to block 6. Leaving beats to the prompt alone made a model
-use them rarely (rokabot measured 8 to 11 per cent of replies on Haiku).
+with the turn's seed, and a drawn beat adds its line to block 6. In an earlier Haiku evaluation, leaving beats to
+the prompt alone produced them in 8 to 11 per cent of replies.
 
 ## Cleaning Chain
 
@@ -203,8 +203,8 @@ in-character error line. The cleaner records `fourth_wall`. The failure stores o
 
 ## Tool Footer
 
-A reply from a turn that ran a tool ends with a footer, in the way rokabot does on Discord: one line saying what was
-done and, for research, the sources used in the reply. Tool labels use italics.
+When a turn uses a tool, the reply ends with a footer. One line says what the tool did. For research, the footer
+also lists the sources used in the reply. Tool labels use italics.
 
 - The first line lists each footer kind, once, in order: first what intake read (`media_video`, `media_youtube`,
   `media_image`, `media_audio`, `media_document`, `media_post`), then each tool that ran with outcome `ok`, in call

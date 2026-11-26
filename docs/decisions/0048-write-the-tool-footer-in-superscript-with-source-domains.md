@@ -11,7 +11,7 @@ setting with a per-chat emoji. This replaces the italic footer.
 
 ## Rationale
 
-The owner wants rokabot's small text. WhatsApp has no small text or link text, so superscript letters stand in, and
+The owner wants the footer to read as small text. WhatsApp has no small text or link text, so superscript letters stand in, and
 domains stay plain to stay tappable.
 
 ## Source

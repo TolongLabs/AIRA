@@ -142,8 +142,7 @@ media folders.
    4 of its photos, as [Post Links](#post-links) sets out; with none of them read, its one picture, then its text
    only. A failed
    link lookup adds an unreadable note with the platform and reason `link`; neither the note nor any log carries the
-   URL. The result enters block 4 like a file's description, and failures follow rule 8. Ported from rokabot's media
-   and social readers.
+   URL. The result enters block 4 like a file's description, and failures follow rule 8.
 8. **Failure.** A file that is refused, over a limit, of an unsupported type, unread because media is off, or whose
    read fails or times out, does not end the turn. Block 4 gets a short note naming the kind of file and why, and the
    pack's `unreadableMedia` line for link-only failures. For direct attachments the model briefly acknowledges
