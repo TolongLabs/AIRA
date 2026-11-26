@@ -30,12 +30,21 @@ async function start(root: string, restart = vi.fn()) {
     value.storage.minFreeMb = 2
     value.storage.criticalFreeMb = 1
     value.gateway.hostDataDir = '/host/fixture'
+    value.media.watcher.model = 'ambient-fixture-model'
   })
   const main = queueModel([{ text: 'fixture response' }])
+  const watch = vi.fn(async () => {
+    throw new Error('unexpected media request')
+  })
   const app = await createApp({
     config,
-    env: { AIRA_INSTALL_MODE: 'standalone', LLM_API_KEY: 'ignored-legacy-key' },
+    env: {
+      AIRA_INSTALL_MODE: 'standalone',
+      LLM_API_KEY: 'ignored-legacy-key',
+      MEDIA_WATCHER_API_KEY: 'ignored-media-key'
+    },
     clients: { main },
+    mediaWatcher: { watch },
     onActivationRequested: restart,
     logger: createLogger({ level: 'error', module: 'test', sink: () => undefined })
   })
@@ -51,10 +60,50 @@ async function start(root: string, restart = vi.fn()) {
     })
     return { status: result.status, body: await result.json() }
   }
-  return { app, request, main, restart, gateway: `http://127.0.0.1:${gateway.port}` }
+  return { app, request, main, restart, watch, gateway: `http://127.0.0.1:${gateway.port}` }
 }
 
 describe('standalone model activation through the protected listener', () => {
+  it('exposes the optional media role only after the exact configured revision is applied', async () => {
+    const root = tmpDir('aira-media-activation-')
+    const cold = await start(root)
+    expect((await cold.request('health')).body).toMatchObject({ roles: { media: { configured: false } } })
+    const saved = await cold.request('standalone-config', 'PUT', {
+      expectedRevision: null,
+      main: candidate,
+      fallback: null,
+      media: { provider: 'gemini', model: 'fixture-model', apiKey: 'synthetic-media-key' }
+    })
+    expect(saved.status).toBe(200)
+    expect(JSON.stringify(saved.body)).not.toContain('synthetic-media-key')
+    const revision = z.object({ savedRevision: z.string() }).parse(saved.body).savedRevision
+    expect((await cold.request('health')).body).toMatchObject({ roles: { media: { configured: false } } })
+    expect((await cold.request('standalone-config/activate', 'POST', { expectedRevision: revision })).status).toBe(202)
+    await cold.app.close()
+    const boot = await start(root)
+    expect((await boot.request('health')).body).toMatchObject({ roles: { media: { configured: false } } })
+    boot.app.completeStartup()
+    expect((await boot.request('health')).body).toMatchObject({ roles: { media: { configured: true } } })
+    const cleared = await boot.request('standalone-config', 'PUT', {
+      expectedRevision: revision,
+      main: candidate,
+      fallback: null,
+      media: { provider: 'gemini', model: 'fixture-model', apiKey: null }
+    })
+    expect(cleared.status).toBe(200)
+    const next = z.object({ savedRevision: z.string() }).parse(cleared.body).savedRevision
+    expect((await boot.request('health')).body).toMatchObject({ roles: { media: { configured: true } } })
+    expect((await boot.request('standalone-config/activate', 'POST', { expectedRevision: next })).status).toBe(202)
+    await boot.app.close()
+    const disabled = await start(root)
+    disabled.app.completeStartup()
+    expect((await disabled.request('health')).body).toMatchObject({ roles: { media: { configured: false } } })
+    for (const run of [cold, boot, disabled]) {
+      expect(run.watch).not.toHaveBeenCalled()
+      expect(run.main.requests).toHaveLength(0)
+    }
+  })
+
   it('saves, requests restart and commits the exact revision only after successful startup', async () => {
     const root = tmpDir('aira-activation-')
     const cold = await start(root)

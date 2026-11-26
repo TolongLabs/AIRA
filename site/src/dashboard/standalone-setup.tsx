@@ -8,6 +8,7 @@ import {
   type CoreHealth,
   type StandaloneConfigState,
   type StandaloneConfiguration,
+  type StandaloneMediaInput,
   type StandaloneModelInput,
   type StandaloneModelPair,
   type StandaloneModelTarget
@@ -375,6 +376,27 @@ interface RoleDraft {
   clearKey: boolean
 }
 
+interface MediaDraft {
+  enabled: boolean
+  model: string
+  clearKey: boolean
+}
+
+function mediaDraft(state: StandaloneConfigState): MediaDraft | null {
+  if (!state.optionalRoles?.includes('media')) return null
+  return { enabled: state.saved?.media != null, model: state.saved?.media?.model ?? '', clearKey: false }
+}
+
+function mediaInput(draft: MediaDraft, apiKey: string): StandaloneMediaInput | null {
+  return draft.enabled
+    ? {
+        provider: 'gemini',
+        model: draft.model.trim(),
+        ...(draft.clearKey ? { apiKey: null } : apiKey !== '' ? { apiKey } : {})
+      }
+    : null
+}
+
 function draftFromTarget(target: StandaloneModelTarget | null, enabled: boolean): RoleDraft {
   return {
     enabled,
@@ -387,6 +409,14 @@ function draftFromTarget(target: StandaloneModelTarget | null, enabled: boolean)
     priceOut: target ? String(target.usdPerMTokOut) : '',
     priceCached: target ? String(target.usdPerMTokCached) : '',
     clearKey: false
+  }
+}
+
+function draftFromSnapshot(state: StandaloneConfigState) {
+  return {
+    main: draftFromTarget(state.saved?.main ?? null, true),
+    fallback: draftFromTarget(state.saved?.fallback ?? null, state.saved?.fallback != null),
+    media: mediaDraft(state)
   }
 }
 
@@ -430,10 +460,11 @@ function toInput(role: RoleDraft, apiKey: string): StandaloneModelInput {
 }
 
 function PairSummary({ pair, title }: { pair: StandaloneModelPair | null; title: string }) {
-  if (!pair || (!pair.main && !pair.fallback)) return null
+  if (!pair || (!pair.main && !pair.fallback && pair.media === undefined)) return null
   const rows = [
     ['Main', pair.main],
-    ['Fallback', pair.fallback]
+    ['Fallback', pair.fallback],
+    ...(pair.media !== undefined ? [['Media', pair.media] as const] : [])
   ] as const
   return (
     <div>
@@ -599,19 +630,82 @@ function RoleForm({
   )
 }
 
+function MediaRoleForm({
+  draft,
+  disabled,
+  keyInput,
+  onChange
+}: {
+  draft: MediaDraft
+  disabled: boolean
+  keyInput: RefObject<HTMLInputElement | null>
+  onChange: (next: MediaDraft) => void
+}) {
+  const set = (patch: Partial<MediaDraft>) => onChange({ ...draft, ...patch })
+  return (
+    <Section
+      title="Media model"
+      action={
+        <Toggle
+          checked={draft.enabled}
+          disabled={disabled}
+          onChange={(on) => set({ enabled: on })}
+          label="Use a media model"
+        />
+      }
+    >
+      <p className="m-0 text-[0.85rem] text-muted">
+        Gemini only. Saving a media model does not enable inbound media or link reading.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field htmlFor="standalone-media-model" label="Model" hint="Gemini model ID">
+          <Input
+            id="standalone-media-model"
+            value={draft.model}
+            disabled={disabled || !draft.enabled}
+            onChange={(e) => set({ model: e.target.value })}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </Field>
+        <Field htmlFor="standalone-media-key" label="API key" hint="Empty keeps the saved key. Never shown back.">
+          <Input
+            id="standalone-media-key"
+            type="password"
+            ref={keyInput}
+            disabled={disabled || !draft.enabled || draft.clearKey}
+            autoComplete="new-password"
+          />
+        </Field>
+        <Toggle
+          checked={draft.clearKey}
+          disabled={disabled || !draft.enabled}
+          onChange={(on) => {
+            if (on && keyInput.current) keyInput.current.value = ''
+            set({ clearKey: on })
+          }}
+          label="Remove the saved media key on save"
+        />
+      </div>
+    </Section>
+  )
+}
+
 export function StandaloneSettings() {
   const [snapshot, setSnapshot] = useState<StandaloneConfigState | null>(null)
   const [offline, setOffline] = useState(false)
   const [tick, setTick] = useState(0)
-  const [draft, setDraft] = useState<{ main: RoleDraft; fallback: RoleDraft } | null>(null)
+  const [draft, setDraft] = useState<{ main: RoleDraft; fallback: RoleDraft; media: MediaDraft | null } | null>(null)
   const draftSeeded = useRef(false)
   const draftRevision = useRef<string | null>(null)
   const mainKey = useRef<HTMLInputElement>(null)
   const fallbackKey = useRef<HTMLInputElement>(null)
+  const mediaKey = useRef<HTMLInputElement>(null)
   const mounted = useRef(true)
   const clearKeys = useCallback(() => {
     if (mainKey.current) mainKey.current.value = ''
     if (fallbackKey.current) fallbackKey.current.value = ''
+    if (mediaKey.current) mediaKey.current.value = ''
   }, [])
   const [saving, setSaving] = useState(false)
   const [activating, setActivating] = useState(false)
@@ -635,12 +729,15 @@ export function StandaloneSettings() {
         if (!draftSeeded.current) {
           draftSeeded.current = true
           draftRevision.current = value.savedRevision
-          setDraft({
-            main: draftFromTarget(value.saved?.main ?? null, true),
-            fallback: draftFromTarget(value.saved?.fallback ?? null, value.saved?.fallback != null)
-          })
+          setDraft(draftFromSnapshot(value))
         } else if (draftRevision.current !== value.savedRevision) {
           setStale(true)
+        } else {
+          setDraft((current) =>
+            current && !current.media && value.optionalRoles?.includes('media')
+              ? { ...current, media: mediaDraft(value) }
+              : current
+          )
         }
       },
       () => {
@@ -712,7 +809,10 @@ export function StandaloneSettings() {
       const next = await core.saveStandaloneConfig({
         expectedRevision: draftRevision.current,
         main: toInput(draft.main, mainKey.current?.value ?? ''),
-        fallback: draft.fallback.enabled ? toInput(draft.fallback, fallbackKey.current?.value ?? '') : null
+        fallback: draft.fallback.enabled ? toInput(draft.fallback, fallbackKey.current?.value ?? '') : null,
+        ...(snapshot.optionalRoles?.includes('media') && draft.media
+          ? { media: mediaInput(draft.media, mediaKey.current?.value ?? '') }
+          : {})
       })
       setSnapshot(next)
       draftRevision.current = next.savedRevision
@@ -722,7 +822,8 @@ export function StandaloneSettings() {
         current
           ? {
               main: { ...current.main, clearKey: false },
-              fallback: { ...current.fallback, clearKey: false }
+              fallback: { ...current.fallback, clearKey: false },
+              media: current.media ? { ...current.media, clearKey: false } : null
             }
           : current
       )
@@ -850,10 +951,7 @@ export function StandaloneSettings() {
                   setStale(false)
                   draftRevision.current = state.savedRevision
                   clearKeys()
-                  setDraft({
-                    main: draftFromTarget(state.saved?.main ?? null, true),
-                    fallback: draftFromTarget(state.saved?.fallback ?? null, state.saved?.fallback != null)
-                  })
+                  setDraft(draftFromSnapshot(state))
                 }}
               >
                 Discard draft
@@ -902,6 +1000,14 @@ export function StandaloneSettings() {
             keyInput={fallbackKey}
             onChange={(fallback) => setDraft((current) => (current ? { ...current, fallback } : current))}
           />
+          {state.optionalRoles?.includes('media') && draft.media && (
+            <MediaRoleForm
+              draft={draft.media}
+              disabled={saving || activating || offline || state.activation !== 'idle'}
+              keyInput={mediaKey}
+              onChange={(media) => setDraft((current) => (current ? { ...current, media } : current))}
+            />
+          )}
           {priceError && (
             <p className="m-0 text-[0.85rem]" role="alert">
               {priceError}
@@ -935,10 +1041,7 @@ export function StandaloneSettings() {
                 draftRevision.current = state.savedRevision
                 clearKeys()
                 setStale(false)
-                setDraft({
-                  main: draftFromTarget(state.saved?.main ?? null, true),
-                  fallback: draftFromTarget(state.saved?.fallback ?? null, state.saved?.fallback != null)
-                })
+                setDraft(draftFromSnapshot(state))
               }}
             >
               Reset to saved

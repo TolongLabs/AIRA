@@ -215,6 +215,10 @@ million tokens), and `--expected-revision UUID`. An omitted expected revision us
 `--key-stdin` reads one bounded secret from stdin, `--prompt-key` uses a protected interactive prompt,
 `--clear-key` explicitly clears, and `--disable` disables the selected role. The key is never an argument.
 Empty key input retains the previous credential. A stale revision is a conflict, not an overwrite.
+`aira config set-model --role media --provider gemini --model ID` follows the
+[optional media role contract](dashboard-state.md#model-revision-authority). The CLI refuses an older
+core before reading a key or writing. Base URL, effort and price flags are not available for media.
+Main/fallback edits omit the media role.
 `aira config activate [--expected-revision UUID]` requests the exact saved revision and waits up to
 60 seconds for the applied readback. An observed activation failure preserves the previous applied revision.
 A readback timeout returns nonzero without claiming rollback: the restart may still complete. Run

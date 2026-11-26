@@ -28,8 +28,9 @@ SETTINGS_PATH = "/owner-api/core/settings"
 DEPLOYMENT_SETTINGS_PATH = "/owner-api/core/deployment-settings"
 CONFIG_PATH = "/owner-api/core/config"
 
-ROLES = ("main", "fallback")
-PROVIDERS = ("anthropic", "openai-compatible")
+ROLES = ("main", "fallback", "media")
+MAIN_PROVIDERS = ("anthropic", "openai-compatible")
+PROVIDERS = (*MAIN_PROVIDERS, "gemini")
 LEVELS = ("global", "type", "chat")
 TYPE_SCOPES = ("dm", "group")
 
@@ -230,7 +231,9 @@ def readback(selection, timeout_s=10):
 def strip_credentials(role_value):
     if not isinstance(role_value, dict):
         return None
-    return {k: v for k, v in role_value.items() if k != "credentialConfigured"}
+    fields = ("provider", "model", "baseUrl", "effort", "deepEffort",
+              "usdPerMTokIn", "usdPerMTokOut", "usdPerMTokCached")
+    return {k: role_value[k] for k in fields if k in role_value}
 
 
 def valid_base_url(value):
@@ -308,12 +311,26 @@ def parse_price(name, value):
 
 
 def build_target(args, saved_role):
+    if args.role == "media":
+        if (any(getattr(args, name) is not None for name in ("base_url", "effort", "deep_effort"))
+                or any(getattr(args, name, None) is not None for name, _ in PRICE_ARGS)):
+            raise args_error("The media role has no base, effort or pricing options.",
+                             "Use --provider gemini and --model.")
+        if args.provider is not None and args.provider != "gemini":
+            raise args_error("The media role requires Gemini.", "Use --provider gemini.")
+        if args.disable:
+            return None
+        model = (args.model or "").strip()
+        if args.provider != "gemini" or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,255}", model):
+            raise args_error("The media role requires Gemini and a valid bare model id.",
+                             "Use --provider gemini --model MODEL.")
+        return {"provider": "gemini", "model": model}
+    if args.provider is not None and args.provider not in MAIN_PROVIDERS:
+        raise args_error("Unknown provider.", "Use anthropic or openai-compatible.")
     if args.disable:
         return None
     if not args.provider:
         raise args_error("A provider is required.", "Use anthropic or openai-compatible.")
-    if args.provider not in PROVIDERS:
-        raise args_error("Unknown provider.", "Use anthropic or openai-compatible.")
     if not args.model:
         raise args_error("A model id is required.", "Provide --model for the selected role.")
     if args.base_url is None or not valid_base_url(args.base_url):
@@ -365,26 +382,31 @@ def cmd_set_model(selection, args, readings):
                              stage="config",
                              recovery="Edit models in the dashboard; the CLI writes models on standalone only.")
     if args.role not in ROLES:
-        raise args_error("A role is required.", "Use --role main or --role fallback.")
+        raise args_error("A role is required.", "Use --role main, fallback or media.")
     if args.disable and (args.key_stdin or args.prompt_key or args.clear_key):
         raise args_error("Key options do not apply with --disable.", "Drop the key option.")
+    def require_media(current):
+        if args.role == "media" and current.get("optionalRoles") != ["media"]:
+            raise conflict_error("capability_unavailable", "This core does not advertise the media role.",
+                                 stage="config", recovery="Upgrade the selected core before configuring media.")
+    if args.role == "media":
+        require_media(readback(selection))
+        # Reject invalid targets before reading a private key or holding the deploy lock.
+        build_target(args, None)
     key, clearing = read_key(args)
     with install.DeployLock(selection["home"]):
         current = readback(selection)
+        require_media(current)
         saved = current.get("saved") or {}
         expected = args.expected_revision if args.expected_revision is not None else current.get("savedRevision")
         target = build_target(args, strip_credentials(saved.get(args.role)))
-        if target is None:
-            pair = {"main": None, "fallback": None}
-            other = strip_credentials(saved.get("fallback" if args.role == "main" else "main"))
-            pair["fallback" if args.role == "main" else "main"] = other
-        else:
+        if target is not None:
             if key is not None:
                 target["apiKey"] = key
             elif clearing:
                 target["apiKey"] = None
-            other_role = "fallback" if args.role == "main" else "main"
-            pair = {args.role: target, other_role: strip_credentials(saved.get(other_role))}
+        pair = {role: strip_credentials(saved.get(role)) for role in ("main", "fallback")}
+        pair[args.role] = target
         result = api_call(selection, "PUT", STANDALONE_CONFIG_PATH,
                           {"expectedRevision": expected, **pair})
         actual = readback(selection)
