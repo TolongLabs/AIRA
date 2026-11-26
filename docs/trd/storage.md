@@ -45,7 +45,7 @@ revealing their contents.
 
 The candidate [typed transport](system.md#standalone-typed-delivery) uses a `standalone_delivery` table in the
 same SQLite database. Each row records a random delivery ID, route ID, internal chat ID, turn ID, inbound
-message ID, item position/kind, optional content-addressed file hash, state and creation/expiry/claim/finish
+message ID, item position/kind, optional content-addressed file hash and report receipt ID, state and creation/expiry/claim/finish
 timestamps. It stores no verbatim text or provider error; text remains in the same-chat assistant session row.
 One turn and item position is unique, including across reattachment. The row follows the turn's retention
 lifetime; deleting a turn cascades to its delivery rows.
@@ -62,7 +62,9 @@ guarantee applies within the retained database lineage and deduplication lifetim
 A document uses position 1, at most one per fresh returned turn that also has clean nonempty reply text. Issuance
 and claim require the current document-capable route and the existing reports feature enabled for that chat.
 Use only the successful `make_report` tool result and `report.created` receipt with matching chat, turn, call ID,
-target hash and attachment path. The `file` row must be kind `report`, with the exact content-addressed
+target hash and attachment path. Persist the chosen receipt ID at issuance; at claim require that exact receipt,
+not another receipt with the same hash. The nullable additive receipt-ID column preserves older text rows;
+a document row without an exact receipt ID cannot be claimed. The `file` row must be kind `report`, with the exact content-addressed
 relative path and recorded size matching the real owned regular file. Reject symlinks, special files, foreign
 paths, changed digest, oversize, invalid PDF signature or invalid UTF-8 Markdown. Hash and read bounded bytes
 again at claim; a missing/foreign/changed receipt or file cannot authorize a send. If several receipts exist,
