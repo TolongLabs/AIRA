@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -147,11 +148,14 @@ def _open(args, result):
         warnings.append("browser_open_failed: no browser opener; use the printed URL.")
         return
     try:
-        code, _, _ = compose.run([opener, url], timeout_s=15)
-        if code != 0:
-            raise compose.RunError("failed")
-    except compose.RunError:
-        warnings.append("browser_open_failed: use the printed URL; service remains available.")
+        # A launched browser may inherit the opener's streams and outlive it. Never capture them.
+        opened = subprocess.run([opener, url], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL, timeout=15, check=False)
+        if opened.returncode == 0:
+            return
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    warnings.append("browser_open_failed: use the printed URL; service remains available.")
 
 
 def cmd_setup(args):
