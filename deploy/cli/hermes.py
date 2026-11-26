@@ -87,19 +87,24 @@ def _write(path, record):
         install.atomic_write_text(path, data.decode("utf-8"), mode=mode)
 
 
+def _load_module(name, path, source):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    # Avoid writing bytecode during a dry-run.
+    exec(compile(source, str(path), "exec"), module.__dict__)
+    return module
+
+
 def _modules(repo_root):
     base = Path(repo_root) / "deploy" / "gateway" if repo_root else Path(__file__).resolve().parents[1]
     result = {}
     for name in ("standalone_patch", "standalone_adapter"):
         path = base / (name + ".py")
         source, _ = _read(path)
-        spec = importlib.util.spec_from_file_location("aira_" + name, path)
-        module = importlib.util.module_from_spec(spec)
-        # Avoid writing bytecode during a dry-run.
-        exec(compile(source, str(path), "exec"), module.__dict__)
-        result[name] = module
         if name == "standalone_adapter":
+            source = hermes_versions.render_helper(source, hermes_versions.BASELINE_ADAPTER_VERSION)
             result["helper"] = source
+        result[name] = _load_module("aira_" + name, path, source)
     return result
 
 
@@ -160,9 +165,7 @@ def _plan(args):
     target = source / patch.TARGET
     helper = target.parent / "aira_transport.py"
     rendered = hermes_versions.render_helper(mods["helper"], version)
-    spec = importlib.util.spec_from_file_location("aira_selected_adapter", helper)
-    adapter = importlib.util.module_from_spec(spec)
-    exec(compile(rendered, str(helper), "exec"), adapter.__dict__)
+    adapter = _load_module("aira_selected_adapter", helper, rendered)
     marker = profile_dir / adapter.MARKER_NAME
     receipt = home / "data" / "standalone" / "hermes.json"
     host_receipt = receipt.with_name("attach-host.json")
@@ -174,7 +177,19 @@ def _plan(args):
                         if original["helper"] else None)
     if kind == "unsupported" or (original["helper"] and previous_version is None):
         _refuse("hermes_unsupported", "The adapter source or existing helper is unfamiliar.")
-    changing_version = previous_version is not None and previous_version != version
+    route = report.get("hermesRoute")
+    prior_host = json.loads(original["host"][0]) if original["host"] else None
+    try:
+        prior_receipt = json.loads(original["receipt"][0]) if original["receipt"] else None
+    except ValueError:
+        prior_receipt = None
+    prior_versions = [previous_version]
+    if isinstance(prior_host, dict):
+        prior_versions.append(prior_host.get("adapterVersion"))
+    for record in (route, prior_receipt):
+        if isinstance(record, dict) and record.get("state") == "connected":
+            prior_versions.append(record.get("adapterVersion"))
+    changing_version = any(old is not None and old != version for old in prior_versions)
     if changing_version and source != root / "hermes-agent":
         _refuse("hermes_contract_failed", "Version migration requires the selected root's exclusive source checkout.")
     if kind == "original" or changing_version:
@@ -189,19 +204,17 @@ def _plan(args):
                 "port": manifest.corePort, "token": token}
     if original["marker"] is not None and adapter.read_marker(marker) != expected:
         _refuse("hermes_profile_conflict", "The chosen profile marker belongs to a different route.")
-    route = report.get("hermesRoute")
     if route and route["profile"] != args.profile:
         _refuse("hermes_profile_conflict", "AIRA already has a different attached profile.")
     host_record = {"schemaVersion": 1, "sourceDir": str(source), "hermesHome": str(root),
                    "profile": args.profile, "adapterVersion": adapter.ADAPTER_VERSION}
-    prior_host = json.loads(original["host"][0]) if original["host"] else None
     if changing_version:
         prior_record = {**host_record, "adapterVersion": previous_version}
         verified_at = route.get("verifiedAt") if isinstance(route, dict) else None
         prior_route = {"state": "connected", "profile": args.profile, "adapterVersion": previous_version,
                        "verifiedAt": verified_at}
-        prior_receipt = json.loads(original["receipt"][0]) if original["receipt"] else None
-        if (not original["marker"] or prior_host != prior_record or not isinstance(verified_at, str)
+        if (previous_version is None or previous_version == version or not original["marker"]
+                or prior_host != prior_record or not isinstance(verified_at, str)
                 or route != prior_route or prior_receipt != {"schemaVersion": 1, **prior_route}):
             _refuse("hermes_profile_conflict", "The previous helper, host record and verified route do not agree.")
     elif original["host"] is not None and prior_host != host_record:

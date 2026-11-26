@@ -41,3 +41,5 @@ class HermesVersionsTests(unittest.TestCase):
             hermes_versions.render_helper(template, "hermes-v0.23.5")
         with self.assertRaises(ValueError):
             hermes_versions.render_helper(b"unknown template", "hermes-v0.23.4")
+        with self.assertRaises(ValueError):
+            hermes_versions.render_helper(template + b"\n# unfamiliar modification\n", "hermes-v0.23.4")

@@ -45,7 +45,7 @@ class AttachVersionPlanningTests(unittest.TestCase):
         self.mods = hermes._modules(self.repo)
         self.template = self.mods["helper"]
         self.mods["standalone_patch"] = SimpleNamespace(
-            TARGET=TARGET, PINNED_HERMES_TREE=CURRENT_HEAD,
+            TARGET=TARGET,
             classify_source=lambda data: {
                 b"# original synthetic consumer\n": "original",
                 b"# patched synthetic consumer\n": "patched",
@@ -125,7 +125,8 @@ class AttachVersionPlanningTests(unittest.TestCase):
             with self.subTest(previous=previous, desired=desired):
                 self.prior_attachment(previous)
                 self.head = head
-                before = {path: path.read_bytes() for path in (self.target, self.helper, self.marker, self.host, self.receipt)}
+                before = {path: path.read_bytes()
+                          for path in (self.target, self.helper, self.marker, self.host, self.receipt)}
                 plan = self.plan()
                 self.assertEqual(plan["adapter"].ADAPTER_VERSION, desired)
                 self.assertEqual(plan["desired"]["helper"][0], hermes_versions.render_helper(self.template, desired))
@@ -155,6 +156,16 @@ class AttachVersionPlanningTests(unittest.TestCase):
                 self.prior_attachment("hermes-v0.23.4")
                 missing.unlink()
                 self.assert_refused_unchanged("hermes_profile_conflict")
+
+    def test_surviving_old_route_cannot_bypass_incomplete_migration(self):
+        self.prior_attachment("hermes-v0.23.4")
+        self.helper.unlink()
+        self.host.unlink()
+        self.assert_refused_unchanged("hermes_profile_conflict")
+        self.prior_attachment("hermes-v0.23.4")
+        self.helper.write_bytes(hermes_versions.render_helper(self.template, "hermes-v0.23.2"))
+        self.host.unlink()
+        self.assert_refused_unchanged("hermes_profile_conflict")
 
     def test_mismatched_prior_versions_are_not_migrated(self):
         self.prior_attachment("hermes-v0.23.4")
