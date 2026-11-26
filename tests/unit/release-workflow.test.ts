@@ -21,6 +21,8 @@ const promote = workflow.jobs['promote']!
 const sha = 'b'.repeat(40)
 const priorSha = 'a'.repeat(40)
 const tag = 'v1.6.1'
+const sourceDigest = `sha256:${'c'.repeat(64)}`
+const otherDigest = `sha256:${'d'.repeat(64)}`
 
 /** Execute the actual workflow shell steps, replacing every external command with a local fixture. */
 function runStep(name: string, overrides: Record<string, string> = {}) {
@@ -54,7 +56,7 @@ printf 'docker %s\\n' "$*" >> "$CALLS"
 case "$1 $2 $3" in
   'buildx imagetools inspect')
     if [[ "$WAIT_IMAGE" == true && $(grep -c '^docker buildx imagetools inspect' "$CALLS") == 1 ]]; then exit 1; fi
-    if [[ "$4" == *:stable && "$BAD_DIGEST" == true ]]; then printf '"sha256:wrong"\\n'; else printf '"sha256:fixture"\\n'; fi ;;
+    if [[ "$4" == *:stable && "$BAD_DIGEST" == true ]]; then printf '"%s"\\n' "$OTHER_DIGEST"; else printf '"%s"\\n' "$SOURCE_DIGEST"; fi ;;
   'buildx imagetools create') ;;
   *) exit 99 ;;
 esac
@@ -80,6 +82,8 @@ esac
       TAG: tag,
       CI_RESULT: 'success',
       BAD_DIGEST: 'false',
+      SOURCE_DIGEST: sourceDigest,
+      OTHER_DIGEST: otherDigest,
       WAIT_IMAGE: 'false',
       ...overrides
     }
@@ -133,11 +137,14 @@ describe('release promotion workflow', () => {
     expect(result.calls).toContain('sleep 15')
     expect(result.exit).toBe(0)
     expect(result.calls).toContain(
-      `imagetools create -t ghcr.io/tolonglabs/aira:${tag} -t ghcr.io/tolonglabs/aira:v1.6 -t ghcr.io/tolonglabs/aira:stable ghcr.io/tolonglabs/aira:sha-${sha.slice(0, 7)}`
+      `imagetools create --prefer-index=false -t ghcr.io/tolonglabs/aira:${tag} -t ghcr.io/tolonglabs/aira:v1.6 -t ghcr.io/tolonglabs/aira:stable ghcr.io/tolonglabs/aira@${sourceDigest}`
     )
     for (const alias of [tag, 'v1.6', 'stable'])
       expect(result.calls).toContain(`inspect ghcr.io/tolonglabs/aira:${alias}`)
     expect(runStep('Tag the release', { BAD_DIGEST: 'true' }).exit).not.toBe(0)
+    const malformed = runStep('Tag the release', { SOURCE_DIGEST: 'unverified' })
+    expect(malformed.exit).not.toBe(0)
+    expect(malformed.calls).not.toContain('imagetools create')
     const stale = runStep('Tag the release', { LATEST_TAG: 'v1.6.2' })
     expect(stale.exit).toBe(0)
     expect(stale.calls).not.toContain('imagetools create')

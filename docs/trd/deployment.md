@@ -18,9 +18,9 @@ one night.
 | `promote`        | Tags the image the host runs `vX.Y.Z`, `vX.Y` and `stable`, after the exact commit's CI passes    | Published release or retry  |
 
 The hosted install gate builds and loads the candidate locally on native Linux amd64 and arm64,
-then runs `tests/install/smoke.py` on a non-root, non-1000 UID Ubuntu runner for each architecture. It exercises the real CLI,
-protected service, occupied ports, model save/restart, selected stock Hermes profile dry-run/apply,
-deterministic synthetic transport, update/rollback and private backup/restore. It never sends a WhatsApp
+then runs `tests/install/smoke.py` on a non-root, non-1000 UID Ubuntu runner for each architecture.
+It exercises the real CLI, protected service, occupied ports, model save/restart, selected stock Hermes profile
+dry-run/apply, deterministic synthetic transport, update/rollback and private backup/restore. It never sends a WhatsApp
 message or contacts a real model. The pinned Hermes upstream admission/group and platform delivery fixtures
 run under an isolated profile root. The historical v1.6.1 refusal fixture runs on amd64 only, since that
 released image has no arm64 manifest. An absent native image or failed smoke fails `image` and therefore `images-ok`;
@@ -44,8 +44,9 @@ the latest release and its commit before writing; a superseded target is skipped
 - The `image` gate requires both proofs for the exact commit, with no missing or duplicate platform. Assemble
   only those children as the public `sha-<first 7 of the commit>` and `edge` index. Verify the index contains
   exactly the proved Linux amd64 and arm64 manifest digests and both tags name the same index. No PR pushes.
-  A release re-tags that same index after the exact commit's CI succeeds; nothing is rebuilt. Historical releases
-  retain their original verified single-platform manifests. The legacy dev2 host selects the amd64 child.
+  A release re-tags that same index by immutable digest after the exact commit's CI succeeds; nothing is rebuilt.
+  Do not wrap a historical single-platform manifest in a new index when retrying its release promotion.
+  The legacy dev2 host selects the amd64 child.
 - Multi-stage build, non-root user, one writable data volume. The image holds the core, the built site, the example
   character pack and the prompts. Real character packs are private and live on the data volume.
 - A separate stage installs production dependencies from `package.json` and `bun.lock` alone, with the version and
@@ -139,11 +140,13 @@ If PATH omits the installed command, print its exact path. Existing unrelated pa
 
 ### Fresh Setup Transaction
 
-Support native Linux amd64 and arm64, Python 3 standard library, rootful Docker with Compose v2 and a service enabled at boot
-on a systemd host. Detect missing Python/Docker/Compose, permission denial, daemon failure and unsupported host
-before provisioning; report remediation, not implicit sudo or group changes. Verify disk space and writable
-owned installation paths. Detect Hermes separately; its absence does not prevent dashboard setup.
+Support native Linux amd64 and arm64, Python 3 standard library, rootful Docker with Compose v2 and a service
+enabled at boot on a systemd host. Detect missing Python/Docker/Compose, permission denial, daemon failure and
+unsupported host before provisioning; report remediation, not implicit sudo or group changes. Verify disk space
+and writable owned installation paths. Detect Hermes separately; its absence does not prevent dashboard setup.
 Normalize only Linux `x86_64`/`amd64` and `aarch64`/`arm64`; the local Linux daemon's native architecture must match.
+Resolve the effective Docker context before daemon access. Refuse a conflicting `DOCKER_DEFAULT_PLATFORM`
+even if a native child is also available in the local image store.
 Reject a mismatched or unknown image OS/architecture before starting a setup or stopping an installed service for
 update. No emulation, remote Docker, Docker Desktop or rootless Docker support is implied by a native image.
 

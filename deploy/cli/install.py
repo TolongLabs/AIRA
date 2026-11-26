@@ -303,8 +303,13 @@ def check_native_platform():
     if os.geteuid() == 0:
         raise prereq_error("unsupported_platform", "Run setup as the non-root installation owner.",
                            "Use your ordinary host account with Docker access.")
-    configured_host = os.environ.get("DOCKER_HOST")
+    requested_platform = os.environ.get("DOCKER_DEFAULT_PLATFORM")
+    native_platforms = {f"linux/{arch}"} | ({"linux/arm64/v8"} if arch == "arm64" else set())
+    if requested_platform and requested_platform not in native_platforms:
+        raise prereq_error("unsupported_platform", "Docker's default platform is not native to this host.",
+                           "Unset DOCKER_DEFAULT_PLATFORM or select the native Linux platform.")
     configured_context = os.environ.get("DOCKER_CONTEXT")
+    configured_host = os.environ.get("DOCKER_HOST") if not configured_context else None
     if configured_host and not configured_host.startswith("unix://"):
         raise prereq_error("unsupported_platform", "Only the local rootful Docker daemon is supported.",
                            "Unset DOCKER_HOST and use the local Docker Engine.")
@@ -315,8 +320,7 @@ def check_native_platform():
     context = ["docker", "context", "inspect", "--format", '{{(index .Endpoints "docker").Host}}']
     if configured_context:
         context.extend(["--", configured_context])
-    host = _docker_check(context, "docker_unreachable", "Docker context is unavailable.") if (
-        configured_context or not configured_host) else configured_host
+    host = configured_host or _docker_check(context, "docker_unreachable", "Docker context is unavailable.")
     if not host.startswith("unix://"):
         raise prereq_error("unsupported_platform", "Only the local rootful Docker daemon is supported.",
                            "Select the local Docker Engine context.")
