@@ -224,6 +224,8 @@ Authenticated `GET /owner-api/core/health` retains its legacy envelope. In stand
 `capabilities`. Until the corresponding integration is implemented and verified, the boolean capability
 fields `hostOwnerService`, `subscriptionRunner`, `fileBrowser`, `gatewayConnection`, and `scheduler`
 are false; the dashboard must not call absent services or treat those capabilities as an error.
+The boolean `reportDocuments` describes a currently connected, explicitly document-capable typed route;
+it is false for v1, text-only and disconnected routes. This is transport availability, not live send evidence.
 Standalone model settings use the [typed owner operations](dashboard-state.md#typed-owner-operations), including
 saved/applied readback after a controlled activation; the old host settings editor is not an authority in this mode.
 A legacy response without the new fields selects the existing dashboard behavior.
@@ -254,7 +256,8 @@ and the existing legacy credential path. See [dashboard design](../DESIGN.md#sta
 The standalone chat and defaults forms keep character, language, text length, context, memory recall,
 tool limits and supported text features. They hide controls for unproven adapter operations (stickers,
 reactions, group admission overrides, scheduled messages, media, host tools and external delivery), and
-describe the text-only limit and Hermes-owned group admission on those forms. Legacy controls are unchanged.
+describe the transport limit and Hermes-owned group admission on those forms. The existing Reports control
+is visible only when the authenticated `reportDocuments` capability is true. Legacy controls are unchanged.
 
 ## Owner Page Edits
 
