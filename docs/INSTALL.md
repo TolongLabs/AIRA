@@ -10,9 +10,9 @@ already managed by the CI deployment or release timer.
 - Git, Python 3.10 or later (standard library), local rootful Docker Engine and Compose v2 or later.
 - An ordinary non-root owner with Docker access, at least 2 GiB of free disk space and Docker enabled at boot.
 
-The CLI does not install packages, invoke `sudo`, join groups or edit shell startup files. Rootless Docker, Docker
-Desktop, remote Docker contexts and other operating systems or CPU architectures are outside this milestone.
-Node.js and Bun are not needed on the installation host. No model key, Hermes or registry login is needed for setup.
+The CLI does not install packages, invoke `sudo`, join groups or edit shell startup files. Node.js and Bun are not
+needed on the installation host. No model key, Hermes or registry login is needed for setup. See the
+[compatibility evidence](#compatibility-evidence) for native arm64 verification and unverified environments.
 
 ## Install and Open the Dashboard
 
@@ -117,10 +117,41 @@ and apply. The ordinary defaults use `~/.hermes/hermes-agent` and `~/.hermes`. A
 both `--apply` and `--yes`; dry-run does not modify the selected profile. Failed apply restores the touched adapter
 files, profile marker and prior service state. See the [attachment contract](trd/deployment.md#hermes-attachment-transaction).
 
-The standalone adapter supports ordinary admitted WhatsApp text in DMs and groups, retaining Hermes admission rules.
-It does not supply the legacy media, reactions, stickers, owner sends, host file browser, subscription runner or
-scheduler capabilities. The pinned upstream tests use synthetic chat identity, admission, dispatch and delivery;
-they do not prove real account pairing or delivery. The existing legacy integration is unchanged.
+The supported standalone messaging baseline remains ordinary admitted WhatsApp text in DMs and groups, retaining
+Hermes admission rules. The existing legacy integration is unchanged. The following candidate work is separate
+from the supported messaging baseline.
+
+## Compatibility Evidence
+
+The verified foundation adds opt-in, synthetic-only compatibility evidence. It does not establish real account
+pairing or live delivery. The supported messaging baseline is unchanged while
+[#402](https://github.com/TolongLabs/AIRA/issues/402) remains open.
+
+| Area                   | Evidence and Boundary                                                                                                                                                                        |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Native Linux           | Local rootful amd64 and arm64 install, update, rollback, restore and image publication tested on native CI runners. Arm64 is a verified host/image candidate, not a broader messaging claim. |
+| Stock Hermes           | Synthetic admission, identity, attach and native text dispatch against exact v0.23.2, v0.23.3 and v0.23.4; unknown or modified source refused.                                               |
+| Typed text and reports | Explicit v2 text and receipt-backed generated Markdown/PDF document delivery tested with a loopback fake bridge on all three pins. No real account or live send.                             |
+| Other transport        | Inbound image, audio, video and documents; arbitrary outbound files/media; sticker and reaction delivery; location and polls remain unavailable.                                             |
+| Host environment       | Remote Docker refuses; rootless, Docker Desktop, WSL2, macOS and other OS/CPU rows are not supported. Actual rootless and visible owner-desktop acceptance remain unverified.                |
+
+See [exact text versions](https://github.com/TolongLabs/AIRA/pull/413),
+[native image checks](https://github.com/TolongLabs/AIRA/pull/416),
+[typed text](https://github.com/TolongLabs/AIRA/pull/418) and
+[portable report document checks](https://github.com/TolongLabs/AIRA/pull/420) for evidence.
+
+Typed transport is not the default. Its explicit candidate attachment requires the selected independent profile
+to be stopped for a state change. Only the generated report can be delivered as a document; arbitrary paths,
+other media, and legacy `MEDIA:` directives are not accepted. For the precise capability and rollback rules,
+see the [typed attachment contract](trd/deployment.md#hermes-attachment-transaction).
+
+Host owner service, direct owner sends, file browsing and the subscription runner remain legacy-only. Library,
+lesson and market integrations, MCP, research jobs and scheduled messages are not enabled in standalone.
+Portable inbound media and core-owned routines need independently negotiated capability, configuration and
+delivery authority before they can be enabled. Unsupported owner routes refuse rather than contacting the host.
+
+Live verification remains pending until a separate isolated WhatsApp account and approved recipient are available.
+No existing production account is used for acceptance.
 
 ## Diagnose and Recover
 
