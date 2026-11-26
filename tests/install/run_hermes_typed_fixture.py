@@ -42,7 +42,7 @@ def main():
             helper.write_bytes(hermes_versions.render_typed_helper(base, typed, version))
         test.write_bytes((ROOT / "tests/install" / fixture).read_bytes())
         media_test.write_bytes((ROOT / "tests/install/hermes_capabilities_fixture.py").read_bytes())
-        media_case = str(media_test.relative_to(source)) + "::test_stock_normalized_media_is_inert_on_the_installed_text_or_document_route"
+        media_case = str(media_test.relative_to(source)) + "::test_stock_media_boundaries_on_installed_route"
         return subprocess.run([str(source / ".venv/bin/python"), "-m", "pytest", "-q",
                                str(test.relative_to(source)), media_case], cwd=source, check=False).returncode
     finally:
