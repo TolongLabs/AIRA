@@ -351,6 +351,11 @@ def update_command(args, home, manifest, op) -> dict:
     if current.mode != "standalone" or current.management != "stable":
         return _managed_report(op, home, current, timer)
 
+    try:
+        install.check_native_platform()
+    except CommandError as exc:
+        return _fail(op, exc, None, None, checks, warnings, timer)
+
     with install.DeployLock(home):
         journal: dict | None = None
         pending: dict | None = None
@@ -458,6 +463,7 @@ def update_command(args, home, manifest, op) -> dict:
             if _docker_label(candidate_id, CONTRACT_LABEL) != "1":
                 raise operational_error("image_incompatible", "The candidate is not a compatible release.",
                                         "compatibility", "Use a compatible stable release.")
+            install.verify_native_image(candidate_id)
             if candidate_id == old_id:
                 report = install.observe(home, manifest)
                 result = ok_envelope("update", op, report["state"], checks + report["checks"],

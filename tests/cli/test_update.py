@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from deploy.cli import backup, compose, install, operations, update
-from deploy.cli.result import CommandError, operational_error
+from deploy.cli.result import CommandError, operational_error, prereq_error
 
 
 def private(path, text):
@@ -142,6 +142,9 @@ class UpdateTests(unittest.TestCase):
             (update, "_ensure_pin", {"side_effect": pin}),
             (update, "_docker_image_id", {"side_effect": lambda ref: self.OLD if ":prev-" in ref else self.NEW}),
             (update, "_docker_label", {"return_value": "1"}),
+            (install, "check_native_platform", {"return_value": "linux/amd64"}),
+            (install, "normalize_native_arch", {"return_value": "amd64"}),
+            (compose, "image_platform", {"return_value": "linux/amd64"}),
             (update, "_wait_for_idle", {"return_value": True}),
             (update, "_probe_candidate", {"side_effect": lambda *_a: self.probe_ok}),
             (operations, "log_event", {"return_value": "fixture"}),
@@ -188,6 +191,41 @@ class UpdateTests(unittest.TestCase):
         result = self.run_update()
         self.assertEqual(result["outcome"], "ok")
         self.assertEqual(self.trace, [])
+
+    def test_wrong_image_platform_refuses_before_stop(self):
+        before = (self.home / ".env").read_bytes()
+        with patch.object(compose, "image_platform", return_value="linux/arm64"):
+            result = self.run_update()
+        self.assertEqual(result["error"]["code"], "image_incompatible")
+        self.assertEqual(result["error"]["stage"], "compatibility")
+        self.assertNotIn(("stop", None), self.trace)
+        self.assertEqual((self.home / ".env").read_bytes(), before)
+        self.assertFalse((self.home / "update.json").exists())
+
+    def test_unknown_image_platform_refuses_before_stop(self):
+        before = (self.home / ".env").read_bytes()
+        with patch.object(compose, "image_platform", return_value=None):
+            result = self.run_update()
+        self.assertEqual(result["error"]["code"], "image_incompatible")
+        self.assertEqual(result["error"]["stage"], "compatibility")
+        self.assertNotIn(("stop", None), self.trace)
+        self.assertEqual((self.home / ".env").read_bytes(), before)
+        self.assertFalse((self.home / "update.json").exists())
+
+    def test_unsupported_host_refuses_before_lock_or_mutation(self):
+        before = (self.home / ".env").read_bytes()
+        with patch.object(install, "check_native_platform",
+                          side_effect=prereq_error("unsupported_platform", "Refused.", "test")):
+            result = self.run_update()
+        self.assertEqual(result["error"]["code"], "unsupported_platform")
+        self.assertEqual(self.trace, [])
+        self.assertEqual((self.home / ".env").read_bytes(), before)
+        self.assertFalse((self.home / "update.json").exists())
+
+    def test_validates_the_resolved_image_id_not_the_mutable_candidate_tag(self):
+        with patch.object(install, "verify_native_image", wraps=install.verify_native_image) as verify:
+            self.assertEqual(self.run_update()["outcome"], "ok")
+        verify.assert_called_once_with(self.NEW)
 
 
 if __name__ == "__main__":

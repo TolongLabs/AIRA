@@ -169,6 +169,7 @@ class InstallerTests(unittest.TestCase):
         with (
             patch.object(install, "preflight", return_value=[]),
             patch.object(install, "port_free", return_value=True),
+            patch.object(install, "verify_native_image", return_value="linux/amd64"),
             patch.object(compose, "detect_project", side_effect=current_project),
             patch.object(compose, "local_image_present", return_value=True),
             patch.object(compose, "compose_up", side_effect=start) as up,

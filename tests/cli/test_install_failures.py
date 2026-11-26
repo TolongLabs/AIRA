@@ -13,7 +13,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from deploy.cli import compose, install, main, operations
+from deploy.cli import compose, diagnostics, install, main, operations
 from deploy.cli.result import CommandError, EXIT_PREREQ, exit_for_envelope
 
 REPO = Path(__file__).resolve().parents[2]
@@ -55,6 +55,8 @@ def docker_ok(argv, timeout_s=10, env=None):
         return 0, "unix:///var/run/docker.sock\n", ""
     if "OperatingSystem" in text:
         return 0, "Ubuntu 22.04 LTS\n", ""
+    if "OSType" in text:
+        return 0, "linux/x86_64\n", ""
     return 0, "[]\n", ""
 
 
@@ -115,8 +117,9 @@ class PreflightFailureTests(TempEnv):
         assert_prereq(self, result, home, "docker_unreachable")
 
     def test_unsupported_platform_and_arch(self):
-        for system, machine in (("Darwin", "x86_64"), ("Linux", "arm64")):
-            home = self.root / f"plat-{machine}"
+        for system, machine in (("Darwin", "x86_64"), ("Darwin", "arm64"),
+                                ("Linux", "riscv64"), ("Linux", "i686")):
+            home = self.root / f"plat-{system}-{machine}"
             with (patch("os.geteuid", return_value=1000),
                   patch.object(install.platform, "system", return_value=system),
                   patch.object(install.platform, "machine", return_value=machine),
@@ -194,6 +197,7 @@ class StagedRetryTests(TempEnv):
             patch.object(install, "check_persistence", return_value=("verified", "")),
             patch.object(compose, "detect_project", side_effect=self.project(home)),
             patch.object(compose, "local_image_present", return_value=True),
+            patch.object(install, "verify_native_image", return_value="linux/amd64"),
             patch.object(compose, "pull_image", return_value=None),
             patch.object(compose, "ps_entries",
                          side_effect=lambda *_: [{"State": "running"}] if flag["running"] else []),
@@ -453,6 +457,227 @@ class CredentialRevealTests(TempEnv):
                 main.cmd_dashboard(args, "opref123")
         self.assertEqual(ctx.exception.code, "owner_auth_failed")
         self.assertEqual(buffer.getvalue(), "")
+
+
+class NativePlatformTests(TempEnv):
+    def test_arch_aliases_normalize(self):
+        self.assertEqual(install.normalize_native_arch("Linux", "x86_64"), "amd64")
+        self.assertEqual(install.normalize_native_arch("Linux", "amd64"), "amd64")
+        self.assertEqual(install.normalize_native_arch("Linux", "aarch64"), "arm64")
+        self.assertEqual(install.normalize_native_arch("Linux", "arm64"), "arm64")
+
+    def test_unsupported_os_and_arch_return_none(self):
+        self.assertIsNone(install.normalize_native_arch("Darwin", "arm64"))
+        self.assertIsNone(install.normalize_native_arch("Windows", "amd64"))
+        self.assertIsNone(install.normalize_native_arch("Linux", "riscv64"))
+        self.assertIsNone(install.normalize_native_arch("Linux", "i686"))
+        self.assertIsNone(install.normalize_native_arch("Linux", ""))
+
+    def daemon_route(self, daemon):
+        def route(argv, timeout_s=10, env=None):
+            text = " ".join(argv)
+            if "version" in text:
+                return 0, "v2.24.0\n", ""
+            if "context" in text:
+                return 0, "unix:///var/run/docker.sock\n", ""
+            if "OperatingSystem" in text:
+                return 0, "Ubuntu 22.04 LTS\n", ""
+            if "OSType" in text:
+                return 0, daemon + "\n", ""
+            return 0, "[]\n", ""
+        return route
+
+    def test_daemon_arch_mismatch_refused(self):
+        home = self.root / "mismatch"
+        with (patch("os.geteuid", return_value=1000),
+              patch.object(install.platform, "system", return_value="Linux"),
+              patch.object(install.platform, "machine", return_value="x86_64"),
+              patch.object(compose, "run", side_effect=self.daemon_route("linux/arm64")),
+              patch("shutil.disk_usage") as disk,
+              patch("os.access", return_value=True)):
+            disk.return_value.free = 8 * 1024 ** 3
+            result, _ = install.run_setup(fresh_args(home))
+        assert_prereq(self, result, home, "unsupported_platform")
+
+    def test_daemon_wrong_os_refused(self):
+        home = self.root / "wrongos"
+        with (patch("os.geteuid", return_value=1000),
+              patch.object(install.platform, "system", return_value="Linux"),
+              patch.object(install.platform, "machine", return_value="x86_64"),
+              patch.object(compose, "run", side_effect=self.daemon_route("windows/amd64")),
+              patch("shutil.disk_usage") as disk,
+              patch("os.access", return_value=True)):
+            disk.return_value.free = 8 * 1024 ** 3
+            result, _ = install.run_setup(fresh_args(home))
+        assert_prereq(self, result, home, "unsupported_platform")
+
+    def test_explicit_remote_docker_host_refused_without_daemon_access(self):
+        home = self.root / "remote"
+        env = patch.dict(os.environ, {"DOCKER_HOST": "tcp://192.0.2.1:2375"}, clear=False)
+        env.start()
+        self.addCleanup(env.stop)
+
+        def route(argv, timeout_s=10, env=None):
+            if "version" in " ".join(argv):
+                return 0, "v2.24.0\n", ""
+            raise AssertionError("daemon must not be contacted")
+
+        with (patch("os.geteuid", return_value=1000),
+              patch.object(install.platform, "system", return_value="Linux"),
+              patch.object(install.platform, "machine", return_value="x86_64"),
+              patch.object(compose, "run", side_effect=route)):
+            result, _ = install.run_setup(fresh_args(home))
+        assert_prereq(self, result, home, "unsupported_platform")
+
+    def test_rootless_daemon_remains_refused(self):
+        home = self.root / "rootless"
+
+        def route(argv, timeout_s=10, env=None):
+            text = " ".join(argv)
+            if "version" in text:
+                return 0, "v2.24.0\n", ""
+            if "context" in text:
+                return 0, "unix:///var/run/docker.sock\n", ""
+            return 0, '["rootless"]\n', ""
+
+        with (patch("os.geteuid", return_value=1000),
+              patch.object(install.platform, "system", return_value="Linux"),
+              patch.object(install.platform, "machine", return_value="x86_64"),
+              patch.object(compose, "run", side_effect=route)):
+            result, _ = install.run_setup(fresh_args(home))
+        assert_prereq(self, result, home, "unsupported_platform")
+
+    def test_desktop_daemon_remains_refused(self):
+        home = self.root / "desktop"
+
+        def route(argv, timeout_s=10, env=None):
+            text = " ".join(argv)
+            if "version" in text:
+                return 0, "v2.24.0\n", ""
+            if "context" in text:
+                return 0, "unix:///var/run/docker.sock\n", ""
+            if "OperatingSystem" in text:
+                return 0, "Docker Desktop\n", ""
+            return 0, "[]\n", ""
+
+        with (patch("os.geteuid", return_value=1000),
+              patch.object(install.platform, "system", return_value="Linux"),
+              patch.object(install.platform, "machine", return_value="x86_64"),
+              patch.object(compose, "run", side_effect=route)):
+            result, _ = install.run_setup(fresh_args(home))
+        assert_prereq(self, result, home, "unsupported_platform")
+
+    def test_doctor_accepts_native_arm64(self):
+        with (patch.object(install.platform, "system", return_value="Linux"),
+              patch.object(install.platform, "machine", return_value="aarch64"),
+              patch("os.geteuid", return_value=1000),
+              patch.object(compose, "run", side_effect=self.daemon_route("linux/arm64"))):
+            check = diagnostics.check_prerequisites()
+        self.assertEqual(check["status"], "ok")
+        self.assertEqual(check["name"], "prerequisites")
+
+    def test_doctor_refuses_daemon_mismatch(self):
+        with (patch.object(install.platform, "system", return_value="Linux"),
+              patch.object(install.platform, "machine", return_value="aarch64"),
+              patch("os.geteuid", return_value=1000),
+              patch.object(compose, "run", side_effect=self.daemon_route("linux/amd64"))):
+            check = diagnostics.check_prerequisites()
+        self.assertEqual(check["status"], "failed")
+        self.assertEqual(check["reason"], "unsupported_platform")
+
+    def test_shared_native_gate_refuses_remote_context_before_daemon_access(self):
+        def route(argv, timeout_s=10, env=None):
+            if argv[:3] == ["docker", "compose", "version"]:
+                return 0, "v2.24.0\n", ""
+            if argv[:3] == ["docker", "context", "inspect"]:
+                return 0, "tcp://192.0.2.1:2375\n", ""
+            self.fail("remote daemon must not be contacted")
+
+        for env in ({}, {"DOCKER_HOST": "unix:///var/run/docker.sock", "DOCKER_CONTEXT": "fixture-remote"}):
+            with (self.subTest(env=env), patch.dict(os.environ, env),
+                  patch.object(install.platform, "system", return_value="Linux"),
+                  patch.object(install.platform, "machine", return_value="x86_64"),
+                  patch("os.geteuid", return_value=1000), patch.object(compose, "run", side_effect=route)):
+                with self.assertRaises(CommandError) as refused:
+                    install.check_native_platform()
+                self.assertEqual(refused.exception.code, "unsupported_platform")
+
+    def test_shared_native_gate_refuses_matching_rootless_and_desktop_daemons(self):
+        for security, operating_system in (('["rootless"]', "Ubuntu"), ("[]", "Docker Desktop")):
+            with self.subTest(security=security, operating_system=operating_system):
+                def route(argv, timeout_s=10, env=None):
+                    text = " ".join(argv)
+                    if "SecurityOptions" in text:
+                        return 0, security, ""
+                    if "OperatingSystem" in text:
+                        return 0, operating_system, ""
+                    return self.daemon_route("linux/amd64")(argv, timeout_s, env)
+
+                with (patch.object(install.platform, "system", return_value="Linux"),
+                      patch.object(install.platform, "machine", return_value="x86_64"),
+                      patch("os.geteuid", return_value=1000), patch.object(compose, "run", side_effect=route)):
+                    with self.assertRaises(CommandError) as refused:
+                        install.check_native_platform()
+                    self.assertEqual(diagnostics.check_prerequisites()["reason"], "unsupported_platform")
+                self.assertEqual(refused.exception.code, "unsupported_platform")
+
+    def test_image_platform_requires_one_exact_native_descriptor(self):
+        for output, expected in (("linux/amd64\n", "linux/amd64"), ("linux/arm64\n", "linux/arm64"),
+                                 ("linux/x86_64\n", None), ("linux/amd64\nlinux/arm64\n", None),
+                                 ("windows/amd64\n", None), ("", None)):
+            with self.subTest(output=output), patch.object(compose, "run", return_value=(0, output, "")):
+                self.assertEqual(compose.image_platform("fixture:local"), expected)
+
+
+class FreshImageTests(TempEnv):
+    def fresh_patches(self, home, image_platform):
+        flag = {"running": False}
+
+        def project(_home):
+            try:
+                return install.read_manifest(home).project
+            except (CommandError, OSError, ValueError):
+                return None
+
+        return [
+            patch.object(compose, "run", side_effect=AssertionError("no external Docker command")),
+            patch.object(install, "preflight", return_value=[]),
+            patch.object(install, "port_free", return_value=True),
+            patch.object(install, "check_persistence", return_value=("verified", "")),
+            patch.object(install, "normalize_native_arch", return_value="amd64"),
+            patch.object(compose, "detect_project", side_effect=project),
+            patch.object(compose, "local_image_present", return_value=True),
+            patch.object(compose, "pull_image", return_value=None),
+            patch.object(compose, "image_platform", return_value=image_platform),
+            patch.object(compose, "ps_entries", return_value=[]),
+        ]
+
+    def start_all(self, patches):
+        for entered in patches:
+            entered.start()
+            self.addCleanup(entered.stop)
+
+    def test_wrong_image_platform_refuses_before_start(self):
+        home = self.root / "wrong-image"
+        self.start_all(self.fresh_patches(home, "linux/arm64"))
+        with patch.object(compose, "compose_up",
+                          side_effect=AssertionError("incompatible image must not start")) as up:
+            result, _ = install.run_setup(fresh_args(home))
+        self.assertEqual(result["outcome"], "error")
+        self.assertEqual(result["error"]["code"], "image_incompatible")
+        self.assertEqual(result["error"]["stage"], "compatibility")
+        self.assertFalse(up.called)
+
+    def test_unknown_image_platform_refuses_before_start(self):
+        home = self.root / "unknown-image"
+        self.start_all(self.fresh_patches(home, None))
+        with patch.object(compose, "compose_up",
+                          side_effect=AssertionError("incompatible image must not start")) as up:
+            result, _ = install.run_setup(fresh_args(home))
+        self.assertEqual(result["outcome"], "error")
+        self.assertEqual(result["error"]["code"], "image_incompatible")
+        self.assertEqual(result["error"]["stage"], "compatibility")
+        self.assertFalse(up.called)
 
 
 if __name__ == "__main__":

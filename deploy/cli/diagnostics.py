@@ -65,34 +65,10 @@ def not_applicable(names, reason):
     return [check_result(name, "not_applicable", reason) for name in names]
 
 
-def docker_step(args, timeout_s=10):
-    try:
-        code, out, stderr = compose.run(args, timeout_s=timeout_s)
-    except compose.RunError as exc:
-        raise operational_error("docker_unreachable", "The Docker daemon is unavailable.",
-                                "doctor", "Start Docker Engine and retry.") from exc
-    if code != 0:
-        reason = compose.classify_docker_error(stderr)
-        if reason == "denied":
-            raise operational_error("docker_permission", "Docker denied access.",
-                                    "doctor", "Grant the install owner Docker access and retry.")
-        raise operational_error("docker_unreachable", "Docker did not answer.",
-                                "doctor", "Start Docker Engine and retry.")
-    return out.strip()
-
-
 def check_prerequisites():
     timer = operations.Timer()
     try:
-        import platform
-        if platform.system() != "Linux" or platform.machine() not in ("x86_64", "amd64"):
-            return check_result("prerequisites", "failed", "unsupported_platform",
-                                timer.elapsed_ms(), "Use a supported Linux amd64 host.")
-        version = docker_step(["docker", "compose", "version", "--short"])
-        if not re.match(r"^v?[2-9][0-9]*\.", version):
-            return check_result("prerequisites", "failed", "docker_missing",
-                                timer.elapsed_ms(), "Install Docker Compose v2 or later.")
-        docker_step(["docker", "info", "--format", "{{.ServerVersion}}"])
+        install.check_native_platform()
     except CommandError as err:
         return check_result("prerequisites", "failed", err.code,
                             timer.elapsed_ms(), err.recovery)
