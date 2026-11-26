@@ -1,6 +1,7 @@
 # Appended to the exact reviewed v1 helper only for an explicitly selected v2 route.
 
 from datetime import datetime
+import time
 
 ROUTE_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 
@@ -60,10 +61,33 @@ def typed_check(marker):
     try:
         config = read_typed_marker(marker)
         response = _post(config, "/v2/aira/attach-check", {"schemaVersion": 2, "adapterVersion": ADAPTER_VERSION,
-                         "profile": config["profile"], "action": "connect", "capabilities": ["text"]}, 15)
+                         "profile": config["profile"], "action": "connect", "capabilities": ["text"],
+                         "deadlineMs": int(time.time() * 1000) + 10_000}, 15)
         receipt = _typed_receipt(response, config["profile"])
         if receipt and (config["routeId"] is None or config["routeId"] == receipt["routeId"]):
             return receipt
+    except Exception:
+        pass
+    return None
+
+
+def typed_downgrade(marker, route_id):
+    """Explicitly end the current typed route without publishing a live v1 marker."""
+    try:
+        config = read_typed_marker(marker)
+        if config["state"] != "provisional" or not _route_id(route_id):
+            return None
+        response = _post(config, "/v2/aira/attach-check", {"schemaVersion": 2, "adapterVersion": ADAPTER_VERSION,
+                         "profile": config["profile"], "action": "downgrade", "routeId": route_id,
+                         "deadlineMs": int(time.time() * 1000) + 10_000}, 15)
+        if (not isinstance(response, dict) or set(response) != {"schemaVersion", "hermes"}
+                or type(response["schemaVersion"]) is not int or response["schemaVersion"] != 2):
+            return None
+        route = response["hermes"]
+        if (isinstance(route, dict) and set(route) == {"state", "profile", "adapterVersion", "verifiedAt"}
+                and route["state"] == "connected" and route["profile"] == config["profile"]
+                and route["adapterVersion"] == ADAPTER_VERSION and isinstance(route["verifiedAt"], str)):
+            return route
     except Exception:
         pass
     return None

@@ -241,12 +241,19 @@ jobs:
           docker cp "$RUNNER_TEMP/aira-probe-failure.js" "$fixture:/app/dist/scripts/deploy-turn-probe.js"
           docker commit "$fixture" "$BAD"
           docker rm -v "$fixture"
+          previous_args=()
+          if [ "$ARCH" = amd64 ]; then
+            previous="ghcr.io/tolonglabs/aira@sha256:bf8f61ee7916f91d8c109354c96591f5db157f52c5153a7f94793ed3ab20d5bc"
+            docker pull "$previous"
+            docker tag "$previous" aira-onboarding-previous:fixture
+            previous_args=(--previous-image aira-onboarding-previous:fixture)
+          fi
           profile="$RUNNER_TEMP/aira-hermes-profile"
           python3 tests/install/smoke.py --image "$CANDIDATE" --home "$RUNNER_TEMP/aira-install" \
             --hermes-dir "$profile/hermes-agent" --hermes-home "$profile" \
             --migration-ref ae2a81ccc00e9b7c06301523e5bb09608397149c --migration-version hermes-v0.23.2 \
             --uv-bin "$RUNNER_TEMP/aira-uv/bin/uv" \
-            --update-image "$NEXT" --bad-image "$BAD"
+            --update-image "$NEXT" --bad-image "$BAD" "${previous_args[@]}"
 
       - name: Exercise additional exact stock attachments
         run: |
@@ -262,9 +269,6 @@ jobs:
       - name: Verify exact rollback against the previous released core
         if: matrix.arch == 'amd64'
         run: |
-          previous="ghcr.io/tolonglabs/aira@sha256:bf8f61ee7916f91d8c109354c96591f5db157f52c5153a7f94793ed3ab20d5bc"
-          docker pull "$previous"
-          docker tag "$previous" aira-onboarding-previous:fixture
           profile="$RUNNER_TEMP/aira-hermes-profile-legacy"
           python3 tests/install/smoke.py --image aira-onboarding-previous:fixture \
             --home "$RUNNER_TEMP/aira-install-legacy" --hermes-dir "$profile/hermes-agent" --hermes-home "$profile" \

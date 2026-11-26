@@ -165,15 +165,19 @@ class AttachmentTests(unittest.TestCase):
             seen.append("verified")
             return original_observe
 
+        def gateway(_plan, verb):
+            expected = None if verb == "stop" else self.plan["provisional"]
+            self.assertEqual(hermes._read(self.plan["paths"]["marker"], optional=True), expected)
+            seen.append(verb)
+
         with (patch.object(hermes, "_plan", return_value=self.plan),
               patch.object(hermes, "_profile_status", return_value=True),
-              patch.object(hermes, "_gateway_command", side_effect=lambda *_: self.assertEqual(
-                  hermes._read(self.plan["paths"]["marker"]), self.plan["provisional"])),
+              patch.object(hermes, "_gateway_command", side_effect=gateway),
               patch.object(install, "observe", side_effect=observe),
               patch.object(operations, "log_event", return_value="fixture")):
             result = hermes.run_attach(self.args, "8" * 32)
         self.assertEqual(result["outcome"], "ok")
-        self.assertEqual(seen, ["verified"])
+        self.assertEqual(seen, ["stop", "start", "verified"])
         marker = json.loads(self.plan["paths"]["marker"].read_text())
         self.assertEqual((marker["state"], marker["routeId"]), ("active", route_id))
 
@@ -188,9 +192,10 @@ class AttachmentTests(unittest.TestCase):
         self.success = False
         calls = []
 
-        def restart(*_):
-            self.assertEqual(hermes._read(self.plan["paths"]["marker"]), self.plan["provisional"])
-            calls.append("restart")
+        def restart(_plan, verb):
+            marker = prior["marker"] if not calls else self.plan["provisional"]
+            self.assertEqual(hermes._read(self.plan["paths"]["marker"]), marker)
+            calls.append(verb)
 
         with (patch.object(hermes, "_plan", return_value=self.plan),
               patch.object(hermes, "_profile_status", return_value=True),
@@ -199,7 +204,7 @@ class AttachmentTests(unittest.TestCase):
               patch.object(operations, "log_event", return_value="fixture")):
             result = hermes.run_attach(self.args, "8" * 32)
         self.assertEqual(result["error"]["code"], "attach_failed")
-        self.assertEqual(calls, ["restart", "restart"])
+        self.assertEqual(calls, ["stop", "start", "stop", "start"])
         for name, record in prior.items():
             self.assertEqual(hermes._read(self.plan["paths"][name]), record, name)
 
@@ -226,7 +231,26 @@ class AttachmentTests(unittest.TestCase):
             result = self.run_attach()
         self.assertEqual(result["outcome"], "ok")
         self.assertEqual(json.loads(self.plan["paths"]["marker"].read_text())["routeId"], route_id)
-        self.assertEqual(self.commands, ["restart"])
+        self.assertEqual(self.commands, ["stop", "start"])
+
+    def test_fresh_running_stock_rollback_resumes_only_after_original_marker_absence(self):
+        self.typed_plan()
+        self.success = False
+        calls = []
+
+        def gateway(_plan, verb):
+            expected = None if len(calls) in (0, 3) else self.plan["provisional"]
+            self.assertEqual(hermes._read(self.plan["paths"]["marker"], optional=True), expected)
+            calls.append(verb)
+
+        with (patch.object(hermes, "_plan", return_value=self.plan),
+              patch.object(hermes, "_profile_status", return_value=True),
+              patch.object(hermes, "_gateway_command", side_effect=gateway),
+              patch.object(install, "observe", return_value=self.report),
+              patch.object(operations, "log_event", return_value="fixture")):
+            result = hermes.run_attach(self.args, "8" * 32)
+        self.assertEqual(result["error"]["code"], "attach_failed")
+        self.assertEqual(calls, ["stop", "start", "stop", "start"])
 
 
 if __name__ == "__main__":

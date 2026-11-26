@@ -2,6 +2,7 @@
 
 import json
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -106,9 +107,24 @@ class TypedAdapterTests(unittest.IsolatedAsyncioTestCase):
         receipt = {"state": "connected", "profile": "default", "adapterVersion": "hermes-v0.23.4",
                    "verifiedAt": "2026-11-26T00:00:00.000Z", "protocolVersion": 2,
                    "routeId": ROUTE, "capabilities": ["text"]}
-        with patch.object(self.adapter, "_post", return_value={"schemaVersion": 2, "hermes": receipt}):
+        with patch.object(self.adapter, "_post", return_value={"schemaVersion": 2, "hermes": receipt}) as post:
             self.assertEqual(self.adapter.typed_check(self.marker), receipt)
+        self.assertEqual(post.call_args.args[1], "/v2/aira/attach-check")
+        self.assertGreater(post.call_args.args[2]["deadlineMs"], int(time.time() * 1000))
+        self.assertLessEqual(post.call_args.args[2]["deadlineMs"], int(time.time() * 1000) + 10_000)
         for change in ({"profile": "other"}, {"adapterVersion": "hermes-v0.23.2"},
                        {"capabilities": ["text", "document"]}, {"routeId": "invalid"}):
             with patch.object(self.adapter, "_post", return_value={"schemaVersion": 2, "hermes": {**receipt, **change}}):
                 self.assertIsNone(self.adapter.typed_check(self.marker))
+
+    def test_downgrade_names_the_current_route_and_uses_typed_deadline(self):
+        self.config.update(state="provisional", routeId=None)
+        self.write_marker()
+        receipt = {"state": "connected", "profile": "default", "adapterVersion": "hermes-v0.23.4",
+                   "verifiedAt": "2026-11-26T00:00:00.000Z"}
+        with patch.object(self.adapter, "_post", return_value={"schemaVersion": 2, "hermes": receipt}) as post:
+            self.assertEqual(self.adapter.typed_downgrade(self.marker, ROUTE), receipt)
+        self.assertEqual(post.call_args.args[1], "/v2/aira/attach-check")
+        self.assertEqual(post.call_args.args[2]["action"], "downgrade")
+        self.assertEqual(post.call_args.args[2]["routeId"], ROUTE)
+        self.assertGreater(post.call_args.args[2]["deadlineMs"], int(time.time() * 1000))

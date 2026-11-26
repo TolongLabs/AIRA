@@ -348,10 +348,12 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
     let parsed: Extract<GatewayRequest, { type: 'turn' }> | undefined
     try {
       if (action === 'v1Attach') {
+        if (response.destroyed) return
         json(response, 200, { schemaVersion: 1, hermes: adapter.attach(input) }, log)
         return
       }
       if (action === 'v2Attach') {
+        if (response.destroyed) return
         json(response, 200, { schemaVersion: 2, hermes: adapter.attachTyped(input) }, log)
         return
       }
@@ -366,6 +368,7 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
       }
       const typed = action === 'v2Turn' ? adapter.parseTypedTurn(input) : undefined
       parsed = typed?.request ?? adapter.parseTurn(input)
+      const ingress = typed ? undefined : adapter.status()
       const known = getChatByWaId(storage, parsed.marker.chat)
       if (known && known.type !== parsed.marker.kind)
         throw new StandaloneGatewayError(409, 'gateway_chat_kind_conflict')
@@ -384,8 +387,9 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
           log
         )
       } else {
-        const attemptedByTyped = reply.replayed && binding && adapter.delivery.hasIssued(binding)
-        const content = attemptedByTyped ? null : standaloneReplyText(reply.content)
+        const attemptedByTyped = binding && adapter.delivery.hasIssued(binding)
+        const content =
+          ingress && adapter.isSameV1Route(ingress) && !attemptedByTyped ? standaloneReplyText(reply.content) : null
         json(
           response,
           200,
