@@ -279,7 +279,12 @@ jobs:
             fixture="$GITHUB_WORKSPACE/hermes-fixture${suffix}"
             if [ -z "$suffix" ]; then fixture="$RUNNER_TEMP/aira-hermes-profile/hermes-agent"; fi
             cp tests/install/hermes_fixture.py "$fixture/tests/gateway/test_aira_transport_spike.py"
-            (cd "$fixture" && .venv/bin/pytest -q tests/gateway/test_aira_transport_spike.py tests/gateway/test_whatsapp_group_gating.py)
+            cp tests/install/hermes_bridge_fixture.py "$fixture/tests/gateway/test_aira_bridge_fixture.py"
+            cp tests/install/hermes_capabilities_fixture.py "$fixture/tests/gateway/test_aira_capabilities_fixture.py"
+            (cd "$fixture" && .venv/bin/pytest -q \
+              tests/gateway/test_aira_transport_spike.py tests/gateway/test_aira_bridge_fixture.py \
+              tests/gateway/test_aira_capabilities_fixture.py tests/gateway/test_whatsapp_group_gating.py \
+              tests/gateway/test_whatsapp_media_path_profile.py)
           done
 
       - name: Log in to GHCR after the native tests pass
