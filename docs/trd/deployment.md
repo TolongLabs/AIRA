@@ -225,24 +225,39 @@ route prerequisites without writing files, restarting, or contacting a real mess
 Optional `--hermes-dir PATH` and `--hermes-home PATH` select the public source checkout and profile root;
 the ordinary defaults are the Hermes source beneath its default home and the default Hermes home.
 A default profile with unrelated/multiplexed profiles is not automatically restarted; only an
-independent selected profile is supported. Unverified versions and scopes fail without changes.
+independent selected profile is supported. Select an exact source revision from the finite
+[standalone text registry](system.md#standalone-hermes-transport); unknown Git HEAD, unrelated tracked edits,
+foreign consumer/adapter bytes or unverified profile scopes fail without changes. The ABI is not inferred
+from a version range.
 
 `aira attach-hermes --profile NAME --apply` is a deliberate apply; confirmation is required on a TTY,
 or `--yes` with explicit non-interactive apply. The install must be standalone. Hold its shared deploy
 lock and a bounded source-tree lock while modifying shared adapter source. Preserve the exact original
 source and selected profile marker in an owned private backup under
 `<data>/standalone/attach-backups/<operationId>/`. Verify source SHA/version and apply only the exact
-reviewed adapter insertion plus its public helper module. Refuse any unfamiliar patch or helper.
+reviewed adapter insertion plus its public helper module rendered with the exact adapter-version ID. Keep
+the v0.23.4 helper byte-identical with the existing installation. Refuse any unfamiliar patch or helper.
+For an operator-initiated version change, an explicit reattach may replace a previously known helper and
+host record only if the owned old record, marker and authenticated connected route all describe the same
+installation, source/root and selected profile, and the prior helper, host record and route versions agree.
+Version-changing shared helper bytes are permitted only for the selected root's canonical, exclusive source
+checkout, with no other profile marker under that root. The operator keeps this checkout exclusive; an
+unproven shared/custom source refuses version migration without changes (fresh exact-version attachment
+may still select a custom source). Different paths/profile, mismatched versions or partial/foreign prior state
+refuse without writes.
 Write the selected profile marker atomically. No legacy config, model/provider list, account credentials
 or unrelated profile is edited. The selected gateway's existing service state is preserved: restart only
 a running independent profile using its pinned Hermes command, and verify its liveness; a stopped
 profile stays stopped with an explicit start instruction. Never start a second gateway for the same account.
 
 Verify using the installed adapter's synthetic local handshake against the actual mapped core port,
-not an arbitrary provider URL or a real message. On failure restore the exact prior touched files
+not an arbitrary provider URL or a real message. Execute the selected rendered helper bytes for the
+handshake, rather than the default template module. Authenticated readback must confirm both profile and the
+selected exact adapter version. On failure restore the exact prior touched files
 and service state, clear or restore the route receipt, return nonzero with safe recovery evidence.
 An owned private `<data>/standalone/attach-host.json` records the pinned source and Hermes root paths and
-selected profile; doctor rechecks the files and liveness against that record. It is not a credential or an
+selected profile and adapter version; doctor rechecks the exact source/helper/marker and liveness against that
+record. It is not a credential or an
 authorization source. A missing, moved or foreign source/marker cannot count as an installed route.
 If rollback fails report exit 5 and the private backup location. The public adapter is limited to
 ordinary WhatsApp text after Hermes admission; the legacy integration and its broader capabilities

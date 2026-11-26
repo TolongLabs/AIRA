@@ -43,10 +43,22 @@ must be proven before enabling any standalone transport; the legacy scope-marker
 
 ## Standalone Hermes Transport
 
-The legacy pinned patched gateway and OpenAI-compatible scope-marker path remain unchanged. The portable
-path targets the public Hermes Agent v0.23.4 source at
-[`8fc0374447313e276f6b9a2764bfc750190c966a`](https://github.com/NousResearch/hermes-agent/tree/8fc0374447313e276f6b9a2764bfc750190c966a)
-in a local independent profile. This is the candidate compatibility contract, not a release claim.
+The legacy pinned patched gateway and OpenAI-compatible scope-marker path remain unchanged. The portable text
+contract admits only the following exact public Hermes Agent source revisions in a local independent profile.
+These are testable candidate compatibility targets; neither synthetic tests nor this contract alone extend
+the published compatibility or live account claim.
+
+| Adapter Version  | Exact Public Source Revision                                                                                                             |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `hermes-v0.23.2` | [`ae2a81ccc00e9b7c06301523e5bb09608397149c`](https://github.com/NousResearch/hermes-agent/tree/ae2a81ccc00e9b7c06301523e5bb09608397149c) |
+| `hermes-v0.23.3` | [`caafe5389ae585ef77387a962aee05b1bcf17029`](https://github.com/NousResearch/hermes-agent/tree/caafe5389ae585ef77387a962aee05b1bcf17029) |
+| `hermes-v0.23.4` | [`8fc0374447313e276f6b9a2764bfc750190c966a`](https://github.com/NousResearch/hermes-agent/tree/8fc0374447313e276f6b9a2764bfc750190c966a) |
+
+The host and core validate the same finite adapter-version registry; a structural version range, unknown
+commit or modified source never grants compatibility. The original consumer digest below is identical at the
+three revisions. Render the reviewed helper with only its adapter-version constant selected for the exact
+source; preserve the existing v0.23.4 helper bytes and v1 marker format. Test each exact source, profile
+probe, attach transaction and synthetic stock delivery independently.
 
 The public `post_gateway_admission` hook runs after identity and sender admission and supplies a routed
 profile snapshot, but intentionally fails open if a plugin raises or is unhandled. A plain custom provider
@@ -73,11 +85,11 @@ authority. Text is untrusted payload, never parsed as a scope marker. Limit stru
 to 32,768 text characters and 256 KiB JSON. The adapter uses a bounded 120-second local request and never
 retries a turn after an ambiguous failure. A core-produced reply is not a confirmed WhatsApp delivery receipt.
 
-| Endpoint                     | Contract                                                                                                                                                                                                                 |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| POST `/v1/aira/attach-check` | Bearer gateway credential; strict `{schemaVersion:1, adapterVersion:'hermes-v0.23.4', profile, action:'connect'\|'disconnect'}`; records or clears the verified route and returns safe status. No turn or model request. |
-| POST `/v1/aira/turn`         | Same credential, exact attached profile; strict `{schemaVersion:1, profile, platform:'whatsapp', kind:'dm'\|'group', chat, sender, mid, text}`; one normal core turn on trusted structured metadata.                     |
-| Turn result                  | HTTP 200 `{schemaVersion:1, disposition:'reply'\|'no_reply', reply:string\|null}`; null means nothing delivered. Refused, unknown or failed response never invites a second Hermes model.                                |
+| Endpoint                     | Contract                                                                                                                                                                                                                                              |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST `/v1/aira/attach-check` | Bearer gateway credential; strict `{schemaVersion:1, adapterVersion, profile, action:'connect'\|'disconnect'}` with one of the three exact version IDs above; records or clears the verified route and returns safe status. No turn or model request. |
+| POST `/v1/aira/turn`         | Same credential, exact attached profile; strict `{schemaVersion:1, profile, platform:'whatsapp', kind:'dm'\|'group', chat, sender, mid, text}`; one normal core turn on trusted structured metadata.                                                  |
+| Turn result                  | HTTP 200 `{schemaVersion:1, disposition:'reply'\|'no_reply', reply:string\|null}`; null means nothing delivered. Refused, unknown or failed response never invites a second Hermes model.                                                             |
 
 Reject missing/wrong gateway credential with 401, unsupported version/profile with 400 or 403, malformed
 typed input with 400, inactive chatbot with 503 and a safe reason. No standalone legacy-marker path can
@@ -90,6 +102,10 @@ The private route receipt `<data>/standalone/hermes.json` contains version 1 and
 `disconnected` state; a connected receipt includes adapter version, selected profile ID and verification
 timestamp. Authenticated owner health reports `hermes: {state, adapterVersion, profile, verifiedAt}`;
 an invalid or unsupported receipt is separately reported as `invalid` or `unsupported` and never enables turns.
+A connect for the same selected profile may replace its version during an explicit host reattach; a different
+profile, or a disconnect using a different version from the connected receipt, is a conflict and leaves that
+receipt unchanged. Invalid, unsupported or disconnected receipts can still be cleared with an accepted version.
+The readback reports the exact connected version, never a default version substituted for a supported receipt.
 A verified receipt reports connected (authenticated stateless route, not a persistent socket or proof of a
 running upstream process). Without that receipt it is disconnected. CLI doctor independently checks the
 installed source, helper, marker and selected profile's service liveness using a private host attachment record.
