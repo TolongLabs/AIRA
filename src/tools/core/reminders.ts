@@ -1,7 +1,9 @@
 import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
+import { type ReminderScope, sameReminderScope } from '../../gateway/reminder-scope.js'
 import type { Logger } from '../../records/logger.js'
 import { isoNow, type Storage } from '../../storage/database.js'
+import type { TurnContext } from '../../turn/types.js'
 import type { ToolPorts } from '../ports.js'
 import type { ToolDefinition } from '../types.js'
 
@@ -42,11 +44,23 @@ interface ReminderRow {
 }
 
 type CancelRow = Pick<ReminderRow, 'chat_id' | 'owner_id' | 'state'>
+export type ReminderScopeFor = (context: TurnContext) => ReminderScope | null
+
+const scopeRefused = () => ({ ok: false, kind: 'refused', reason: 'reminder route is unavailable' }) as const
+
+function checkScope(
+  scopeFor: ReminderScopeFor | undefined,
+  scope: ReminderScope | undefined | null,
+  context: TurnContext
+): void {
+  if (scopeFor && (!scope || !sameReminderScope(scopeFor(context), scope))) throw new Error('reminder route changed')
+}
 
 export function reminderSetTool(
   _storage: Storage,
   ports: ToolPorts,
-  logger: Logger
+  logger: Logger,
+  scopeFor?: ReminderScopeFor
 ): ToolDefinition<z.infer<typeof reminderSetSchema>> {
   return {
     name: 'reminder_set',
@@ -61,6 +75,8 @@ export function reminderSetTool(
       usage: '/remind <when and what>'
     },
     async handler(args, context) {
+      const scope = scopeFor?.(context)
+      if (scopeFor && !scope) return scopeRefused()
       const dueMs = Date.parse(args.dueAt)
       if (!Number.isFinite(dueMs) || dueMs <= context.now().getTime()) {
         return { ok: false, kind: 'invalid', reason: 'dueAt must be in the future' }
@@ -68,12 +84,14 @@ export function reminderSetTool(
       const dueAt = new Date(dueMs).toISOString()
 
       const { data } = context.commit((db) => {
+        checkScope(scopeFor, scope, context)
         const reminderId = `rem_${randomBytes(6).toString('hex')}`
         const at = isoNow(context.now)
         db.prepare(
           `INSERT INTO reminder (
-             reminder_id, chat_id, owner_id, target_id, state, due_at, repeat, text, gateway_job_id, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, 'active', ?, ?, ?, NULL, ?, ?)`
+             reminder_id, chat_id, owner_id, target_id, state, due_at, repeat, text, gateway_job_id, created_at, updated_at,
+             standalone_route_id, standalone_profile
+           ) VALUES (?, ?, ?, ?, 'active', ?, ?, ?, NULL, ?, ?, ?, ?)`
         ).run(
           reminderId,
           context.chat.chatId,
@@ -83,7 +101,9 @@ export function reminderSetTool(
           args.repeat ?? null,
           args.text,
           at,
-          at
+          at,
+          scope?.routeId ?? null,
+          scope?.profile ?? null
         )
 
         return {
@@ -96,14 +116,17 @@ export function reminderSetTool(
         }
       })
 
-      syncSchedule(ports, logger, context.turnId, data.reminderId)
+      if (!scopeFor) syncSchedule(ports, logger, context.turnId, data.reminderId)
 
       return { ok: true, data }
     }
   }
 }
 
-export function reminderListTool(storage: Storage): ToolDefinition<z.infer<typeof reminderListSchema>> {
+export function reminderListTool(
+  storage: Storage,
+  scopeFor?: ReminderScopeFor
+): ToolDefinition<z.infer<typeof reminderListSchema>> {
   return {
     name: 'reminder_list',
     description: 'Lists the active reminders of this chat.',
@@ -118,6 +141,8 @@ export function reminderListTool(storage: Storage): ToolDefinition<z.infer<typeo
       directArgs: () => ({})
     },
     handler(_args, context) {
+      const scope = scopeFor?.(context)
+      if (scopeFor && !scope) return scopeRefused()
       const rows = storage.read(
         (db) =>
           db
@@ -125,9 +150,13 @@ export function reminderListTool(storage: Storage): ToolDefinition<z.infer<typeo
               `SELECT reminder_id, owner_id, due_at, repeat, text
                FROM reminder
                WHERE chat_id = ? AND state = 'active'
+                 AND standalone_route_id IS ? AND standalone_profile IS ?
                ORDER BY due_at ASC`
             )
-            .all(context.chat.chatId) as Pick<ReminderRow, 'reminder_id' | 'owner_id' | 'due_at' | 'repeat' | 'text'>[]
+            .all(context.chat.chatId, scope?.routeId ?? null, scope?.profile ?? null) as Pick<
+            ReminderRow,
+            'reminder_id' | 'owner_id' | 'due_at' | 'repeat' | 'text'
+          >[]
       )
       const reminders = rows.map((row) => ({
         reminderId: row.reminder_id,
@@ -144,7 +173,8 @@ export function reminderListTool(storage: Storage): ToolDefinition<z.infer<typeo
 export function reminderCancelTool(
   storage: Storage,
   ports: ToolPorts,
-  logger: Logger
+  logger: Logger,
+  scopeFor?: ReminderScopeFor
 ): ToolDefinition<z.infer<typeof reminderCancelSchema>> {
   return {
     name: 'reminder_cancel',
@@ -159,11 +189,16 @@ export function reminderCancelTool(
       usage: '/cancel <reminder>'
     },
     async handler(args, context) {
+      const scope = scopeFor?.(context)
+      if (scopeFor && !scope) return scopeRefused()
       const row = storage.read(
         (db) =>
           db
-            .prepare('SELECT chat_id, owner_id, state FROM reminder WHERE reminder_id = ? AND chat_id = ?')
-            .get(args.reminderId, context.chat.chatId) as CancelRow | undefined
+            .prepare(
+              'SELECT chat_id, owner_id, state FROM reminder WHERE reminder_id = ? AND chat_id = ? AND standalone_route_id IS ? AND standalone_profile IS ?'
+            )
+            .get(args.reminderId, context.chat.chatId, scope?.routeId ?? null, scope?.profile ?? null) as
+            CancelRow | undefined
       )
 
       // A reminder of another chat is treated as one that does not exist: nothing about it leaves its chat.
@@ -178,12 +213,21 @@ export function reminderCancelTool(
       }
 
       const { data } = context.commit((db) => {
+        checkScope(scopeFor, scope, context)
         const updated = db
           .prepare(
             `UPDATE reminder SET state = 'cancelled', updated_at = ?
-             WHERE reminder_id = ? AND chat_id = ? AND owner_id = ? AND state = 'active'`
+             WHERE reminder_id = ? AND chat_id = ? AND owner_id = ? AND state = 'active'
+               AND standalone_route_id IS ? AND standalone_profile IS ?`
           )
-          .run(isoNow(context.now), args.reminderId, context.chat.chatId, context.senderId)
+          .run(
+            isoNow(context.now),
+            args.reminderId,
+            context.chat.chatId,
+            context.senderId,
+            scope?.routeId ?? null,
+            scope?.profile ?? null
+          )
         if (updated.changes !== 1) {
           throw new Error('reminder could not be cancelled')
         }
@@ -193,7 +237,7 @@ export function reminderCancelTool(
         }
       })
 
-      syncSchedule(ports, logger, context.turnId, args.reminderId)
+      if (!scopeFor) syncSchedule(ports, logger, context.turnId, args.reminderId)
 
       return { ok: true, data }
     }

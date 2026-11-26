@@ -6,9 +6,18 @@ import { ensurePrivateToken, verifyStandaloneOwnerToken } from '../config/standa
 import { getChat, getChatByWaId } from '../settings/chats.js'
 import { resolveSetting } from '../settings/settings.js'
 import type { Storage } from '../storage/database.js'
+import type { TurnReply } from '../turn/pipeline.js'
+import {
+  PORTABLE_REMINDER_PREFIX,
+  type ReminderOccurrence,
+  type ReminderScope,
+  reminderChatEnabled,
+  sameReminderScope
+} from './reminder-scope.js'
 import type { GatewayRequest } from './request.js'
 import { createStandaloneDeliveryLedger } from './standalone-delivery.js'
 import { decodeDirectMedia, directMediaSchema } from './standalone-media.js'
+import { createStandaloneReminderQueue } from './standalone-reminders.js'
 
 export const STANDALONE_ADAPTER_VERSION = 'hermes-v0.23.4'
 export const STANDALONE_ADAPTER_VERSIONS = ['hermes-v0.23.2', 'hermes-v0.23.3', STANDALONE_ADAPTER_VERSION] as const
@@ -40,21 +49,24 @@ const turnSchema = z.strictObject({
   kind: z.enum(['dm', 'group']),
   chat: identifier,
   sender: identifier,
-  mid: identifier,
+  mid: identifier.refine((mid) => !mid.startsWith(PORTABLE_REMINDER_PREFIX)),
   text: z.string().trim().min(1).max(32_768)
 })
-const directMediaCapabilities = z.tuple([
+const directMediaItems = [
   z.literal('text'),
   z.literal('document'),
   z.literal('receive-image'),
   z.literal('receive-audio'),
   z.literal('receive-video'),
   z.literal('receive-pdf')
-])
+] as const
+const directMediaCapabilities = z.tuple(directMediaItems)
+const schedulerCapabilities = z.tuple([...directMediaItems, z.literal('scheduler')])
 const typedCapabilities = z.union([
   z.tuple([z.literal('text')]),
   z.tuple([z.literal('text'), z.literal('document')]),
-  directMediaCapabilities
+  directMediaCapabilities,
+  schedulerCapabilities
 ])
 type TypedCapabilities = z.infer<typeof typedCapabilities>
 const typedReceipt = receiptSchema.extend({
@@ -85,6 +97,9 @@ const deliveryBinding = z.strictObject({
   id: z.uuid()
 })
 const deliveryAck = deliveryBinding.extend({ outcome: z.enum(['confirmed', 'failed', 'unknown']) })
+const schedulerScope = z.strictObject({ schemaVersion: z.literal(2), routeId: z.uuid(), profile: profileId })
+const schedulerClaim = schedulerScope.extend({ id: z.uuid() })
+const schedulerAck = schedulerClaim.extend({ outcome: z.enum(['confirmed', 'failed', 'unknown']) })
 type StructuredTurn = Pick<z.infer<typeof turnSchema>, 'platform' | 'kind' | 'chat' | 'sender' | 'mid' | 'text'>
 type InactiveRoute = {
   state: 'disconnected' | 'invalid' | 'unsupported'
@@ -114,6 +129,11 @@ export const hasMediaCapability = (route: HermesRouteStatus | undefined): boolea
   route?.state === 'connected' &&
   route.protocolVersion === 2 &&
   route.capabilities.some((capability) => capability === 'receive-image')
+
+export const hasSchedulerCapability = (route: HermesRouteStatus | undefined): boolean =>
+  route?.state === 'connected' &&
+  route.protocolVersion === 2 &&
+  route.capabilities.some((capability) => capability === 'scheduler')
 
 export class StandaloneGatewayError extends Error {
   constructor(
@@ -184,6 +204,21 @@ export function createStandaloneGateway(dataRoot: string, storage: Storage, now:
     )
   }
 
+  const currentReminderScope = (): ReminderScope | null => {
+    const route = status()
+    return route.state === 'connected' && route.protocolVersion === 2 && hasSchedulerCapability(route)
+      ? { routeId: route.routeId, profile: route.profile }
+      : null
+  }
+
+  const reminderScopeFor = (routeId: string | undefined, chatId: string): ReminderScope | null => {
+    const scope = currentReminderScope()
+    return scope && scope.routeId === routeId && reminderChatEnabled(storage, chatId) ? scope : null
+  }
+
+  const mayRunReminder = (scope: ReminderScope, chatId: string): boolean =>
+    sameReminderScope(reminderScopeFor(scope.routeId, chatId), scope)
+
   const delivery = createStandaloneDeliveryLedger(storage, {
     now,
     filesDir: join(dataRoot, 'files'),
@@ -193,6 +228,7 @@ export function createStandaloneGateway(dataRoot: string, storage: Storage, now:
       return route.state === 'connected' && route.protocolVersion === 2 ? (route.routeId ?? null) : null
     }
   })
+  const reminders = createStandaloneReminderQueue(storage, delivery, currentReminderScope, now)
 
   const persist = (receipt: unknown): HermesRouteStatus => {
     try {
@@ -363,6 +399,35 @@ export function createStandaloneGateway(dataRoot: string, storage: Storage, now:
       throw new StandaloneGatewayError(409, 'delivery_unavailable')
   }
 
+  function requireScheduler(scope: ReminderScope): void {
+    if (!sameReminderScope(currentReminderScope(), scope))
+      throw new StandaloneGatewayError(403, 'hermes_profile_refused')
+  }
+
+  async function pollReminder(input: unknown, run: (occurrence: ReminderOccurrence) => Promise<TurnReply | null>) {
+    const parsed = schedulerScope.safeParse(input)
+    if (!parsed.success) throw new StandaloneGatewayError(400, 'gateway_malformed')
+    requireScheduler(parsed.data)
+    return reminders.poll(parsed.data, run)
+  }
+
+  function claimReminder(input: unknown) {
+    const parsed = schedulerClaim.safeParse(input)
+    if (!parsed.success) throw new StandaloneGatewayError(400, 'gateway_malformed')
+    requireScheduler(parsed.data)
+    const result = reminders.claim(parsed.data, parsed.data.id)
+    if (!result) throw new StandaloneGatewayError(409, 'delivery_unavailable')
+    return result
+  }
+
+  function ackReminder(input: unknown): void {
+    const parsed = schedulerAck.safeParse(input)
+    if (!parsed.success) throw new StandaloneGatewayError(400, 'gateway_malformed')
+    requireScheduler(parsed.data)
+    if (!reminders.ack(parsed.data, parsed.data.id, parsed.data.outcome))
+      throw new StandaloneGatewayError(409, 'delivery_unavailable')
+  }
+
   return {
     status,
     authorized,
@@ -376,7 +441,12 @@ export function createStandaloneGateway(dataRoot: string, storage: Storage, now:
     ackTyped,
     delivery,
     canDeliverDocument,
-    canReceiveMedia
+    canReceiveMedia,
+    reminderScopeFor,
+    mayRunReminder,
+    pollReminder,
+    claimReminder,
+    ackReminder
   }
 }
 

@@ -1,3 +1,4 @@
+import { PORTABLE_HISTORY_VISIBLE, portableHistoryArgs } from '../gateway/reminder-scope.js'
 import { getChat } from '../settings/chats.js'
 import { resolveSetting } from '../settings/settings.js'
 import type { Storage } from '../storage/database.js'
@@ -104,7 +105,8 @@ export function searchHistory(
   storage: Storage,
   chatId: string,
   query: string,
-  limit: number
+  limit: number,
+  excludeAbandonedPortable = false
 ): { at: string; senderId?: string; text: string }[] {
   if (limit <= 0) return []
   const trimmed = query.trim()
@@ -118,14 +120,15 @@ export function searchHistory(
       db
         .prepare(
           `SELECT created_at, sender_id, content
-           FROM session_message
+           FROM session_message AS message
            WHERE chat_id = ?
+             AND ${PORTABLE_HISTORY_VISIBLE}
              AND content <> ?
              AND content LIKE ? ESCAPE '\\'
            ORDER BY id DESC
            LIMIT ?`
         )
-        .all(chatId, FORGOTTEN_MESSAGE, pattern, limit) as {
+        .all(chatId, ...portableHistoryArgs(excludeAbandonedPortable), FORGOTTEN_MESSAGE, pattern, limit) as {
         created_at: string
         sender_id: string | null
         content: string

@@ -52,7 +52,17 @@ const AUTOFETCH_MAX_BODY = 64 * 1024
 const AUTOFETCH_READ_LIMIT = 1024 * 1024
 const autofetchDeliveryKey = z.uuid()
 const autofetchBody = z.strictObject({ chat: z.string().min(1).max(256), text: z.string() })
-type StandaloneAction = 'v1Attach' | 'v1Turn' | 'v2Attach' | 'v2Turn' | 'v2Media' | 'v2Claim' | 'v2Ack'
+type StandaloneAction =
+  | 'v1Attach'
+  | 'v1Turn'
+  | 'v2Attach'
+  | 'v2Turn'
+  | 'v2Media'
+  | 'v2Claim'
+  | 'v2Ack'
+  | 'v2ReminderPoll'
+  | 'v2ReminderClaim'
+  | 'v2ReminderAck'
 const STANDALONE_ENDPOINTS = new Map<string, StandaloneAction>([
   ['/v1/aira/attach-check', 'v1Attach'],
   ['/v1/aira/turn', 'v1Turn'],
@@ -60,7 +70,10 @@ const STANDALONE_ENDPOINTS = new Map<string, StandaloneAction>([
   ['/v2/aira/turn', 'v2Turn'],
   ['/v2/aira/media-turn', 'v2Media'],
   ['/v2/aira/delivery/claim', 'v2Claim'],
-  ['/v2/aira/delivery/ack', 'v2Ack']
+  ['/v2/aira/delivery/ack', 'v2Ack'],
+  ['/v2/aira/reminders/poll', 'v2ReminderPoll'],
+  ['/v2/aira/reminders/claim', 'v2ReminderClaim'],
+  ['/v2/aira/reminders/ack', 'v2ReminderAck']
 ])
 
 function readBody(request: IncomingMessage, limit: number): Promise<string> {
@@ -327,7 +340,13 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
       json(response, 401, { error: { code: 'gateway_auth_required' } }, log)
       return
     }
-    const needsChatbot = action === 'v1Turn' || action === 'v2Turn' || action === 'v2Media' || action === 'v2Claim'
+    const needsChatbot =
+      action === 'v1Turn' ||
+      action === 'v2Turn' ||
+      action === 'v2Media' ||
+      action === 'v2Claim' ||
+      action === 'v2ReminderPoll' ||
+      action === 'v2ReminderClaim'
     if (!options.ready() || (needsChatbot && !options.chatbotReady?.())) {
       json(
         response,
@@ -379,6 +398,24 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
         }
         if (action === 'v2Ack') {
           adapter.ackTyped(input)
+          json(response, 200, { schemaVersion: 2, accepted: true }, log)
+          return
+        }
+        if (action === 'v2ReminderPoll') {
+          const delivery = await adapter.pollReminder(input, async (occurrence) => {
+            const reply = await turns.handleStandaloneReminder(occurrence)
+            if (reply) options.afterTurn?.()
+            return reply
+          })
+          json(response, 200, { schemaVersion: 2, delivery }, log)
+          return
+        }
+        if (action === 'v2ReminderClaim') {
+          json(response, 200, { schemaVersion: 2, delivery: adapter.claimReminder(input) }, log)
+          return
+        }
+        if (action === 'v2ReminderAck') {
+          adapter.ackReminder(input)
           json(response, 200, { schemaVersion: 2, accepted: true }, log)
           return
         }

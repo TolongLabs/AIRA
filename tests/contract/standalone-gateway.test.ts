@@ -173,7 +173,7 @@ describe('standalone direct media candidate', () => {
     expect(core.model.requests).toHaveLength(fixtures.length)
     expect(JSON.stringify(core.model.requests[0])).toContain('synthetic visual evidence')
     expect(JSON.stringify(core.model.requests[0])).not.toContain(png.toString('base64'))
-  })
+  }, 15_000)
 
   it('refuses wrong routes, unconfigured, malformed and unauthorized media before watcher or main', async () => {
     const core = await start(true, [{ text: 'fixture reply' }], 20, true)

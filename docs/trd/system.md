@@ -297,7 +297,7 @@ Each request is one of four kinds, decided in this order (measured on the stagin
 
 ### Scheduled Turns
 
-Reminders are jobs the gateway's schedule fires. The core never calls the gateway to make one: it writes the jobs
+In legacy, reminders are jobs the gateway's schedule fires. The core never calls the gateway to make one: it writes the jobs
 it wants to a file, and a host reconciler makes the gateway's schedule match.
 
 - **The core writes the wanted jobs.** At start-up and after every reminder change, the core writes its active
@@ -358,8 +358,12 @@ require a ready chatbot. The adapter never supplies a destination, due time, own
 Poll returns valid unclaimed pending work first, otherwise selects the earliest due active scoped
 reminder of an active, feature-enabled chat, with `due_at <= now`. The existing scheduled turn
 atomically consumes the exact occurrence and marks fired or advances repeat before model work.
-Use the row's chat/owner/target/text; recheck authority at execution. Scheduled turns run alone and
-their text is never a direct command. Reserve the portable occurrence message-ID prefix from ordinary
+Use the row's chat/owner/target/text; recheck authority at execution. Portable reminder turns run alone,
+offer no tools and never parse their text as a direct command. A reminder can produce a character
+reply, not a delayed side effect. Its pending input contains only the exact occurrence, never an
+unanswered ordinary message. After interruption, abandoned occurrence ingress is diagnostic-only:
+mark it dropped at startup and never merge it into another turn or its prompt.
+Reserve the portable occurrence message-ID prefix from ordinary
 standalone input; legacy schedule IDs are unchanged.
 
 Self reminders retain the existing quiet/mute rules: quiet is bypassed; the owner's mute consumes the

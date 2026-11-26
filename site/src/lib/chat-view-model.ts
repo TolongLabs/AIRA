@@ -49,7 +49,8 @@ export const CHAT_FEATURE_DEFINITIONS: readonly ChatFeatureDefinition[] = [
 export const standaloneChatFeature = (key: string, controls: StandaloneControls) =>
   ['features.search', 'features.social', 'features.think'].includes(key) ||
   (key === 'features.reports' && controls.reportDocuments) ||
-  (key === 'features.media' && controls.inboundMedia)
+  (key === 'features.media' && controls.inboundMedia) ||
+  (key === 'features.reminders' && controls.scheduler)
 
 /** Presentation and validation helpers for one chat's resolved settings row. */
 export class ChatSettingsViewModel {

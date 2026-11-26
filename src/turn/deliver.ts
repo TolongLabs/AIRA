@@ -1,3 +1,5 @@
+import type { Resolved } from '../settings/settings.js'
+
 // Mute and quiet hours (docs/trd/reliability.md#mute-and-quiet).
 // mayDeliver is the only code that answers whether a message may be sent.
 
@@ -15,6 +17,13 @@ export interface DeliverySettings {
   muted: false | { by: string; at: string }
   /** The resolved `quietHours` setting, or undefined when unset. */
   quietHours?: { start: string; end: string; timeZone: string }
+}
+
+export function deliverySettings(settings: Record<string, Resolved>): DeliverySettings {
+  return {
+    muted: (settings['muted']?.value ?? false) as DeliverySettings['muted'],
+    quietHours: settings['quietHours']?.value as DeliverySettings['quietHours']
+  }
 }
 
 export type DeliveryDecision = { allowed: true } | { allowed: false; reason: 'muted' | 'quiet' }

@@ -15,7 +15,11 @@ from deploy.cli.result import CommandError
 OLD_HEAD = "ae2a81ccc00e9b7c06301523e5bb09608397149c"
 CURRENT_HEAD = "8fc0374447313e276f6b9a2764bfc750190c966a"
 TARGET = "gateway/run_inbound_consumer.py"
+LIFECYCLE = "plugins/platforms/whatsapp/adapter.py"
+STOCK_LIFECYCLE = b"# original synthetic lifecycle\n"
+PATCHED_LIFECYCLE = b"# patched synthetic lifecycle\n"
 DIRECT_MEDIA = ["text", "document", "receive-image", "receive-audio", "receive-video", "receive-pdf"]
+SCHEDULER = DIRECT_MEDIA + ["scheduler"]
 
 
 class AttachVersionPlanningTests(unittest.TestCase):
@@ -31,6 +35,10 @@ class AttachVersionPlanningTests(unittest.TestCase):
         self.target = self.source / TARGET
         self.target.parent.mkdir()
         self.target.write_bytes(b"# original synthetic consumer\n")
+        self.lifecycle = self.source / LIFECYCLE
+        self.lifecycle.parent.mkdir(parents=True)
+        self.lifecycle.write_bytes(STOCK_LIFECYCLE)
+        self.lifecycle.chmod(0o640)
         self.helper = self.target.with_name("aira_transport.py")
         self.marker = self.root / "aira-transport.json"
         standalone = self.home / "data/standalone"
@@ -55,6 +63,14 @@ class AttachVersionPlanningTests(unittest.TestCase):
             patch_source=lambda _: b"# patched synthetic consumer\n",
             select_protocol=lambda _, protocol: b"# typed synthetic consumer\n" if protocol == 2 else b"# patched synthetic consumer\n",
         )
+        self.mods["standalone_scheduler_patch"] = SimpleNamespace(
+            TARGET=LIFECYCLE,
+            classify_source=lambda data: {
+                STOCK_LIFECYCLE: "original",
+                PATCHED_LIFECYCLE: "patched",
+            }.get(data, "unsupported"),
+            select_scheduler=lambda _, enabled: PATCHED_LIFECYCLE if enabled else STOCK_LIFECYCLE,
+        )
         self.manifest = SimpleNamespace(mode="standalone", stage="installed", corePort=9881, sitePort=9890)
         self.selection = {"home": self.home, "manifest": self.manifest,
                           "bindings": {9881: ("127.0.0.1", 9881), 9890: ("127.0.0.1", 9890)}}
@@ -70,6 +86,7 @@ class AttachVersionPlanningTests(unittest.TestCase):
             if argv[:3] == ["git", "rev-parse", "HEAD"]:
                 return SimpleNamespace(returncode=0, stdout=self.head + "\n")
             if argv[:2] == ["git", "diff"]:
+                self.assertEqual(argv, ["git", "diff", "--quiet", "HEAD", "--", ".", ":!" + TARGET, ":!" + LIFECYCLE])
                 return SimpleNamespace(returncode=int(self.dirty), stdout="")
             self.fail(f"Unexpected host process: {argv[0]}")
         with ExitStack() as stack:
@@ -84,8 +101,12 @@ class AttachVersionPlanningTests(unittest.TestCase):
     def prior_attachment(self, version, protocol=1, capabilities=None):
         self.target.write_bytes(b"# typed synthetic consumer\n" if protocol == 2 else b"# patched synthetic consumer\n")
         capabilities = capabilities or ["text"]
+        self.lifecycle.write_bytes(PATCHED_LIFECYCLE if protocol == 2 and capabilities == SCHEDULER else STOCK_LIFECYCLE)
         if protocol == 1:
             rendered = hermes_versions.render_helper(self.template, version)
+        elif capabilities == SCHEDULER:
+            rendered = hermes_versions.render_scheduler_helper(self.template, self.mods["document"],
+                                                               self.mods["media"], self.mods["scheduler"], version)
         elif capabilities == DIRECT_MEDIA:
             rendered = hermes_versions.render_media_helper(self.template, self.mods["document"], self.mods["media"], version)
         elif capabilities == ["text", "document"]:
@@ -242,11 +263,12 @@ class AttachVersionPlanningTests(unittest.TestCase):
 
     def apply_media_plan(self, plan, post, observed):
         self.args.apply = self.args.yes = self.args.json = self.args.non_interactive = True
+        observation = {"side_effect": observed} if callable(observed) else {"return_value": observed}
         with (patch.object(hermes, "_plan", return_value=plan),
               patch.object(hermes, "_profile_status", return_value=False),
               patch.object(hermes, "_gateway_command") as gateway,
               patch.object(plan["adapter"], "_post", side_effect=post),
-              patch.object(install, "observe", return_value=observed),
+              patch.object(install, "observe", **observation),
               patch.object(hermes.operations, "log_event", return_value="fixture")):
             result = hermes.run_attach(self.args, "9" * 32)
         gateway.assert_not_called()
@@ -317,6 +339,211 @@ class AttachVersionPlanningTests(unittest.TestCase):
         self.assertEqual(self.helper.read_bytes(),
                          hermes_versions.render_document_helper(self.template, self.mods["document"], "hermes-v0.23.2"))
 
+    def test_scheduler_requires_explicit_selection_and_second_reviewed_patch(self):
+        self.args.protocol = "v2"
+        text = self.plan()
+        self.assertEqual(text["capabilities"], ["text"])
+        self.assertEqual(text["desired"]["lifecycle"], text["original"]["lifecycle"])
+        self.prior_attachment("hermes-v0.23.2", protocol=2, capabilities=DIRECT_MEDIA)
+        self.args.capabilities = ",".join(SCHEDULER)
+        plan = self.plan()
+        self.assertEqual(plan["capabilities"], SCHEDULER)
+        self.assertEqual(plan["adapter"].CAPABILITIES, SCHEDULER)
+        self.assertEqual(plan["paths"]["lifecycle"], self.lifecycle)
+        self.assertEqual(plan["original"]["lifecycle"], (STOCK_LIFECYCLE, 0o640))
+        self.assertEqual(plan["desired"]["lifecycle"], (PATCHED_LIFECYCLE, 0o640))
+        self.assertIsNone(json.loads(plan["desired"]["host"][0])["routeId"])
+        self.assertEqual(self.lifecycle.read_bytes(), STOCK_LIFECYCLE)
+        self.args.protocol = "v1"
+        self.assert_refused_unchanged("invalid_args")
+
+    def test_lifecycle_patch_without_matching_helper_is_refused_before_writes(self):
+        self.prior_attachment("hermes-v0.23.2", protocol=2, capabilities=DIRECT_MEDIA)
+        self.args.protocol = "v2"
+        for invalid in (PATCHED_LIFECYCLE, b"# unreviewed lifecycle\n"):
+            with self.subTest(invalid=invalid):
+                self.lifecycle.write_bytes(invalid)
+                self.assert_refused_unchanged("hermes_unsupported")
+        self.prior_attachment("hermes-v0.23.2", protocol=2, capabilities=SCHEDULER)
+        self.lifecycle.write_bytes(STOCK_LIFECYCLE)
+        self.assert_refused_unchanged("hermes_unsupported")
+
+    def test_scheduler_migration_requires_stopped_gateway_and_exclusive_source(self):
+        self.prior_attachment("hermes-v0.23.2", protocol=2, capabilities=DIRECT_MEDIA)
+        self.args.protocol = "v2"
+        self.args.capabilities = ",".join(SCHEDULER)
+        self.running = True
+        self.assert_refused_unchanged("hermes_unsupported")
+        self.running = False
+        other = self.root / "profiles/other/aira-transport.json"
+        other.parent.mkdir(parents=True, mode=0o700)
+        install.atomic_write_text(other, "synthetic other profile")
+        self.assert_refused_unchanged("hermes_contract_failed")
+        other.unlink()
+        receipt = json.loads(self.receipt.read_text())
+        install.atomic_write_text(self.receipt, json.dumps({**receipt, "capabilities": ["text"]}))
+        self.assert_refused_unchanged("hermes_profile_conflict")
+
+    def successful_scheduler_handshake(self, plan, capabilities, lifecycle):
+        route = {**self.report["hermesRoute"], "capabilities": capabilities,
+                 "routeId": "87654321-4321-4321-8321-cba987654321"}
+
+        def post(_config, path, body, _timeout):
+            self.assertEqual(path, "/v2/aira/attach-check")
+            self.assertEqual(body["capabilities"], capabilities)
+            self.assertEqual(hermes._read(self.marker), plan["provisional"])
+            self.assertEqual(hermes._read(self.lifecycle), (lifecycle, 0o640))
+            install.atomic_write_text(self.receipt, json.dumps({"schemaVersion": 2,
+                **{k: v for k, v in route.items() if k != "protocolVersion"}}))
+            return {"schemaVersion": 2, "hermes": route}
+        self.report = {**self.report, "hermesRoute": route}
+        return post, route
+
+    def test_stopped_scheduler_apply_backs_up_both_sources_and_publishes_rotated_route(self):
+        self.prior_attachment("hermes-v0.23.2", protocol=2, capabilities=DIRECT_MEDIA)
+        self.args.protocol = "v2"
+        self.args.capabilities = ",".join(SCHEDULER)
+        plan = self.plan()
+        post, route = self.successful_scheduler_handshake(plan, SCHEDULER, PATCHED_LIFECYCLE)
+        result = self.apply_media_plan(plan, post, self.report)
+        self.assertEqual(result["outcome"], "ok")
+        self.assertIn("self-reminder", result["attach"]["verification"])
+        self.assertIn("lifecycle", result["attach"]["changes"])
+        self.assertEqual(json.loads(self.marker.read_text())["routeId"], route["routeId"])
+        self.assertEqual(json.loads(self.host.read_text())["routeId"], route["routeId"])
+        backup = self.home / "data/standalone/attach-backups" / ("9" * 32)
+        self.assertEqual(hermes._read(backup / "lifecycle.orig"), (STOCK_LIFECYCLE, 0o600))
+        self.assertEqual(hermes._read(backup / "source.orig"), (plan["original"]["source"][0], 0o600))
+        self.assertEqual(json.loads((backup / "manifest.json").read_text())["files"]["lifecycle"],
+                         {"present": True, "mode": 0o640})
+        del self.args.capabilities
+        self.running = True
+        identical = self.plan()
+        self.assertEqual(identical["capabilities"], SCHEDULER)
+        self.assertEqual(identical["original"], {**identical["original"], **identical["desired"]})
+
+    def test_stopped_scheduler_downgrade_removes_only_exact_lifecycle_patch(self):
+        self.prior_attachment("hermes-v0.23.2", protocol=2, capabilities=SCHEDULER)
+        self.args.protocol = "v1"
+        v1 = self.plan()
+        self.assertEqual(v1["desired"]["lifecycle"], (STOCK_LIFECYCLE, 0o640))
+        self.assertEqual(v1["typedAdapter"].CAPABILITIES, SCHEDULER)
+        self.args.protocol = "v2"
+        self.args.capabilities = ",".join(DIRECT_MEDIA)
+        plan = self.plan()
+        post, route = self.successful_scheduler_handshake(plan, DIRECT_MEDIA, STOCK_LIFECYCLE)
+        result = self.apply_media_plan(plan, post, self.report)
+        self.assertEqual(result["outcome"], "ok")
+        self.assertEqual(json.loads(self.marker.read_text())["routeId"], route["routeId"])
+        self.assertEqual(self.helper.read_bytes(),
+                         hermes_versions.render_media_helper(self.template, self.mods["document"],
+                                                             self.mods["media"], "hermes-v0.23.2"))
+        self.assertEqual(hermes._read(self.lifecycle), (STOCK_LIFECYCLE, 0o640))
+
+    def test_scheduler_source_revision_change_preserves_exact_lifecycle_and_requires_new_route(self):
+        self.args.protocol = "v2"
+        for previous, head, desired in (("hermes-v0.23.4", OLD_HEAD, "hermes-v0.23.2"),
+                                        ("hermes-v0.23.2", CURRENT_HEAD, "hermes-v0.23.4")):
+            with self.subTest(previous=previous, desired=desired):
+                self.prior_attachment(previous, protocol=2, capabilities=SCHEDULER)
+                self.head = head
+                plan = self.plan()
+                self.assertEqual(plan["capabilities"], SCHEDULER)
+                self.assertEqual(plan["adapter"].ADAPTER_VERSION, desired)
+                self.assertEqual(plan["desired"]["lifecycle"], plan["original"]["lifecycle"])
+                self.assertIsNone(json.loads(plan["desired"]["marker"][0])["routeId"])
+
+    def test_old_core_scheduler_refusal_restores_exact_lifecycle_and_receipt(self):
+        self.prior_attachment("hermes-v0.23.2", protocol=2, capabilities=DIRECT_MEDIA)
+        self.args.protocol = "v2"
+        self.args.capabilities = ",".join(SCHEDULER)
+        plan = self.plan()
+        attempts = []
+
+        def post(_config, path, body, _timeout):
+            attempts.append((path, body["capabilities"], hermes._read(self.lifecycle), hermes._read(self.marker)))
+            raise ValueError("synthetic old core refusal")
+
+        result = self.apply_media_plan(plan, post, self.report)
+        self.assertEqual(attempts, [("/v2/aira/attach-check", SCHEDULER,
+                                     plan["desired"]["lifecycle"], plan["provisional"])])
+        self.assertEqual(result["error"]["code"], "attach_failed")
+        for name, record in plan["original"].items():
+            self.assertEqual(hermes._read(plan["paths"][name]), record, name)
+
+    def test_lost_scheduler_handshake_restores_prior_receipt_after_core_rotation(self):
+        self.prior_attachment("hermes-v0.23.2", protocol=2, capabilities=DIRECT_MEDIA)
+        self.args.protocol = "v2"
+        self.args.capabilities = ",".join(SCHEDULER)
+        plan = self.plan()
+        accept, _route = self.successful_scheduler_handshake(plan, SCHEDULER, PATCHED_LIFECYCLE)
+        persisted = []
+
+        def lost(*args):
+            accept(*args)
+            persisted.append(hermes._read(self.receipt))
+            raise ConnectionError("synthetic lost response")
+
+        result = self.apply_media_plan(plan, lost, self.report)
+        self.assertEqual(len(persisted), 1)
+        self.assertNotEqual(persisted[0], plan["original"]["receipt"])
+        self.assertEqual(result["error"]["code"], "attach_failed")
+        for name, record in plan["original"].items():
+            self.assertEqual(hermes._read(plan["paths"][name]), record, name)
+
+    def test_scheduler_lifecycle_write_failure_restores_exact_prior_files(self):
+        self.prior_attachment("hermes-v0.23.2", protocol=2, capabilities=DIRECT_MEDIA)
+        self.args.protocol = "v2"
+        self.args.capabilities = ",".join(SCHEDULER)
+        plan = self.plan()
+        write = hermes._write
+        attempts = []
+
+        def fail_after_lifecycle_write(path, record):
+            write(path, record)
+            if path == self.lifecycle and record == plan["desired"]["lifecycle"]:
+                raise OSError("synthetic lifecycle write interruption")
+
+        with patch.object(hermes, "_write", side_effect=fail_after_lifecycle_write):
+            result = self.apply_media_plan(plan, lambda *_: attempts.append(True), self.report)
+        self.assertEqual(attempts, [])
+        self.assertEqual(result["error"]["code"], "attach_failed")
+        for name, record in plan["original"].items():
+            self.assertEqual(hermes._read(plan["paths"][name]), record, name)
+
+    def test_final_scheduler_readback_refuses_foreign_lifecycle_and_keeps_inert_marker(self):
+        self.prior_attachment("hermes-v0.23.2", protocol=2, capabilities=DIRECT_MEDIA)
+        self.args.protocol = "v2"
+        self.args.capabilities = ",".join(SCHEDULER)
+        plan = self.plan()
+        post, _route = self.successful_scheduler_handshake(plan, SCHEDULER, PATCHED_LIFECYCLE)
+        foreign = b"# foreign synthetic edit\n"
+
+        def observe(*_):
+            self.lifecycle.write_bytes(foreign)
+            return self.report
+
+        result = self.apply_media_plan(plan, post, observe)
+        self.assertEqual(result["error"]["code"], "rollback_failed")
+        self.assertEqual(self.lifecycle.read_bytes(), foreign)
+        self.assertEqual(hermes._read(self.marker), plan["provisional"])
+
+    def test_lifecycle_change_between_plans_refuses_before_backup_or_attachment_writes(self):
+        self.prior_attachment("hermes-v0.23.2", protocol=2, capabilities=DIRECT_MEDIA)
+        self.args.protocol = "v2"
+        self.args.capabilities = ",".join(SCHEDULER)
+        self.args.apply = self.args.yes = self.args.json = self.args.non_interactive = True
+        plan = self.plan()
+        self.lifecycle.chmod(0o600)
+        fresh = self.plan()
+        with (patch.object(hermes, "_plan", side_effect=[plan, fresh]),
+              patch.object(hermes.operations, "log_event", return_value="fixture")):
+            result = hermes.run_attach(self.args, "9" * 32)
+        self.assertEqual(result["error"]["code"], "hermes_contract_failed")
+        self.assertFalse((self.home / "data/standalone/attach-backups").exists())
+        for name, record in fresh["original"].items():
+            self.assertEqual(hermes._read(fresh["paths"][name]), record, name)
+
     def test_typed_history_requires_explicit_protocol_and_complete_route(self):
         self.prior_attachment("hermes-v0.23.2", protocol=2)
         self.assert_refused_unchanged("hermes_profile_conflict")
@@ -378,7 +605,7 @@ class AttachVersionPlanningTests(unittest.TestCase):
                 self.assertEqual(seen, [desired])
 
     def assert_refused_unchanged(self, code):
-        paths = (self.target, self.helper, self.marker, self.host, self.receipt)
+        paths = (self.target, self.lifecycle, self.helper, self.marker, self.host, self.receipt)
         before = {p: p.read_bytes() if p.exists() else None for p in paths}
         with self.assertRaises(CommandError) as error:
             self.plan()
@@ -424,6 +651,7 @@ class AttachVersionPlanningTests(unittest.TestCase):
         self.source.rename(custom)
         self.source = custom
         self.target = custom / TARGET
+        self.lifecycle = custom / LIFECYCLE
         self.helper = self.target.with_name("aira_transport.py")
         self.args.hermes_dir = str(custom)
         self.assertEqual(self.plan()["adapter"].ADAPTER_VERSION, "hermes-v0.23.2")

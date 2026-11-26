@@ -168,9 +168,12 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
   const commandOwners = new Map<string, string>()
 
   const isExternalEnabled = (ext: ExternalTool, context: TurnContext): boolean =>
-    ext.chats.includes(context.chat.chatId) && context.settings[ext.feature]?.value === true
+    !context.portableReminder &&
+    ext.chats.includes(context.chat.chatId) &&
+    context.settings[ext.feature]?.value === true
 
   const enabled = (name: string, context: TurnContext): boolean => {
+    if (context.portableReminder) return false
     const def = tools.get(name)
     if (def) {
       if (def.feature !== undefined && context.settings[def.feature]?.value !== true) return false
@@ -201,6 +204,7 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
     source: 'model' | 'command',
     context: TurnContext
   ): ToolResult | undefined => {
+    if (context.portableReminder) return { ok: false, kind: 'refused', reason: 'standalone reminder is text only' }
     if (def.mode === 'explicit' && source === 'model') {
       return { ok: false, kind: 'refused', reason: 'tool is explicit only' }
     }

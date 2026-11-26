@@ -26,6 +26,8 @@ export interface TurnContext {
   delivery: DeliveryKind
   /** Core-validated route shared by every admitted waiter in this turn; absent for legacy or mixed routes. */
   typedRouteId?: string
+  /** A core-owned standalone reminder may return text only; never offer or execute tools. */
+  portableReminder?: true
   /** When all model work of this turn must end, in milliseconds since the epoch. */
   deadline: number
   /** The turn's URLs, registered at steps 2 and 5. Read tools open only these (docs/trd/tools.md#turn-sources). */

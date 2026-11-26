@@ -38,6 +38,10 @@ try:
          any(value != name for value in served.profiles)))
     independent = (list_profile_names() == ["default"] if name == "default"
         else profile_is_standalone(profile))
+    if name == "default" and len(sys.argv) > 3 and sys.argv[3] == "scheduler":
+        # Stock single-profile boot stays independent unless multiplex is explicitly enabled.
+        from hermes_cli.gateway_multiplex_mode import explicit_multiplex_flag
+        independent = independent and explicit_multiplex_flag(expected) is not True
     print(json.dumps({"independent": independent and not other and live.source != "multiplexer"
         and not named_profile_served_by_running_multiplexer(name),
         "running": live.running, "unknown": live.probe_error}))
@@ -99,7 +103,7 @@ def _load_module(name, path, source):
 def _modules(repo_root):
     base = Path(repo_root) / "deploy" / "gateway" if repo_root else Path(__file__).resolve().parents[1]
     result = {}
-    for name in ("standalone_patch", "standalone_adapter"):
+    for name in ("standalone_patch", "standalone_scheduler_patch", "standalone_adapter"):
         path = base / (name + ".py")
         source, _ = _read(path)
         if name == "standalone_adapter":
@@ -109,6 +113,7 @@ def _modules(repo_root):
     result["typed"] = _read(base / "standalone_typed_adapter.py")[0]
     result["document"] = _read(base / "standalone_document_adapter.py")[0]
     result["media"] = _read(base / "standalone_media_adapter.py")[0]
+    result["scheduler"] = _read(base / "standalone_scheduler_adapter.py")[0]
     return result
 
 
@@ -127,7 +132,10 @@ def _process(argv, source, hermes_home, timeout=20):
 
 
 def _profile_status(plan):
-    result = _process([str(plan["python"]), "-c", PROFILE_PROBE, plan["profile"], str(plan["profileDir"])],
+    command = [str(plan["python"]), "-c", PROFILE_PROBE, plan["profile"], str(plan["profileDir"])]
+    if "scheduler" in plan.get("capabilities", []):
+        command.append("scheduler")
+    result = _process(command,
                       plan["sourceDir"], plan["hermesHome"])
     try:
         data = json.loads(result.stdout.strip().splitlines()[-1]) if result and result.returncode == 0 else {}
@@ -155,6 +163,7 @@ def _plan(args):
         _refuse("health_timeout", "The installed service is not authenticated and ready.", "Run aira doctor and setup first.")
     mods = _modules(args.repo_root)
     patch, adapter = mods["standalone_patch"], mods["standalone_adapter"]
+    scheduler_patch = mods["standalone_scheduler_patch"]
     requested_protocol = getattr(args, "protocol", None)
     protocol = 2 if requested_protocol == "v2" else 1
     requested_capabilities = getattr(args, "capabilities", None)
@@ -167,36 +176,45 @@ def _plan(args):
     source = _owned_dir(args.hermes_dir or root / "hermes-agent")
     profile_dir = _owned_dir(root if args.profile == "default" else root / "profiles" / args.profile)
     head = _process(["git", "rev-parse", "HEAD"], source, root)
-    dirty = _process(["git", "diff", "--quiet", "HEAD", "--", ".", ":!" + patch.TARGET], source, root)
+    dirty = _process(["git", "diff", "--quiet", "HEAD", "--", ".", ":!" + patch.TARGET,
+                      ":!" + scheduler_patch.TARGET], source, root)
     version = hermes_versions.version_for_head(head.stdout.strip()) if head and not head.returncode else None
     if version is None or not dirty or dirty.returncode:
         _refuse("hermes_unsupported", "The public Hermes tree is not the exact supported revision.",
                 "Use a reviewed Hermes source revision without unrelated tracked changes.")
     target = source / patch.TARGET
+    lifecycle = source / scheduler_patch.TARGET
     helper = target.parent / "aira_transport.py"
     baseline = hermes_versions.render_helper(mods["helper"], version)
     typed = hermes_versions.render_typed_helper(mods["helper"], mods["typed"], version)
     document = hermes_versions.render_document_helper(mods["helper"], mods["document"], version)
     media = hermes_versions.render_media_helper(mods["helper"], mods["document"], mods["media"], version)
+    scheduler = hermes_versions.render_scheduler_helper(mods["helper"], mods["document"], mods["media"],
+                                                         mods["scheduler"], version)
     marker = profile_dir / adapter.MARKER_NAME
     receipt = home / "data" / "standalone" / "hermes.json"
     host_receipt = receipt.with_name("attach-host.json")
-    original = {"source": _read(target), "helper": _read(helper, optional=True),
+    original = {"source": _read(target), "lifecycle": _read(lifecycle), "helper": _read(helper, optional=True),
                 "marker": _read(marker, private=True, optional=True), "receipt": _read(receipt, private=True, optional=True),
                 "host": _read(host_receipt, private=True, optional=True)}
     kind = patch.classify_source(original["source"][0])
     previous = (hermes_versions.known_helper(mods["helper"], mods["typed"], mods["document"], mods["media"],
-                                            original["helper"][0])
+                                            original["helper"][0], scheduler=mods["scheduler"])
                 if original["helper"] else None)
     previous_version, previous_protocol, previous_capabilities = previous or (None, None, ())
     previous_capabilities = list(previous_capabilities)
     if kind == "unsupported" or (original["helper"] and previous_version is None):
         _refuse("hermes_unsupported", "The adapter source or existing helper is unfamiliar.")
+    if scheduler_patch.classify_source(original["lifecycle"][0]) != (
+            "patched" if "scheduler" in previous_capabilities else "original"):
+        _refuse("hermes_unsupported", "The lifecycle source does not match the reviewed helper generation.")
     capabilities = (requested_capabilities.split(",") if requested_capabilities is not None
                     else previous_capabilities if previous_protocol == 2 else ["text"])
     # A v1 downgrade uses the previous typed capability parser while retaining the exact new v1 bytes.
     typed_capabilities = capabilities if protocol == 2 else previous_capabilities or ["text"]
-    if typed_capabilities == list(hermes_versions.DIRECT_MEDIA_CAPABILITIES):
+    if typed_capabilities == list(hermes_versions.SCHEDULER_CAPABILITIES):
+        typed_rendered = scheduler
+    elif typed_capabilities == list(hermes_versions.DIRECT_MEDIA_CAPABILITIES):
         typed_rendered = media
     else:
         typed_rendered = document if typed_capabilities == ["text", "document"] else typed
@@ -308,6 +326,9 @@ def _plan(args):
     else:
         patched = patch.patch_source(original["source"][0]) if kind == "original" else original["source"][0]
     compile(patched, str(target), "exec")
+    lifecycle_patched = scheduler_patch.select_scheduler(original["lifecycle"][0],
+                                                         protocol == 2 and "scheduler" in capabilities)
+    compile(lifecycle_patched, str(lifecycle), "exec")
     same_route = typed_history and not changing
     if protocol == 2:
         route_id = route["routeId"] if same_route else None
@@ -318,8 +339,10 @@ def _plan(args):
     plan = {
         "home": home, "manifest": manifest, "selection": selection, "report": report, "sourceDir": source,
         "hermesHome": root, "profileDir": profile_dir, "profile": args.profile, "python": python, "binary": binary,
-        "paths": {"source": target, "helper": helper, "marker": marker, "receipt": receipt, "host": host_receipt}, "original": original,
+        "paths": {"source": target, "lifecycle": lifecycle, "helper": helper, "marker": marker,
+                  "receipt": receipt, "host": host_receipt}, "original": original,
         "desired": {"source": (patched, original["source"][1]),
+                    "lifecycle": (lifecycle_patched, original["lifecycle"][1]),
                     "helper": (rendered, original["helper"][1] if original["helper"] else 0o644),
                     "marker": original["marker"] if original["marker"] and preserve_marker else ((json.dumps(expected, sort_keys=True) + "\n").encode(), 0o600),
                     "host": (original["host"] if original["host"] and preserve else
@@ -345,7 +368,9 @@ def _guard_typed_lifecycle(plan):
 def _detail(plan, apply):
     changes = [name for name, value in plan["desired"].items() if value != plan["original"][name]]
     verification = "text only"
-    if plan.get("capabilities") == list(hermes_versions.DIRECT_MEDIA_CAPABILITIES):
+    if plan.get("capabilities") == list(hermes_versions.SCHEDULER_CAPABILITIES):
+        verification = "text and report documents; direct inbound media (image, audio, video, PDF); self-reminder candidate"
+    elif plan.get("capabilities") == list(hermes_versions.DIRECT_MEDIA_CAPABILITIES):
         verification = "text and report documents; direct inbound media (image, audio, video, PDF)"
     elif plan.get("capabilities") == ["text", "document"]:
         verification = "text and report documents"
@@ -384,10 +409,14 @@ def _backup(plan, op):
     return backup
 
 
+def _code_files(plan):
+    return ("source", "helper", "lifecycle") if "lifecycle" in plan["paths"] else ("source", "helper")
+
+
 def _restore(plan, changed):
     # Roll back while both locks are still held. Never replace unfamiliar concurrent edits.
     ok = True
-    for name in ("marker", "helper", "source", "receipt", "host"):
+    for name in ("marker", *reversed(_code_files(plan)), "receipt", "host"):
         try:
             path, before = plan["paths"][name], plan["original"][name]
             current = _read(path, private=name in ("marker", "receipt", "host"), optional=True)
@@ -437,6 +466,8 @@ def _publish_marker(path, record):
 def _typed_restore(plan, written):
     """Keep the selected route inert until the exact previous files and liveness agree."""
     paths, original = plan["paths"], plan["original"]
+    code_files = _code_files(plan)
+    restore_files = (*reversed(code_files), "receipt", "host")
     try:
         # Never overwrite executable files loaded by a concurrently started gateway.
         if _profile_status(plan):
@@ -446,9 +477,9 @@ def _typed_restore(plan, written):
             # A failure before the provisional marker was published changed no other files.
             unchanged = current == original["marker"] and all(
                 _read(paths[name], private=name in ("receipt", "host"), optional=True) == original[name]
-                for name in ("source", "helper", "receipt", "host"))
+                for name in restore_files)
             return unchanged
-        for name in ("helper", "source", "receipt", "host"):
+        for name in restore_files:
             before = original[name]
             value = _read(paths[name], private=name in ("receipt", "host"), optional=True)
             if value == before:
@@ -474,10 +505,15 @@ def _typed_restore(plan, written):
                     return False
             elif value != written.get(name):
                 return False
+            if name in code_files and _profile_status(plan):
+                return False
             _write(paths[name], before)
             if _read(paths[name], private=name in ("receipt", "host"), optional=True) != before:
                 return False
         if _profile_status(plan):
+            return False
+        if any(_read(paths[name], private=name in ("receipt", "host"), optional=True) != original[name]
+               for name in restore_files):
             return False
         if _read(paths["marker"], private=True) != plan["provisional"]:
             return False
@@ -506,10 +542,12 @@ def _typed_apply(plan, warnings, op):
         _write(paths["marker"], plan["provisional"])
         if _read(paths["marker"], private=True) != plan["provisional"]:
             raise operational_error("attach_failed", "The provisional marker did not match.", "patch")
-        for name in ("source", "helper"):
-            written[name] = desired[name]
+        for name in _code_files(plan):
             if _profile_status(plan):
                 raise operational_error("attach_failed", "The selected gateway started during attachment.", "patch")
+            if _read(paths[name], optional=True) != original[name]:
+                raise operational_error("attach_failed", "A planned adapter file changed during attachment.", "patch")
+            written[name] = desired[name]
             if original[name] != desired[name]:
                 _write(paths[name], desired[name])
             if _read(paths[name]) != desired[name]:
@@ -553,7 +591,7 @@ def _typed_apply(plan, warnings, op):
                 or report["state"]["service"] != "running" or report.get("hermesRoute") != route
                 or _read(paths["receipt"], private=True) != observed_receipt
                 or _read(paths["host"], private=True) != written["host"]
-                or any(_read(paths[name]) != desired[name] for name in ("source", "helper"))
+                or any(_read(paths[name]) != desired[name] for name in _code_files(plan))
                 or _profile_status(plan) != plan["running"]
                 or _read(paths["marker"], private=True) != plan["provisional"]):
             raise operational_error("hermes_contract_failed", "The complete typed attachment readback did not match.", "verify")
@@ -599,7 +637,8 @@ def _legacy_apply(plan, changed, op):
         route = report.get("hermesRoute") or {}
         if (report["state"]["service"] != "running" or route.get("state") != "connected"
                 or route.get("profile") != plan["profile"]
-                or route.get("adapterVersion") != plan["adapter"].ADAPTER_VERSION):
+                or route.get("adapterVersion") != plan["adapter"].ADAPTER_VERSION
+                or any(_read(plan["paths"][name]) != plan["desired"][name] for name in _code_files(plan))):
             raise operational_error("hermes_contract_failed", "Owner health did not confirm the attachment.", "verify")
         return report
     except (CommandError, OSError, ValueError, KeyboardInterrupt) as err:

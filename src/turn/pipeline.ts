@@ -3,6 +3,7 @@ import type { PackSet } from '../character/loader.js'
 import type { LineKind } from '../character/schema.js'
 import type { Config } from '../config/schema.js'
 import { identityClaim } from '../format/fourth-wall.js'
+import { portableReminderMid, type ReminderOccurrence, type ReminderScope } from '../gateway/reminder-scope.js'
 import type { GatewayRequest, TurnAttachment } from '../gateway/request.js'
 import { compactDue } from '../gateway/schedule.js'
 import { modelRecordContext } from '../judge/systemone.js'
@@ -34,11 +35,11 @@ import {
   setChatLabel,
   setDisplayName
 } from '../settings/chats.js'
-import { platformSwitchOn, type Resolved, resolveSettings } from '../settings/settings.js'
+import { platformSwitchOn, resolveSettings } from '../settings/settings.js'
 import { type Db, isoNow, type Storage } from '../storage/database.js'
 import { advanceTurn, closeTurn, closeTurnAsFailed, openTurn, receiveInbound } from '../storage/turns.js'
 import type { Alerter } from './alerts.js'
-import { type DeliveryKind, type DeliverySettings, mayDeliver } from './deliver.js'
+import { type DeliveryKind, deliverySettings, mayDeliver } from './deliver.js'
 import { createTurnSources } from './sources.js'
 import type {
   BuiltPrompt,
@@ -56,7 +57,16 @@ import type {
   TurnRunner,
   WindowMessage
 } from './types.js'
-import { claimPending, pendingOf, quoteChainTexts, readWindow, storeUserMessage, unansweredTexts } from './window.js'
+import {
+  claimPending,
+  claimPortableReminder,
+  pendingOf,
+  quoteChainTexts,
+  readPortableReminderWindow,
+  readWindow,
+  storeUserMessage,
+  unansweredTexts
+} from './window.js'
 
 // The turn pipeline (docs/trd/system.md#one-turn) and turn admission (docs/trd/reliability.md).
 // One turn runs per chat. Messages that arrive close together, or while a turn runs, are answered by one turn.
@@ -111,6 +121,7 @@ export interface TurnServiceDeps {
   media?: TurnMedia
   /** Current standalone route/chat authority for process-owned verified media bytes. */
   mayReadPortableMedia?: (routeId: string | undefined, chatId: string) => boolean
+  mayRunPortableReminder?: (scope: ReminderScope, chatId: string) => boolean
   hooks?: TurnHooks
   /** How many window messages a turn reads. */
   maxWindowMessages?: number
@@ -122,6 +133,7 @@ export interface TurnService {
   handle(request: TurnRequest): Promise<TurnReply>
   /** A firing of the gateway's schedule. Null when its reminder is not active or not due at that time. */
   handleScheduled(request: ScheduledRequest): Promise<TurnReply | null>
+  handleStandaloneReminder(occurrence: ReminderOccurrence): Promise<TurnReply | null>
   /** Stops waiting for more messages, then waits for running turns to finish, up to graceMs. */
   drain(graceMs: number): Promise<void>
   /** How many chats have a turn running or waiting. */
@@ -144,6 +156,7 @@ interface Waiter {
   /** The files the gateway saved for this message. Kept in memory: a restart answers from the text alone. */
   attachments?: TurnAttachment[]
   typedRouteId?: string
+  portableReminder?: ReminderScope
   settlers: { resolve: (reply: TurnReply) => void; reject: (error: unknown) => void }[]
 }
 
@@ -173,6 +186,8 @@ interface ReminderOfFiring {
   owner_id: string
   target_id: string
   text: string
+  standalone_route_id: string | null
+  standalone_profile: string | null
 }
 
 /** A firing whose reminder is no longer active, or is due at another time. Nothing of it is stored. */
@@ -221,13 +236,6 @@ const DIRECT_FAILURE: Record<string, FailureKind> = {
   invalid: 'malformed',
   unavailable: 'transient',
   error: 'tool_error'
-}
-
-function deliverySettings(settings: Record<string, Resolved>): DeliverySettings {
-  return {
-    muted: (settings['muted']?.value ?? false) as DeliverySettings['muted'],
-    quietHours: settings['quietHours']?.value as DeliverySettings['quietHours']
-  }
 }
 
 export function createTurnService(deps: TurnServiceDeps): TurnService {
@@ -284,6 +292,8 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     const hasPortable = batch.some((waiter) => waiter.attachments?.some((attachment) => 'file' in attachment))
     const allowPortable = () => deps.mayReadPortableMedia?.(typedRouteId, chat.chatId) === true
     if (hasPortable && !allowPortable()) return decline('declined')
+    if (newest.portableReminder && !deps.mayRunPortableReminder?.(newest.portableReminder, chat.chatId))
+      return decline('declined')
     const context: TurnContext = {
       turnId,
       chat,
@@ -295,6 +305,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       deadline: now().getTime() + config.llm.turnDeadlineMs,
       sources: createTurnSources(),
       ...(typedRouteId ? { typedRouteId } : {}),
+      ...(newest.portableReminder ? { portableReminder: true } : {}),
       ...(think ? { think: true } : {})
     }
     outcome.context = context
@@ -338,7 +349,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
 
     // 5. Build: the window, then the prompt.
     stage('build')
-    const contextOn = settings['features.context']?.value !== false
+    const contextOn = !newest.portableReminder && settings['features.context']?.value !== false
     const rawMaxMessages = settings['context.maxMessages']?.value
     const chatMaxMessages =
       typeof rawMaxMessages === 'number' &&
@@ -349,14 +360,21 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         : 40
     const maxMessages = deps.maxWindowMessages ?? chatMaxMessages
     const readLimit = !contextOn || maxMessages === 0 ? Math.max(batch.length, 100) : maxMessages
-    const window = readWindow(
-      storage,
-      chat.chatId,
-      { windowDays: config.records.windowDays, maxMessages: readLimit },
-      now
-    )
+    const window = newest.portableReminder
+      ? readPortableReminderWindow(storage, chat.chatId, turnId, newest.mid)
+      : readWindow(
+          storage,
+          chat.chatId,
+          {
+            windowDays: config.records.windowDays,
+            maxMessages: readLimit,
+            excludeAbandonedPortable: deps.mayRunPortableReminder !== undefined
+          },
+          now
+        )
     // A message that arrived after this turn opened belongs to the next turn, so the window stops before it.
     const pending = pendingOf(window, turnId)
+    if (newest.portableReminder && pending.length !== 1) return decline('declined')
     const lastPending = pending.length > 0 ? window.lastIndexOf(pending[pending.length - 1] as WindowMessage) : -1
     const trimmed = lastPending < 0 ? window : window.slice(0, lastPending + 1)
     const input: TurnInput = { context, window: !contextOn || maxMessages === 0 ? pending : trimmed, pending }
@@ -364,7 +382,9 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     outcome.diagnostics = { request: input.pending.map((message) => message.content).join('\n\n') }
     context.messageText = outcome.diagnostics.request
     // One quote-chain snapshot covers both the seen-URL registry (earliest first) and link intake (newest first).
-    const quoteTexts = storage.read((db) => quoteChainTexts(db, chat.chatId, turnId))
+    const quoteTexts = storage.read((db) =>
+      quoteChainTexts(db, chat.chatId, turnId, deps.mayRunPortableReminder !== undefined)
+    )
     const pendingSet = new Set(input.pending)
     for (const message of input.window) {
       if (pendingSet.has(message)) continue
@@ -428,7 +448,8 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         }
       }
     }
-    const commands = researchRow || handover ? [] : (deps.commands?.match(text, context) ?? [])
+    const commands =
+      researchRow || handover || newest.portableReminder ? [] : (deps.commands?.match(text, context) ?? [])
     let built: BuiltPrompt
     let run: RunResult
     let modelMs = 0
@@ -469,8 +490,10 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       if (think) outcome.fields.think = true
       // The files members sent, and at most one supported link, are read before the model runs. A failure never ends
       // the turn: the prompt carries a note, and the failure is recorded.
-      const mediaOn = !researchRow && !handover && settings['features.media']?.value !== false
-      const socialOn = !researchRow && !handover && settings['features.social']?.value !== false
+      const mediaOn =
+        !newest.portableReminder && !researchRow && !handover && settings['features.media']?.value !== false
+      const socialOn =
+        !newest.portableReminder && !researchRow && !handover && settings['features.social']?.value !== false
       // identify_image may look up only pictures this turn validated, and only while media intake is on.
       const identifyOn = settings['features.identify']?.value === true
       const files = mediaToRead(batch.map((waiter) => waiter.attachments ?? []))
@@ -648,7 +671,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
             deps.runner.run({
               system: built.system,
               messages: built.messages,
-              tools: researchRow || handover ? [] : (deps.tools?.offered(context) ?? []),
+              tools: researchRow || handover || newest.portableReminder ? [] : (deps.tools?.offered(context) ?? []),
               context,
               signal: abort.signal,
               firstTools: commands.length > 0 ? commands.map((command) => command.tool) : undefined,
@@ -896,7 +919,14 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
           senderId: newest.senderId,
           kind: newest.scheduled ? 'scheduled' : 'reply',
           mids: batch.map((waiter) => waiter.mid),
-          also: (db) => claimPending(db, chat.chatId, turnId, newest.mid)
+          also: (db) => {
+            if (newest.portableReminder) {
+              if (claimPortableReminder(db, chat.chatId, turnId, newest.mid) !== 1)
+                throw new Error('portable reminder occurrence is unavailable')
+            } else {
+              claimPending(db, chat.chatId, turnId, newest.mid, deps.mayRunPortableReminder !== undefined)
+            }
+          }
         },
         now
       )
@@ -1120,7 +1150,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
    */
   function batchLength(pending: Waiter[]): number {
     const isolated = (waiter: Waiter) =>
-      waiter.command || waiter.attachments?.some((attachment) => 'file' in attachment)
+      waiter.command || waiter.portableReminder || waiter.attachments?.some((attachment) => 'file' in attachment)
     if (pending[0] && isolated(pending[0])) return 1
     const next = pending.findIndex(isolated)
     return next === -1 ? pending.length : next
@@ -1207,7 +1237,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         // The window is the durable input of a turn. Earlier text the gateway resent is stored only if the
         // core does not hold it already.
         if (request.earlier !== '') {
-          const held = unansweredTexts(db, chat.chatId).join('\n\n')
+          const held = unansweredTexts(db, chat.chatId, deps.mayRunPortableReminder !== undefined).join('\n\n')
           if (!held.includes(request.earlier)) {
             storeUserMessage(db, { chatId: chat.chatId, senderId, content: request.earlier }, now)
           }
@@ -1247,13 +1277,15 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
       attachments,
       command,
       think,
-      typedRouteId
+      typedRouteId,
+      portableReminder
     }: {
       afterNew?: () => void
       attachments?: TurnAttachment[] | undefined
       command?: boolean
       think?: boolean
       typedRouteId?: string | undefined
+      portableReminder?: ReminderScope
     } = {}
   ): Promise<TurnReply> {
     for (let round = 0; round < 3; round++) {
@@ -1267,6 +1299,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         await current
         continue
       }
+      if (portableReminder && status.status !== 'new') return { content: '', replayed: true }
       afterNew?.()
       // Bytes belong only to first admission. A same-process pending waiter already retains its original
       // attachment; a durable retry after interruption cannot reconstruct or replace it.
@@ -1279,6 +1312,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         ...(command ? { command } : {}),
         ...(think ? { think } : {}),
         ...(typedRouteId ? { typedRouteId } : {}),
+        ...(portableReminder ? { portableReminder } : {}),
         ...(admittedAttachments && admittedAttachments.length > 0 ? { attachments: admittedAttachments } : {})
       })
     }
@@ -1345,16 +1379,34 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
         { command: true }
       )
     }
-    // Identity comes from the core's own reminder row. The request names a reminder and a due time, nothing else.
+    return handleReminder(request.reminderId, request.due)
+  }
+
+  function handleStandaloneReminder(occurrence: ReminderOccurrence): Promise<TurnReply | null> {
+    return handleReminder(occurrence.reminderId, occurrence.dueAt, occurrence)
+  }
+
+  async function handleReminder(reminderId: string, due: string, scope?: ReminderScope): Promise<TurnReply | null> {
+    // Identity comes from the core's row. Neither transport supplies a destination or reminder text.
     const row = storage.read(
       (db) =>
         db
-          .prepare('SELECT reminder_id, chat_id, owner_id, target_id, text FROM reminder WHERE reminder_id = ?')
-          .get(request.reminderId) as ReminderOfFiring | undefined
+          .prepare(
+            'SELECT reminder_id, chat_id, owner_id, target_id, text, standalone_route_id, standalone_profile FROM reminder WHERE reminder_id = ?'
+          )
+          .get(reminderId) as ReminderOfFiring | undefined
     )
     const chat = row ? getChat(storage, row.chat_id) : undefined
     if (!row || !chat) return null
-    const mid = `sched-${row.reminder_id}-${request.due}`
+    const inScope = () =>
+      scope
+        ? row.standalone_route_id === scope.routeId &&
+          row.standalone_profile === scope.profile &&
+          row.owner_id === row.target_id &&
+          deps.mayRunPortableReminder?.(scope, chat.chatId) === true
+        : row.standalone_route_id === null && row.standalone_profile === null
+    if (!inScope()) return null
+    const mid = scope ? portableReminderMid(row.reminder_id, due) : `sched-${row.reminder_id}-${due}`
     const tag = `[AIRA-SCHEDULED v1 kind=reminder owner=${row.owner_id} target=${row.target_id} id=${row.reminder_id}]`
     try {
       return await admit(
@@ -1366,7 +1418,12 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
           const current = db
             .prepare("SELECT due_at, repeat FROM reminder WHERE reminder_id = ? AND chat_id = ? AND state = 'active'")
             .get(row.reminder_id, chat.chatId) as { due_at: string; repeat: string | null } | undefined
-          if (!current || compactDue(current.due_at) !== request.due) throw new NotDue()
+          if (
+            !current ||
+            !inScope() ||
+            (scope ? current.due_at !== due || Date.parse(due) > now().getTime() : compactDue(current.due_at) !== due)
+          )
+            throw new NotDue()
           if (current.repeat) {
             db.prepare('UPDATE reminder SET due_at = ?, updated_at = ? WHERE reminder_id = ?').run(
               nextDue(current.due_at, current.repeat, now()),
@@ -1385,7 +1442,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
             now
           )
         },
-        { afterNew: () => deps.onScheduleChange?.() }
+        scope ? { portableReminder: scope } : { afterNew: () => deps.onScheduleChange?.() }
       )
     } catch (error) {
       if (error instanceof NotDue) return null
@@ -1396,6 +1453,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
   return {
     handle,
     handleScheduled,
+    handleStandaloneReminder,
     active: () => queues.size,
     drain: async (graceMs) => {
       draining = true

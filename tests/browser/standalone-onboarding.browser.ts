@@ -160,10 +160,27 @@ it('walks standalone setup, saves private credentials and verifies activation af
     ).toBe(200)
     await page.reload()
     await page.getByRole('switch', { name: 'Media watching' }).waitFor()
+    expect(await page.getByRole('switch', { name: 'Reminders' }).count()).toBe(0)
+    expect(
+      (
+        await attach([
+          'text',
+          'document',
+          'receive-image',
+          'receive-audio',
+          'receive-video',
+          'receive-pdf',
+          'scheduler'
+        ])
+      ).status
+    ).toBe(200)
+    await page.reload()
+    await page.getByRole('switch', { name: 'Reminders' }).waitFor()
     expect((await attach(['text'])).status).toBe(200)
     await page.reload()
     await page.getByRole('switch', { name: 'Reports' }).waitFor({ state: 'hidden' })
     await page.getByRole('switch', { name: 'Media watching' }).waitFor({ state: 'hidden' })
+    await page.getByRole('switch', { name: 'Reminders' }).waitFor({ state: 'hidden' })
     // Emulate the exact older readback shape; the new UI must omit media on writes.
     let oldCoreWrites = 0
     await page.route('**/owner-api/core/standalone-config', async (route) => {

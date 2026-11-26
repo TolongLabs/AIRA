@@ -1,3 +1,4 @@
+import { PORTABLE_HISTORY_VISIBLE, PORTABLE_REMINDER_PREFIX, portableHistoryArgs } from '../gateway/reminder-scope.js'
 import { FORGOTTEN_MESSAGE } from '../memory/types.js'
 import { type Db, isoNow, type Storage } from '../storage/database.js'
 import type { WindowMessage } from './types.js'
@@ -44,7 +45,13 @@ export function storeUserMessage(
  * Claims the chat's unanswered user messages for a turn, up to and including the message `upToMid` when it is
  * stored. A message after it waits for its own turn, so a command is never answered inside another turn.
  */
-export function claimPending(db: Db, chatId: string, turnId: string, upToMid?: string): number {
+export function claimPending(
+  db: Db,
+  chatId: string,
+  turnId: string,
+  upToMid?: string,
+  excludePortable = false
+): number {
   const last =
     upToMid === undefined
       ? undefined
@@ -57,10 +64,26 @@ export function claimPending(db: Db, chatId: string, turnId: string, upToMid?: s
     .prepare(
       `UPDATE session_message SET turn_id = ?
        WHERE chat_id = ? AND role = 'user' AND id <= ?
+         AND (? = 0 OR mid IS NULL OR substr(mid,1,?) <> ?)
          AND (turn_id IS NULL
            OR turn_id IN (SELECT turn_id FROM turn WHERE chat_id = ? AND state = 'interrupted'))`
     )
-    .run(turnId, chatId, last ?? Number.MAX_SAFE_INTEGER, chatId).changes
+    .run(
+      turnId,
+      chatId,
+      last ?? Number.MAX_SAFE_INTEGER,
+      Number(excludePortable),
+      PORTABLE_REMINDER_PREFIX.length,
+      PORTABLE_REMINDER_PREFIX,
+      chatId
+    ).changes
+}
+
+/** A portable reminder may claim only its own newly stored occurrence. */
+export function claimPortableReminder(db: Db, chatId: string, turnId: string, mid: string): number {
+  return db
+    .prepare("UPDATE session_message SET turn_id=? WHERE chat_id=? AND role='user' AND mid=? AND turn_id IS NULL")
+    .run(turnId, chatId, mid).changes
 }
 
 interface Row {
@@ -81,7 +104,7 @@ interface Row {
 export function readWindow(
   storage: Storage,
   chatId: string,
-  limits: { windowDays: number; maxMessages: number },
+  limits: { windowDays: number; maxMessages: number; excludeAbandonedPortable?: boolean },
   now: () => Date = () => new Date()
 ): WindowMessage[] {
   const cutoff = new Date(now().getTime() - limits.windowDays * 86_400_000).toISOString()
@@ -98,9 +121,16 @@ export function readWindow(
                message.id) + 0.5
              ELSE message.id END AS position
            FROM session_message AS message
-           WHERE chat_id = ? AND created_at >= ? ORDER BY position DESC LIMIT ?`
+           WHERE chat_id = ? AND created_at >= ?
+             AND ${PORTABLE_HISTORY_VISIBLE}
+           ORDER BY position DESC LIMIT ?`
         )
-        .all(chatId, cutoff, limits.maxMessages) as Row[]
+        .all(
+          chatId,
+          cutoff,
+          ...portableHistoryArgs(limits.excludeAbandonedPortable ?? false),
+          limits.maxMessages
+        ) as Row[]
   )
   return rows.reverse().map((row) => ({
     role: row.role,
@@ -113,23 +143,42 @@ export function readWindow(
   }))
 }
 
+/** The isolated reminder's exact row, independent of later activity or the normal window limit. */
+export function readPortableReminderWindow(
+  storage: Storage,
+  chatId: string,
+  turnId: string,
+  mid: string
+): WindowMessage[] {
+  const row = storage.read(
+    (db) =>
+      db
+        .prepare(
+          "SELECT sender_id, content, created_at FROM session_message WHERE chat_id=? AND turn_id=? AND mid=? AND role='user'"
+        )
+        .get(chatId, turnId, mid) as { sender_id: string; content: string; created_at: string } | undefined
+  )
+  return row ? [{ role: 'user', senderId: row.sender_id, turnId, content: row.content, at: row.created_at }] : []
+}
+
 /** The user messages a turn claimed: what it has to answer. */
 export function pendingOf(window: WindowMessage[], turnId: string): WindowMessage[] {
   return window.filter((message) => message.role === 'user' && message.turnId === turnId)
 }
 
 /** The user texts of one chat that have no reply yet, read inside a transaction, to tell a repeat from a new text. */
-export function unansweredTexts(db: Db, chatId: string): string[] {
+export function unansweredTexts(db: Db, chatId: string, excludePortable = false): string[] {
   return db
     .prepare(
       `SELECT content FROM session_message AS message
        WHERE chat_id = ? AND role = 'user'
+         AND (?=0 OR mid IS NULL OR substr(mid,1,?)<>?)
          AND (turn_id IS NULL OR NOT EXISTS (
            SELECT 1 FROM session_message AS reply WHERE reply.turn_id = message.turn_id AND reply.role = 'assistant'))
        ORDER BY id`
     )
     .pluck()
-    .all(chatId) as string[]
+    .all(chatId, Number(excludePortable), PORTABLE_REMINDER_PREFIX.length, PORTABLE_REMINDER_PREFIX) as string[]
 }
 
 /** Quote hops a link may be read through, counted from the message a member quotes. */
@@ -140,16 +189,19 @@ export const QUOTE_HOPS = 3
  * missing or empty message ends the chain, as does a removed one. A quoted message that is itself removed returns
  * 'removed', so the saved quote note is not read in its place.
  */
-function storedQuoteTexts(db: Db, chatId: string, quoteId: string): string[] | 'removed' {
+function storedQuoteTexts(db: Db, chatId: string, quoteId: string, excludePortable: boolean): string[] | 'removed' {
   const texts: string[] = []
   let mid: string | null = quoteId
   for (let hop = 0; hop < QUOTE_HOPS && mid !== null; hop++) {
     const row = db
       .prepare(
-        `SELECT content, quote_mid FROM session_message
-         WHERE chat_id = ? AND role = 'user' AND mid = ? ORDER BY id DESC LIMIT 1`
+        `SELECT content, quote_mid FROM session_message AS message
+         WHERE chat_id = ? AND role = 'user' AND mid = ? AND ${PORTABLE_HISTORY_VISIBLE}
+         ORDER BY id DESC LIMIT 1`
       )
-      .get(chatId, mid) as { content: string; quote_mid: string | null } | undefined
+      .get(chatId, mid, ...portableHistoryArgs(excludePortable)) as
+      { content: string; quote_mid: string | null } | undefined
+    if (!row && excludePortable && mid.startsWith(PORTABLE_REMINDER_PREFIX)) return hop === 0 ? 'removed' : texts
     if (row?.content === FORGOTTEN_MESSAGE) return hop === 0 ? 'removed' : texts
     if (!row || row.content.trim() === '') break
     texts.push(row.content)
@@ -163,7 +215,7 @@ function storedQuoteTexts(db: Db, chatId: string, quoteId: string): string[] | '
  * in the same chat for up to QUOTE_HOPS messages. A message whose chain reaches nothing keeps its quote note, unless
  * the quoted message was removed: then nothing is read, not even the saved note.
  */
-export function quoteChainTexts(db: Db, chatId: string, turnId: string): string[] {
+export function quoteChainTexts(db: Db, chatId: string, turnId: string, excludePortable = false): string[] {
   const rows = db
     .prepare(
       `SELECT quote, quote_mid FROM session_message
@@ -173,7 +225,7 @@ export function quoteChainTexts(db: Db, chatId: string, turnId: string): string[
   return rows.flatMap((row) => {
     const note = row.quote === null || row.quote.trim() === '' ? [] : [row.quote]
     if (row.quote_mid === null) return note
-    const stored = storedQuoteTexts(db, chatId, row.quote_mid)
+    const stored = storedQuoteTexts(db, chatId, row.quote_mid, excludePortable)
     if (stored === 'removed') return []
     return stored.length > 0 ? stored : note
   })

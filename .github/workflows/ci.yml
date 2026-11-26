@@ -313,6 +313,7 @@ jobs:
             python3 tests/install/run_hermes_typed_fixture.py "$fixture"
             python3 tests/install/run_hermes_typed_fixture.py "$fixture" --documents
             python3 tests/install/run_hermes_typed_fixture.py "$fixture" --media
+            python3 tests/install/run_hermes_typed_fixture.py "$fixture" --scheduler
           done
 
       - name: Log in to GHCR after the native tests pass

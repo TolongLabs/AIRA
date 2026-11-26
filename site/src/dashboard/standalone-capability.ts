@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { core, type StandaloneControls } from '@/lib/core'
 
-const unavailable: StandaloneControls = { reportDocuments: false, inboundMedia: false }
+const unavailable: StandaloneControls = { reportDocuments: false, inboundMedia: false, scheduler: false }
 
 /** Read only authenticated owner health; old or unreachable cores keep the control hidden. */
 export function useStandaloneCapabilities(standalone: boolean): StandaloneControls {
@@ -19,7 +19,8 @@ export function useStandaloneCapabilities(standalone: boolean): StandaloneContro
               health.installationMode === 'standalone'
                 ? {
                     reportDocuments: health.capabilities?.reportDocuments === true,
-                    inboundMedia: health.capabilities?.inboundMedia === true
+                    inboundMedia: health.capabilities?.inboundMedia === true,
+                    scheduler: health.capabilities?.scheduler === true
                   }
                 : unavailable
             )
