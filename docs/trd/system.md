@@ -114,6 +114,42 @@ and rerun dry-run before using an upgraded gateway. The effective chatbot is rea
 an applied model revision and the verified route exist; the actual model provider call is proven by
 a deterministic or explicitly configured test turn, not a health probe.
 
+### Standalone Typed Delivery
+
+Protocol version 2 is a separate, explicitly selected candidate transport. Version 1 retains its exact marker,
+receipt, text endpoints and default attach. The version 2 route negotiates the finite `text` capability first;
+documents, inbound media, stickers, reactions, location, polls and scheduled sends are not inferred from it.
+Each requires its own reviewed adapter operation, core capability and acceptance evidence. This contract does
+not expand the published support matrix before the installed adapter and separately approved live gate pass.
+
+Use the same gateway credential and exact reviewed adapter-version IDs. A version 2 connected receipt includes
+the selected profile, adapter version, negotiated capabilities, verification time and core-generated random route
+ID. An identical reattach keeps the route ID. Detach or changing version/protocol/capabilities invalidates it.
+A different profile conflicts. A version 2 route admits only version 2 turns; version 1 has no silent fallback.
+Unknown protocol, stale route, unsupported capabilities or malformed data refuse without an ordinary Hermes turn.
+
+| Endpoint                       | Contract                                                                                                                                                                                                |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST `/v2/aira/attach-check`   | Strict gateway-authenticated connect with adapter version, profile and exact supported capability list; disconnect names the current route ID. Returns the verified route, never contacts a model.      |
+| POST `/v2/aira/turn`           | Version 1 structured identity/text fields with `schemaVersion:2` and the current `routeId`. Returns `schemaVersion:2`, disposition and typed delivery IDs, not file paths or send directives in text.   |
+| POST `/v2/aira/delivery/claim` | `schemaVersion:2`, route/profile, chat, inbound message ID and delivery ID. Atomically claim one unexpired pending item. A text item returns bounded text; a duplicate, stale or foreign claim refuses. |
+| POST `/v2/aira/delivery/ack`   | Same binding and ID plus `outcome:confirmed\|failed\|unknown`. Only an existing claimed item may finish; repeating the identical outcome is idempotent.                                                 |
+
+The core issues a delivery ID only for a fresh, non-replayed returned turn and its persisted same-chat inbound
+and assistant records. Empty or `NO_REPLY` content produces no delivery. One item position of a turn has one
+delivery ID even across route changes. The claim rechecks the current route and active chat; the existing reply
+mute/quiet rule is unchanged. A disabled or pending chat has no claim. Delivery text is the bounded clean reply,
+not `MEDIA:` directives or an arbitrary path. The adapter calls only the selected runner's delivery adapter for
+the originating message's chat, then consumes the event with no default reply. Successful `SendResult` with a
+nonempty message ID confirms the send; raw provider IDs and errors are not forwarded as receipt content.
+A lost claim or ambiguous send may omit delivery, but cannot retry or resend it. A stored core reply is never
+proof of a WhatsApp delivery. See [the private ledger](storage.md#standalone-delivery-ledger).
+
+Future typed documents derive only from matching successful same-turn, same-chat tool receipts and owned
+content-addressed files; the core supplies bounded bytes, not a host path, URL or destination. Direct inbound
+attachments must be selected-profile owned cache files with a reviewed normalized event type, size, content
+and lifetime. A retained remote URL, quoted workspace file, other profile or special file is not direct media.
+
 ## Gateway Contract
 
 The gateway calls `POST /v1/chat/completions` on the core. The shapes below were measured on the pinned, patched
