@@ -222,12 +222,14 @@ The browser keeps the existing storage key and sends the credential only on prot
 Authenticated `GET /owner-api/core/health` retains its legacy envelope. In standalone it also includes
 `schemaVersion: 1`, `installationMode: standalone`, `configuration`, `chatbot`, `chatbotReason`, and
 `capabilities`. Until the corresponding integration is implemented and verified, the boolean capability
-fields `hostOwnerService`, `subscriptionRunner`, `fileBrowser`, `gatewayConnection`, and `scheduler`
+fields `hostOwnerService`, `subscriptionRunner`, `fileBrowser`, and `gatewayConnection`
 are false; the dashboard must not call absent services or treat those capabilities as an error.
 The boolean `reportDocuments` describes a currently connected, explicitly document-capable typed route;
 it is false for v1, text-only and disconnected routes. This is transport availability, not live send evidence.
 The boolean `inboundMedia` requires the current negotiated direct-media route and applied media watcher.
 It is false without either prerequisite and is not provider-call or live delivery evidence.
+The boolean `scheduler` requires a ready chatbot and the current scheduler-capable route.
+It enables the existing Reminders control, not a host cron dashboard or arbitrary scheduled sends.
 Standalone model settings use the [typed owner operations](dashboard-state.md#typed-owner-operations), including
 saved/applied readback after a controlled activation; the old host settings editor is not an authority in this mode.
 A legacy response without the new fields selects the existing dashboard behavior.
@@ -264,7 +266,7 @@ tool limits and supported text features. They hide controls for unproven adapter
 reactions, group admission overrides, scheduled messages, media, host tools and external delivery), and
 describe the transport limit and Hermes-owned group admission on those forms. The existing Reports control
 is visible only when the authenticated `reportDocuments` capability is true. The existing media control
-requires authenticated `inboundMedia`. Legacy controls are unchanged.
+requires authenticated `inboundMedia`, and Reminders requires authenticated `scheduler`. Legacy controls are unchanged.
 
 ## Portable Integration Decisions
 
@@ -272,13 +274,13 @@ Standalone does not acquire the legacy host's authority simply by enabling a das
 decisions below separate core-owned candidates from host-dependent integrations. None of these candidates
 is enabled by the evaluation; each needs a separate contract, owner choice and verified acceptance.
 
-| Area                                                       | Decision and prerequisite                                                                                                                                                                                                          |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Host owner service, direct sends, notices and file browser | Keep legacy-only. A portable companion would need explicitly scoped operations and separate credentials, rather than proxying arbitrary host paths or commands.                                                                    |
-| Subscription runner and coding sessions                    | Keep legacy-only. They depend on the existing host account and process lifecycle; a separate opt-in companion would need its own configuration, auth, failure and teardown contract.                                               |
-| Lessons, library and markets                               | Local SQLite lesson storage and stateless quote/analysis/news are candidates. The host library UI, watchlists/holdings and alert timers retain separate state and delivery dependencies.                                           |
-| MCP and research                                           | Require explicit trusted server configuration and optional role credentials, bounded worker lifecycle and durable completion delivery. No inherited host credentials or implicit worker activation.                                |
-| Reminders and routines                                     | Core-owned reminder rows are a candidate; legacy gateway cron and owner routines are not portable by inference. Require route-scoped due-work claim/ack, cancellation, quiet/mute and restart semantics before enabling scheduler. |
+| Area                                                       | Decision and prerequisite                                                                                                                                                                           |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Host owner service, direct sends, notices and file browser | Keep legacy-only. A portable companion would need explicitly scoped operations and separate credentials, rather than proxying arbitrary host paths or commands.                                     |
+| Subscription runner and coding sessions                    | Keep legacy-only. They depend on the existing host account and process lifecycle; a separate opt-in companion would need its own configuration, auth, failure and teardown contract.                |
+| Lessons, library and markets                               | Local SQLite lesson storage and stateless quote/analysis/news are candidates. The host library UI, watchlists/holdings and alert timers retain separate state and delivery dependencies.            |
+| MCP and research                                           | Require explicit trusted server configuration and optional role credentials, bounded worker lifecycle and durable completion delivery. No inherited host credentials or implicit worker activation. |
+| Reminders and routines                                     | Only the explicit route-owned [self-reminder candidate](system.md#standalone-reminders); legacy gateway cron and owner routines remain unavailable.                                                 |
 
 The authenticated integration refusal contract tests in `tests/contract/standalone-owner.test.ts` exercise
 library, notices, file access, markets, model probe, cron and direct-send paths with a configured loopback

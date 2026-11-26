@@ -120,9 +120,11 @@ Protocol version 2 is a separate, explicitly selected candidate transport. Versi
 receipt, text endpoints and default attach. The version 2 route negotiates exactly `['text']`,
 `['text', 'document']`, or the ordered direct-media candidate
 `['text','document','receive-image','receive-audio','receive-video','receive-pdf']`.
+An independently selected scheduler generation appends `'scheduler'` to that exact ordered list.
 Document delivery enables only core-owned report documents, not arbitrary file sends. The direct-media
 candidate is defined in [Standalone Direct Media](media-pipelines.md#standalone-direct-media).
-Stickers, reactions, location, polls and scheduled sends are not inferred from any list.
+Stickers, reactions, location and polls are not inferred from any list. The scheduler capability is
+limited to [standalone reminders](#standalone-reminders).
 Each requires its own reviewed adapter operation, core capability and acceptance evidence. This contract does
 not expand the published support matrix before the installed adapter and separately approved live gate pass.
 
@@ -336,6 +338,39 @@ The core then does this:
   is answered from that row. A turn that fails is not tried again: a late reminder would come out of order.
 - The scheduled turn's user message is written by code from the row: the tag, then the reminder's text.
 - The core applies mute and quiet rules to a scheduled turn like any other turn. See [Reliability](reliability.md).
+
+### Standalone Reminders
+
+The explicit `scheduler` candidate uses core-owned self-reminder rows, not a host cron service.
+The selected route and profile at creation bind the row. A different route (even with the same
+profile label) cannot send it; replacement or detachment leaves earlier rows dormant. The core
+preserves the bound route across ordinary restarts.
+
+All endpoints require the gateway credential and exact active scheduler route. Poll and claim also
+require a ready chatbot. The adapter never supplies a destination, due time, owner or text.
+
+| Endpoint                        | Request and result                                                                                                  |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| POST `/v2/aira/reminders/poll`  | `{schemaVersion:2,profile,routeId}`; returns `{schemaVersion:2,delivery:null\|{id,kind:'text'}}`.                   |
+| POST `/v2/aira/reminders/claim` | Same scope plus `id`; one atomic claim returns `{schemaVersion:2,delivery:{id,kind:'text',chat,text}}`.             |
+| POST `/v2/aira/reminders/ack`   | Same claim scope plus `outcome:confirmed\|failed\|unknown`; terminal acknowledgement, identical outcome idempotent. |
+
+Poll returns valid unclaimed pending work first, otherwise selects the earliest due active scoped
+reminder of an active, feature-enabled chat, with `due_at <= now`. The existing scheduled turn
+atomically consumes the exact occurrence and marks fired or advances repeat before model work.
+Use the row's chat/owner/target/text; recheck authority at execution. Scheduled turns run alone and
+their text is never a direct command. Reserve the portable occurrence message-ID prefix from ordinary
+standalone input; legacy schedule IDs are unchanged.
+
+Self reminders retain the existing quiet/mute rules: quiet is bypassed; the owner's mute consumes the
+occurrence without delivery. Disabled/pending/detached reminders stay dormant; repetition skips missed
+intervals. A lost poll after issuance can return the same opaque pending ID; a lost claim or ambiguous
+native send is never retried. A crash after consumption but before issuance may omit delivery.
+Claim rechecks the row, current route, chat, cancellation, feature and mute/quiet, and derives the
+destination from the stored chat. Refused pending obligations expire permanently; claimed sends may
+finish despite later route changes, but no new claim may proceed. See the [ledger](storage.md#standalone-delivery-ledger).
+An attached scheduler uses the exact owning native adapter and bounded local polling without inbound traffic;
+no broader scheduling or live delivery claim follows.
 
 ### Gateway Jobs
 
