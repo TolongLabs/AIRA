@@ -283,6 +283,17 @@ Select `--capabilities text,document,receive-image,receive-audio,receive-video,r
 the previous text/document helpers, whose bytes remain recognized. An older core refuses the new
 capability list; the existing stopped attachment transaction restores the prior state.
 
+The scheduler generation appends `,scheduler` to the direct-media capability list. It additionally
+patches the exact stock `plugins/platforms/whatsapp/adapter.py` (SHA-256
+`a530a1d6c352afe5c38c3fa6ad988b0f715e54c977495bcedbbda4705ab947d6` on all three pins).
+The unique startup anchor in `_attach_to_bridge` starts the retained poll task after the stock
+message poll task; the unique `_shutting_down = True` anchor cancels and awaits it before teardown.
+The helper uses the exact owning runner and published native adapter, the selected profile's marker,
+and no ambient profile lookup. It waits for runner startup; no network work while detached, draining,
+unpublished or multiplexed. Poll every five seconds; recheck scope before each claim and native send.
+Both verified source files take part in the same backup, inert-marker write/revalidation and rollback;
+older helper generations require the exact original lifecycle file. No live send is implied.
+
 `aira attach-hermes --profile NAME --apply` is a deliberate apply; confirmation is required on a TTY,
 or `--yes` with explicit non-interactive apply. The install must be standalone. Hold its shared deploy
 lock and a bounded source-tree lock while modifying shared adapter source. Preserve the exact original

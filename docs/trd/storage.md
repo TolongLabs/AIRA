@@ -72,6 +72,14 @@ choose at most the first valid one in stable receipt order, never an item derive
 A returned `turn.state = delivered` still means a core return;
 the independent delivery row is the transport acknowledgement, not a rewrite of the turn record.
 
+Schema 20 adds nullable `standalone_route_id` and `standalone_profile` to `reminder` and nullable
+`reminder_id` and `reminder_due_at` to `standalone_delivery`. Historical reminders with both scope
+columns absent are legacy-only. The standalone reminder references its exact scope; legacy schedule
+reconciliation excludes it. The ledger's unique reminder/occurrence pair prevents duplicate issuance.
+Scheduler items are text-only, use the same expiry/terminal state and retained assistant reply, and
+cannot be obtained by the ordinary delivery endpoints. A claim with revoked authority permanently
+expires the unclaimed item, never reopens a claimed item. No extra message text or provider ID is stored.
+
 ### Standalone deploy backup
 
 The host update transaction holds `deploy.lock` and gracefully stops the sole writer before taking its coherent

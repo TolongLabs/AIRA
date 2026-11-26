@@ -230,9 +230,13 @@ cleaning chain and the bubble splitter.
   current turn's core-validated typed route has the `document` capability. The queued ingress route must agree
   across all coalesced waiters; mixed v1/v2 or stale routes cannot offer the tool. Recheck the route at call time.
   No model-supplied scope or additional role credentials grant this permission; legacy reports are unchanged.
-- The gateway's schedule fires reminders. `reminder_set` and `reminder_cancel` change the `reminder` row in one
+- In legacy, the gateway's schedule fires reminders. `reminder_set` and `reminder_cancel` change the `reminder` row in one
   transaction and then rewrite the core's wanted-jobs file. A host reconciler makes the gateway's jobs match it within
   a minute. See [Scheduled Turns](system.md#scheduled-turns).
+- Standalone reminder tools are offered only on a current scheduler-enabled inbound turn and
+  feature-enabled active chat; the scope comes from core-validated route context. List and cancel
+  filter the chat and route/profile; create and cancel recheck scope on commit. No scheduler tools
+  in scheduled turns, no host schedule file write. See [standalone reminders](system.md#standalone-reminders).
 - `recall` returns 8 items and `history_search` 10. A query caps at 200 characters and note text at 500 characters.
 - `note` is checked by the judge port before the commit, outside any transaction.
 - `forget` with only a query removes nothing. It returns candidates and still commits a forget-barrier receipt.
