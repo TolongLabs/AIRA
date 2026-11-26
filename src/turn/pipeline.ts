@@ -1213,11 +1213,12 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
           now
         )
       },
-      undefined,
-      request.attachments,
-      COMMAND_TEXT.test(request.text) || offerAnswer(request.text) !== undefined,
-      thinkPrefix !== null && settings['features.think']?.value !== false,
-      request.typedRouteId
+      {
+        attachments: request.attachments,
+        command: COMMAND_TEXT.test(request.text) || offerAnswer(request.text) !== undefined,
+        think: thinkPrefix !== null && settings['features.think']?.value !== false,
+        typedRouteId: request.typedRouteId
+      }
     )
   }
 
@@ -1230,11 +1231,19 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
     key: { chatId: string; mid: string; senderId: string },
     scheduled: DeliveryKind | undefined,
     onNew: (db: Db) => void,
-    afterNew?: () => void,
-    attachments?: Attachment[],
-    command?: boolean,
-    think?: boolean,
-    typedRouteId?: string
+    {
+      afterNew,
+      attachments,
+      command,
+      think,
+      typedRouteId
+    }: {
+      afterNew?: () => void
+      attachments?: Attachment[] | undefined
+      command?: boolean
+      think?: boolean
+      typedRouteId?: string | undefined
+    } = {}
   ): Promise<TurnReply> {
     for (let round = 0; round < 3; round++) {
       const status = receiveInbound(storage, { ...key, onNew }, now)
@@ -1318,9 +1327,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
             now
           )
         },
-        undefined,
-        undefined,
-        true
+        { command: true }
       )
     }
     // Identity comes from the core's own reminder row. The request names a reminder and a due time, nothing else.
@@ -1363,7 +1370,7 @@ export function createTurnService(deps: TurnServiceDeps): TurnService {
             now
           )
         },
-        () => deps.onScheduleChange?.()
+        { afterNew: () => deps.onScheduleChange?.() }
       )
     } catch (error) {
       if (error instanceof NotDue) return null

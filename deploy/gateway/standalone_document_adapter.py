@@ -243,7 +243,13 @@ async def route_typed(marker, event, source, runner):
                     raise
                 except Exception:
                     pass
-            await _typed_post(config, "/v2/aira/delivery/ack", {**binding, "outcome": outcome}, 15)
+            try:
+                await _typed_post(config, "/v2/aira/delivery/ack", {**binding, "outcome": outcome}, 15)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                # A lost acknowledgement cannot authorize a retry or defeat the next independent claim.
+                logging.getLogger(__name__).warning("aira.adapter.typed_ack_unavailable")
     except asyncio.CancelledError:
         raise
     except Exception:

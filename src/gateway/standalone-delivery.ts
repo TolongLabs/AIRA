@@ -63,7 +63,7 @@ export function createStandaloneDeliveryLedger(
 ) {
   const now = options.now ?? (() => new Date())
   const current = (input: Binding) => options.currentRoute() === input.routeId
-  const report = (db: Db, input: Binding & { turnId: string; sha256?: string }) =>
+  const report = (db: Db, input: Binding & { turnId: string; sha256?: string; receiptId?: string }) =>
     options.filesDir && options.mayDeliverDocument?.(input.routeId, input.chatId)
       ? readStandaloneReport(db, options.filesDir, input)
       : null
@@ -98,8 +98,8 @@ export function createStandaloneDeliveryLedger(
         const recorded = db
           .prepare(
             `INSERT INTO standalone_delivery
-             (delivery_id, route_id, chat_id, inbound_mid, turn_id, position, kind, file_sha256, state, created_at, expires_at)
-           VALUES (?, ?, ?, ?, ?, 1, 'document', ?, 'pending', ?, ?)
+             (delivery_id, route_id, chat_id, inbound_mid, turn_id, position, kind, file_sha256, report_receipt_id, state, created_at, expires_at)
+           VALUES (?, ?, ?, ?, ?, 1, 'document', ?, ?, 'pending', ?, ?)
            ON CONFLICT (turn_id, position) DO NOTHING`
           )
           .run(
@@ -109,6 +109,7 @@ export function createStandaloneDeliveryLedger(
             input.mid,
             input.turnId,
             document.sha256,
+            document.receiptId,
             at.toISOString(),
             new Date(at.getTime() + CLAIM_LIFETIME_MS).toISOString()
           )
@@ -124,18 +125,19 @@ export function createStandaloneDeliveryLedger(
     return storage.tx((db) => {
       const row = db
         .prepare(
-          `SELECT turn_id, kind, file_sha256 FROM standalone_delivery
+          `SELECT turn_id, kind, file_sha256, report_receipt_id FROM standalone_delivery
            WHERE delivery_id = ? AND route_id = ? AND chat_id = ? AND inbound_mid = ?
              AND state = 'pending' AND expires_at > ?`
         )
         .get(input.id, input.routeId, input.chatId, input.mid, at) as
-        { turn_id: string; kind: 'text' | 'document'; file_sha256: string | null } | undefined
+        | { turn_id: string; kind: 'text' | 'document'; file_sha256: string | null; report_receipt_id: string | null }
+        | undefined
       if (!row) return null
       const text = storedReply(db, { ...input, turnId: row.turn_id })
       if (text === null || !current(input)) return null
       const document =
-        row.kind === 'document' && row.file_sha256
-          ? report(db, { ...input, turnId: row.turn_id, sha256: row.file_sha256 })
+        row.kind === 'document' && row.file_sha256 && row.report_receipt_id
+          ? report(db, { ...input, turnId: row.turn_id, sha256: row.file_sha256, receiptId: row.report_receipt_id })
           : null
       if (row.kind === 'document' && !document) return null
       if (!current(input)) return null
@@ -146,7 +148,7 @@ export function createStandaloneDeliveryLedger(
         .run(at, input.id)
       if (claimed.changes !== 1 || !current(input)) return null
       if (!document) return { id: input.id, kind: 'text', text }
-      const { data, ...metadata } = document
+      const { data, receiptId: _receiptId, ...metadata } = document
       return { id: input.id, kind: 'document', ...metadata, base64: data.toString('base64') }
     })
   }

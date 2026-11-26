@@ -57,6 +57,8 @@ async def test_report_document_uses_native_send_once_and_removes_private_file(tm
         assert identity[:2] == (chat, mid)
         kind = identity[2]
         if request.path.endswith("/claim"):
+            if mid == "stale-claim" and kind == "document":
+                return web.Response(status=409)
             if body["id"] in claimed:
                 return web.Response(status=409)
             claimed.add(body["id"])
@@ -65,10 +67,16 @@ async def test_report_document_uses_native_send_once_and_removes_private_file(tm
                 delivery["text"] = "fixture-" + mid
             else:
                 mime, filename, data = content(mid)
+                if mid == "foreign-claim":
+                    delivery["id"] = str(uuid.uuid4())
                 delivery.update(mime=mime, filename=filename, base64=base64.b64encode(data).decode(),
                                 sha256="f" * 64 if mid == "bad-hash" else hashlib.sha256(data).hexdigest())
             return web.json_response({"schemaVersion": 2, "delivery": delivery})
         assert request.path.endswith("/ack") and body["id"] in claimed
+        if mid == "lost-ack" and kind == "text":
+            # A real connection drop raises in the adapter instead of returning a non-200 response.
+            request.transport.close()
+            return web.Response(status=503)
         acknowledged.append((chat, mid, kind, body["outcome"]))
         return web.json_response({"schemaVersion": 2, "accepted": True})
 
@@ -138,16 +146,20 @@ async def test_report_document_uses_native_send_once_and_removes_private_file(tm
                 await deliver(dm, dm, "ambiguous")
                 await deliver(dm, dm, "ambiguous")
                 await deliver(dm, dm, "bad-hash")
+                await deliver(dm, dm, "foreign-claim")
+                await deliver(dm, dm, "stale-claim")
+                await deliver(dm, dm, "lost-ack")
                 await deliver(dm, dm, "silent")
                 before = len(calls)
                 marker.write_text(json.dumps({**marker_value, "state": "provisional", "routeId": None}))
                 await deliver(dm, dm, "inert")
                 assert len(calls) == before
-        assert sent_text == [(dm, "markdown"), (group, "pdf"), (dm, "ambiguous"), (dm, "bad-hash")]
-        assert sent_documents == [(dm, "markdown"), (group, "pdf"), (dm, "ambiguous")]
-        assert len(paths) == 3 and all(not path.parent.exists() for path in paths)
+        assert sent_text == [(dm, "markdown"), (group, "pdf"), (dm, "ambiguous"), (dm, "bad-hash"),
+                             (dm, "foreign-claim"), (dm, "stale-claim"), (dm, "lost-ack")]
+        assert sent_documents == [(dm, "markdown"), (group, "pdf"), (dm, "ambiguous"), (dm, "lost-ack")]
+        assert len(paths) == 4 and all(not path.parent.exists() for path in paths)
         assert [(mid, outcome) for _, mid, kind, outcome in acknowledged if kind == "document"] == [
-            ("markdown", "confirmed"), ("pdf", "confirmed"), ("ambiguous", "unknown")]
+            ("markdown", "confirmed"), ("pdf", "confirmed"), ("ambiguous", "unknown"), ("lost-ack", "confirmed")]
         assert not foreign.sent and not intake.sent
         runner._handle_message_with_agent.assert_not_awaited()
     finally:

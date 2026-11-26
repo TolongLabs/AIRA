@@ -91,6 +91,11 @@ type V1Route = ConnectedRoute & { protocolVersion?: never; routeId?: never; capa
 type V2Route = ConnectedRoute & { protocolVersion: 2; routeId: string; capabilities: TypedCapabilities }
 export type HermesRouteStatus = InactiveRoute | V1Route | V2Route
 
+export const hasDocumentCapability = (route: HermesRouteStatus | undefined): boolean =>
+  route?.state === 'connected' &&
+  route.protocolVersion === 2 &&
+  route.capabilities.some((capability) => capability === 'document')
+
 export class StandaloneGatewayError extends Error {
   constructor(
     readonly status: number,
@@ -142,7 +147,7 @@ export function createStandaloneGateway(dataRoot: string, storage: Storage, now:
       route.state !== 'connected' ||
       route.protocolVersion !== 2 ||
       route.routeId !== routeId ||
-      route.capabilities.length !== 2
+      !hasDocumentCapability(route)
     )
       return false
     const chat = getChat(storage, chatId)
