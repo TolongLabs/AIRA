@@ -21,10 +21,8 @@ A new install without an applied model revision starts with configuration `setup
 `inactive` (reason `model_setup_required`). A missing key or model is not a storage or deployment failure.
 The core must not dispatch a placeholder model or make a paid probe. Legacy API and subscription startup
 validation are unchanged. Standalone supports only the API main and optional API fallback transport;
-host-router and subscription transport are not standalone capabilities. An explicit optional Gemini media watcher
-may be saved and applied separately from main/fallback, with its own private key and model ID. Its applied
-configuration status is not evidence of inbound media transport. Keyless main, a missing/cleared media key,
-or a historical revision without the optional role leaves the watcher off; legacy variables are not authority.
+host-router and subscription transport are not standalone capabilities. The optional media watcher uses the
+[applied media role](dashboard-state.md#model-revision-authority) as its only standalone credential authority.
 
 A standalone main client exists only when an explicitly configured,
 validated model target and credential are available. The no-client branch must not invoke the turn runner,

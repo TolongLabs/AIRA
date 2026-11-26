@@ -82,7 +82,11 @@ aira config set-character --level global --pack example
 ```
 
 Replace `MODEL_ID` and `PROVIDER_BASE_URL` with your provider's values. The supported roles are `main` and
-`fallback`; providers are `anthropic` and `openai-compatible`. Use `--prompt-key` or `--key-stdin`, never an
+`fallback` for `anthropic` and `openai-compatible`. The optional `media` role uses Gemini only on cores
+that advertise it. Configure it in **System Settings** or with
+`aira config set-model --role media --provider gemini --model MODEL_ID --prompt-key`, then apply the revision.
+This configures the media model; it does not enable inbound media or link reading.
+Use `--prompt-key` or `--key-stdin`, never an
 API key argument. `--expected-revision` refuses a stale write. See [typed configuration commands](trd/deployment.md#typed-configuration-and-diagnostics-commands)
 for additional flags. Setup and activation do not contact a paid model as a health probe; configure a real provider
 only when ready to use one.

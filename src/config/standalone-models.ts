@@ -48,7 +48,20 @@ const keySchema = z
   .max(8192)
   .refine((key) => !/[\r\n\0]/.test(key))
 const writableTarget = targetSchema.extend({ apiKey: keySchema.nullable().optional() }).nullable()
-const writeSchema = z.strictObject({ expectedRevision: id, main: writableTarget, fallback: writableTarget })
+const mediaTargetSchema = z.strictObject({
+  provider: z.literal('gemini'),
+  model: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/)
+})
+const writableMedia = mediaTargetSchema.extend({ apiKey: keySchema.nullable().optional() }).nullable().optional()
+const writeSchema = z.strictObject({
+  expectedRevision: id,
+  main: writableTarget,
+  fallback: writableTarget,
+  media: writableMedia
+})
 const activationSchema = z.strictObject({ expectedRevision: id })
 const settingsSchema = z.strictObject({
   schemaVersion: z.literal(1),
@@ -62,11 +75,20 @@ const credentialsSchema = z.strictObject({
 })
 type Settings = z.infer<typeof settingsSchema>
 type Credentials = z.infer<typeof credentialsSchema>
-type Revision = { settings: Settings; credentials: Credentials }
+const mediaSettingsSchema = z.strictObject({ schemaVersion: z.literal(1), media: mediaTargetSchema.nullable() })
+const mediaCredentialsSchema = z.strictObject({ schemaVersion: z.literal(1), media: keySchema.nullable() })
+type MediaTarget = z.infer<typeof mediaTargetSchema>
+type Media = { target: MediaTarget | null; key: string | null }
+type Revision = { settings: Settings; credentials: Credentials; media: Media }
 type ReadTarget = z.infer<typeof targetSchema> & { credentialConfigured: boolean }
-type ReadPair = { main: ReadTarget | null; fallback: ReadTarget | null }
+type ReadPair = {
+  main: ReadTarget | null
+  fallback: ReadTarget | null
+  media: (MediaTarget & { credentialConfigured: boolean }) | null
+}
 export interface StandaloneModelSnapshot {
   schemaVersion: 1
+  optionalRoles: ['media']
   configuration: 'setup_required' | 'configured' | 'invalid' | 'pending_activation'
   savedRevision: string | null
   appliedRevision: string | null
@@ -110,7 +132,12 @@ function sanitized(revision: Revision | null): ReadPair | null {
     const target = revision.settings[name]
     return target ? { ...target, credentialConfigured: Boolean(revision.credentials[name]) } : null
   }
-  return { main: role('main'), fallback: role('fallback') }
+  const media = revision.media
+  return {
+    main: role('main'),
+    fallback: role('fallback'),
+    media: media.target ? { ...media.target, credentialConfigured: Boolean(media.key) } : null
+  }
 }
 const configured = (revision: Revision | null): boolean => Boolean(revision?.settings.main && revision.credentials.main)
 
@@ -134,6 +161,11 @@ function runtimeConfig(base: Config, revision: Revision | null): Config {
       fallbackTransport: 'api',
       main: revision?.settings.main ?? disabled,
       fallback: revision?.settings.fallback ?? disabled
+    },
+    media: {
+      ...base.media,
+      watcher: { model: configured(revision) && revision?.media.key ? (revision.media.target?.model ?? null) : null },
+      gatewayDirs: []
     }
   })
 }
@@ -145,6 +177,7 @@ function runtime(base: Config, revision: Revision | null, revisionId: string | n
     if (revision.credentials.main) env.LLM_API_KEY = revision.credentials.main
     if (revision.settings.fallback && revision.credentials.fallback)
       env.LLM_FALLBACK_API_KEY = revision.credentials.fallback
+    if (revision.media.target && revision.media.key) env.MEDIA_WATCHER_API_KEY = revision.media.key
   }
   return { config: runtimeConfig(base, revision), env, revision: revisionId, claimed, configured: active }
 }
@@ -152,6 +185,7 @@ function runtime(base: Config, revision: Revision | null, revisionId: string | n
 function invalidSnapshot(pointer = initialPointer()): StandaloneModelSnapshot {
   return {
     schemaVersion: 1,
+    optionalRoles: ['media'],
     configuration: 'invalid',
     savedRevision: pointer.savedRevision,
     appliedRevision: pointer.appliedRevision,
@@ -193,9 +227,21 @@ export function createStandaloneModelStore(dataRoot: string, base: Config) {
     const settings = readPrivateText(join(revisions, revision + '.json'))
     const credentials = readPrivateText(join(revisions, revision + '.credentials.json'))
     if (settings === undefined || credentials === undefined) throw new Error('missing revision')
+    const mediaSettings = readPrivateText(join(revisions, revision + '.media.json'))
+    const mediaCredentials = readPrivateText(join(revisions, revision + '.media.credentials.json'))
+    let media: Media = { target: null, key: null }
+    if (mediaSettings !== undefined || mediaCredentials !== undefined) {
+      if (mediaSettings === undefined || mediaCredentials === undefined) throw new Error('missing media revision')
+      media = {
+        target: mediaSettingsSchema.parse(JSON.parse(mediaSettings)).media,
+        key: mediaCredentialsSchema.parse(JSON.parse(mediaCredentials)).media
+      }
+      if (media.target === null && media.key !== null) throw new Error('invalid media credential reference')
+    }
     const value = {
       settings: settingsSchema.parse(JSON.parse(settings)),
-      credentials: credentialsSchema.parse(JSON.parse(credentials))
+      credentials: credentialsSchema.parse(JSON.parse(credentials)),
+      media
     }
     if ((!value.settings.main && value.credentials.main) || (!value.settings.fallback && value.credentials.fallback))
       throw new Error('invalid credential reference')
@@ -215,6 +261,7 @@ export function createStandaloneModelStore(dataRoot: string, base: Config) {
       const applied = readRevision(pointer.appliedRevision)
       return {
         schemaVersion: 1,
+        optionalRoles: ['media'],
         configuration:
           pointer.savedRevision !== pointer.appliedRevision
             ? 'pending_activation'
@@ -262,7 +309,14 @@ export function createStandaloneModelStore(dataRoot: string, base: Config) {
       settings[role] = fields
       credentials[role] = apiKey === undefined || apiKey === '' ? (previous?.credentials[role] ?? null) : apiKey
     }
-    const revision = { settings, credentials }
+    let media: Media = previous?.media ?? { target: null, key: null }
+    const mediaInput = parsed.data.media
+    if (mediaInput === null) media = { target: null, key: null }
+    else if (mediaInput !== undefined) {
+      const { apiKey, ...target } = mediaInput
+      media = { target, key: apiKey === undefined || apiKey === '' ? media.key : apiKey }
+    }
+    const revision = { settings, credentials, media }
     try {
       runtimeConfig(base, revision)
     } catch {
@@ -274,7 +328,15 @@ export function createStandaloneModelStore(dataRoot: string, base: Config) {
       ensurePrivateDirectory(revisions)
       if (
         !writePrivateText(join(revisions, revisionId + '.json'), JSON.stringify(settings) + '\n') ||
-        !writePrivateText(join(revisions, revisionId + '.credentials.json'), JSON.stringify(credentials) + '\n')
+        !writePrivateText(join(revisions, revisionId + '.credentials.json'), JSON.stringify(credentials) + '\n') ||
+        !writePrivateText(
+          join(revisions, revisionId + '.media.json'),
+          JSON.stringify({ schemaVersion: 1, media: media.target }) + '\n'
+        ) ||
+        !writePrivateText(
+          join(revisions, revisionId + '.media.credentials.json'),
+          JSON.stringify({ schemaVersion: 1, media: media.key }) + '\n'
+        )
       )
         throw new Error('revision collision')
       writePointer({ ...pointer, savedRevision: revisionId, lastFailure: null })

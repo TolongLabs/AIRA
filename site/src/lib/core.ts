@@ -108,11 +108,21 @@ export interface StandaloneModelTarget {
 export interface StandaloneModelPair {
   main: StandaloneModelTarget | null
   fallback: StandaloneModelTarget | null
+  media?: StandaloneMediaTarget | null
 }
+
+export interface StandaloneMediaTarget {
+  provider: 'gemini'
+  model: string
+  credentialConfigured: boolean
+}
+
+export type StandaloneMediaInput = Omit<StandaloneMediaTarget, 'credentialConfigured'> & { apiKey?: string | null }
 
 /** The GET/PUT standalone-config envelope and the POST activate readback. */
 export interface StandaloneConfigState {
   schemaVersion: 1
+  optionalRoles?: ['media']
   configuration: StandaloneConfiguration
   savedRevision: string | null
   appliedRevision: string | null
@@ -244,6 +254,7 @@ export const core = {
     expectedRevision: string | null
     main: StandaloneModelInput | null
     fallback: StandaloneModelInput | null
+    media?: StandaloneMediaInput | null
   }) => put<StandaloneConfigState>('/api/standalone-config', body),
   /** Request activation of the saved revision. 202 means accepted, not applied: poll the readback. */
   activateStandaloneConfig: (expectedRevision: string | null) =>

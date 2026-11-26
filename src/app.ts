@@ -674,10 +674,11 @@ export async function createApp(options: AppOptions): Promise<App> {
     // Media watching (docs/trd/models.md#media-watching). With no model or no key, media is off: files get a note.
     const mediaModel = config.media.watcher.model
     const mediaKey = env['MEDIA_WATCHER_API_KEY']
-    const mediaWatcher = standalone
-      ? undefined
-      : (options.mediaWatcher ??
-        (mediaModel !== null && mediaKey ? createGeminiWatcher({ apiKey: mediaKey, model: mediaModel }) : undefined))
+    const mediaWatcher =
+      standalone && !(mediaModel && mediaKey)
+        ? undefined
+        : (options.mediaWatcher ??
+          (mediaModel !== null && mediaKey ? createGeminiWatcher({ apiKey: mediaKey, model: mediaModel }) : undefined))
     if (!mediaWatcher) logger.warn('media.off', { reason: mediaModel === null ? 'no_model' : 'no_key' })
     else if (config.media.gatewayDirs.length === 0) logger.warn('media.no_gateway_dirs', {})
     for (const dir of config.media.gatewayDirs) {
@@ -1011,7 +1012,7 @@ export async function createApp(options: AppOptions): Promise<App> {
           breakerOpen: subscription ? (fallbackBreaker?.isOpen('main') ?? false) : breaker.isOpen('fallback')
         },
         judge: { configured: Boolean(moodJudge || memoryJudge), breakerOpen: false },
-        media: { configured: Boolean(mediaWatcher), breakerOpen: false }
+        media: { configured: Boolean(mediaWatcher) && activationCommitted, breakerOpen: false }
       }),
       logger,
       now,
