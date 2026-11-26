@@ -100,7 +100,38 @@ jobs:
       - name: Scan repository history
         run: '"$RUNNER_TEMP/gitleaks" git --redact --no-banner .'
 
+  # A pull request that changes only documents and the committed graph skips the native QA inside `image-platform`.
+  # The build and every required check still run, so the ruleset stays satisfied. A push to `main` always runs the
+  # full gate, because `deploy` needs the image this job publishes.
+  image-scope:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      docs_only: ${{ steps.scope.outputs.docs_only }}
+    steps:
+      - name: Decide whether the pull request changes only documents
+        id: scope
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          docs_only=false
+          if [ "$EVENT" = pull_request ]; then
+            gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename' > "$RUNNER_TEMP/files.txt"
+            test -s "$RUNNER_TEMP/files.txt"
+            non_docs="$(grep -Evc '^(docs/|graphify-out/)|\.md$' "$RUNNER_TEMP/files.txt" || true)"
+            if [ "${non_docs:-1}" -eq 0 ]; then docs_only=true; fi
+          fi
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+          echo "Document-only pull request: $docs_only"
+
   image-platform:
+    needs: [image-scope]
     strategy:
       fail-fast: false
       matrix:
@@ -177,6 +208,7 @@ jobs:
             DOCKER_DEFAULT_PLATFORM="linux/$foreign"
 
       - name: Check out the supported Hermes version for synthetic QA
+        if: needs.image-scope.outputs.docs_only != 'true'
         uses: actions/checkout@v7
         with:
           repository: NousResearch/hermes-agent
@@ -185,6 +217,7 @@ jobs:
           persist-credentials: false
 
       - name: Check out Hermes v0.23.3 candidate for synthetic QA
+        if: needs.image-scope.outputs.docs_only != 'true'
         uses: actions/checkout@v7
         with:
           repository: NousResearch/hermes-agent
@@ -193,6 +226,7 @@ jobs:
           persist-credentials: false
 
       - name: Check out Hermes v0.23.2 candidate for synthetic QA
+        if: needs.image-scope.outputs.docs_only != 'true'
         uses: actions/checkout@v7
         with:
           repository: NousResearch/hermes-agent
@@ -201,7 +235,7 @@ jobs:
           persist-credentials: false
 
       - name: Check out the baseline for previous-core rollback QA
-        if: matrix.arch == 'amd64'
+        if: matrix.arch == 'amd64' && needs.image-scope.outputs.docs_only != 'true'
         uses: actions/checkout@v7
         with:
           repository: NousResearch/hermes-agent
@@ -210,7 +244,7 @@ jobs:
           persist-credentials: false
 
       - name: Check out the baseline for text-only typed core rollback QA
-        if: matrix.arch == 'amd64'
+        if: matrix.arch == 'amd64' && needs.image-scope.outputs.docs_only != 'true'
         uses: actions/checkout@v7
         with:
           repository: NousResearch/hermes-agent
@@ -219,6 +253,7 @@ jobs:
           persist-credentials: false
 
       - name: Install the pinned public fixture dependencies
+        if: needs.image-scope.outputs.docs_only != 'true'
         run: |
           python3 -m venv "$RUNNER_TEMP/aira-uv"
           "$RUNNER_TEMP/aira-uv/bin/pip" install uv==0.11.26
@@ -238,6 +273,7 @@ jobs:
           done
 
       - name: Exercise exact image install, update, rollback and restore
+        if: needs.image-scope.outputs.docs_only != 'true'
         run: |
           CANDIDATE="aira-onboarding-candidate:${SHORT_SHA}"
           NEXT="aira-onboarding-next:${SHORT_SHA}"
@@ -265,6 +301,7 @@ jobs:
             --update-image "$NEXT" --bad-image "$BAD" "${previous_args[@]}"
 
       - name: Exercise additional exact stock attachments
+        if: needs.image-scope.outputs.docs_only != 'true'
         run: |
           for minor in 3 2; do
             suffix="-023${minor}"
@@ -276,7 +313,7 @@ jobs:
           done
 
       - name: Verify exact rollback against the previous released core
-        if: matrix.arch == 'amd64'
+        if: matrix.arch == 'amd64' && needs.image-scope.outputs.docs_only != 'true'
         run: |
           profile="$RUNNER_TEMP/aira-hermes-profile-legacy"
           python3 tests/install/smoke.py --image aira-onboarding-previous:fixture \
@@ -285,7 +322,7 @@ jobs:
             --uv-bin "$RUNNER_TEMP/aira-uv/bin/uv" --expect-migration-rejection
 
       - name: Verify document refusal against the exact text-only typed core
-        if: matrix.arch == 'amd64'
+        if: matrix.arch == 'amd64' && needs.image-scope.outputs.docs_only != 'true'
         run: |
           previous="ghcr.io/tolonglabs/aira@sha256:dde24a711dba94e12f18ba2905d99df5a70592cfa5c2452d974e8d08a38db303"
           docker pull "$previous"
@@ -297,6 +334,7 @@ jobs:
             --uv-bin "$RUNNER_TEMP/aira-uv/bin/uv" --expect-document-rejection
 
       - name: Verify the actual pinned Hermes admission and delivery pipelines
+        if: needs.image-scope.outputs.docs_only != 'true'
         env:
           PYTHONDONTWRITEBYTECODE: '1'
         run: |
