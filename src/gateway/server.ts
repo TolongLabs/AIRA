@@ -10,8 +10,9 @@ import { getChatByWaId } from '../settings/chats.js'
 import { type Storage, StorageError } from '../storage/database.js'
 import type { TurnService } from '../turn/pipeline.js'
 import { type GatewayRequest, MalformedRequestError, parseGatewayRequest } from './request.js'
-import { BUBBLE_BREAK, NO_REPLY, openStream, writeReply } from './response.js'
+import { NO_REPLY, openStream, writeReply } from './response.js'
 import { type StandaloneGateway, StandaloneGatewayError } from './standalone.js'
+import { standaloneReplyText } from './standalone-delivery.js'
 
 // The OpenAI-compatible endpoint the gateway calls (docs/trd/system.md#gateway-contract).
 // A turn always gets status 200 with a deliverable reply. An error status is only for a request the core
@@ -48,6 +49,15 @@ const AUTOFETCH_MAX_BODY = 64 * 1024
 const AUTOFETCH_READ_LIMIT = 1024 * 1024
 const autofetchDeliveryKey = z.uuid()
 const autofetchBody = z.strictObject({ chat: z.string().min(1).max(256), text: z.string() })
+type StandaloneAction = 'v1Attach' | 'v1Turn' | 'v2Attach' | 'v2Turn' | 'v2Claim' | 'v2Ack'
+const STANDALONE_ENDPOINTS = new Map<string, StandaloneAction>([
+  ['/v1/aira/attach-check', 'v1Attach'],
+  ['/v1/aira/turn', 'v1Turn'],
+  ['/v2/aira/attach-check', 'v2Attach'],
+  ['/v2/aira/turn', 'v2Turn'],
+  ['/v2/aira/delivery/claim', 'v2Claim'],
+  ['/v2/aira/delivery/ack', 'v2Ack']
+])
 
 function readBody(request: IncomingMessage, limit: number): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -302,13 +312,18 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
     }
   }
 
-  async function standaloneRequest(request: IncomingMessage, response: ServerResponse, attach: boolean): Promise<void> {
+  async function standaloneRequest(
+    request: IncomingMessage,
+    response: ServerResponse,
+    action: StandaloneAction
+  ): Promise<void> {
     const adapter = options.standaloneGateway
     if (!adapter?.authorized(request.headers.authorization)) {
       json(response, 401, { error: { code: 'gateway_auth_required' } }, log)
       return
     }
-    if (!options.ready() || (!attach && !options.chatbotReady?.())) {
+    const needsChatbot = action === 'v1Turn' || action === 'v2Turn' || action === 'v2Claim'
+    if (!options.ready() || (needsChatbot && !options.chatbotReady?.())) {
       json(
         response,
         503,
@@ -332,29 +347,52 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
     }
     let parsed: Extract<GatewayRequest, { type: 'turn' }> | undefined
     try {
-      if (attach) {
+      if (action === 'v1Attach') {
         json(response, 200, { schemaVersion: 1, hermes: adapter.attach(input) }, log)
         return
       }
-      parsed = adapter.parseTurn(input)
+      if (action === 'v2Attach') {
+        json(response, 200, { schemaVersion: 2, hermes: adapter.attachTyped(input) }, log)
+        return
+      }
+      if (action === 'v2Claim') {
+        json(response, 200, { schemaVersion: 2, delivery: adapter.claimTyped(input) }, log)
+        return
+      }
+      if (action === 'v2Ack') {
+        adapter.ackTyped(input)
+        json(response, 200, { schemaVersion: 2, accepted: true }, log)
+        return
+      }
+      const typed = action === 'v2Turn' ? adapter.parseTypedTurn(input) : undefined
+      parsed = typed?.request ?? adapter.parseTurn(input)
       const known = getChatByWaId(storage, parsed.marker.chat)
       if (known && known.type !== parsed.marker.kind)
         throw new StandaloneGatewayError(409, 'gateway_chat_kind_conflict')
       const reply = await turns.handle(parsed)
-      const content = reply.content
-        .split(BUBBLE_BREAK)
-        .join('\n')
-        .split(/\r\n|[\r\n\u2028\u2029]/)
-        .filter((line) => !line.trimStart().startsWith('MEDIA:'))
-        .join('\n')
-        .trim()
-      const deliverable = content !== '' && content !== NO_REPLY && content.length <= 32_768
-      json(
-        response,
-        200,
-        { schemaVersion: 1, disposition: deliverable ? 'reply' : 'no_reply', reply: deliverable ? content : null },
-        log
-      )
+      const chat = known ?? getChatByWaId(storage, parsed.marker.chat)
+      const binding =
+        chat && reply.turnId ? { chatId: chat.chatId, mid: parsed.marker.mid, turnId: reply.turnId } : null
+      if (typed) {
+        const deliveries = binding
+          ? adapter.delivery.issue({ ...binding, routeId: typed.routeId, replayed: reply.replayed })
+          : []
+        json(
+          response,
+          200,
+          { schemaVersion: 2, disposition: deliveries.length ? 'reply' : 'no_reply', deliveries },
+          log
+        )
+      } else {
+        const attemptedByTyped = reply.replayed && binding && adapter.delivery.hasIssued(binding)
+        const content = attemptedByTyped ? null : standaloneReplyText(reply.content)
+        json(
+          response,
+          200,
+          { schemaVersion: 1, disposition: content === null ? 'no_reply' : 'reply', reply: content },
+          log
+        )
+      }
       options.afterTurn?.()
     } catch (error) {
       if (error instanceof StandaloneGatewayError) {
@@ -368,7 +406,7 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
   }
 
   return createServer((request, response) => {
-    const path = (request.url ?? '').split('?')[0]
+    const path = (request.url ?? '').split('?')[0] ?? ''
     const standalone = options.installationMode === 'standalone'
     const chatbotActive = !standalone || (options.chatbotReady?.() ?? false)
     if (request.method === 'GET' && path === '/health') {
@@ -404,8 +442,9 @@ export function createGatewayServer(options: GatewayServerOptions): Server {
       )
       return
     }
-    if (standalone && request.method === 'POST' && (path === '/v1/aira/attach-check' || path === '/v1/aira/turn')) {
-      void standaloneRequest(request, response, path.endsWith('/attach-check')).catch(() =>
+    const standaloneAction = STANDALONE_ENDPOINTS.get(path)
+    if (standalone && request.method === 'POST' && standaloneAction) {
+      void standaloneRequest(request, response, standaloneAction).catch(() =>
         json(response, 500, { error: { code: 'gateway_failed' } }, log)
       )
       return

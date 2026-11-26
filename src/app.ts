@@ -231,7 +231,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   const closers: (() => void | Promise<void>)[] = []
   try {
     const standaloneOwnerToken = standalone ? ensureStandaloneOwnerToken(paths.root) : undefined
-    const standaloneGateway = standalone ? createStandaloneGateway(paths.root, now) : undefined
+    const standaloneGateway = standalone ? createStandaloneGateway(paths.root, storage, now) : undefined
     for (const turnId of started.recovery.interruptedTurns) alerter.raise('turn_interrupted', { turnId })
 
     recoverStudioPacks({ paths, storage, now }, (id) => alerter.raise('pack_invalid', { pack: id }))

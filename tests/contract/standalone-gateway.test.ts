@@ -95,6 +95,14 @@ const turn = (chat: string, mid: string, text: string) => ({
   text
 })
 
+const typedAttach = () => ({ ...attach(), schemaVersion: 2, capabilities: ['text'] })
+const routeIdOf = (body: unknown) => z.object({ hermes: z.object({ routeId: z.uuid() }) }).parse(body).hermes.routeId
+const typedTurn = (routeId: string, chat: string, mid: string, text: string) => ({
+  ...turn(chat, mid, text),
+  schemaVersion: 2,
+  routeId
+})
+
 describe('standalone structured Hermes transport', () => {
   it('has only the reviewed v1 adapter version IDs', () => {
     expect(STANDALONE_ADAPTER_VERSIONS).toEqual(['hermes-v0.23.2', 'hermes-v0.23.3', 'hermes-v0.23.4'])
@@ -220,5 +228,135 @@ describe('standalone structured Hermes transport', () => {
     expect(await core.ownerCall('health')).toMatchObject({ chatbot: 'inactive', hermes: { state: 'unsupported' } })
     expect((await core.post('/v1/aira/attach-check', attach('disconnect'))).status).toBe(200)
     expect(await core.ownerCall('health')).toMatchObject({ chatbot: 'inactive', hermes: { state: 'disconnected' } })
+  })
+})
+
+describe('standalone typed Hermes candidate', () => {
+  it('negotiates only text, preserves an identical route, and refuses stale disconnects without a model', async () => {
+    const core = await start(false)
+    const request = typedAttach()
+    expect((await core.post('/v2/aira/attach-check', request, core.owner)).status).toBe(401)
+    const attached = await core.post('/v2/aira/attach-check', request)
+    expect(attached).toMatchObject({
+      status: 200,
+      body: { schemaVersion: 2, hermes: { state: 'connected', protocolVersion: 2, capabilities: ['text'] } }
+    })
+    const original = routeIdOf(attached.body)
+    expect(routeIdOf((await core.post('/v2/aira/attach-check', request)).body)).toBe(original)
+    expect((await core.post('/v2/aira/attach-check', { ...request, capabilities: ['text', 'document'] })).status).toBe(
+      400
+    )
+    expect((await core.post('/v2/aira/attach-check', { ...request, profile: 'other' })).status).toBe(409)
+    expect((await core.post('/v1/aira/attach-check', attach('disconnect'))).status).toBe(409)
+    expect((await core.post('/v2/aira/turn', typedTurn(original, 'fixture-a', 'm1', 'keyless'))).status).toBe(503)
+    const migrated = await core.post('/v2/aira/attach-check', { ...request, adapterVersion: 'hermes-v0.23.2' })
+    expect(migrated.status).toBe(200)
+    const current = routeIdOf(migrated.body)
+    expect(current).not.toBe(original)
+    expect(
+      (
+        await core.post('/v2/aira/attach-check', {
+          schemaVersion: 2,
+          adapterVersion: 'hermes-v0.23.2',
+          profile: 'fixture',
+          action: 'disconnect',
+          routeId: original
+        })
+      ).status
+    ).toBe(409)
+    expect(await core.ownerCall('health')).toMatchObject({
+      hermes: { state: 'connected', routeId: current, capabilities: ['text'] }
+    })
+    expect(core.model.requests).toHaveLength(0)
+  })
+
+  it('gives concurrent identical returns one delivery claim and suppresses a later v1 replay', async () => {
+    const core = await start(true)
+    const routeId = routeIdOf((await core.post('/v2/aira/attach-check', typedAttach())).body)
+    expect((await core.post('/v1/aira/turn', turn('fixture-a', 'v1-refused', 'wrong protocol'))).status).toBe(403)
+    const defaults = z.object({ revision: z.string() }).parse(await core.ownerCall('settings?level=global&scope='))
+    await core.ownerCall('settings', 'PUT', {
+      level: 'global',
+      scope: '',
+      key: 'character',
+      value: 'example',
+      expectedRevision: defaults.revision
+    })
+    expect(await core.post('/v2/aira/turn', typedTurn(routeId, 'fixture-a', 'm1', 'pending'))).toEqual({
+      status: 200,
+      body: { schemaVersion: 2, disposition: 'no_reply', deliveries: [] }
+    })
+    expect(core.model.requests).toHaveLength(0)
+    const chats = z.object({ chats: z.array(z.object({ chatId: z.string() })) }).parse(await core.ownerCall('chats'))
+    await core.ownerCall(`chats/${chats.chats[0]!.chatId}/status`, 'PUT', { status: 'active' })
+    const request = typedTurn(routeId, 'fixture-a', 'm2', 'synthetic reply request')
+    const responses = await Promise.all([core.post('/v2/aira/turn', request), core.post('/v2/aira/turn', request)])
+    expect(responses.map((result) => result.status)).toEqual([200, 200])
+    const envelope = z.object({ deliveries: z.array(z.object({ id: z.uuid(), kind: z.literal('text') })) })
+    const descriptors = responses.flatMap((result) => envelope.parse(result.body).deliveries)
+    expect(descriptors).toHaveLength(1)
+    const id = descriptors[0]!.id
+    const claim = { schemaVersion: 2, profile: 'fixture', routeId, chat: 'fixture-a', mid: 'm2', id }
+    expect((await core.post('/v2/aira/delivery/claim', claim, core.owner)).status).toBe(401)
+    expect((await core.post('/v2/aira/delivery/claim', { ...claim, chat: 'fixture-b' })).status).toBe(409)
+    expect((await core.post('/v2/aira/delivery/ack', { ...claim, outcome: 'confirmed' })).status).toBe(409)
+    const delivered = await core.post('/v2/aira/delivery/claim', claim)
+    expect(delivered).toMatchObject({ status: 200, body: { schemaVersion: 2, delivery: { id, kind: 'text' } } })
+    expect(JSON.stringify(delivered.body)).toMatch(/fixture reply alpha/i)
+    expect((await core.post('/v2/aira/delivery/claim', claim)).status).toBe(409)
+    for (let retry = 0; retry < 2; retry++) {
+      expect((await core.post('/v2/aira/delivery/ack', { ...claim, outcome: 'confirmed' })).status).toBe(200)
+    }
+    expect((await core.post('/v2/aira/delivery/ack', { ...claim, outcome: 'failed' })).status).toBe(409)
+    expect((await core.post('/v1/aira/attach-check', attach())).status).toBe(200)
+    expect((await core.post('/v2/aira/delivery/claim', claim)).status).toBe(403)
+    expect(await core.post('/v1/aira/turn', turn('fixture-a', 'm2', 'synthetic replay'))).toEqual({
+      status: 200,
+      body: { schemaVersion: 1, disposition: 'no_reply', reply: null }
+    })
+    expect(core.model.requests).toHaveLength(1)
+  })
+
+  it('does not issue a delivery when the route changes during a model turn', async () => {
+    const core = await start(true)
+    const routeId = routeIdOf((await core.post('/v2/aira/attach-check', typedAttach())).body)
+    const defaults = z.object({ revision: z.string() }).parse(await core.ownerCall('settings?level=global&scope='))
+    await core.ownerCall('settings', 'PUT', {
+      level: 'global',
+      scope: '',
+      key: 'character',
+      value: 'example',
+      expectedRevision: defaults.revision
+    })
+    await core.post('/v2/aira/turn', typedTurn(routeId, 'fixture-a', 'pending', 'pending'))
+    const chats = z.object({ chats: z.array(z.object({ chatId: z.string() })) }).parse(await core.ownerCall('chats'))
+    await core.ownerCall(`chats/${chats.chats[0]!.chatId}/status`, 'PUT', { status: 'active' })
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const call = core.model.call.bind(core.model)
+    core.model.call = async (request) => {
+      entered.resolve()
+      await release.promise
+      return call(request)
+    }
+    const request = typedTurn(routeId, 'fixture-a', 'm1', 'synthetic reply request')
+    const response = core.post('/v2/aira/turn', request)
+    let nextRoute: string
+    try {
+      await entered.promise
+      nextRoute = routeIdOf(
+        (await core.post('/v2/aira/attach-check', { ...typedAttach(), adapterVersion: 'hermes-v0.23.2' })).body
+      )
+      expect(nextRoute).not.toBe(routeId)
+    } finally {
+      release.resolve()
+    }
+    expect(await response).toEqual({ status: 200, body: { schemaVersion: 2, disposition: 'no_reply', deliveries: [] } })
+    expect((await core.post('/v2/aira/turn', request)).status).toBe(403)
+    expect(await core.post('/v2/aira/turn', { ...request, routeId: nextRoute })).toEqual({
+      status: 200,
+      body: { schemaVersion: 2, disposition: 'no_reply', deliveries: [] }
+    })
+    expect(core.model.requests).toHaveLength(1)
   })
 })
