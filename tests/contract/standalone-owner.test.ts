@@ -108,6 +108,46 @@ describe('standalone owner authentication', () => {
     expect(logs.join('\n')).not.toContain(token)
   })
 
+  it('refuses legacy integration reads and writes without reaching a configured host service', async () => {
+    let calls = 0
+    const host = createServer((_request, response) => {
+      calls++
+      response.writeHead(500).end('{}')
+    })
+    await new Promise<void>((resolve) => host.listen(0, '127.0.0.1', resolve))
+    try {
+      const root = tmpDir('aira-owner-integration-refusal-')
+      const address = host.address() as AddressInfo
+      const { url } = await start(root, {
+        AIRA_INSTALL_MODE: 'standalone',
+        AIRA_OWNER_API_ORIGIN: `http://127.0.0.1:${address.port}`
+      })
+      const token = localToken(root)
+      const operations = [
+        ['GET', '/owner-api/library/index'],
+        ['GET', '/owner-api/notices'],
+        ['GET', '/owner-api/settings/file?kind=fixture'],
+        ['POST', '/owner-api/settings/markets'],
+        ['POST', '/owner-api/settings/models_probe'],
+        ['POST', '/owner-api/cron'],
+        ['POST', '/owner-api/messages']
+      ]
+      for (const [method, path] of operations) {
+        const denied = await fetch(url + path, {
+          method,
+          headers: auth(token),
+          ...(method === 'POST' ? { body: '{}' } : {})
+        })
+        expect(denied.status, path).toBe(503)
+        expect(await denied.json()).toEqual({ error: 'capability_unavailable' })
+      }
+      expect(calls).toBe(0)
+    } finally {
+      host.closeAllConnections()
+      await new Promise<void>((resolve) => host.close(() => resolve()))
+    }
+  })
+
   it('retains the same credential across a full core restart', async () => {
     const root = tmpDir('aira-owner-restart-')
     const first = await start(root)
