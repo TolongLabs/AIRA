@@ -537,3 +537,5 @@ On the [installed dashboard](https://github.com/TolongLabs/AIRA/issues/372#issue
 the owner drill switched from dashboard to classic and back while preserving a synthetic pack revision and both
 audit rows. The [observation record](https://github.com/TolongLabs/AIRA/issues/372#issuecomment-7114993525)
 covers twelve probes over ten minutes, the installed Chrome task cycle and the isolated next-turn check.
+
+<!-- proof: document-only pull request exercises the image-scope skip path -->
