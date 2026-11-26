@@ -133,7 +133,7 @@ pairing or live delivery. The supported messaging baseline is unchanged while
 | Stock Hermes           | Synthetic admission, identity, attach and native text dispatch against exact v0.23.2, v0.23.3 and v0.23.4; unknown or modified source refused.                                               |
 | Typed text and reports | Explicit v2 text and receipt-backed generated Markdown/PDF document delivery tested with a loopback fake bridge on all three pins. No real account or live send.                             |
 | Other transport        | Inbound image, audio, video and documents; arbitrary outbound files/media; sticker and reaction delivery; location and polls remain unavailable.                                             |
-| Host environment       | Remote Docker refuses; rootless, Docker Desktop, WSL2, macOS and other OS/CPU rows are not supported. Actual rootless and visible owner-desktop acceptance remain unverified.                |
+| Host environment       | Remote Docker refuses. Rootless, Docker Desktop, WSL2, macOS and other OS/CPU rows remain unsupported. The isolated X11 desktop result below is not an actual owner-desktop claim.           |
 
 See [exact text versions](https://github.com/TolongLabs/AIRA/pull/413),
 [native image checks](https://github.com/TolongLabs/AIRA/pull/416),
@@ -148,7 +148,15 @@ see the [typed attachment contract](trd/deployment.md#hermes-attachment-transact
 Host owner service, direct owner sends, file browsing and the subscription runner remain legacy-only. Library,
 lesson and market integrations, MCP, research jobs and scheduled messages are not enabled in standalone.
 Portable inbound media and core-owned routines need independently negotiated capability, configuration and
-delivery authority before they can be enabled. Unsupported owner routes refuse rather than contacting the host.
+delivery authority before they can be enabled. See the [inbound media evaluation](trd/media-pipelines.md#standalone-inbound-media-evaluation)
+and [integration decisions](trd/site.md#portable-integration-decisions). Unsupported owner routes refuse rather
+than contacting the host.
+
+On an isolated X11 virtual display, the real XDG default-handler dispatch opened an actual Chromium window at
+the mapped dashboard URL, without waiting on the browser's output pipes. Synthetic owner sign-in succeeded
+on a fresh v1.7.0 native amd64 container. This tests the candidate CLI opener in a disposable desktop and
+browser profile, not the unconfigured host owner's visible default browser. Actual rootless acceptance and
+other desktop environments remain unverified.
 
 Live verification remains pending until a separate isolated WhatsApp account and approved recipient are available.
 No existing production account is used for acceptance.

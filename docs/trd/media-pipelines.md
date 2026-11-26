@@ -31,6 +31,23 @@ This module owns the contracts of the intake read, the social post readers and a
 | Key configuration                    | [Configuration](#configuration)                                                                                                                                          |
 | Code and tests                       | [Implementation And Tests](#implementation-and-tests)                                                                                                                    |
 
+## Standalone Inbound Media Evaluation
+
+The released standalone transport still accepts admitted text only. Its explicitly negotiated document capability
+delivers a core-generated report; it does not admit inbound media. Synthetic stock Hermes v0.23.2, v0.23.3 and
+v0.23.4 tests in `tests/install/hermes_capabilities_fixture.py` exercise the actual event builder and installed
+v1, v2 text and v2 document routes. All three routes refuse the normalized image, audio, voice, video, PDF, sticker,
+location, remote-cache failure, quoted-media and inlined-text document events without a core POST, native send
+or Hermes model fallback. An admitted text event is the positive control.
+
+Stock normalization is not a portable media authorization. It folds quoted content into the same attachment
+arrays even when the quoted message ID is missing, can retain an image URL after caching fails, clears a
+captionless voice placeholder and may prepend document contents to the text. Native file-send methods
+do not prove a safe inbound path or sticker/reaction delivery. The next candidate must separately negotiate
+direct, bounded, owned profile-cache content and an explicitly applied media role; it must not infer authority
+from a path, URL, quoted array, file extension or inlined text. No additional capability or public support
+is enabled by this evaluation.
+
 ## Media Watching
 
 Media is read at intake, before the main model runs. The gateway saves each file on the host and names its path in a
