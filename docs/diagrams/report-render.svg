@@ -122,8 +122,8 @@
           <text data-detail="context" x="94" y="137.2" class="t-muted" font-size="6" text-anchor="middle">Validated findings mold</text>
         </g>
 
-        <g id="node-notedoc" data-node-id="notedoc" data-node-label="NoteDocument" tabindex="0" role="button" aria-label="Focus NoteDocument, Contract mold for /doc, Document and Profile" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Contract mold for /doc" data-node-tag="Not built yet" data-node-context="Document and Profile">
-          <title>NoteDocument · Contract mold for /doc · Document and Profile · Not built yet</title>
+        <g id="node-notedoc" data-node-id="notedoc" data-node-label="NoteDocument" tabindex="0" role="button" aria-label="Focus NoteDocument, Contract mold for /doc, Document and Profile" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Contract mold for /doc" data-node-context="Document and Profile">
+          <title>NoteDocument · Contract mold for /doc · Document and Profile</title>
           <rect x="48" y="178" width="92" height="68" rx="8" class="c-mask"/>
           <rect x="48" y="178" width="92" height="68" rx="8" class="c-backend" data-animate="node" style="--step:6" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(54 184) scale(0.6875)">
@@ -131,7 +131,6 @@
           </g>
           <text data-node-label="" data-detail-anchor="" x="94" y="210.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">NoteDocument</text>
           <text data-detail="context" x="94" y="223.1" class="t-muted" font-size="6.3" text-anchor="middle">Contract mold for /doc</text>
-        <text data-detail="fine" x="94" y="235.4" class="t-backend" font-size="7" text-anchor="middle">Not built yet</text>
         </g>
 
         <g id="node-format" data-node-id="format" data-node-label="Format Profile" tabindex="0" role="button" aria-label="Focus Format Profile, report.format or default, Document and Profile" aria-pressed="false" data-node-kind="backend" data-node-sublabel="report.format or default" data-node-context="Document and Profile">

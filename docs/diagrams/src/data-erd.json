@@ -825,6 +825,14 @@
         {
           "name": "updated_at",
           "type": "TEXT"
+        },
+        {
+          "name": "standalone_route_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "standalone_profile",
+          "type": "TEXT"
         }
       ],
       "col": 0,
@@ -836,6 +844,11 @@
           "label": "reminder columns",
           "path": "src/tools/core/reminders.ts",
           "line": 74
+        },
+        {
+          "label": "standalone reminder columns",
+          "path": "src/storage/migrations/0020_standalone_reminders.sql",
+          "line": 2
         }
       ],
       "sublabel": "one row per reminder",
@@ -1880,6 +1893,99 @@
       ],
       "sublabel": "one research job per chat",
       "tag": "research"
+    },
+    {
+      "attributes": [
+        {
+          "key": "pk",
+          "name": "delivery_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "route_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "chat_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "inbound_mid",
+          "type": "TEXT"
+        },
+        {
+          "key": "fk",
+          "name": "turn_id",
+          "references": "turn.turn_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "position",
+          "type": "INTEGER"
+        },
+        {
+          "name": "kind",
+          "type": "TEXT"
+        },
+        {
+          "name": "file_sha256",
+          "type": "TEXT"
+        },
+        {
+          "name": "state",
+          "type": "TEXT"
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "expires_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "claimed_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "finished_at",
+          "type": "TEXT"
+        },
+        {
+          "name": "report_receipt_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "reminder_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "reminder_due_at",
+          "type": "TEXT"
+        }
+      ],
+      "col": 5,
+      "id": "standalone_delivery",
+      "label": "standalone_delivery",
+      "row": 7,
+      "sources": [
+        {
+          "path": "src/storage/migrations/0018_standalone_delivery.sql",
+          "line": 2
+        },
+        {
+          "label": "report receipt column",
+          "path": "src/storage/migrations/0019_document_receipt.sql",
+          "line": 2
+        },
+        {
+          "label": "reminder columns",
+          "path": "src/storage/migrations/0020_standalone_reminders.sql",
+          "line": 7
+        }
+      ],
+      "sublabel": "one-time standalone deliveries",
+      "tag": "delivery"
     }
   ],
   "meta": {
@@ -1889,7 +1995,7 @@
     "repository": {
       "url": "https://github.com/TolongLabs/AIRA",
       "provider": "github",
-      "revision": "163a320e5dfeaf636ffe3e4e4c389470d9567d35"
+      "revision": "c4d1a924a0ab12df514ee0b243eab521fc123fa1"
     }
   },
   "relationships": [
@@ -2054,6 +2160,13 @@
       "fromCardinality": "many",
       "id": "r23",
       "to": "chat",
+      "toCardinality": "one"
+    },
+    {
+      "from": "standalone_delivery",
+      "fromCardinality": "many",
+      "id": "r24",
+      "to": "turn",
       "toCardinality": "one"
     }
   ],
