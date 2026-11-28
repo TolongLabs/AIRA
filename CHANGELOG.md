@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.9.0](https://github.com/TolongLabs/AIRA/compare/v1.8.0...v1.9.0) (2026-11-28)
+
+
+### Features
+
+* **studio:** add agent pack commands ([75ea1a2](https://github.com/TolongLabs/AIRA/commit/75ea1a2d1469ea357dca53fce2e574ed8a99552a))
+
+
+### Bug Fixes
+
+* **studio:** address pack workflow review ([831ca00](https://github.com/TolongLabs/AIRA/commit/831ca0075d939c015f697ceb230e25d1b9b95e23))
+* **studio:** close pack preview qa gaps ([90fd224](https://github.com/TolongLabs/AIRA/commit/90fd224fdfc36c6a72f22c6cdb62bd9e5f2e895d))
+* **studio:** protect private persona prose ([78db927](https://github.com/TolongLabs/AIRA/commit/78db927a88b482383469f02c0d913854116bd10d))
+
 ## [1.8.0](https://github.com/TolongLabs/AIRA/compare/v1.7.1...v1.8.0) (2026-11-26)
 
 
