@@ -208,8 +208,6 @@ Process boundaries, the gateway contract, turns, tools, commands, models, reply 
 | ADR-0180 | 2026-11-23 | [Fetch Only Verified YouTube Shorts][ADR-0180]                                          | Accepted                                                      |
 | ADR-0181 | 2026-11-23 | [Recover Malformed Replies Within the Turn Deadline][ADR-0181]                          | Accepted                                                      |
 | ADR-0185 | 2026-11-25 | [Let a Pack Switch Off Bubble Capitals][ADR-0185]                                       | Accepted                                                      |
-| ADR-0199 | 2026-11-28 | [Protect Only Private Persona Instructions][ADR-0199]                                   | Accepted                                                      |
-| ADR-0200 | 2026-11-28 | [Use the Studio Writer for Host Pack Commands][ADR-0200]                                | Accepted                                                      |
 | ADR-0188 | 2026-11-25 | [Use a Fail-Closed Standalone Hermes Adapter][ADR-0188]                                 | Accepted                                                      |
 | ADR-0189 | 2026-11-26 | [Recover YouTube Watch Gaps][ADR-0189]                                                  | Accepted                                                      |
 | ADR-0191 | 2026-11-26 | [Allow Only Verified Hermes Source Revisions][ADR-0191]                                 | Accepted                                                      |
@@ -218,10 +216,10 @@ Process boundaries, the gateway contract, turns, tools, commands, models, reply 
 | ADR-0195 | 2026-11-26 | [Keep Optional Media in Applied Revisions][ADR-0195]                                    | Accepted                                                      |
 | ADR-0196 | 2026-11-26 | [Transfer Direct Media as Bounded Bytes][ADR-0196]                                      | Accepted                                                      |
 | ADR-0197 | 2026-11-26 | [Bind Portable Reminders to Routes][ADR-0197]                                           | Accepted                                                      |
+| ADR-0199 | 2026-11-28 | [Protect Only Private Persona Instructions][ADR-0199]                                   | Accepted                                                      |
+| ADR-0200 | 2026-11-28 | [Use the Studio Writer for Host Pack Commands][ADR-0200]                                | Accepted                                                      |
 
 [ADR-0185]: 0185-let-a-pack-switch-off-bubble-capitals.md
-[ADR-0199]: 0199-protect-only-private-persona-instructions.md
-[ADR-0200]: 0200-use-the-studio-writer-for-host-pack-commands.md
 [ADR-0188]: 0188-use-a-fail-closed-standalone-hermes-adapter.md
 [ADR-0189]: 0189-recover-youtube-watch-gaps.md
 [ADR-0191]: 0191-allow-only-verified-hermes-source-revisions.md
@@ -230,6 +228,8 @@ Process boundaries, the gateway contract, turns, tools, commands, models, reply 
 [ADR-0195]: 0195-keep-optional-media-in-applied-revisions.md
 [ADR-0196]: 0196-transfer-direct-media-as-bounded-bytes.md
 [ADR-0197]: 0197-bind-portable-reminders-to-routes.md
+[ADR-0199]: 0199-protect-only-private-persona-instructions.md
+[ADR-0200]: 0200-use-the-studio-writer-for-host-pack-commands.md
 [ADR-0181]: 0181-recover-malformed-api-replies.md
 [ADR-0180]: 0180-fetch-only-verified-youtube-shorts.md
 [ADR-0001]: 0001-build-the-core-as-a-typescript-service-on-node-24.md

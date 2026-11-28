@@ -397,8 +397,9 @@ Exit classes follow the host CLI: 0 success, 1 validation/operation failure, 2 i
 3 prerequisite, 4 conflict/auth/stale revision and 5 rollback failure.
 
 For an edit, `aira pack get <id> --json` returns the revision and documents under `pack`. Save just
-`card`, `moods` and `lines` as the draft JSON, edit it, check it, run the revision-guarded update with
-`--dry-run`, then repeat the command without `--dry-run` to publish.
+`card`, `moods` and `lines` as the draft JSON, edit it, run the revision-guarded update with
+`--dry-run`, then repeat the command without `--dry-run` to publish. The update dry run checks any installed sticker
+assets; `pack check` checks a standalone JSON draft without assets.
 
 Canonical trees are data/characters/:id. Reject symlinks, unknown file names, paths outside the pack root
 and active media. Data packs may retain up to 64 regular document backups named `<document>.yml.bak-YYYYMMDD`,

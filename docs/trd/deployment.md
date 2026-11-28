@@ -231,6 +231,10 @@ A readback timeout returns nonzero without claiming rollback: the restart may st
 settings API and its revision check (global scope empty). Legacy config get and character setting use
 their established protected authority; standalone model editing does not rewrite legacy host config.
 
+`aira pack` uses the protected core Studio authority on the selected installation's loopback HTTP endpoint.
+The [agent pack commands](site.md#agent-pack-commands) read or publish pack documents through the core;
+no installation-state write or separate host pack writer is involved.
+
 `aira doctor` returns ordered checks with `name`, `status` (ok, warning, failed, not_applicable),
 `reason`, `durationMs` and `recovery`. Check runtime and Docker, selection and owned files, actual
 Compose state/image/mapping, service and protected owner health, configuration/revision, persistence,
