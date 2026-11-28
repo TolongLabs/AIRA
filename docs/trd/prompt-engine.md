@@ -54,7 +54,8 @@ days, at most `context.maxMessages` (default 40, 0 to 100), oldest first. Both v
 
 ## Prompt Blocks
 
-The system prompt is assembled in a fixed order. Blocks 1 to 3 are stable per character and form the cached prefix. An optional private block is inserted
+The system prompt is assembled in a fixed order. Blocks 1 to 3 are stable per character and form the cached prefix.
+An optional private block is inserted
 between Speech and Harness Rules; it is also stable and counts toward the prompt ceiling.
 
 | #   | Block         | Source                                                                | Changes Per Turn |
