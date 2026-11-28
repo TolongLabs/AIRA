@@ -70,7 +70,29 @@ describe('JSON draft validation', () => {
 describe('schema-generated setup prompt', () => {
   it('includes the complete schema and runtime rules that cannot be expressed as JSON schema', () => {
     const { schema, setupPrompt } = generatePackSchema()
-    expect(schema).toBeTruthy()
+    expect(schema).toMatchObject({
+      type: 'object',
+      required: ['card', 'moods', 'lines'],
+      additionalProperties: false,
+      properties: {
+        card: {
+          required: ['id', 'displayName', 'languages', 'coreIdentity', 'speechRules', 'defaultReplyLength'],
+          properties: { privateInstructions: { minLength: 1 }, capitaliseBubbles: { type: 'boolean' } }
+        },
+        lines: { properties: { fallback: { minLength: 1, maxLength: 300 } } },
+        moods: {
+          properties: {
+            moods: {
+              additionalProperties: {
+                properties: {
+                  patterns: { items: { minLength: 1, maxLength: 200 } }
+                }
+              }
+            }
+          }
+        }
+      }
+    })
     for (const phrase of [
       'privateInstructions',
       'capitaliseBubbles',

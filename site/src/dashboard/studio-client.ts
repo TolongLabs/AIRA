@@ -119,11 +119,12 @@ async function studioFetch<T>(method: string, path: string, body?: unknown): Pro
   return parsed as T
 }
 
-/** GET /owner-api/core/characters/:id/studio — id, source, writability, revision, documents. */
+/** GET /owner-api/core/pack/schema — generated schema and setup prompt. */
 export function getPackSchema(): Promise<{ schema: unknown; setupPrompt: string }> {
   return studioFetch('GET', 'pack/schema')
 }
 
+/** GET /owner-api/core/characters/:id/studio — id, source, writability, revision, documents. */
 export function getStudio(id: string, view?: 'documents'): Promise<StudioDoc> {
   return studioFetch<StudioDoc>('GET', `characters/${encodeURIComponent(id)}/studio` + (view ? '?view=documents' : ''))
 }
@@ -199,6 +200,11 @@ export function validateCard(card: StudioCard): string[] {
   if (!card.coreIdentity.trim()) faults.push('card.coreIdentity: describe who the character is.')
   const rules = card.speechRules.filter((r) => r.trim())
   if (!rules.length) faults.push('card.speechRules: add at least one speech rule.')
+  if (
+    card.privateInstructions !== undefined &&
+    (typeof card.privateInstructions !== 'string' || !card.privateInstructions.trim())
+  )
+    faults.push('card.privateInstructions: use non-empty text or omit the field.')
   if (!['short', 'default', 'long'].includes(card.defaultReplyLength))
     faults.push('card.defaultReplyLength: pick short, default or long.')
   const icon = card.toolFooter?.icon

@@ -14,7 +14,9 @@ const result = (text: string): RunResult => ({
   transport: 'api',
   usage: { inputTokens: 1, outputTokens: 1, cachedTokens: 0 },
   costUsd: 0,
-  calls: [],
+  calls: [
+    { role: 'main', model: 'fictional-model', transport: 'api', attempt: 1, startedAt: new Date(), durationMs: 1 }
+  ],
   receipts: []
 })
 
@@ -48,6 +50,19 @@ describe('pack preview', () => {
     await expect(previewPack({ pack, config, harnessRules, message: 'hello', live: true })).rejects.toThrow(
       'live preview unavailable'
     )
+  })
+
+  it('uses the harness role-recovery path rather than exposing a rejected first reply', async () => {
+    const runner = {
+      run: vi
+        .fn<TurnRunner['run']>()
+        .mockResolvedValueOnce(result('The API returned HTTP 429.'))
+        .mockResolvedValueOnce(result('Let us try again later.'))
+    }
+    const preview = await previewPack({ pack, config, harnessRules, message: 'hello', live: true, runner })
+    expect(runner.run).toHaveBeenCalledTimes(2)
+    expect(preview.reply).toBe('Let us try again later.')
+    expect(runner.run.mock.calls.every(([input]) => input.tools.length === 0 && input.maxToolCalls === 0)).toBe(true)
   })
 
   it('applies the harness leak guard to a live preview', async () => {

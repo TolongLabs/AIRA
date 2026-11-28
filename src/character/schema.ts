@@ -46,7 +46,7 @@ export const cardSchema = z.strictObject({
   languages: z.array(languageTag).min(1),
   coreIdentity: nonEmpty,
   speechRules: z.array(nonEmpty).min(1),
-  privateInstructions: nonEmpty.optional(),
+  privateInstructions: nonEmpty.refine((s) => s.trim().length > 0, 'must not be blank').optional(),
   defaultReplyLength: z.enum(['short', 'default', 'long']),
   /** False leaves each bubble's first letter as the model wrote it (docs/trd/prompt-engine.md#cleaning-chain). */
   capitaliseBubbles: z.boolean().optional(),

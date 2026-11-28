@@ -5,7 +5,7 @@ import type { Pack } from '../character/loader.js'
 import type { PackPreview } from '../character/preview.js'
 import { PACK_ID } from '../character/schema.js'
 import type { RouteResult, SiteApiDeps } from './routes.js'
-import { getStudioPack, StudioPackError } from './studio-packs.js'
+import { readStudioPack, StudioPackError } from './studio-packs.js'
 
 export interface PackValidation {
   ceiling: number
@@ -18,18 +18,13 @@ export interface PackRoutes extends Pick<SiteApiDeps, 'packs' | 'paths' | 'stora
 }
 
 const id = z.string().regex(PACK_ID)
-const checkInput = z.strictObject({ draft: z.unknown(), existingId: id.optional() })
+const draftInput = z.unknown().refine((value) => value !== undefined)
+const checkInput = z.strictObject({ draft: draftInput, existingId: id.optional() })
 const message = z.string().min(1).max(16_000)
 const previewInput = z.union([
   z.strictObject({ id, message, live: z.boolean().default(false) }),
-  z.strictObject({ draft: z.unknown(), message, live: z.boolean().default(false) })
+  z.strictObject({ draft: draftInput, message, live: z.boolean().default(false) })
 ])
-
-function installedPack(options: PackRoutes, id: string): Pack | undefined {
-  // Studio read verifies the complete layout (including assets) and pack identity.
-  getStudioPack(options, id)
-  return options.packs().packs.get(id)
-}
 
 /** The new owner-only, non-publishing routes. Never send document bodies to diagnostics. */
 export async function handlePack(options: PackRoutes, operation: 'check' | 'try', body: unknown): Promise<RouteResult> {
@@ -39,7 +34,7 @@ export async function handlePack(options: PackRoutes, operation: 'check' | 'try'
     if (operation === 'check') {
       const parsed = checkInput.safeParse(body)
       if (!parsed.success) return { status: 400, body: { error: 'invalid_body' } }
-      const assets = parsed.data.existingId ? installedPack(options, parsed.data.existingId) : undefined
+      const assets = parsed.data.existingId ? readStudioPack(options, parsed.data.existingId).pack : undefined
       const { check } = checkDraft(parsed.data.draft, { ...validation, assets })
       return { status: 200, body: check }
     }
@@ -49,8 +44,7 @@ export async function handlePack(options: PackRoutes, operation: 'check' | 'try'
     const input = parsed.data
     let pack: Pack | undefined
     if ('id' in input) {
-      pack = installedPack(options, input.id)
-      if (!pack) return { status: 404, body: { error: 'not_found' } }
+      pack = readStudioPack(options, input.id).pack
       const check = checkLoadedPack(pack, validation.ceiling, validation.harnessRules)
       if (!check.ok) return { status: 400, body: { error: 'invalid_pack', ...check } }
     } else {
@@ -64,7 +58,8 @@ export async function handlePack(options: PackRoutes, operation: 'check' | 'try'
       return { status: 503, body: { error: 'preview_unavailable' } }
     }
   } catch (error) {
-    if (error instanceof StudioPackError) return { status: error.status, body: { error: error.code } }
+    if (error instanceof StudioPackError)
+      return { status: error.status, body: { error: error.code === 'not_found' ? 'pack_not_found' : error.code } }
     throw error
   }
 }

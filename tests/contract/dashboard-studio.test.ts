@@ -4,6 +4,7 @@ import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { expect, it } from 'vitest'
+import { ModelError } from '../../src/models/types.js'
 import { queueModel, startApp } from '../support/app.js'
 
 it('edits a copy through the protected studio endpoint and rejects a stale draft', async () => {
@@ -77,6 +78,23 @@ it('edits a copy through the protected studio endpoint and rejects a stale draft
         .toString()
     ).toBe('WEBP')
     expect((await fetch(collection + '/wave')).status).toBe(401)
+    const saved = (await (await fetch(url, { headers })).json()) as {
+      card: Record<string, unknown>
+      moods: { moods: Record<string, { stickers: string[] }> }
+      lines: unknown
+    }
+    saved.moods.moods.neutral!.stickers = ['wave.webp']
+    const stickerDraft = { card: saved.card, moods: saved.moods, lines: saved.lines }
+    const check = (draft: unknown, existingId?: string) =>
+      fetch(origin + '/owner-api/core/pack/check', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ draft, existingId })
+      })
+    expect(await (await check(stickerDraft, 'sample-copy')).json()).toMatchObject({ ok: true, stickers: 1 })
+    expect(await (await check(stickerDraft)).json()).toMatchObject({ ok: false })
+    const wrongId = { ...stickerDraft, card: { ...stickerDraft.card, id: 'other-fictional' } }
+    expect(await (await check(wrongId, 'sample-copy')).json()).toMatchObject({ ok: false })
     const stickerDir = join(dataDir, 'characters', 'sample-copy', 'stickers')
     for (let n = 1; n <= 48; n++) copyFileSync(join(stickerDir, 'wave.webp'), join(stickerDir, 'pose-' + n + '.webp'))
     const readGallery = async () => {
@@ -115,8 +133,14 @@ it('checks JSON drafts and previews via authenticated pack routes without publis
   try {
     const address = host.address()
     if (!address || typeof address === 'string') throw new Error('test listener unavailable')
-    const model = queueModel([{ text: 'Example: hello there.' }])
+    const model = queueModel([{ text: 'Example: hello there.' }, new ModelError('transient', 'fixture failure')])
+    const fallback = queueModel([{ text: 'Fictional fallback reply.' }])
     const { app, dataDir } = await startApp(model, {
+      fallback,
+      config: (value) => {
+        value.llm.maxRetries = 0
+        value.llm.monthlyBudgetUsd = 0.02
+      },
       env: { AIRA_OWNER_API_ORIGIN: 'http://127.0.0.1:' + address.port }
     })
     const site = await app.listenSite(0, '127.0.0.1')
@@ -139,8 +163,19 @@ it('checks JSON drafts and previews via authenticated pack routes without publis
       lines: unknown
     }
     const draft = { card: { ...card, id: 'preview-fictional' }, moods, lines }
+    expect((await post('pack/check', {})).status).toBe(400)
+    expect((await post('pack/try', { message: 'hello' })).status).toBe(400)
+    const absent = await post('pack/try', { id: 'missing-fictional', message: 'hello' })
+    expect(absent.status).toBe(404)
+    expect(await absent.json()).toEqual({ error: 'pack_not_found' })
+    const badTry = await post('pack/try', { draft: {}, message: 'hello' })
+    expect(badTry.status).toBe(400)
+    expect(await badTry.json()).toMatchObject({ error: 'invalid_pack', faults: expect.any(Array) })
     const checked = await post('pack/check', { draft })
     expect(await checked.json()).toEqual(expect.objectContaining({ ok: true, promptTokens: expect.any(Number) }))
+    const largeEnvelope = await post('pack/check', { draft: { ...draft, extra: 'x'.repeat(768 * 1024 - 100) } })
+    expect(largeEnvelope.status).toBe(200)
+    expect(await largeEnvelope.json()).toMatchObject({ ok: false })
     const invalid = await post('pack/check', { draft: { ...draft, card: { ...draft.card, displayName: '' } } })
     expect(await invalid.json()).toEqual(expect.objectContaining({ ok: false, faults: expect.any(Array) }))
     const oversize = await post('characters', {
@@ -203,11 +238,27 @@ it('checks JSON drafts and previews via authenticated pack routes without publis
     expect(published.changed).toBe(true)
     expect(app.packs().packs.get('preview-fictional')?.card.privateInstructions).toBe(changed.card.privateInstructions)
     expect((await cli('update', file, '--expected-revision', String(published.revision))).pack.changed).toBe(false)
+    writeFileSync(file, JSON.stringify(draft))
+    const removed = (await cli('update', file, '--expected-revision', String(published.revision))).pack
+    expect(removed.diff).toEqual([
+      { path: 'card.privateInstructions', old: changed.card.privateInstructions, new: null }
+    ])
+    expect(app.packs().packs.get('preview-fictional')?.card.privateInstructions).toBeUndefined()
     expect((await cli('try', 'preview-fictional', 'hello')).pack.live).toBe(false)
     expect(model.requests).toHaveLength(1)
     expect(
       app.storage.read((db) => db.prepare("SELECT COUNT(*) FROM setting_change WHERE target = 'pack'").pluck().get())
-    ).toBe(2)
+    ).toBe(3)
+    const fallbackPreview = await post('pack/try', { id: 'example', message: 'hello', live: true })
+    expect(fallbackPreview.status).toBe(200)
+    expect(await fallbackPreview.json()).toMatchObject({ reply: 'Fictional fallback reply.', live: true })
+    expect(fallback.requests).toHaveLength(1)
+    const capped = await post('pack/try', { id: 'example', message: 'hello', live: true })
+    expect(capped.status).toBe(200)
+    expect(await capped.json()).toMatchObject({ reply: app.packs().packs.get('example')?.lines.limit })
+    expect(model.requests).toHaveLength(2)
+    expect(fallback.requests).toHaveLength(1)
+    expect(app.storage.read((db) => db.prepare('SELECT COUNT(*) FROM turn').pluck().get())).toBe(0)
   } finally {
     await new Promise<void>((resolve) => host.close(() => resolve()))
   }

@@ -43,6 +43,7 @@ ALLOWED_ERROR_CODES = frozenset({
     "invalid_body",
     "invalid_json",
     "not_found",
+    "pack_not_found",
     "pack_read_only",
     "pack_unparseable",
     "conflict",
@@ -78,7 +79,7 @@ def _is_loopback_base(base: object) -> bool:
         return False
     if parts.scheme != "http" or parts.username or parts.password or parts.query or parts.fragment:
         return False
-    if port is not None and not 1 <= port <= 65535:
+    if port is None or not 1 <= port <= 65535 or parts.path not in ("", "/"):
         return False
     return _is_loopback_host(parts.hostname)
 
@@ -164,7 +165,7 @@ def _pack_api_call(
                              recovery="Restore the verified owner credential; never rotate it implicitly.")
     code = _safe_error_code(status, parsed)
     if status == 404:
-        if stage in ("get", "update", "try") and code == "not_found":
+        if code == "pack_not_found" or (code == "not_found" and path.startswith(CHARACTERS_PATH + "/")):
             raise operational_error("not_found", "The requested character pack was not found.", stage,
                                     "Check the pack id and retry.")
         raise operational_error("capability_unavailable", "This install does not offer that pack operation.", stage,
@@ -285,43 +286,39 @@ def _json_equal(left: object, right: object) -> bool:
     return left == right
 
 
-def _build_merge_patch(old: dict, new: dict) -> dict:
-    """Compute an RFC 7396 merge patch from old to new (null deletes keys, arrays replace)."""
+def _diff_object(old: dict, new: dict, prefix: str) -> tuple[dict, list[dict]]:
+    """Compute RFC 7396 merge patch and displayed changes from the same object walk."""
     patch: dict = {}
-    for key in old:
-        if key not in new:
-            patch[key] = None
-    for key, value in new.items():
-        if key not in old:
-            patch[key] = value
-        elif isinstance(old[key], dict) and isinstance(value, dict):
-            sub = _build_merge_patch(old[key], value)
-            if sub:
-                patch[key] = sub
-        elif not _json_equal(old[key], value):
-            patch[key] = value
-    return patch
-
-
-def _collect_diff(old: dict, new: dict, prefix: str, out: list[dict]) -> None:
-    for key in old:
+    diff: list[dict] = []
+    for key, value in old.items():
         path = f"{prefix}.{key}"
         if key not in new:
-            out.append({"path": path, "old": old[key], "new": None})
-        elif isinstance(old[key], dict) and isinstance(new[key], dict):
-            _collect_diff(old[key], new[key], path, out)
-        elif not _json_equal(old[key], new[key]):
-            out.append({"path": path, "old": old[key], "new": new[key]})
+            patch[key] = None
+            diff.append({"path": path, "old": value, "new": None})
+        elif isinstance(value, dict) and isinstance(new[key], dict):
+            nested_patch, nested_diff = _diff_object(value, new[key], path)
+            if nested_patch:
+                patch[key] = nested_patch
+                diff.extend(nested_diff)
+        elif not _json_equal(value, new[key]):
+            patch[key] = new[key]
+            diff.append({"path": path, "old": value, "new": new[key]})
     for key, value in new.items():
         if key not in old:
-            out.append({"path": f"{prefix}.{key}", "old": None, "new": value})
+            patch[key] = value
+            diff.append({"path": f"{prefix}.{key}", "old": None, "new": value})
+    return patch, diff
 
 
-def _diff_documents(current: dict, draft: dict) -> list[dict]:
+def _diff_documents(current: dict, draft: dict) -> tuple[dict, list[dict]]:
+    patch: dict = {}
     diff: list[dict] = []
-    for doc_name in ("card", "moods", "lines"):
-        _collect_diff(current[doc_name], draft[doc_name], doc_name, diff)
-    return diff
+    for name in ("card", "moods", "lines"):
+        nested_patch, nested_diff = _diff_object(current[name], draft[name], name)
+        if nested_patch:
+            patch[name] = nested_patch
+            diff.extend(nested_diff)
+    return patch, diff
 
 
 def _normalize_check(data: dict) -> dict:
@@ -513,12 +510,7 @@ def _cmd_update(args, op: str) -> dict:
             **check_info,
         }
         return _invalid_draft_envelope(op, state, payload, "update")
-    patch_body: dict = {}
-    for doc_name in ("card", "moods", "lines"):
-        sub = _build_merge_patch(current[doc_name], draft[doc_name])
-        if sub:
-            patch_body[doc_name] = sub
-    diff = _diff_documents(current, draft)
+    patch_body, diff = _diff_documents(current, draft)
     check_summary = {k: v for k, v in check_info.items() if k != "id"}
     if args.dry_run:
         env = ok_envelope("pack", op, state)

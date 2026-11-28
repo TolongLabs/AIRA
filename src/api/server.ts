@@ -361,7 +361,7 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
       }
       if (path === '/api/pack/check' || path === '/api/pack/try') {
         if (request.method !== 'POST') return json(response, 405, { error: 'method_not_allowed' })
-        const data = await readJson(request, 768 * 1024)
+        const data = await readJson(request, 832 * 1024)
         if ('error' in data) return json(response, data.status, { error: data.error })
         const result = await handlePack(options, path.endsWith('/check') ? 'check' : 'try', data.body)
         return json(response, result.status, result.body)

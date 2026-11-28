@@ -74,7 +74,8 @@ def classify_docker_error(stderr):
     return "failed"
 
 
-def http_request(url, timeout_s=HEALTH_FETCH_TIMEOUT_S, headers=None, method="GET", body=None, *, response_limit=256 * 1024):
+def http_request(url, timeout_s=HEALTH_FETCH_TIMEOUT_S, headers=None, method="GET", body=None, *,
+                 response_limit=256 * 1024):
     """Direct numeric-host HTTP only: no proxy, redirect, or credential in URL."""
     parsed = urlsplit(url)
     try:

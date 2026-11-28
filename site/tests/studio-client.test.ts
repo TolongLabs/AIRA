@@ -68,6 +68,19 @@ describe('studio merge patch', () => {
     expect(validateDraft('test-pack', testDraft())).toEqual([])
   })
 
+  it('rejects blank and non-string private instructions before publishing a draft', () => {
+    const draft = testDraft()
+    draft.card.privateInstructions = '  '
+    expect(validateDraft('test-pack', draft)).toContain(
+      'card.privateInstructions: use non-empty text or omit the field.'
+    )
+    // Model the JSON import trust boundary, where a user can provide a non-string value.
+    draft.card.privateInstructions = 42 as unknown as string
+    expect(validateDraft('test-pack', draft)).toContain(
+      'card.privateInstructions: use non-empty text or omit the field.'
+    )
+  })
+
   it('preserves private instructions and removes them with a merge patch when cleared', () => {
     const pristine = testDraft()
     pristine.card.privateInstructions = 'A fictional private direction.'

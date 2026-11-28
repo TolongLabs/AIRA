@@ -64,6 +64,34 @@ async function start(root: string, restart = vi.fn()) {
 }
 
 describe('standalone model activation through the protected listener', () => {
+  it('previews with the activated model without requiring a connected Hermes route', async () => {
+    const root = tmpDir('aira-preview-activation-')
+    const cold = await start(root)
+    const input = { id: 'example', message: 'hello' }
+    expect((await cold.request('pack/schema')).status).toBe(200)
+    expect((await cold.request('pack/try', 'POST', { ...input, live: false })).status).toBe(200)
+    expect((await cold.request('pack/try', 'POST', { ...input, live: true })).status).toBe(503)
+    expect(cold.main.requests).toHaveLength(0)
+    const saved = await cold.request('standalone-config', 'PUT', {
+      expectedRevision: null,
+      main: candidate,
+      fallback: null
+    })
+    const revision = z.object({ savedRevision: z.string() }).parse(saved.body).savedRevision
+    expect((await cold.request('standalone-config/activate', 'POST', { expectedRevision: revision })).status).toBe(202)
+    await cold.app.close()
+    const boot = await start(root)
+    expect((await boot.request('pack/try', 'POST', { ...input, live: true })).status).toBe(503)
+    boot.app.completeStartup()
+    expect(boot.app.chatbotReady()).toBe(false)
+    const live = await boot.request('pack/try', 'POST', { ...input, live: true })
+    expect(live.status).toBe(200)
+    expect(live.body).toMatchObject({ reply: 'Fixture response', live: true })
+    expect(boot.main.requests).toHaveLength(1)
+    expect(boot.main.requests[0]?.tools).toEqual([])
+    expect(boot.app.storage.read((db) => db.prepare('SELECT COUNT(*) FROM turn').pluck().get())).toBe(0)
+  })
+
   it('exposes the optional media role only after the exact configured revision is applied', async () => {
     const root = tmpDir('aira-media-activation-')
     const cold = await start(root)

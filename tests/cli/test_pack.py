@@ -92,6 +92,7 @@ class FakeOwnerApi:
         self.create_conflict = False
         self.stale_on_put = False
         self.try_reply = "Oh, hey. Everything looks tidy."
+        self.try_override = None
 
     def seed_pack(self, pack_id: str, draft: dict, *, source: str = "data", revision: str = FIXTURE_REV_1) -> None:
         self.packs[pack_id] = {
@@ -193,6 +194,8 @@ class FakeOwnerApi:
                 return 200, {"id": pack_id, "revision": entry["revision"], "changed": changed}, "ok"
 
         if method == "POST" and path == "/owner-api/core/pack/try":
+            if self.try_override is not None:
+                return self.try_override
             live = bool(body.get("live"))
             return 200, {
                 "mood": "calm",
@@ -338,6 +341,10 @@ class PackCommandTests(unittest.TestCase):
                 "base": "http://example.invalid:9890",
             },
         ]
+        bad_selections.extend([
+            {**self.selection, "base": "http://127.0.0.1"},
+            {**self.selection, "base": "http://127.0.0.1:9890/not-core"},
+        ])
         for bad in bad_selections:
             with self.subTest(bad=bad.get("bindings") or bad.get("base")):
                 self.selection = bad
@@ -483,7 +490,9 @@ class PackCommandTests(unittest.TestCase):
                 self.assertEqual(code, 4)
                 parsed = json.loads(out)
                 self.assertEqual(parsed["error"]["code"], "conflict")
-                self.assertFalse(any(c["method"] == "POST" and c["path"] == "/owner-api/core/characters" for c in self.api.calls))
+                self.assertFalse(any(
+                    c["method"] == "POST" and c["path"] == "/owner-api/core/characters" for c in self.api.calls
+                ))
 
         new_path = self.write_json("new_fox.json", make_draft("new_fox"))
         self.api.calls.clear()
@@ -528,7 +537,8 @@ class PackCommandTests(unittest.TestCase):
         self.api.calls.clear()
         self.api.check_override = lambda _body: (
             200,
-            {"id": "bad_fox", "ok": False, "faults": ["fault a", "fault b"], "ceiling": 4096, "moods": 1, "stickers": 0},
+            {"id": "bad_fox", "ok": False, "faults": ["fault a", "fault b"],
+             "ceiling": 4096, "moods": 1, "stickers": 0},
             "ok",
         )
         bad_import = self.write_json("bad_import.json", make_draft("bad_fox"))
@@ -661,13 +671,40 @@ class PackCommandTests(unittest.TestCase):
             ("GET", "/owner-api/core/characters/repo_ro/studio"),
         ])
 
+    def test_pack_route_errors_distinguish_old_core_missing_pack_and_preview_failure(self):
+        draft = make_draft("fixture_fox")
+        self.api.seed_pack("fixture_fox", draft, revision=FIXTURE_REV_1)
+        path = self.write_json("draft.json", draft)
+        self.api.check_override = lambda _body: (404, {"error": "not_found"}, "ok")
+        code, out, _ = self.run_cli(["pack", "update", str(path), "--expected-revision", FIXTURE_REV_1, "--json"])
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(out)["error"]["code"], "capability_unavailable")
+        for status, error, target, expected in (
+            (404, "not_found", str(path), "capability_unavailable"),
+            (404, "not_found", "fixture_fox", "capability_unavailable"),
+            (404, "pack_not_found", "missing", "not_found"),
+            (503, "preview_unavailable", "fixture_fox", "preview_unavailable"),
+        ):
+            self.api.try_override = (status, {"error": error}, "ok")
+            code, out, _ = self.run_cli(["pack", "try", target, "hello", "--live", "--json"])
+            self.assertEqual(code, 1)
+            self.assertEqual(json.loads(out)["error"]["code"], expected)
+        self.api.try_override = (400, {
+            "error": "invalid_pack", "id": "fixture_fox", "ok": False, "faults": ["card: invalid"],
+            "ceiling": 4096, "moods": 0, "stickers": 0
+        }, "ok")
+        code, out, _ = self.run_cli(["pack", "try", str(path), "hello", "--json"])
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(out)["pack"]["faults"], ["card: invalid"])
+
     def test_update_validation_failure_reports_all_faults_and_never_puts(self):
         self.api.seed_pack("val_fox", make_draft("val_fox"), source="data", revision=FIXTURE_REV_1)
         bad_draft = make_draft("val_fox", displayName="Updated")
         draft_path = self.write_json("val_fox.json", bad_draft)
         self.api.check_override = lambda _body: (
             200,
-            {"id": "val_fox", "ok": False, "faults": ["fault one", "fault two"], "ceiling": 4096, "moods": 1, "stickers": 0},
+            {"id": "val_fox", "ok": False, "faults": ["fault one", "fault two"],
+             "ceiling": 4096, "moods": 1, "stickers": 0},
             "ok",
         )
         code, out, _ = self.run_cli([
@@ -698,7 +735,9 @@ class PackCommandTests(unittest.TestCase):
             patch.object(
                 configure,
                 "selected_api",
-                side_effect=result.operational_error("owner_auth_failed", "The owner credential is unavailable.", "verify"),
+                side_effect=result.operational_error(
+                    "owner_auth_failed", "The owner credential is unavailable.", "verify"
+                ),
             ),
             contextlib.redirect_stdout(stdout),
             contextlib.redirect_stderr(stderr),
@@ -743,7 +782,10 @@ class PackCommandTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("draft", self.api.calls[-1]["body"])
         self.assertNotIn("id", self.api.calls[-1]["body"])
-        self.assertFalse(any(c["method"] == "PUT" or (c["method"] == "POST" and c["path"] == "/owner-api/core/characters") for c in self.api.calls))
+        self.assertFalse(any(
+            c["method"] == "PUT" or (c["method"] == "POST" and c["path"] == "/owner-api/core/characters")
+            for c in self.api.calls
+        ))
 
 
 if __name__ == "__main__":
