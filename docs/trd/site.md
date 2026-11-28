@@ -385,16 +385,21 @@ write still checks conflict and revision under the writer. Invalid drafts never 
 draft has no sticker assets; it must not reference missing files. A revision-guarded update may retain
 existing valid assets.
 
-The protected core exposes `GET pack/schema`, `POST pack/check` and `POST pack/try` for those operations.
+The protected core exposes `GET pack/schema`, `POST pack/check` with `{draft, existingId?}`, and
+`POST pack/try` with either `{id, message, live?}` or `{draft, message, live?}`. A missing request field
+returns 400; a missing installed pack returns 404 `pack_not_found`. Invalid check drafts return the full fault
+list, and an invalid preview draft returns 400 with the same faults.
 The Studio setup prompt is generated from the card, mood and fixed-line schema plus the runtime rules; it
 explains the optional private instructions field and that all other card prose may be quoted in character.
-Preview uses the rule-based mood detector and a fixed shape seed with no real chat history. It defaults to a
+Preview runs the normal turn pipeline in a disposable store, including cleaning and role recovery. It uses the
+rule-based mood detector and a fixed shape seed with no real chat history. It defaults to a
 scripted model with no network calls. Live mode sends the selected pack and test
-message to the configured model only after explicit opt-in, retaining its normal routing and spend limits. Neither
+message to the configured model only after explicit opt-in, retaining its normal routing and spend limits.
+An applied model is enough for live preview; a connected Hermes route is not required. Neither
 mode uses real chats, memory, external
-tools, or WhatsApp delivery, nor changes installed packs. Preview text and credentials do not enter diagnostics.
-Exit classes follow the host CLI: 0 success, 1 validation/operation failure, 2 invalid arguments,
-3 prerequisite, 4 conflict/auth/stale revision and 5 rollback failure.
+tools, or WhatsApp delivery, nor changes installed packs. Preview text and credentials do not enter deployment diagnostics. The scratch store is deleted after the turn.
+Exit classes follow [CLI Results and Commands](deployment.md#cli-results-and-commands). Invalid drafts use the
+operation-failure class; duplicate ids, stale revisions, read-only packs and authorization refusals use the conflict class.
 
 For an edit, `aira pack get <id> --json` returns the revision and documents under `pack`. Save just
 `card`, `moods` and `lines` as the draft JSON, edit it, run the revision-guarded update with
