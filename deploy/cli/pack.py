@@ -343,7 +343,13 @@ def _run_check(selection: dict, draft: object, *, existing_id: str | None = None
     if existing_id is not None:
         payload["existingId"] = existing_id
     data = _pack_api_call(selection, "POST", PACK_CHECK_PATH, payload, stage=stage)
-    return _normalize_check(data)
+    info = _normalize_check(data)
+    if existing_id is not None and info["ok"]:
+        normalized = data.get("normalizedCard")
+        if not isinstance(normalized, dict) or normalized.get("id") != existing_id:
+            raise operational_error("owner_unreachable", "The owner API returned an invalid normalized card.", stage)
+        info["normalizedCard"] = normalized
+    return info
 
 
 def _invalid_draft_envelope(op: str, state: dict | None, pack_payload: dict, stage: str) -> dict:
@@ -510,6 +516,7 @@ def _cmd_update(args, op: str) -> dict:
             **check_info,
         }
         return _invalid_draft_envelope(op, state, payload, "update")
+    draft = {**draft, "card": check_info.pop("normalizedCard")}
     patch_body, diff = _diff_documents(current, draft)
     check_summary = {k: v for k, v in check_info.items() if k != "id"}
     if args.dry_run:

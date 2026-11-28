@@ -42,6 +42,7 @@ export async function previewPack(options: {
   message: string
   live?: boolean
   runner?: TurnRunner
+  toolNames?: () => string[]
 }): Promise<PackPreview> {
   const { pack, config, harnessRules, message, runner } = options
   const live = options.live === true
@@ -74,7 +75,7 @@ export async function previewPack(options: {
           run: (input) =>
             live && runner ? runner.run({ ...input, tools: [], maxToolCalls: 0 }) : Promise.resolve(scriptedReply(pack))
         },
-        cleaner: createReplyCleaner(config),
+        cleaner: createReplyCleaner(config, options.toolNames),
         alerter: { raise: () => false }
       })
       try {

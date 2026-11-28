@@ -74,7 +74,8 @@ export function loadPack(dir: string, source: 'repository' | 'data'): Pack {
   const moods = readAndValidate(dir, 'moods.yml', moodsSchema, faults)
   const lines = readAndValidate(dir, 'lines.yml', linesSchema, faults)
   const pack = compilePack({ id, dir, source, card, moodsRaw: moods, lines, faults })
-  if (!pack) throw new PackError(`character pack ${id} is invalid:\n${faults.map((f) => `  ${f}`).join('\n')}`)
+  if (!pack || faults.length > 0)
+    throw new PackError(`character pack ${id} is invalid:\n${faults.map((f) => `  ${f}`).join('\n')}`)
   return pack
 }
 
@@ -162,7 +163,8 @@ function compilePack(input: {
     }
   }
 
-  if (faults.length > 0 || !card || !moodsRaw || !lines) return undefined
+  // Schema-valid documents can still be measured against the prompt budget even if semantic faults exist.
+  if (!card || !moodsRaw || !lines) return undefined
 
   return {
     id,

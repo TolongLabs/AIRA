@@ -65,6 +65,27 @@ describe('pack preview', () => {
     expect(runner.run.mock.calls.every(([input]) => input.tools.length === 0 && input.maxToolCalls === 0)).toBe(true)
   })
 
+  it('uses the registered tool-name guard without making a tool available', async () => {
+    const runner = {
+      run: vi
+        .fn<TurnRunner['run']>()
+        .mockResolvedValueOnce(result('I used fictional_tool.'))
+        .mockResolvedValueOnce(result('Here is the answer.'))
+    }
+    const preview = await previewPack({
+      pack,
+      config,
+      harnessRules,
+      message: 'hello',
+      live: true,
+      runner,
+      toolNames: () => ['fictional_tool']
+    })
+    expect(preview.reply).toBe('Here is the answer.')
+    expect(runner.run.mock.calls).toHaveLength(2)
+    expect(runner.run.mock.calls.every(([input]) => input.tools.length === 0)).toBe(true)
+  })
+
   it('applies the harness leak guard to a live preview', async () => {
     const privateRules = 'one two three four five six seven eight nine ten eleven twelve'
     const runner = { run: vi.fn<TurnRunner['run']>().mockResolvedValue(result(privateRules)) }

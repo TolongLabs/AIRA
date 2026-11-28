@@ -7,6 +7,32 @@ import { expect, it } from 'vitest'
 import { ModelError } from '../../src/models/types.js'
 import { queueModel, startApp } from '../support/app.js'
 
+const cliScript = [
+  'import sys',
+  'from deploy.cli import configure, main, operations',
+  'configure.selected_api = lambda *a, **k: {"base": sys.argv[1], "token": "fixture-token", "state": {}}',
+  'operations.log_event = lambda *a, **k: "fixture-operation"',
+  'sys.exit(main.main(sys.argv[2:]))'
+].join('\n')
+const invokePack = (origin: string, args: string[]) =>
+  promisify(execFile)('python3', ['-c', cliScript, origin, 'pack', ...args, '--json'])
+
+async function packCli(origin: string, ...args: string[]) {
+  const { stdout } = await invokePack(origin, args)
+  return JSON.parse(stdout) as { pack: Record<string, unknown> }
+}
+
+async function packCliFailure(origin: string, code: number, reason: string, ...args: string[]) {
+  const failure = await invokePack(origin, args).then(
+    () => undefined,
+    (error: { code: number; stdout: string }) => error
+  )
+  expect(failure?.code).toBe(code)
+  const body = JSON.parse(failure!.stdout) as { error: { code: string }; pack?: { faults: string[] } }
+  expect(body.error.code).toBe(reason)
+  return body
+}
+
 it('edits a copy through the protected studio endpoint and rejects a stale draft', async () => {
   const host = createServer((req, res) => {
     const allowed = req.url === '/api/settings' && req.headers['x-tolongai-token'] === 'fixture-token'
@@ -79,6 +105,7 @@ it('edits a copy through the protected studio endpoint and rejects a stale draft
     ).toBe('WEBP')
     expect((await fetch(collection + '/wave')).status).toBe(401)
     const saved = (await (await fetch(url, { headers })).json()) as {
+      revision: string
       card: Record<string, unknown>
       moods: { moods: Record<string, { stickers: string[] }> }
       lines: unknown
@@ -95,6 +122,20 @@ it('edits a copy through the protected studio endpoint and rejects a stale draft
     expect(await (await check(stickerDraft)).json()).toMatchObject({ ok: false })
     const wrongId = { ...stickerDraft, card: { ...stickerDraft.card, id: 'other-fictional' } }
     expect(await (await check(wrongId, 'sample-copy')).json()).toMatchObject({ ok: false })
+    const stickerFile = join(dataDir, 'sticker-draft.json')
+    writeFileSync(stickerFile, JSON.stringify(stickerDraft))
+    const auditCount = () =>
+      app.storage.read((db) => db.prepare("SELECT COUNT(*) FROM setting_change WHERE target = 'pack'").pluck().get())
+    const before = auditCount()
+    expect(
+      (await packCli(origin, 'update', stickerFile, '--expected-revision', saved.revision, '--dry-run')).pack.changed
+    ).toBe(false)
+    expect(auditCount()).toBe(before)
+    expect((await packCli(origin, 'update', stickerFile, '--expected-revision', saved.revision)).pack.changed).toBe(
+      true
+    )
+    expect(app.packs().packs.get('sample-copy')?.moods.get('neutral')?.stickers).toEqual(['wave.webp'])
+    expect(auditCount()).toBe(Number(before) + 1)
     const stickerDir = join(dataDir, 'characters', 'sample-copy', 'stickers')
     for (let n = 1; n <= 48; n++) copyFileSync(join(stickerDir, 'wave.webp'), join(stickerDir, 'pose-' + n + '.webp'))
     const readGallery = async () => {
@@ -162,7 +203,11 @@ it('checks JSON drafts and previews via authenticated pack routes without publis
       moods: unknown
       lines: unknown
     }
-    const draft = { card: { ...card, id: 'preview-fictional' }, moods, lines }
+    const draft = {
+      card: { ...card, id: 'preview-fictional', toolFooter: { labels: { web_search: '  Looked up  ' } } },
+      moods,
+      lines
+    }
     expect((await post('pack/check', {})).status).toBe(400)
     expect((await post('pack/try', { message: 'hello' })).status).toBe(400)
     const absent = await post('pack/try', { id: 'missing-fictional', message: 'hello' })
@@ -208,27 +253,27 @@ it('checks JSON drafts and previews via authenticated pack routes without publis
 
     // Exercise the shipped Python command over the actual authenticated core listener.
     // Only installation discovery and operation logging are substituted; the HTTP client is real.
-    const script = [
-      'import sys',
-      'from deploy.cli import configure, main, operations',
-      'configure.selected_api = lambda *a, **k: {"base": sys.argv[1], "token": "fixture-token", "state": {}}',
-      'operations.log_event = lambda *a, **k: "fixture-operation"',
-      'sys.exit(main.main(sys.argv[2:]))'
-    ].join('\n')
-    const cli = async (...args: string[]) => {
-      const { stdout } = await promisify(execFile)('python3', ['-c', script, origin, 'pack', ...args, '--json'])
-      return JSON.parse(stdout) as { pack: Record<string, unknown> }
-    }
+    const cli = (...args: string[]) => packCli(origin, ...args)
     const file = join(dataDir, 'fixture-draft.json')
     writeFileSync(file, JSON.stringify(draft))
     expect((await cli('check', file)).pack.ok).toBe(true)
+    expect((await cli('try', file, 'hello')).pack.live).toBe(false)
+    const invalidFile = join(dataDir, 'invalid-draft.json')
+    writeFileSync(invalidFile, JSON.stringify({ ...draft, card: { ...draft.card, displayName: '' } }))
+    expect(
+      (await packCliFailure(origin, 1, 'invalid_draft', 'try', invalidFile, 'hello')).pack?.faults
+    ).not.toHaveLength(0)
     expect((await cli('schema')).pack.setupPrompt).toContain('aira pack check')
     expect((await cli('import', file, '--dry-run')).pack.wouldCreate).toBe(true)
     expect(app.packs().packs.has('preview-fictional')).toBe(false)
     expect((await cli('import', file)).pack.changed).toBe(true)
+    await packCliFailure(origin, 4, 'conflict', 'import', file)
     const got = (await cli('get', 'preview-fictional')).pack
     const revision = String(got.revision)
-    expect(got.card).toEqual(draft.card)
+    expect(got.card).toEqual({ ...draft.card, toolFooter: { labels: { web_search: 'Looked up' } } })
+    const normalized = (await cli('update', file, '--expected-revision', revision)).pack
+    expect(normalized.diff).toEqual([])
+    expect(normalized.changed).toBe(false)
     const changed = { ...draft, card: { ...draft.card, privateInstructions: 'A fictional private instruction.' } }
     writeFileSync(file, JSON.stringify(changed))
     const plan = (await cli('update', file, '--expected-revision', revision, '--dry-run')).pack
@@ -236,6 +281,7 @@ it('checks JSON drafts and previews via authenticated pack routes without publis
     expect(app.packs().packs.get('preview-fictional')?.card.privateInstructions).toBeUndefined()
     const published = (await cli('update', file, '--expected-revision', revision)).pack
     expect(published.changed).toBe(true)
+    await packCliFailure(origin, 4, 'stale_revision', 'update', file, '--expected-revision', revision)
     expect(app.packs().packs.get('preview-fictional')?.card.privateInstructions).toBe(changed.card.privateInstructions)
     expect((await cli('update', file, '--expected-revision', String(published.revision))).pack.changed).toBe(false)
     writeFileSync(file, JSON.stringify(draft))
@@ -249,9 +295,8 @@ it('checks JSON drafts and previews via authenticated pack routes without publis
     expect(
       app.storage.read((db) => db.prepare("SELECT COUNT(*) FROM setting_change WHERE target = 'pack'").pluck().get())
     ).toBe(3)
-    const fallbackPreview = await post('pack/try', { id: 'example', message: 'hello', live: true })
-    expect(fallbackPreview.status).toBe(200)
-    expect(await fallbackPreview.json()).toMatchObject({ reply: 'Fictional fallback reply.', live: true })
+    const fallbackPreview = await cli('try', 'example', 'hello', '--live')
+    expect(fallbackPreview.pack).toMatchObject({ reply: 'Fictional fallback reply.', live: true })
     expect(fallback.requests).toHaveLength(1)
     const capped = await post('pack/try', { id: 'example', message: 'hello', live: true })
     expect(capped.status).toBe(200)

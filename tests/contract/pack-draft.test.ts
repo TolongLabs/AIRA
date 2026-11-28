@@ -57,6 +57,18 @@ describe('JSON draft validation', () => {
     expect(check.faults).toContain('prompt over the ceiling')
   })
 
+  it('reports the prompt ceiling alongside semantic and sticker faults', () => {
+    const value = draft()
+    value.card.privateInstructions = 'x'.repeat(40_000)
+    value.moods.moods.neutral.stickers = ['missing.webp']
+    const { check, pack } = checkDraft(value, { ceiling: 8000, harnessRules })
+    expect(check.ok).toBe(false)
+    expect(check.faults).toContain('prompt over the ceiling')
+    expect(check.faults.some((fault) => fault.includes('missing sticker'))).toBe(true)
+    expect(check.promptTokens).toBeGreaterThan(8000)
+    expect(pack).toBeUndefined()
+  })
+
   it('enforces actual document size and does not echo private prose', () => {
     const value = draft()
     value.card.coreIdentity = 'fictional-private-prose'.repeat(30_000)

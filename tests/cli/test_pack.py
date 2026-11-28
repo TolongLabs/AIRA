@@ -130,7 +130,7 @@ class FakeOwnerApi:
             moods_doc = draft.get("moods") if isinstance(draft.get("moods"), dict) else {}
             pack_id = card.get("id") if isinstance(card.get("id"), str) else ""
             moods_map = moods_doc.get("moods") if isinstance(moods_doc.get("moods"), dict) else {}
-            return 200, {
+            checked = {
                 "id": pack_id,
                 "ok": True,
                 "faults": [],
@@ -138,7 +138,10 @@ class FakeOwnerApi:
                 "promptTokens": 512,
                 "moods": len(moods_map),
                 "stickers": 0,
-            }, "ok"
+            }
+            if "existingId" in body:
+                checked["normalizedCard"] = card
+            return 200, checked, "ok"
 
         if method == "GET" and path == "/owner-api/core/characters":
             chars = [
