@@ -30,7 +30,7 @@ export interface CleanOptions {
   /** True when code detected an explicit format request, or a length bypass applies. Step 4 is skipped. */
   lengthBypass: boolean
   shape: ReplyShapeLimits
-  /** The fixed prompt blocks (blocks 1 to 3), for the leak check. */
+  /** The harness and private prompt blocks, for the leak check. */
   fixedBlocks: string[]
   leakCheck: boolean
   /** The pack's fallback line. */
@@ -401,7 +401,7 @@ export function guardFaces(text: string): string {
   return outside(text, /(```[\s\S]*?```)/, (prose) => outside(faceTicks(prose), /(`[^`\n]+`)/, guard))
 }
 
-/** Step 7: Check for leaked prompt text against the fixed blocks (12+ consecutive words). */
+/** Step 7: Check for leaked prompt text against the protected blocks (12+ consecutive words). */
 export function leaksPrompt(text: string, fixedBlocks: string[]): boolean {
   const replyWords = extractWords(text)
   if (replyWords.length < 12) return false
@@ -612,7 +612,7 @@ export function createReplyCleaner(
         const maxChars = typeof shapeObj?.maxChars === 'number' ? shapeObj.maxChars : undefined
         const lengthBypass = typeof shapeObj?.lengthBypass === 'boolean' ? shapeObj.lengthBypass : false
         const fixedBlocks = built.system
-          .filter((block) => block.name === 'core' || block.name === 'speech' || block.name === 'harness')
+          .filter((block) => block.name === 'private' || block.name === 'harness')
           .map((block) => block.text)
 
         const directCommand =

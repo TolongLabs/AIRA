@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { loadPack, type Pack } from '../../src/character/loader.js'
 import type { ModelClient, ModelRequest } from '../../src/models/types.js'
 import {
+  buildSystemBlocks,
   createPromptBuilder,
   estimateTokens,
   FOURTH_WALL_RULE,
@@ -67,6 +68,25 @@ function makeTurnInput(overrides: {
     pending: overrides.pending ?? window.slice(-1)
   }
 }
+
+describe('private persona instructions', () => {
+  it('adds a stable private block before the harness without changing legacy pack order', () => {
+    const pack = examplePack()
+    const blocks = () => buildSystemBlocks({ pack, harnessRules: 'Rules.', context: '', tone: '', shape: '' })
+    expect(blocks().map((block) => block.name)).toEqual(['core', 'speech', 'harness', 'context', 'tone', 'shape'])
+    pack.card.privateInstructions = 'Keep the fictional instructions private.'
+    expect(blocks().map((block) => block.name)).toEqual([
+      'core',
+      'speech',
+      'private',
+      'harness',
+      'context',
+      'tone',
+      'shape'
+    ])
+    expect(blocks()[2]?.text).toContain(pack.card.privateInstructions)
+  })
+})
 
 describe('seededRandom and pick', () => {
   it('produces the same sequence for the same seed and values in [0, 1)', () => {

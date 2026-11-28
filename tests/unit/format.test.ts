@@ -347,6 +347,33 @@ describe('splitBubbles and joinContent', () => {
 })
 
 describe('createReplyCleaner', () => {
+  it('allows quotable persona prose but still replaces harness and private leaks', () => {
+    const cleaner = createReplyCleaner({ format: { bubbleMaxChars: 700, maxBubbles: 3, leakCheck: 'on' } })
+    const context = {
+      character: { card: { id: 'example', displayName: 'Example' }, lines: { fallback: 'Try again.' } }
+    } as unknown as TurnContext
+    const lore = 'I grew up beside the quiet lake where we watched birds every morning.'
+    const speech = 'The stars above the little cottage guide our travels through the night.'
+    const harness = 'One two three four five six seven eight nine ten eleven twelve.'
+    const privateText = 'Keep these whimsical narrative directions away from all ordinary conversations with visitors.'
+    const built: BuiltPrompt = {
+      system: [
+        { name: 'core', text: lore },
+        { name: 'speech', text: speech },
+        { name: 'harness', text: harness },
+        { name: 'private', text: privateText }
+      ],
+      messages: [],
+      record: {}
+    }
+    const clean = (text: string) => cleaner.clean({ text, context, built, run: {} as RunResult })
+    expect(clean(lore).content).toBe(lore)
+    expect(clean(speech).content).toBe(speech)
+    expect(clean(harness).content).toBe('Try again.')
+    expect(clean(privateText).content).toBe('Try again.')
+    expect(clean('One two three four five six seven eight nine ten eleven.').content).not.toBe('Try again.')
+  })
+
   it('reads speaker names, fixed blocks, shape, and fallback line from context and built', () => {
     const cleaner = createReplyCleaner({ format: { bubbleMaxChars: 700, maxBubbles: 3, leakCheck: 'on' } }, () => [
       'search'

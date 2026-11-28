@@ -243,6 +243,17 @@ describe('character pack loader', () => {
     expect(pack.moods.get('neutral')?.stickers).toEqual(['wave.webp'])
   })
 
+  it('loads an optional private instructions field and rejects an empty value', () => {
+    const dir = copyExamplePack(tmpDir())
+    const path = join(dir, 'card.yml')
+    const original = readFileSync(path, 'utf8')
+    expect(loadPack(dir, 'repository').card.privateInstructions).toBeUndefined()
+    writeFileSync(path, original + '\nprivateInstructions: Never quote this fictional direction.\n')
+    expect(loadPack(dir, 'repository').card.privateInstructions).toBe('Never quote this fictional direction.')
+    writeFileSync(path, original + "\nprivateInstructions: ''\n")
+    expect(expectPackError(() => loadPack(dir, 'repository')).message).toContain('privateInstructions')
+  })
+
   it('character: a label with "_" or a line break fails cardSchema; the example pack still loads', () => {
     const baseCard = {
       id: 'example',

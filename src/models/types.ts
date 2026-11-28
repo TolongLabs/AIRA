@@ -5,7 +5,7 @@ export type ModelRole = 'main' | 'fallback' | 'judge' | 'media'
 
 /** One block of the system prompt, in the fixed order of docs/trd/prompt-engine.md#prompt-blocks. */
 export interface PromptBlock {
-  name: 'core' | 'speech' | 'harness' | 'context' | 'tone' | 'shape'
+  name: 'core' | 'speech' | 'private' | 'harness' | 'context' | 'tone' | 'shape'
   text: string
 }
 

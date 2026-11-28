@@ -36,6 +36,7 @@ export interface Pack {
     languages: string[]
     coreIdentity: string
     speechRules: string[]
+    privateInstructions?: string
     defaultReplyLength: 'short' | 'default' | 'long'
     capitaliseBubbles?: boolean
     toolFooter?: { icon?: string; labels?: Record<string, string> }

@@ -68,6 +68,15 @@ describe('studio merge patch', () => {
     expect(validateDraft('test-pack', testDraft())).toEqual([])
   })
 
+  it('preserves private instructions and removes them with a merge patch when cleared', () => {
+    const pristine = testDraft()
+    pristine.card.privateInstructions = 'A fictional private direction.'
+    const draft = structuredClone(pristine)
+    delete draft.card.privateInstructions
+    expect(diffDocs(pristine, draft).patch).toEqual({ card: { privateInstructions: null } })
+    expect(applyStudioPatch(pristine, diffDocs(pristine, draft).patch)).toEqual(draft)
+  })
+
   it('sends only the leaves that changed', () => {
     const pristine = testDraft()
     const draft = testDraft()

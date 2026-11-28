@@ -29,7 +29,7 @@ type Effort = NonNullable<NonNullable<Params['output_config']>['effort']>
 
 const DEFAULT_MAX_TOKENS = 16000
 /** The prompt blocks that change rarely: the cache breakpoint goes after the last of them that is present. */
-const STABLE_BLOCKS: ReadonlySet<PromptBlock['name']> = new Set(['core', 'speech', 'harness'])
+const STABLE_BLOCKS: ReadonlySet<PromptBlock['name']> = new Set(['core', 'speech', 'private', 'harness'])
 /** A cache write costs this much of the input price on the default five-minute lifetime. */
 const CACHE_WRITE_FACTOR = 1.25
 
