@@ -388,7 +388,8 @@ existing valid assets.
 The protected core exposes `GET pack/schema`, `POST pack/check` with `{draft, existingId?}`, and
 `POST pack/try` with either `{id, message, live?}` or `{draft, message, live?}`. A missing request field
 returns 400; a missing installed pack returns 404 `pack_not_found`. Invalid check drafts return the full fault
-list, and an invalid preview draft returns 400 with the same faults.
+list, and an invalid preview draft returns 400 with the same faults. A valid check with an existing id also
+returns the schema-normalized card for the update diff, so formatting normalization is not shown as a change.
 The Studio setup prompt is generated from the card, mood and fixed-line schema plus the runtime rules; it
 explains the optional private instructions field and that all other card prose may be quoted in character.
 Preview runs the normal turn pipeline in a disposable store, including cleaning and role recovery. It uses the
