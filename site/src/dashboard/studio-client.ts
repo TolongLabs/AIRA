@@ -36,6 +36,8 @@ export interface StudioCard {
   languages: string[]
   coreIdentity: string
   speechRules: string[]
+  privateInstructions?: string
+  expressionDescriptions?: Record<string, string>
   defaultReplyLength: ReplyLength
   capitaliseBubbles?: boolean
   toolFooter?: { icon?: string; labels?: Record<string, string> }
@@ -451,6 +453,7 @@ export function buildPromptPreview(draft: StudioDraft, moodKey: string): { text:
     '',
     '[Block 2 · Speech]',
     ...draft.card.speechRules.filter((r) => r.trim()),
+    ...(draft.card.privateInstructions ? ['', '[Private instructions]', draft.card.privateInstructions] : []),
     '',
     '[Block 5 · Tone]',
     mood?.tone.trim() ? mood.tone : '(no tone for this mood yet)',

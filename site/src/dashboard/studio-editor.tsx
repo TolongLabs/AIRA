@@ -617,7 +617,10 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
                       onChange={(aliases) => setDraft((d) => ({ ...d, card: { ...d.card, aliases } }))}
                     />
                   </Field>
-                  <Field label="Core identity" hint="Describe who this persona is and what matters to them.">
+                  <Field
+                    label="Core identity"
+                    hint="Describe who the persona is. This prose may be quoted in character."
+                  >
                     <textarea
                       rows={4}
                       value={draft.card.coreIdentity}
@@ -628,8 +631,25 @@ export default function StudioEditor({ id, mode }: StudioEditorProps) {
                     label="Speech rules"
                     values={draft.card.speechRules}
                     onChange={(speechRules) => setDraft((d) => ({ ...d, card: { ...d.card, speechRules } }))}
-                    hint="One rule per line."
+                    hint="One rule per line. These rules may be quoted in character."
                   />
+                  <Field
+                    label="Private instructions (optional)"
+                    hint="Directions the character must not quote. The model sees this text; do not put secrets here."
+                  >
+                    <textarea
+                      rows={4}
+                      value={draft.card.privateInstructions ?? ''}
+                      onChange={(e) =>
+                        setDraft((d) => {
+                          const card = { ...d.card }
+                          if (e.target.value.trim()) card.privateInstructions = e.target.value
+                          else delete card.privateInstructions
+                          return { ...d, card }
+                        })
+                      }
+                    />
+                  </Field>
                   <div className="studio-field">
                     <label className="studio-label" htmlFor="studio-default-reply-length">
                       Default reply length
