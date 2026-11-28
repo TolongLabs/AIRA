@@ -1015,7 +1015,8 @@ export async function createApp(options: AppOptions): Promise<App> {
           harnessRules,
           message,
           live,
-          runner: !standalone || chatbotReadyNow() ? runner : undefined
+          runner:
+            !standalone || (serviceReady && activationCommitted && Boolean(modelBoot?.configured)) ? runner : undefined
         }),
       extractorAvailable,
       socialMirrors,

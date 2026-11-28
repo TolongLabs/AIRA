@@ -17,7 +17,7 @@ import { isMap, parse, parseDocument, stringify } from 'yaml'
 import type { z } from 'zod'
 import { checkLoadedPack } from '../character/check.js'
 import { MAX_PACK_DOCUMENT_BYTES } from '../character/draft.js'
-import { loadPack, PackError } from '../character/loader.js'
+import { loadPack, type Pack, PackError } from '../character/loader.js'
 import {
   cardSchema,
   footerEmojiSchema,
@@ -774,7 +774,7 @@ function maybeReconcile(deps: RecoverDeps, id: string): void {
 }
 
 /** Reads the authoritative tree and derives its opaque revision. Throws when the pack is missing or invalid. */
-export function getStudioPack(deps: ReadDeps, id: string): StudioPackRead {
+export function readStudioPack(deps: ReadDeps, id: string): { documents: StudioPackRead; pack: Pack } {
   assertPackId(id)
   const recoverDeps = deps as unknown as RecoverDeps
   if ('storage' in deps) maybeReconcile(recoverDeps as RecoverDeps, id)
@@ -782,20 +782,28 @@ export function getStudioPack(deps: ReadDeps, id: string): StudioPackRead {
   const tree = readTreeBytes(located.dir, located.source === 'repository')
   const stickers = readStickerEntries(located.dir)
   const docs = parseTree(id, tree)
+  let pack: Pack
   try {
-    loadPack(located.dir, located.source)
+    pack = loadPack(located.dir, located.source)
   } catch {
     throw new StudioPackError('pack_unparseable', 'Invalid character pack', 409)
   }
   return {
-    id,
-    source: located.source,
-    writable: located.source === 'data',
-    revision: revisionOf(id, tree, stickers),
-    card: docs.card,
-    moods: docs.moods,
-    lines: docs.lines
+    pack,
+    documents: {
+      id,
+      source: located.source,
+      writable: located.source === 'data',
+      revision: revisionOf(id, tree, stickers),
+      card: docs.card,
+      moods: docs.moods,
+      lines: docs.lines
+    }
   }
+}
+
+export function getStudioPack(deps: ReadDeps, id: string): StudioPackRead {
+  return readStudioPack(deps, id).documents
 }
 
 /** File browsing can show validated documents from a loaded pack that Studio cannot safely replace. */

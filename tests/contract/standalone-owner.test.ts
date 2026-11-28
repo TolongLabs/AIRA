@@ -52,12 +52,27 @@ describe('standalone owner authentication', () => {
     expect(statSync(join(root, 'standalone')).mode & 0o777).toBe(0o700)
     expect((await fetch(url + '/overview')).status).toBe(200)
 
-    for (const path of ['/owner-api/core/health', '/api/health', '/owner-api/core/chats', '/owner-api/settings']) {
+    for (const path of [
+      '/owner-api/core/health',
+      '/api/health',
+      '/owner-api/core/chats',
+      '/owner-api/core/pack/schema',
+      '/owner-api/settings'
+    ]) {
       for (const headers of [{}, auth('wrong-token')]) {
         const denied = await fetch(url + path, { headers })
         expect(denied.status).toBe(401)
         expect(denied.headers.get('cache-control')).toBe('no-store')
       }
+    }
+
+    for (const path of ['pack/check', 'pack/try']) {
+      const denied = await fetch(url + '/owner-api/core/' + path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}'
+      })
+      expect(denied.status).toBe(401)
     }
 
     const health = await fetch(url + '/owner-api/core/health', { headers: auth(token) })

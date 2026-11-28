@@ -10,7 +10,8 @@ import sys
 from pathlib import Path
 
 from . import (
-    __version__, backup, compose, configure, diagnostics, hermes, hermes_versions, install, launcher, operations, pack, update,
+    __version__, backup, compose, configure, diagnostics, hermes, hermes_versions,
+    install, launcher, operations, pack, update,
 )
 from .result import CommandError, args_error, conflict_error, emit, error_envelope, ok_envelope, operational_error
 
