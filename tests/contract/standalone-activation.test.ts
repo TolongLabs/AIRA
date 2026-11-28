@@ -1,5 +1,7 @@
+import { execFile } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { type App, createApp } from '../../src/app.js'
@@ -60,7 +62,15 @@ async function start(root: string, restart = vi.fn()) {
     })
     return { status: result.status, body: await result.json() }
   }
-  return { app, request, main, restart, watch, gateway: `http://127.0.0.1:${gateway.port}` }
+  return {
+    app,
+    request,
+    main,
+    restart,
+    watch,
+    site: `http://127.0.0.1:${site.port}`,
+    gateway: `http://127.0.0.1:${gateway.port}`
+  }
 }
 
 describe('standalone model activation through the protected listener', () => {
@@ -89,6 +99,29 @@ describe('standalone model activation through the protected listener', () => {
     expect(live.body).toMatchObject({ reply: 'Fixture response', live: true })
     expect(boot.main.requests).toHaveLength(1)
     expect(boot.main.requests[0]?.tools).toEqual([])
+    const script = [
+      'import sys',
+      'from pathlib import Path',
+      'from deploy.cli import configure, install, main, operations',
+      'configure.selected_api = lambda *a, **k: {"base": sys.argv[1], ' +
+        '"token": install.read_owner_token(Path(sys.argv[2])), "state": {}}',
+      'operations.log_event = lambda *a, **k: "fixture-operation"',
+      'sys.exit(main.main(sys.argv[3:]))'
+    ].join('\n')
+    const { stdout } = await promisify(execFile)('python3', [
+      '-c',
+      script,
+      boot.site,
+      join(root, 'standalone', 'owner.token'),
+      'pack',
+      'try',
+      'example',
+      'hello',
+      '--live',
+      '--json'
+    ])
+    expect(JSON.parse(stdout)).toMatchObject({ pack: { reply: 'Fixture response', live: true } })
+    expect(boot.main.requests).toHaveLength(2)
     expect(boot.app.storage.read((db) => db.prepare('SELECT COUNT(*) FROM turn').pluck().get())).toBe(0)
   })
 

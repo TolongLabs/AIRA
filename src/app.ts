@@ -1015,6 +1015,7 @@ export async function createApp(options: AppOptions): Promise<App> {
           harnessRules,
           message,
           live,
+          toolNames: () => registry.toolNames(),
           runner:
             !standalone || (serviceReady && activationCommitted && Boolean(modelBoot?.configured)) ? runner : undefined
         }),

@@ -35,8 +35,9 @@ export async function handlePack(options: PackRoutes, operation: 'check' | 'try'
       const parsed = checkInput.safeParse(body)
       if (!parsed.success) return { status: 400, body: { error: 'invalid_body' } }
       const assets = parsed.data.existingId ? readStudioPack(options, parsed.data.existingId).pack : undefined
-      const { check } = checkDraft(parsed.data.draft, { ...validation, assets })
-      return { status: 200, body: check }
+      const { check, pack } = checkDraft(parsed.data.draft, { ...validation, assets })
+      // Only revision-aware update checks need the normalized card for an exact diff.
+      return { status: 200, body: parsed.data.existingId && pack ? { ...check, normalizedCard: pack.card } : check }
     }
     if (!options.packPreview) return { status: 503, body: { error: 'capability_unavailable' } }
     const parsed = previewInput.safeParse(body)

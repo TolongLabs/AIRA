@@ -90,5 +90,3 @@ def render_pack_human(pack_data: object) -> None:
         sys.stdout.write("reply:\n" + str(pack_data.get("reply", "")) + "\n")
         return
     sys.stdout.write("pack: " + json.dumps(pack_data, indent=2, sort_keys=True) + "\n")
-
-
