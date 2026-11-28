@@ -18,7 +18,7 @@ Real character packs are private. They never enter the repository, the release i
 
 | File        | Holds                                                                                                                                                           | Required |
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| `card.yml`  | Id, display name, aliases, languages, core identity, speech rules, default reply length, bubble capitals switch, tool footer                                    | Yes      |
+| `card.yml`  | Id, display name, aliases, languages, core identity, speech rules, private instructions, default reply length, bubble capitals switch, tool footer              | Yes      |
 | `moods.yml` | The mood list: key, detection rules, tone guidance, openers, endings, faces, beats; face groups and beat lines                                                  | Yes      |
 | `lines.yml` | Fixed lines for errors, limits, refusals, busy, slow, unreadable media, fallback and unavailable. Optional `feedback` and research lines get neutral fallbacks. | Yes      |
 | `stickers/` | Expression images per mood, already converted to WhatsApp sticker format                                                                                        | No       |
@@ -54,7 +54,8 @@ days, at most `context.maxMessages` (default 40, 0 to 100), oldest first. Both v
 
 ## Prompt Blocks
 
-The system prompt is assembled in a fixed order. Blocks 1 to 3 are stable per character and form the cached prefix.
+The system prompt is assembled in a fixed order. Blocks 1 to 3 are stable per character and form the cached prefix. An optional private block is inserted
+between Speech and Harness Rules; it is also stable and counts toward the prompt ceiling.
 
 | #   | Block         | Source                                                                | Changes Per Turn |
 | --- | ------------- | --------------------------------------------------------------------- | ---------------- |
@@ -65,6 +66,9 @@ The system prompt is assembled in a fixed order. Blocks 1 to 3 are stable per ch
 | 5   | Tone          | The detected mood's guidance                                          | Yes              |
 | 6   | Reply Shape   | Drawn by code for this turn                                           | Yes              |
 
+- The optional card field `privateInstructions` is a non-empty string of persona instructions the model must
+  not quote. All other card prose, including identity and speech rules, may be quoted in character. This field
+  is sent to the model and is not a credential store.
 - Blocks 4 to 6 carry only labelled data and short instructions. User text never enters the system prompt.
 - **Media in block 4.** When the sender attached files, block 4 ends with a line telling the model to speak of them
   as things it saw or heard itself, without mentioning the description, then a `<media untrusted="true">` block: one
@@ -166,7 +170,8 @@ record.
 5. Repair list formatting.
 6. Guard faces: inside a face, `*`, `_`, `~` and `` ` `` become their full-width forms (`＊ ＿ ～ ｀`), so
    WhatsApp and the gateway's Markdown conversion never read them as formatting. WhatsApp has no escape character.
-7. Check for leaked prompt text against the fixed blocks. A hit replaces the reply with the pack's fallback line.
+7. Check for 12 or more consecutive words from the harness rules or optional private instructions. A hit replaces
+   the reply with the pack's fallback line. Identity and speech rules are not leak-check inputs.
    Then check for role breaks as described in [Staying In Role](#staying-in-role).
 8. Render for WhatsApp.
 9. Split into bubbles.

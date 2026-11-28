@@ -365,6 +365,35 @@ expectedRevision and a patch of document fields. Preserve comments and unchanged
 A failed parse returns a sanitized fault with no write. Persist no prompt or file bytes in the audit.
 The simulator opens in a separate tab, takes the current draft and never invokes a delivery transport.
 
+#### Agent Pack Commands
+
+The host command `aira pack` uses the selected installation's loopback owner API and existing owner token file.
+It never publishes by writing the pack's files directly. The dashboard and host use the same server validation
+and the existing single Studio writer. Commands accept `--json` (the host CLI result envelope).
+
+| Command                                             | Behavior                                                                                                                                  |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `check <file.json>`                                 | Validate the strict import object (`card`, `moods`, `lines`), report all faults and worst-case prompt size against the configured ceiling |
+| `schema`                                            | Return the generated JSON Schema and setup instructions, including optional fields and runtime rules                                      |
+| `get <id>`                                          | Read the three documents, source, writable flag and opaque revision                                                                       |
+| `import <file.json>`                                | Create a new data pack; refuse any existing id                                                                                            |
+| `update <file.json> --expected-revision <revision>` | Compare against the read revision, show the changed fields, and publish a merge patch; absence deletes optional fields                    |
+| `try <id\|file.json> "<message>" [--live]`          | Run one isolated preview, reporting mood, shape and cleaned reply                                                                         |
+
+Both write commands accept `--dry-run` to validate and show the planned change without publishing. A real
+write still checks conflict and revision under the writer. Invalid drafts never publish. A standalone JSON
+draft has no sticker assets; it must not reference missing files. A revision-guarded update may retain
+existing valid assets.
+
+The protected core exposes `GET pack/schema`, `POST pack/check` and `POST pack/try` for those operations.
+The Studio setup prompt is generated from the card, mood and fixed-line schema plus the runtime rules; it
+explains the optional private instructions field and that all other card prose may be quoted in character.
+Preview defaults to a scripted model with no network calls. Live mode sends the selected pack and test
+message to the configured model only after explicit opt-in. Neither mode uses real chats, memory, external
+tools, or WhatsApp delivery, nor changes installed packs. Preview text and credentials do not enter diagnostics.
+Exit classes follow the host CLI: 0 success, 1 validation/operation failure, 2 invalid arguments,
+3 prerequisite, 4 conflict/auth/stale revision and 5 rollback failure.
+
 Canonical trees are data/characters/:id. Reject symlinks, unknown file names, paths outside the pack root
 and active media. Data packs may retain up to 64 regular document backups named `<document>.yml.bak-YYYYMMDD`,
 each within the document size limit. Their bytes contribute to the revision and survive edits and recovery.
