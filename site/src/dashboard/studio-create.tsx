@@ -1,14 +1,9 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { ArrowLeft, ArrowUpRight, Check, ClipboardCopy, FileJson, X } from 'lucide-react'
 import { toast } from '@/lib/hooks'
 import { motif } from './profile-image'
-import { blankDraft, studioHref, studioPaths } from './studio-client'
-
-const instructions =
-  `Help me create an AIRA persona pack for import in Character Studio. Ask about identity, languages, speech rules, moods, and fallback lines before writing. Use an original fictional persona. Return one JSON file with card, moods and lines, matching the template below. Set card.id to a unique lowercase slug. Fill every required field. Give each mood a name, a tone, trigger phrases, opening and ending phrases, and a valid kaomoji face. Keep sticker lists empty unless assets are available. Provide the file for me to review and import.
-
-` + JSON.stringify(blankDraft(), null, 2)
+import { getPackSchema, studioHref, studioPaths } from './studio-client'
 
 const agents = [
   { name: 'Claude', mark: 'claude', url: 'https://claude.ai/new' },
@@ -19,7 +14,24 @@ const agents = [
 function AgentPrompt({ back }: { back: () => void }) {
   const [copied, setCopied] = useState(false)
   const prompt = useRef<HTMLTextAreaElement>(null)
+  const [instructions, setInstructions] = useState<string>()
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    void getPackSchema().then(
+      (value) => {
+        if (!cancelled) setInstructions(value.setupPrompt)
+      },
+      () => {
+        if (!cancelled) setFailed(true)
+      }
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [])
   async function copy() {
+    if (!instructions) return
     try {
       await navigator.clipboard.writeText(instructions)
       setCopied(true)
@@ -38,7 +50,7 @@ function AgentPrompt({ back }: { back: () => void }) {
             <FileJson size={18} aria-hidden="true" />
             Persona setup prompt
           </h3>
-          <button className="agent-copy" type="button" onClick={() => void copy()}>
+          <button className="agent-copy" type="button" disabled={!instructions} onClick={() => void copy()}>
             {copied ? <Check size={16} /> : <ClipboardCopy size={16} />} {copied ? 'Copied' : 'Copy Prompt'}
           </button>
         </div>
@@ -47,7 +59,10 @@ function AgentPrompt({ back }: { back: () => void }) {
           readOnly
           aria-label="Persona setup prompt"
           rows={6}
-          value={instructions}
+          value={
+            instructions ??
+            (failed ? 'Setup prompt unavailable. Go back and try again.' : 'Loading the current pack schema…')
+          }
           onFocus={(e) => e.target.select()}
         />
       </section>

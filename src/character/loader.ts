@@ -29,18 +29,7 @@ export interface Pack {
   /** The folder the pack was read from. */
   dir: string
   source: 'repository' | 'data'
-  card: {
-    id: string
-    displayName: string
-    aliases?: string[]
-    languages: string[]
-    coreIdentity: string
-    speechRules: string[]
-    privateInstructions?: string
-    defaultReplyLength: 'short' | 'default' | 'long'
-    capitaliseBubbles?: boolean
-    toolFooter?: { icon?: string; labels?: Record<string, string> }
-  }
+  card: z.infer<typeof cardSchema>
   defaultMood: string
   moods: Map<string, Mood>
   lines: z.infer<typeof linesSchema>
@@ -62,6 +51,10 @@ function readAndValidate<T>(dir: string, file: string, schema: z.ZodType<T>, fau
     faults.push(`${file}: invalid YAML: ${(cause as Error).message.split('\n')[0]}`)
     return undefined
   }
+  return validateDocument(raw, file, schema, faults)
+}
+
+function validateDocument<T>(raw: unknown, file: string, schema: z.ZodType<T>, faults: string[]): T | undefined {
   const result = schema.safeParse(raw)
   if (!result.success) {
     for (const issue of result.error.issues) {
@@ -77,10 +70,45 @@ function readAndValidate<T>(dir: string, file: string, schema: z.ZodType<T>, fau
 export function loadPack(dir: string, source: 'repository' | 'data'): Pack {
   const id = basename(dir)
   const faults: string[] = []
-
   const card = readAndValidate(dir, 'card.yml', cardSchema, faults)
-  const moodsRaw = readAndValidate(dir, 'moods.yml', moodsSchema, faults)
+  const moods = readAndValidate(dir, 'moods.yml', moodsSchema, faults)
   const lines = readAndValidate(dir, 'lines.yml', linesSchema, faults)
+  const pack = compilePack({ id, dir, source, card, moodsRaw: moods, lines, faults })
+  if (!pack) throw new PackError(`character pack ${id} is invalid:\n${faults.map((f) => `  ${f}`).join('\n')}`)
+  return pack
+}
+
+/** The same schema and semantic validation used by folder loading, without writing a folder. */
+export function validatePackDocuments(
+  documents: { card?: unknown; moods?: unknown; lines?: unknown },
+  options: { id: string; assets?: Pick<Pack, 'dir' | 'source'> }
+): { pack?: Pack; faults: string[] } {
+  const faults: string[] = []
+  const card = validateDocument(documents.card, 'card.yml', cardSchema, faults)
+  const moodsRaw = validateDocument(documents.moods, 'moods.yml', moodsSchema, faults)
+  const lines = validateDocument(documents.lines, 'lines.yml', linesSchema, faults)
+  const pack = compilePack({
+    id: options.id,
+    dir: options.assets?.dir ?? '',
+    source: options.assets?.source ?? 'data',
+    card,
+    moodsRaw,
+    lines,
+    faults
+  })
+  return { ...(pack ? { pack } : {}), faults }
+}
+
+function compilePack(input: {
+  id: string
+  dir: string
+  source: Pack['source']
+  card: z.infer<typeof cardSchema> | undefined
+  moodsRaw: z.infer<typeof moodsSchema> | undefined
+  lines: z.infer<typeof linesSchema> | undefined
+  faults: string[]
+}): Pack | undefined {
+  const { id, dir, source, card, moodsRaw, lines, faults } = input
 
   if (card && card.id !== id) {
     faults.push(`card.yml: id: must equal folder name "${id}"`)
@@ -96,13 +124,13 @@ export function loadPack(dir: string, source: 'repository' | 'data'): Pack {
       for (const [index, pattern] of entry.patterns.entries()) {
         try {
           patterns.push(new RegExp(pattern, 'iu'))
-        } catch (cause) {
-          faults.push(`moods.yml: moods.${key}.patterns.${index}: ${(cause as Error).message}`)
+        } catch {
+          faults.push(`moods.yml: moods.${key}.patterns.${index}: invalid regular expression (iu)`)
         }
       }
       for (const file of entry.stickers) {
         const stickerPath = join(dir, 'stickers', file)
-        if (!existsSync(stickerPath) || !statSync(stickerPath).isFile()) {
+        if (!dir || !existsSync(stickerPath) || !statSync(stickerPath).isFile()) {
           faults.push(`moods.yml: moods.${key}.stickers: missing sticker file "${file}"`)
         } else {
           const fault = stickerFault(readWebpInfo(readFileSync(stickerPath)))
@@ -134,9 +162,7 @@ export function loadPack(dir: string, source: 'repository' | 'data'): Pack {
     }
   }
 
-  if (faults.length > 0 || !card || !moodsRaw || !lines) {
-    throw new PackError(`character pack ${id} is invalid:\n${faults.map((f) => `  ${f}`).join('\n')}`)
-  }
+  if (faults.length > 0 || !card || !moodsRaw || !lines) return undefined
 
   return {
     id,

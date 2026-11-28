@@ -1040,6 +1040,8 @@ it('creates personas from the catalogue, keeps section drafts and uses the local
     await screenshot(page, 'create-phone')
     await dialog.getByRole('button', { name: /Agent/ }).click()
     await expect(dialog.getByRole('textbox')).toHaveAttribute('readonly', '')
+    await expect(dialog.getByRole('textbox')).toHaveValue(/privateInstructions/)
+    await expect(dialog.getByRole('textbox')).toHaveValue(/aira pack check/)
     for (const agent of ['Claude', 'ChatGPT', 'Gemini']) {
       const link = dialog.getByRole('link', { name: 'Open ' + agent + ' in a new tab' })
       await expect(link).toHaveAttribute('target', '_blank')
@@ -1078,12 +1080,14 @@ it('creates personas from the catalogue, keeps section drafts and uses the local
     await page.setViewportSize({ width: 1440, height: 810 })
     await page.goto(fixture.origin + '/app/preview/characters/fixture-00/edit')
     await page.getByLabel('Display name').fill('Fixture Draft')
+    await page.getByLabel('Private instructions (optional)').fill('A fictional private direction.')
     await page.locator('.portrait-upload input').setInputFiles(resolve('site/public/dashboard/field-dark.webp'))
     await expect(page.locator('.portrait-sample')).toHaveAttribute('src', /^data:image\/webp/)
     await page.getByRole('link', { name: 'Fixed Lines', exact: true }).click()
     await expect(page.getByLabel('Display name')).toHaveCount(0)
     await page.getByRole('link', { name: 'Identity', exact: true }).click()
     await expect(page.getByLabel('Display name')).toHaveValue('Fixture Draft')
+    await expect(page.getByLabel('Private instructions (optional)')).toHaveValue('A fictional private direction.')
     await screenshot(page, 'persona-editor')
     const [sim] = await Promise.all([
       context.waitForEvent('page'),
@@ -1098,6 +1102,7 @@ it('creates personas from the catalogue, keeps section drafts and uses the local
     await screenshot(sim, 'simulator')
     await sim.close()
     await page.getByLabel('Display name').fill('Example')
+    await page.getByLabel('Private instructions (optional)').fill('')
     await page.goto(fixture.origin + '/app/preview/system/settings#files')
     await page.getByRole('combobox', { name: 'Character pack' }).click()
     await page.getByRole('option', { name: /fixture-00/ }).click()

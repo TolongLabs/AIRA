@@ -194,14 +194,15 @@ def selected_api(explicit_home=None, need_running=True):
     }
 
 
-def api_request(selection, method, path, body=None, timeout_s=10):
+def api_request(selection, method, path, body=None, timeout_s=10, *, response_limit=None):
     headers = {"X-TolongAI-Token": selection["token"], "Accept": "application/json"}
     raw = None
     if body is not None:
-        raw = json.dumps(body).encode("utf-8")
+        raw = json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         headers["Content-Type"] = "application/json"
     status, content, kind = compose.http_request(
-        selection["base"].rstrip("/") + path, timeout_s, headers, method, raw)
+        selection["base"].rstrip("/") + path, timeout_s, headers, method, raw,
+        **({"response_limit": response_limit} if response_limit is not None else {}))
     parsed = None
     if kind == "ok" and content:
         try:

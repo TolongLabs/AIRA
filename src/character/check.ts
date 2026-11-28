@@ -82,12 +82,16 @@ export function checkPack(options: {
     return { id: options.id, ok: false, faults: [`unknown pack "${options.id}"`], ceiling, moods: 0, stickers: 0 }
   }
 
+  return checkLoadedPack(pack, ceiling, loadHarnessRules(options.harnessRulesPath))
+}
+
+/** Measures a loaded or in-memory pack against the same worst-case prompt budget. */
+export function checkLoadedPack(pack: Pack, ceiling: number, harnessRules: string): PackCheck {
   const stickerSet = new Set<string>()
   for (const mood of pack.moods.values()) {
     for (const sticker of mood.stickers) stickerSet.add(sticker)
   }
 
-  const harnessRules = loadHarnessRules(options.harnessRulesPath)
   const promptTokens = maxPromptTokens(pack, harnessRules)
   const faults: string[] = []
   if (promptTokens > ceiling) {
@@ -95,7 +99,7 @@ export function checkPack(options: {
   }
 
   return {
-    id: options.id,
+    id: pack.id,
     ok: faults.length === 0,
     faults,
     promptTokens,

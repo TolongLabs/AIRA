@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { createSiteApiServer } from './api/server.js'
 import { pendingStudioPacks, recoverStudioPacks } from './api/studio-packs.js'
 import { loadPacks, type PackSet } from './character/loader.js'
+import { previewPack } from './character/preview.js'
 import { writeUnavailableLine } from './character/unavailable.js'
 import { credentialPurposes, deploymentSettings } from './config/dashboard-settings.js'
 import { type InstallationMode, installationModeFromEnv, type StandaloneReadiness } from './config/installation-mode.js'
@@ -656,10 +657,11 @@ export async function createApp(options: AppOptions): Promise<App> {
       closers.push(() => mcp.close())
     }
 
+    const harnessRules = loadHarnessRules(options.harnessRulesPath)
     const prompt = createPromptBuilder({
       storage,
       config,
-      harnessRules: loadHarnessRules(options.harnessRulesPath),
+      harnessRules,
       judge: moodJudge,
       recall: (input) =>
         recallForTurn(storage, {
@@ -1005,6 +1007,16 @@ export async function createApp(options: AppOptions): Promise<App> {
     })
 
     const siteServer = createSiteApiServer({
+      packValidation: { ceiling: config.prompt.maxSystemTokens, harnessRules },
+      packPreview: (pack, message, live) =>
+        previewPack({
+          pack,
+          config,
+          harnessRules,
+          message,
+          live,
+          runner: !standalone || chatbotReadyNow() ? runner : undefined
+        }),
       extractorAvailable,
       socialMirrors,
       allowedOrigins: config.site.allowedOrigins,

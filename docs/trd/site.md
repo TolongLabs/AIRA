@@ -388,11 +388,17 @@ existing valid assets.
 The protected core exposes `GET pack/schema`, `POST pack/check` and `POST pack/try` for those operations.
 The Studio setup prompt is generated from the card, mood and fixed-line schema plus the runtime rules; it
 explains the optional private instructions field and that all other card prose may be quoted in character.
-Preview defaults to a scripted model with no network calls. Live mode sends the selected pack and test
-message to the configured model only after explicit opt-in. Neither mode uses real chats, memory, external
+Preview uses the rule-based mood detector and a fixed shape seed with no real chat history. It defaults to a
+scripted model with no network calls. Live mode sends the selected pack and test
+message to the configured model only after explicit opt-in, retaining its normal routing and spend limits. Neither
+mode uses real chats, memory, external
 tools, or WhatsApp delivery, nor changes installed packs. Preview text and credentials do not enter diagnostics.
 Exit classes follow the host CLI: 0 success, 1 validation/operation failure, 2 invalid arguments,
 3 prerequisite, 4 conflict/auth/stale revision and 5 rollback failure.
+
+For an edit, `aira pack get <id> --json` returns the revision and documents under `pack`. Save just
+`card`, `moods` and `lines` as the draft JSON, edit it, check it, run the revision-guarded update with
+`--dry-run`, then repeat the command without `--dry-run` to publish.
 
 Canonical trees are data/characters/:id. Reject symlinks, unknown file names, paths outside the pack root
 and active media. Data packs may retain up to 64 regular document backups named `<document>.yml.bak-YYYYMMDD`,
