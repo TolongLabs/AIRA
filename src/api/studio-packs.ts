@@ -15,6 +15,8 @@ import { dirname, join, resolve, sep } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { isMap, parse, parseDocument, stringify } from 'yaml'
 import type { z } from 'zod'
+import { checkLoadedPack } from '../character/check.js'
+import { MAX_PACK_DOCUMENT_BYTES } from '../character/draft.js'
 import { loadPack, PackError } from '../character/loader.js'
 import {
   cardSchema,
@@ -44,7 +46,7 @@ import { type StudioExpressionStore, StudioExpressionStoreError } from './studio
 export const STUDIO_FILES = ['card.yml', 'moods.yml', 'lines.yml'] as const
 type StudioFile = (typeof STUDIO_FILES)[number]
 
-const MAX_YAML_BYTES = 256 * 1024
+const MAX_YAML_BYTES = MAX_PACK_DOCUMENT_BYTES
 const DOCUMENT_BACKUP = /^(?:card|moods|lines)\.yml\.bak-[0-9]{8}$/u
 const MAX_DOCUMENT_BACKUPS = 64
 const MAX_STICKER_BYTES = 500_000
@@ -110,7 +112,10 @@ export class StudioPackError extends Error {
   }
 }
 
-type StudioDeps = Pick<SiteApiDeps, 'storage' | 'paths' | 'packs'> & { now?: () => Date }
+type StudioDeps = Pick<SiteApiDeps, 'storage' | 'paths' | 'packs'> & {
+  now?: () => Date
+  packValidation?: { ceiling: number; harnessRules: string }
+}
 type ReadDeps = Pick<SiteApiDeps, 'paths' | 'packs'>
 type RecoverDeps = Pick<SiteApiDeps, 'storage' | 'paths'> & { now?: () => Date }
 
@@ -514,11 +519,13 @@ function stageStickers(entries: StickerEntry[], stagingDir: string): void {
   for (const entry of entries) writeFileAtomic(join(dir, entry.name), entry.bytes)
 }
 
-function validateStagedTree(stagingDir: string, id: string): void {
+function validateStagedTree(stagingDir: string, id: string, validation?: StudioDeps['packValidation']): void {
   const tree = readTreeBytes(stagingDir)
   parseTree(id, tree)
   try {
-    loadPack(stagingDir, 'data')
+    const pack = loadPack(stagingDir, 'data')
+    if (validation && !checkLoadedPack(pack, validation.ceiling, validation.harnessRules).ok)
+      throw new StudioPackError('invalid_body', 'prompt over the ceiling', 400)
   } catch (error) {
     if (error instanceof PackError) {
       const first = error.message.split('\n')[0] ?? 'invalid pack'
@@ -871,7 +878,7 @@ export function createStudioPack(deps: StudioDeps, input: StudioCreateInput): St
       writeFileAtomic(join(stagingDir, 'moods.yml'), toStableYaml(input.moods))
       writeFileAtomic(join(stagingDir, 'lines.yml'), toStableYaml(input.lines))
     }
-    validateStagedTree(stagingDir, id)
+    validateStagedTree(stagingDir, id, deps.packValidation)
     const staged = readTreeBytes(stagingDir)
     const stagedStickers = readStickerEntries(stagingDir)
     const newRevision = revisionOf(id, staged, stagedStickers)
@@ -1081,7 +1088,7 @@ export function updateStudioPack(
       ensureDirectory(join(stagingDir, 'stickers'))
       writeFileAtomic(join(stagingDir, 'stickers', expression.file), expression.data)
     }
-    validateStagedTree(stagingDir, id)
+    validateStagedTree(stagingDir, id, deps.packValidation)
     const staged = readTreeBytes(stagingDir)
     const stagedStickers = readStickerEntries(stagingDir)
     const newRevision = revisionOf(id, staged, stagedStickers)

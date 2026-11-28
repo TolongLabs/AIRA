@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from . import (
-    __version__, backup, compose, configure, diagnostics, hermes, hermes_versions, install, launcher, operations, update,
+    __version__, backup, compose, configure, diagnostics, hermes, hermes_versions, install, launcher, operations, pack, update,
 )
 from .result import CommandError, args_error, conflict_error, emit, error_envelope, ok_envelope, operational_error
 
@@ -107,6 +107,31 @@ def build_parser():
     _globals(restore, True)
     restore.add_argument("--backup-id", required=True)
     restore.add_argument("--destination", required=True)
+    pack_parser = sub.add_parser("pack", help="Validate, inspect, import, update, and preview character packs.")
+    _globals(pack_parser, True)
+    pack_sub = pack_parser.add_subparsers(dest="pack_command", required=True)
+    pack_check = pack_sub.add_parser("check", help="Validate a draft pack JSON file.")
+    _globals(pack_check, True)
+    pack_check.add_argument("file", metavar="FILE")
+    pack_schema = pack_sub.add_parser("schema", help="Read the character pack JSON Schema and setup prompt.")
+    _globals(pack_schema, True)
+    pack_get = pack_sub.add_parser("get", help="Read a character pack and its opaque revision.")
+    _globals(pack_get, True)
+    pack_get.add_argument("id", metavar="ID")
+    pack_import = pack_sub.add_parser("import", help="Create a new data character pack.")
+    _globals(pack_import, True)
+    pack_import.add_argument("file", metavar="FILE")
+    pack_import.add_argument("--dry-run", action="store_true")
+    pack_update = pack_sub.add_parser("update", help="Update an existing writable data pack.")
+    _globals(pack_update, True)
+    pack_update.add_argument("file", metavar="FILE")
+    pack_update.add_argument("--expected-revision", required=True, metavar="REV")
+    pack_update.add_argument("--dry-run", action="store_true")
+    pack_try = pack_sub.add_parser("try", help="Run one isolated pack preview.")
+    _globals(pack_try, True)
+    pack_try.add_argument("target", metavar="ID|FILE")
+    pack_try.add_argument("message", metavar="MESSAGE")
+    pack_try.add_argument("--live", action="store_true")
     return parser
 
 
@@ -247,6 +272,8 @@ def main(argv=None, repo_root=None):
             result = update.update_command(args, home, install.read_manifest(home), op)
         elif command == "restore":
             result = cmd_restore(args, op)
+        elif command == "pack":
+            result = pack.run_pack(args, op)
         else:
             raise args_error("Select a command.", "Run aira --help.")
     except CommandError as err:

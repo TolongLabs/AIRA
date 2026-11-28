@@ -120,6 +120,10 @@ async function studioFetch<T>(method: string, path: string, body?: unknown): Pro
 }
 
 /** GET /owner-api/core/characters/:id/studio — id, source, writability, revision, documents. */
+export function getPackSchema(): Promise<{ schema: unknown; setupPrompt: string }> {
+  return studioFetch('GET', 'pack/schema')
+}
+
 export function getStudio(id: string, view?: 'documents'): Promise<StudioDoc> {
   return studioFetch<StudioDoc>('GET', `characters/${encodeURIComponent(id)}/studio` + (view ? '?view=documents' : ''))
 }

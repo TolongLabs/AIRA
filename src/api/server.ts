@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { extname, resolve, sep } from 'node:path'
 import { z } from 'zod'
+import { generatePackSchema } from '../character/draft.js'
 import type { InstallationMode } from '../config/installation-mode.js'
 import { StandaloneModelError, type StandaloneModelStore } from '../config/standalone-models.js'
 import { verifyStandaloneOwnerToken } from '../config/standalone-owner.js'
@@ -19,6 +20,7 @@ import { changeOwnerJob, ownerCronTransport } from './owner-cron.js'
 import { changeOwnerMarkets } from './owner-markets.js'
 import { handleOwnerMessageGet, handleOwnerMessagePost, isOwnerMessagePost, ownerMessageIdOf } from './owner-message.js'
 import { proxyOwnerApi } from './owner-proxy.js'
+import { handlePack, type PackRoutes } from './pack-routes.js'
 import { dispatchGet, isKnownRoute, type SiteApiDeps } from './routes.js'
 import { handleStudioExpressions } from './studio-expression-routes.js'
 import {
@@ -33,7 +35,7 @@ import { dispatchWrite, hostAllowed, isWriteRoute, originAllowed } from './write
 
 // The core's private HTTP API for the owner site (docs/trd/site.md#serving-the-api).
 
-export interface SiteApiServerOptions extends SiteApiDeps {
+export interface SiteApiServerOptions extends SiteApiDeps, PackRoutes {
   deploymentSettings?: (
     roles: ReturnType<SiteApiDeps['roles']>
   ) => import('../config/dashboard-types.js').DeploymentSettings
@@ -215,6 +217,7 @@ function diagnosticRoute(path: string): DashboardRoute {
   if (!path.startsWith('/owner-api/core/')) return 'owner_proxy'
   const parts = path.slice('/owner-api/core/'.length).split('/')
   if (parts.length === 1) return normalizeRoute(parts[0])
+  if (parts[0] === 'pack') return 'characters'
   if (parts[0] === 'characters') return parts[2] === 'footer' ? 'character_footer' : 'characters'
   if (parts[0] === 'chats')
     return parts[2] === 'status' ? 'chat_status' : parts[2] === 'label' ? 'chat_label' : 'unknown'
@@ -351,6 +354,17 @@ export function createSiteApiServer(options: SiteApiServerOptions): Server {
             }
           })()
         return json(response, 200, snapshot)
+      }
+      if (path === '/api/pack/schema') {
+        if (request.method !== 'GET') return json(response, 405, { error: 'method_not_allowed' })
+        return json(response, 200, generatePackSchema())
+      }
+      if (path === '/api/pack/check' || path === '/api/pack/try') {
+        if (request.method !== 'POST') return json(response, 405, { error: 'method_not_allowed' })
+        const data = await readJson(request, 768 * 1024)
+        if ('error' in data) return json(response, data.status, { error: data.error })
+        const result = await handlePack(options, path.endsWith('/check') ? 'check' : 'try', data.body)
+        return json(response, result.status, result.body)
       }
       const expression = /^\/api\/characters\/([^/]+)\/expressions(?:\/([^/]+))?$/.exec(path)
       if (expression?.[1])
